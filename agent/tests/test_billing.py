@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,8 @@ from claude_agent_sdk import ResultMessage
 from core import billing, db, events, orchestrator, router
 from core.config import settings
 from gateway import web_app
+from tools import web as web_tools
+from tools.base import call_tool, reset_task_context, set_task_context_tokens
 
 
 async def test_concurrent_reservations_respect_one_users_cap(users_a_b):
@@ -227,3 +230,111 @@ async def test_signed_webhook_route_and_checkout_are_user_scoped(users_a_b, monk
     assert response.status_code == 200
     assert (await db.get_user(alice.id)).plan_tier == "pro"
     assert (await db.get_user(bob.id)).plan_tier == "free"
+
+
+@pytest.mark.parametrize(
+    "now,expected",
+    [
+        (datetime(2026, 1, 31, 23, 59, tzinfo=UTC), (date(2026, 1, 1), date(2026, 2, 1))),
+        (datetime(2026, 12, 31, 12, 30, tzinfo=UTC), (date(2026, 12, 1), date(2027, 1, 1))),
+        (datetime(2026, 3, 1, 0, 0, tzinfo=UTC), (date(2026, 3, 1), date(2026, 4, 1))),
+    ],
+)
+def test_usage_windows_are_calendar_months(monkeypatch, now, expected):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(db, "datetime", FixedDateTime)
+    start, end = db._current_period()
+    assert (start.date(), end.date()) == expected
+
+
+async def test_month_boundary_keeps_old_costs_and_reservations_out(users_a_b):
+    alice, _ = users_a_b
+    month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    await db._require_pool().execute(
+        "INSERT INTO api_costs (user_id, task_id, model, input_tokens, output_tokens, "
+        "cost_usd, created_at) VALUES ($1, NULL, 'old', 0, 0, $2, $3)",
+        alice.id, Decimal("4.00"), month_start - timedelta(seconds=1),
+    )
+    await db.log_api_cost(alice.id, None, "current", cost_usd=Decimal("1.00"))
+    await db._require_pool().execute(
+        "INSERT INTO budget_reservations (user_id, task_id, operation_key, period_start, "
+        "amount_usd, state) VALUES ($1, NULL, 'stale', $2, $3, 'reserved')",
+        alice.id, (month_start - timedelta(days=1)).date(), Decimal("5.00"),
+    )
+    summary = await billing.usage_this_period(alice.id)
+    assert summary.total_cost == Decimal("1.00")
+    assert summary.period_start == month_start.date()
+    assert await db.reserved_this_period(alice.id) == 0
+    await db.update_user(alice.id, plan_tier="pro")
+    assert (await billing.usage_this_period(alice.id)).total_cost == Decimal("1.00")
+
+
+async def test_webhook_route_refuses_while_billing_disabled(users_a_b):
+    assert settings.billing.enabled is False
+    body = json.dumps({"id": "evt_disabled", "type": "customer.subscription.updated",
+                       "data": {"object": {"customer": "cus_any"}}})
+    transport = httpx.ASGITransport(app=web_app.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/webhooks/stripe", content=body,
+                                     headers={"stripe-signature": "t=1,v1=deadbeef"})
+    assert response.status_code == 503
+    assert await db._require_pool().fetchval(
+        "SELECT COUNT(*) FROM processed_stripe_events WHERE event_id = 'evt_disabled'"
+    ) == 0
+
+
+async def test_stale_event_cannot_restore_canceled_access(users_a_b, monkeypatch):
+    alice, _ = users_a_b
+    await db.set_stripe_customer(alice.id, "cus_alice")
+    await db.update_user(alice.id, plan_tier="pro", billing_state="active",
+                         stripe_subscription_id="sub_old")
+    monkeypatch.setattr(settings.billing, "enabled", True)
+    monkeypatch.setattr(settings.secrets, "stripe_webhook_secret", "whsec_test")
+    listing = {"data": [{"id": "sub_old", "customer": "cus_alice", "status": "canceled",
+                         "created": 1, "items": {"data": [{"price": {"id": "price_pro"}}]}}]}
+    client = SimpleNamespace(v1=SimpleNamespace(subscriptions=SimpleNamespace(
+        list_async=lambda *_args: asyncio.sleep(0, result=listing))))
+    monkeypatch.setattr(billing, "_stripe_client", lambda: client)
+    stale = {"id": "evt_late", "type": "checkout.session.completed",
+             "data": {"object": {"customer": "cus_alice"}}}
+    assert await billing.handle_stripe_webhook(stale)
+    user = await db.get_user(alice.id)
+    assert user.plan_tier == "free"
+    assert user.billing_state == "canceled"
+
+
+async def test_search_tool_reserves_and_settles(users_a_b, monkeypatch):
+    alice, bob = users_a_b
+    monkeypatch.setattr(settings.secrets, "search_api_key", "fake-key")
+    calls = {"n": 0}
+
+    def fake_brave(_query, _num, _key):
+        calls["n"] += 1
+        return [{"title": "t", "url": "https://example.com", "snippet": "s"}]
+
+    monkeypatch.setattr(web_tools, "_search_brave", fake_brave)
+    task = await db.create_task(alice.id, "search task", "user")
+    tokens = set_task_context_tokens(str(alice.id), str(task.id))
+    try:
+        result = await call_tool("web_search", {"query": "hello"})
+    finally:
+        reset_task_context(tokens)
+    assert result.ok
+    assert calls["n"] == 1
+    assert (await billing.usage_this_period(alice.id)).total_cost == settings.search_per_query_usd
+    assert await db.reserved_this_period(alice.id) == 0
+
+    cap = settings.plan_for("free").hard_cap_usd
+    await db.log_api_cost(alice.id, None, "seed", cost_usd=cap)
+    tokens = set_task_context_tokens(str(alice.id), str(task.id))
+    try:
+        refused = await call_tool("web_search", {"query": "hello again"})
+    finally:
+        reset_task_context(tokens)
+    assert not refused.ok and "usage cap" in refused.error
+    assert calls["n"] == 1
+    assert (await billing.usage_this_period(bob.id)).total_cost == 0

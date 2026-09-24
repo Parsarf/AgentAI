@@ -37,6 +37,10 @@ async def main() -> None:
     interrupted = await db.recover_interrupted_tasks()
     if interrupted:
         logger.warning("interrupted tasks marked failed without replay", extra={"count": len(interrupted)})
+    from core import purchases as purchases_core
+
+    with contextlib.suppress(Exception):
+        await purchases_core.reconcile_pending(limit=25)
     auto_discover()
     from tools.base import registry
 

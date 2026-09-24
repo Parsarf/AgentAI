@@ -210,6 +210,13 @@ class SchedulerService:
                 handler.add_done_callback(self._inflight.discard)
             if jobs:
                 logger.info("scheduler tick", extra={"due": len(jobs), "at": now.isoformat()})
+            # Bounded purchase reconciliation rides every tick (loop, wake and
+            # external ticks included). Provider-less — the runtime case — it
+            # resolves nothing and rows stay flagged, never aged away.
+            with contextlib.suppress(Exception):
+                from core import purchases as purchases_core
+
+                await purchases_core.reconcile_pending(limit=5)
             return jobs
 
     async def drain(self) -> None:

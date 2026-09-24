@@ -86,6 +86,27 @@ fake plus provider-sandbox success tests. The current draft policy/audit is a
 fail-closed foundation, **not** an operational purchase ledger. Do not turn
 on spending until these are implemented and verified.
 
+### Continuation audit (2026-09-24)
+
+The provider-independent path from the unfinished worktree was verified with
+the test-only fake. A final-claim gap was closed: switching payments off while
+an approval is pending now denies execution. Both preflight and claim require
+the configured provider to match the installed adapter and user's connection.
+A provider report of success for a different or absent recipient is held as
+`unknown` with the reservation intact; it cannot be treated as a failed charge
+or free the cap, because money may already have moved. Merchant canonicalization
+now uses the installed `tld==0.13.2` package's bundled public-suffix data,
+declared as a direct dependency, in place of the hand-curated snapshot.
+
+Verification: focused purchase suite **37 passed, 2 existing warnings**;
+the existing non-purchase suite **207 passed, 2 existing warnings**;
+`ruff check .` clean. A combined 244-test run stalled after 139 passes and was
+interrupted after 166 seconds; both constituent suites passed separately.
+No real or sandbox provider call was made. Payments remain disabled in config,
+with no production adapter or hosted connection flow. Phase 6 remains partial
+until an actual supported merchant/provider network, order/recipient contract,
+user authorization flow, and sandbox credentials are selected and validated.
+
 ---
 
 ## Phase 5 — Lean billing (implemented 2026-09-23)
@@ -153,6 +174,31 @@ non-`*_test` and same-database DSNs before schema reset.
   proven**. Unknown SDK outcomes retain reservations and currently require
   manual reconciliation; no automatic provider-side per-task cost lookup is
   available in this implementation. These are release limits for paid billing.
+
+### Re-audit addendum (2026-09-23, later session)
+
+Re-executed the Phase 5 prompt against the completed implementation instead of
+rebuilding it. Full prompt walkthrough verified: A (SDK `ResultMessage`
+metering, per-model/cache costs, durable operation keys, idempotent settle,
+`unknown` state for missing usage, tasks.cost_usd derived from api_costs),
+B (`reserve_budget` per-user `FOR UPDATE` row lock, admission + post-slot +
+pre-paid checks, 90% warning dedupe, live ledger sums never stale snapshots),
+C (checkout/portal CSRF routes, webhook signature verification before lookup,
+event dedupe, provider-state resolution, grace expiry local, billing disabled
+keeps caps), D (entitlements re-read in approvals, can_use_tool, concurrency
+slot, and queued tasks). Added 7 test cases closing the remaining
+verification-matrix gaps, all in `tests/test_billing.py`: calendar-month
+window math at month edges (Jan 31 / Dec 31 / Mar 1), last-month costs and
+stale reservations excluded from the current period, plan change preserving
+settled usage, webhook route refusing 503 while `billing.enabled=false`, a
+stale `checkout.session.completed` delivered after cancellation failing to
+restore access, and the real `web_search` tool path reserving before the
+provider call, settling after, refusing at cap without calling the provider,
+and leaving other users untouched. Focused: 17 passed. Full suite: **207
+passed, 2 pre-existing warnings**; `ruff check .`: clean. `python main.py`
+re-verified booting with `/healthz` and `/readyz` 200 and clean shutdown.
+The single allowed live model smoke test was already spent by the first
+Phase 5 session ($0.000031, recorded above) and was **not** repeated.
 
 ---
 

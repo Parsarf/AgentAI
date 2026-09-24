@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ON8zhvX6RidD2JEcjHZEOrL4Gr4Pvjhcn0YSKNxbepv08f8HgVRZan3Q1mWifkM
+\restrict 4JSTSTIurFTFQBlPp72TbkbNhhc5gaOD1aXbvfwml1tryLAZA3nEIIQaPYerShZ
 
 -- Dumped from database version 16.15 (Homebrew)
 -- Dumped by pg_dump version 16.15 (Homebrew)
@@ -227,6 +227,55 @@ CREATE TABLE public.purchase_attempts (
 
 
 --
+-- Name: purchase_connections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.purchase_connections (
+    user_id uuid NOT NULL,
+    provider text NOT NULL,
+    account_hint text DEFAULT ''::text NOT NULL,
+    connection_version integer DEFAULT 1 NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    connected_at timestamp with time zone DEFAULT now() NOT NULL,
+    revoked_at timestamp with time zone,
+    CONSTRAINT purchase_connections_status_check CHECK ((status = ANY (ARRAY['active'::text, 'revoked'::text])))
+);
+
+
+--
+-- Name: purchase_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.purchase_events (
+    id bigint NOT NULL,
+    purchase_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    event text NOT NULL,
+    detail jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: purchase_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.purchase_events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: purchase_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.purchase_events_id_seq OWNED BY public.purchase_events.id;
+
+
+--
 -- Name: purchase_policies; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -239,6 +288,38 @@ CREATE TABLE public.purchase_policies (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT purchase_policies_monthly_cap_usd_check CHECK ((monthly_cap_usd >= (0)::numeric)),
     CONSTRAINT purchase_policies_per_transaction_cap_usd_check CHECK ((per_transaction_cap_usd >= (0)::numeric))
+);
+
+
+--
+-- Name: purchases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.purchases (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    task_id text NOT NULL,
+    task_source text NOT NULL,
+    invocation_key text NOT NULL,
+    order_ref text,
+    merchant text NOT NULL,
+    merchant_input text NOT NULL,
+    recipient text,
+    amount numeric(12,2) NOT NULL,
+    currency text DEFAULT 'USD'::text NOT NULL,
+    description text NOT NULL,
+    connection_version integer NOT NULL,
+    state text DEFAULT 'awaiting_approval'::text NOT NULL,
+    approval_id uuid,
+    approval_expires_at timestamp with time zone,
+    provider text,
+    provider_ref text,
+    reservation_month date,
+    failure_reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT purchases_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT purchases_state_check CHECK ((state = ANY (ARRAY['awaiting_approval'::text, 'ready'::text, 'executing'::text, 'succeeded'::text, 'failed'::text, 'unknown'::text, 'denied'::text, 'expired'::text])))
 );
 
 
@@ -400,6 +481,13 @@ CREATE TABLE public.vault_keys (
 
 
 --
+-- Name: purchase_events id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchase_events ALTER COLUMN id SET DEFAULT nextval('public.purchase_events_id_seq'::regclass);
+
+
+--
 -- Name: api_costs api_costs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -504,11 +592,43 @@ ALTER TABLE ONLY public.purchase_attempts
 
 
 --
+-- Name: purchase_connections purchase_connections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchase_connections
+    ADD CONSTRAINT purchase_connections_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: purchase_events purchase_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchase_events
+    ADD CONSTRAINT purchase_events_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: purchase_policies purchase_policies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.purchase_policies
     ADD CONSTRAINT purchase_policies_pkey PRIMARY KEY (user_id);
+
+
+--
+-- Name: purchases purchases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchases
+    ADD CONSTRAINT purchases_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: purchases purchases_user_id_invocation_key_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchases
+    ADD CONSTRAINT purchases_user_id_invocation_key_key UNIQUE (user_id, invocation_key);
 
 
 --
@@ -724,6 +844,41 @@ CREATE INDEX idx_purchase_attempts_user_created ON public.purchase_attempts USIN
 
 
 --
+-- Name: idx_purchase_events_purchase; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_purchase_events_purchase ON public.purchase_events USING btree (purchase_id, id);
+
+
+--
+-- Name: idx_purchases_reservation_month; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_purchases_reservation_month ON public.purchases USING btree (reservation_month) WHERE (state = ANY (ARRAY['executing'::text, 'unknown'::text, 'succeeded'::text]));
+
+
+--
+-- Name: idx_purchases_unresolved; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_purchases_unresolved ON public.purchases USING btree (updated_at) WHERE (state = ANY (ARRAY['executing'::text, 'unknown'::text]));
+
+
+--
+-- Name: idx_purchases_user_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_purchases_user_created ON public.purchases USING btree (user_id, created_at DESC);
+
+
+--
+-- Name: idx_purchases_user_state; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_purchases_user_state ON public.purchases USING btree (user_id, state);
+
+
+--
 -- Name: idx_sessions_expires; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -853,11 +1008,51 @@ ALTER TABLE ONLY public.purchase_attempts
 
 
 --
+-- Name: purchase_connections purchase_connections_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchase_connections
+    ADD CONSTRAINT purchase_connections_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: purchase_events purchase_events_purchase_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchase_events
+    ADD CONSTRAINT purchase_events_purchase_id_fkey FOREIGN KEY (purchase_id) REFERENCES public.purchases(id) ON DELETE CASCADE;
+
+
+--
+-- Name: purchase_events purchase_events_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchase_events
+    ADD CONSTRAINT purchase_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: purchase_policies purchase_policies_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.purchase_policies
     ADD CONSTRAINT purchase_policies_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: purchases purchases_approval_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchases
+    ADD CONSTRAINT purchases_approval_id_fkey FOREIGN KEY (approval_id) REFERENCES public.approvals(id) ON DELETE SET NULL;
+
+
+--
+-- Name: purchases purchases_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.purchases
+    ADD CONSTRAINT purchases_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -928,5 +1123,5 @@ ALTER TABLE ONLY public.vault_keys
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ON8zhvX6RidD2JEcjHZEOrL4Gr4Pvjhcn0YSKNxbepv08f8HgVRZan3Q1mWifkM
+\unrestrict 4JSTSTIurFTFQBlPp72TbkbNhhc5gaOD1aXbvfwml1tryLAZA3nEIIQaPYerShZ
 

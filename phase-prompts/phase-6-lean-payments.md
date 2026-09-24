@@ -1,5 +1,10 @@
 # BUILD PROMPT — Phase 6: Small, durable, opt-in purchases
 
+> **Legacy AgentAI prompt, superseded for the OpenClaw plan.** The Python
+> purchase path is partial and disabled. For the new single-owner build use
+> [openclaw/README.md](openclaw/README.md) and its Phase 6 integrations prompt.
+> Do not enable real purchases as part of that plan.
+
 > Paste this entire file into a coding session at the workspace root.
 
 Build Phase 6 after Phase 5's metering and plan enforcement are proven. The

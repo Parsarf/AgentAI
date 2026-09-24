@@ -308,12 +308,16 @@ async def call_tool(name: str, args: dict[str, Any] | None = None) -> ToolResult
     )
     started = time.monotonic()
 
-    # Payment preflight must precede the generic approval gate. The payment
-    # handler is fail-closed until a verified provider path exists; never let a
-    # generic approval or task-wide prechecked flag turn it into permission.
-    if name == "make_purchase":
+    # Payment tools own their gating in core.purchases (one validation +
+    # approval path). The generic gate below must never run for them: the
+    # preflight denies BEFORE any approval row exists, and the task-wide
+    # approvals_prechecked flag is never treated as purchase permission —
+    # permission binds to the purchase row and its single owner approval.
+    if name in approvals_mod.PAYMENT_TOOLS or name == "check_spend_status":
         try:
             result = await spec.handler(**args)
+            if not isinstance(result, ToolResult):
+                result = ToolResult(ok=True, data=result)
             return _finish(spec, args, started, result, user_id, task_id)
         except asyncio.CancelledError:
             raise
@@ -327,7 +331,7 @@ async def call_tool(name: str, args: dict[str, Any] | None = None) -> ToolResult
                 task_id,
             )
         except Exception:
-            logger.exception("payment preflight failed", extra={"tool": name})
+            logger.exception("payment dispatch failed", extra={"tool": name})
             return _finish(
                 spec, args, started, ToolResult(ok=False, error="purchase preflight failed"), user_id, task_id
             )

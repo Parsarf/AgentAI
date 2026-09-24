@@ -1,0 +1,90 @@
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": {
+        "source": "store",
+        "provider": "default",
+        "id": "OPENCLAW_GATEWAY_TOKEN"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/home/node/.openclaw/workspace",
+      "model": { "primary": "litellm/claude-sonnet-4-6" },
+      "utilityModel": "litellm/claude-haiku-4-5",
+      "modelPolicy": {
+        "allow": ["litellm/claude-sonnet-4-6", "litellm/claude-haiku-4-5"]
+      },
+      "heartbeat": { "every": "0m" },
+      "sandbox": {
+        "mode": "all",
+        "backend": "docker",
+        "scope": "session",
+        "workspaceAccess": "ro",
+        "docker": {
+          "image": "openclaw-sandbox:bookworm-slim",
+          "readOnlyRoot": true,
+          "tmpfs": ["/tmp", "/var/tmp", "/run"],
+          "network": "none",
+          "capDrop": ["ALL"]
+        }
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "litellm": {
+        "baseUrl": "http://litellm:4000",
+        "api": "openai-completions",
+        "apiKey": {
+          "source": "store",
+          "provider": "default",
+          "id": "LITELLM_API_KEY"
+        },
+        "request": { "allowPrivateNetwork": true },
+        "models": [
+          {
+            "id": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6 via LiteLLM",
+            "reasoning": true,
+            "input": ["text", "image"],
+            "contextWindow": 200000,
+            "maxTokens": 4096
+          },
+          {
+            "id": "claude-haiku-4-5",
+            "name": "Claude Haiku 4.5 via LiteLLM",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "contextWindow": 200000,
+            "maxTokens": 4096
+          }
+        ]
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": {
+        "source": "store",
+        "provider": "default",
+        "id": "TELEGRAM_BOT_TOKEN"
+      },
+      "dmPolicy": "pairing",
+      "groupPolicy": "disabled"
+    }
+  },
+  "browser": { "allowSystemProfileImport": false },
+  "discovery": { "mdns": { "mode": "off" } },
+  "plugins": {
+    "entries": {
+      "memory-core": { "config": { "dreaming": { "enabled": false } } }
+    }
+  },
+  "tools": { "elevated": { "enabled": false } }
+}

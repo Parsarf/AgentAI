@@ -42,13 +42,38 @@
 <div class="card">
   <h2>Agent purchases <span class="pill">Unavailable</span></h2>
   <p>Purchases are off. A supported user-funded merchant payment connection is not configured. Your subscription payment method is never used for purchases. Saving draft limits does not opt you in.</p>
+  <p>
+    Connection:
+    {% if purchase_connection and purchase_connection.status == 'active' %}
+      <span class="pill">connected</span> ({{ purchase_connection.provider }} {{ purchase_connection.account_hint }})
+    {% elif purchase_connection %}
+      <span class="pill">disconnected</span>
+    {% else %}
+      <span class="pill">none</span>
+    {% endif %}
+    · Opt-in: {% if purchase_policy.opted_in %}<span class="pill">on</span>{% else %}<span class="pill">off</span>{% endif %}
+  </p>
   <form method="post" action="/settings/purchases">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label>USD per-purchase cap</label><input name="per_transaction_cap_usd" value="{{ purchase_policy.per_transaction_cap_usd }}">
     <label>USD monthly cap</label><input name="monthly_cap_usd" value="{{ purchase_policy.monthly_cap_usd }}">
-    <label>Merchant hostnames, one per line</label><textarea name="merchant_allowlist" rows="3">{{ purchase_policy.merchant_allowlist | join('\n') }}</textarea>
+    <label>Merchant domains, one per line</label><textarea name="merchant_allowlist" rows="3">{{ purchase_policy.merchant_allowlist | join('\n') }}</textarea>
     <button>Save draft limits</button>
   </form>
+  {% if purchase_policy.opted_in or (purchase_connection and purchase_connection.status == 'active') %}
+  <form method="post" action="/settings/purchases/opt-out" class="mt">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="ghost">Opt out &amp; disconnect</button>
+  </form>
+  {% endif %}
+  {% if not purchase_policy.opted_in %}
+  <form method="post" action="/settings/purchases/opt-in" class="mt">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label><input type="checkbox" name="confirm" value="yes" required> I understand my own connected funds may be spent within these caps</label>
+    <button class="ghost" {% if not (purchase_connection and purchase_connection.status == 'active') %}disabled title="Unavailable until a payment connection exists"{% endif %}>Opt in</button>
+  </form>
+  <p class="muted">Opt-in stays unavailable until a supported payment connection exists.</p>
+  {% endif %}
 </div>
 <div class="card">
   <h2>Telegram</h2>

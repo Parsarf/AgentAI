@@ -1,12 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Approvals{% endblock %}
 {% block body %}
+{% macro purchase_details(a) %}
+  {% set d = a.details if a.details is mapping else {} %}
+  {% if d.get("kind") == "purchase" %}
+    <p>
+      <strong>Purchase</strong> — {{ d.get("merchant", "?") }}
+      {% if d.get("recipient") and d["recipient"] != d.get("merchant") %}<span class="muted">(recipient: {{ d["recipient"] }})</span>{% endif %}
+      · <strong>{{ d.get("amount", "?") }} {{ d.get("currency", "USD") }}</strong>
+    </p>
+    <p class="muted">{{ d.get("description", "") }}{% if d.get("expires_at") %} · expires {{ d["expires_at"][:16].replace("T", " ") }} UTC{% endif %}</p>
+  {% endif %}
+{% endmacro %}
 <div class="card">
   <h1>Pending approvals</h1>
   {% for a in pending %}
   <div class="card" style="margin:10px 0; background:var(--bg)">
     <p><strong>{{ a.action_summary }}</strong></p>
-    <p class="muted">requested {{ a.created_at.strftime("%m-%d %H:%M") }} · risk: {{ a.details.get("risk", "?") }}</p>
+    {{ purchase_details(a) }}
+    <p class="muted">requested {{ a.created_at.strftime("%m-%d %H:%M") }} · risk: {{ a.details.get("risk", "?") if a.details is mapping else "?" }}</p>
     <form method="post" action="/approvals/{{ a.id }}/decide" class="btn-inline">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button name="decision" value="approve" class="btn-inline">Approve</button>

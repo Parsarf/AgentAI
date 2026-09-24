@@ -38,6 +38,46 @@
   severity: critical
   category: payments
   profile: local
+- id: purchase-gates-zero-provider-calls
+  test: tests/test_purchases.py::test_gate_denials_never_call_provider_or_prompt
+  severity: critical
+  category: payments
+  profile: local
+- id: purchase-deceptive-domain
+  test: tests/test_purchases.py::test_deceptive_registrable_domain_is_denied
+  severity: critical
+  category: payments
+  profile: local
+- id: purchase-approval-binding
+  test: tests/test_purchases.py::test_interactive_approval_owner_only_single_use
+  severity: critical
+  category: payments
+  profile: local
+- id: purchase-job-never-auto
+  test: tests/test_purchases.py::test_job_purchase_requires_approval_despite_auto_rules
+  severity: critical
+  category: payments
+  profile: local
+- id: purchase-no-double-charge
+  test: tests/test_purchases.py::test_duplicate_invocation_resumes_never_double_charges
+  severity: critical
+  category: payments
+  profile: local
+- id: purchase-unknown-never-retried
+  test: tests/test_purchases.py::test_timeout_becomes_unknown_and_holds_reservation
+  severity: critical
+  category: payments
+  profile: local
+- id: purchase-optout-during-approval
+  test: tests/test_purchases.py::test_opt_out_during_approval_blocks_execution
+  severity: critical
+  category: payments
+  profile: local
+- id: purchase-restart-recovery
+  test: tests/test_purchases.py::test_provider_success_then_db_failure_reconciles_once
+  severity: high
+  category: recovery
+  profile: local
 - id: process-restart
   test: tests/test_phase7_lifecycle.py::test_startup_marks_interrupted_tasks_and_approvals_terminal
   severity: high

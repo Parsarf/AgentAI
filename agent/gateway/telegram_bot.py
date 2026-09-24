@@ -215,6 +215,15 @@ async def _on_approval_requested(payload: dict[str, Any]) -> None:
         "",
         payload.get("action_summary", "(action)"),
     ]
+    if details.get("kind") == "purchase":
+        lines.append(f"Merchant: {details.get('merchant', '?')}")
+        if details.get("recipient") and details["recipient"] != details.get("merchant"):
+            lines.append(f"Recipient: {details['recipient']}")
+        lines.append(f"Amount: {details.get('amount', '?')} {details.get('currency', 'USD')}")
+        if details.get("description"):
+            lines.append(f"For: {details['description']}")
+        if details.get("expires_at"):
+            lines.append(f"Expires: {str(details['expires_at'])[:16].replace('T', ' ')} UTC")
     if details.get("risk"):
         lines.append(f"Risk: {details['risk']}")
     text = "\n".join(html.escape(line) for line in lines)

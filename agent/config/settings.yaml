@@ -42,6 +42,13 @@ billing:
 payments:
   # No arbitrary-merchant, user-funded provider integration is configured.
   enabled: false
+  # Which provider the purchase adapter would implement (e.g. a hosted
+  # merchant-payment network). Null = none configured; `enabled: true` alone
+  # never arms purchases — an adapter must also be installed and verified.
+  provider: null
+  # Wall-clock bound on one provider execution call (seconds). A timeout is
+  # recorded as `unknown` with the budget still reserved, never as failure.
+  execution_timeout_seconds: 30
 
 # Cost charged to the calling user per web_search call (shared search API,
 # metered per user). String for Decimal.

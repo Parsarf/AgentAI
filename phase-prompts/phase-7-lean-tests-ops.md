@@ -1,5 +1,10 @@
 # BUILD PROMPT — Phase 7: Lean verification, recovery, and deployment
 
+> **Legacy AgentAI prompt, superseded for the OpenClaw plan.** This Python
+> deployment phase was not completed. Its recovery and verification outcomes
+> are carried into [OpenClaw Phase 7](openclaw/phase-7-evals-operations.md);
+> its Postgres, pytest and deployment instructions do not apply there.
+
 > Paste this entire file into a coding session at the workspace root.
 
 Prove the implemented service works under concurrent use, can recover its

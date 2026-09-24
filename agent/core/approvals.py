@@ -255,8 +255,16 @@ async def decide(user_id: str | UUID, approval_id: str, approved: bool) -> bool:
 def _extract_amount(args: dict[str, Any]) -> float | None:
     for key in ("amount", "amount_usd", "value"):
         value = args.get(key)
-        if isinstance(value, (int, float)):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             return float(value)
+        # Phase 6: purchase amounts arrive as strings; amount-tiered rules
+        # must apply to them too (a rule keyed on amount can't ignore the
+        # only tool that carries an amount).
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                continue
     return None
 
 

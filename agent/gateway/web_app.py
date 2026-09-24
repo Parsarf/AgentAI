@@ -332,6 +332,7 @@ async def settings_page(
     jobs = await db.list_jobs(user.id)
     skills = await skills_core.list_skills(str(user.id))
     purchase_policy = await db.get_purchase_policy(user.id)
+    purchase_connection = await db.get_purchase_connection(user.id)
     model_key_saved = await secrets_vault.has_model_api_key(str(user.id))
     return _render(
         request,
@@ -344,6 +345,7 @@ async def settings_page(
         jobs=jobs,
         skills=skills,
         purchase_policy=purchase_policy,
+        purchase_connection=purchase_connection,
         model_key_saved=model_key_saved,
         operator_model_key_available=bool(settings.secrets.anthropic_api_key),
         link_code=link_code or "",
@@ -417,6 +419,48 @@ async def save_purchase_settings(
     ):
         return HTMLResponse("invalid merchant allowlist", status_code=400)
     await db.save_purchase_policy(user.id, tx, month, sorted(set(hosts)))
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@app.post("/settings/purchases/opt-in")
+async def opt_in_purchases(
+    request: Request,
+    user: db.User | None = Depends(current_user),
+    confirm: str = Form(""),
+    csrf: str = Form(""),
+):
+    """Explicit purchase opt-in. Requires a valid connection AND an explicit
+    confirmation — neither alone is enough. There is no provider yet, so this
+    route is fail-closed until one exists."""
+    user = require_user(user)
+    _check_csrf(str(user.id), csrf)
+    connection = await db.get_purchase_connection(user.id)
+    if connection is None or connection["status"] != "active":
+        return HTMLResponse(
+            "opt-in requires a connected payment connection (none is available)",
+            status_code=409,
+        )
+    if confirm != "yes":
+        return HTMLResponse("opt-in requires the explicit confirmation checkbox", status_code=400)
+    await db.set_purchase_opt_in(user.id, True)
+    logger.info("purchase opt-in", extra={"user_id": str(user.id)})
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@app.post("/settings/purchases/opt-out")
+async def opt_out_purchases(
+    request: Request,
+    user: db.User | None = Depends(current_user),
+    csrf: str = Form(""),
+):
+    """Opt out AND disconnect: revokes the connection record and bumps its
+    version, so any in-flight purchase bound to the old version can no longer
+    claim (the claim re-checks the version before every execution)."""
+    user = require_user(user)
+    _check_csrf(str(user.id), csrf)
+    await db.set_purchase_opt_in(user.id, False)
+    await db.revoke_purchase_connection(user.id)
+    logger.info("purchase opt-out + disconnect", extra={"user_id": str(user.id)})
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 

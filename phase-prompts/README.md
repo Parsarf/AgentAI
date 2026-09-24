@@ -1,4 +1,15 @@
-# Phase prompts — multi-user agent build
+# Phase prompts
+
+For the **new single-owner OpenClaw build**, start with
+[openclaw/README.md](openclaw/README.md) and its Phase 0–8 prompts. They are
+based on [openclaw-super-agent-prompt.md](openclaw-super-agent-prompt.md).
+
+The files listed below are the **legacy multi-user AgentAI** prompts. Phases
+1–5 informed the existing Python service; legacy Phase 6 is only partially
+implemented and its purchase execution is disabled; legacy Phase 7 remains
+unfinished. They are retained as history, not as steps in the OpenClaw plan.
+
+## Legacy AgentAI plan
 
 Ready-to-paste build prompts, one per phase, generated from
 `agent-build-spec-multiuser.md`. Give them to an AI coding agent **one at a

@@ -216,6 +216,12 @@ class PaymentsConfig(BaseModel):
     # No merchant-capable provider has been selected. This is an explicit
     # runtime kill switch, independent of subscription billing and plan tier.
     enabled: bool = False
+    # Which provider the (future) adapter implements. None = none configured;
+    # `enabled` alone must never arm purchases.
+    provider: str | None = None
+    # Wall-clock bound on one provider execution call. On timeout the purchase
+    # becomes `unknown` (budget stays reserved) — never silently failed.
+    execution_timeout_seconds: float = 30.0
 
 
 class McpOAuth(BaseModel):

@@ -436,6 +436,315 @@ async def recent_purchase_attempts(user_id: UUID, limit: int = 10) -> list[dict[
     return [dict(row) for row in rows]
 
 
+async def get_purchase_connection(user_id: UUID) -> dict[str, Any] | None:
+    row = await _require_pool().fetchrow(
+        "SELECT * FROM purchase_connections WHERE user_id=$1", user_id
+    )
+    return dict(row) if row else None
+
+
+async def upsert_purchase_connection(
+    user_id: UUID,
+    provider: str,
+    account_hint: str = "",
+) -> dict[str, Any]:
+    """Insert or refresh the ONE per-user payment connection. Reconnecting
+    after a revoke bumps connection_version so in-flight purchases bound to
+    the old version can no longer claim."""
+    row = await _require_pool().fetchrow(
+        """INSERT INTO purchase_connections (user_id, provider, account_hint, status, connected_at)
+           VALUES ($1, $2, $3, 'active', now())
+           ON CONFLICT (user_id) DO UPDATE SET
+             provider=EXCLUDED.provider,
+             account_hint=EXCLUDED.account_hint,
+             status='active',
+             connection_version=purchase_connections.connection_version + 1,
+             connected_at=now(),
+             revoked_at=NULL
+           RETURNING *""",
+        user_id,
+        provider,
+        account_hint[:50],
+    )
+    return dict(row)
+
+
+async def revoke_purchase_connection(user_id: UUID) -> bool:
+    row = await _require_pool().fetchrow(
+        """UPDATE purchase_connections
+           SET status='revoked', revoked_at=now(), connection_version=connection_version + 1
+           WHERE user_id=$1 AND status='active' RETURNING *""",
+        user_id,
+    )
+    return row is not None
+
+
+async def set_purchase_opt_in(user_id: UUID, opted_in: bool) -> None:
+    await _require_pool().execute(
+        """INSERT INTO purchase_policies (user_id, opted_in) VALUES ($1, $2)
+           ON CONFLICT (user_id) DO UPDATE SET opted_in=EXCLUDED.opted_in, updated_at=now()""",
+        user_id,
+        opted_in,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Purchases: durable identity + lifecycle (migration 0008)
+# --------------------------------------------------------------------------- #
+
+
+def _purchase(row: asyncpg.Record) -> dict[str, Any]:
+    return dict(row)
+
+
+async def get_purchase_by_invocation(user_id: UUID, invocation_key: str) -> dict[str, Any] | None:
+    row = await _require_pool().fetchrow(
+        "SELECT * FROM purchases WHERE user_id=$1 AND invocation_key=$2", user_id, invocation_key
+    )
+    return _purchase(row) if row else None
+
+
+async def get_purchase_by_order(user_id: UUID, order_ref: str) -> dict[str, Any] | None:
+    row = await _require_pool().fetchrow(
+        "SELECT * FROM purchases WHERE user_id=$1 AND order_ref=$2", user_id, order_ref[:200]
+    )
+    return _purchase(row) if row else None
+
+
+async def count_purchases_for_task(user_id: UUID, task_id: str) -> int:
+    return await _require_pool().fetchval(
+        "SELECT count(*) FROM purchases WHERE user_id=$1 AND task_id=$2", user_id, task_id[:100]
+    )
+
+
+async def get_purchase(user_id: UUID, purchase_id: UUID) -> dict[str, Any] | None:
+    row = await _require_pool().fetchrow(
+        "SELECT * FROM purchases WHERE user_id=$1 AND id=$2", user_id, purchase_id
+    )
+    return _purchase(row) if row else None
+
+
+async def create_purchase(
+    user_id: UUID,
+    task_id: str,
+    task_source: str,
+    invocation_key: str,
+    merchant: str,
+    merchant_input: str,
+    amount: Decimal,
+    currency: str,
+    description: str,
+    connection_version: int,
+    order_ref: str | None,
+    state: str,
+    approval_expires_at: datetime | None,
+) -> dict[str, Any]:
+    row = await _require_pool().fetchrow(
+        """INSERT INTO purchases
+             (user_id,task_id,task_source,invocation_key,merchant,merchant_input,
+              amount,currency,description,connection_version,order_ref,state,
+              approval_expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *""",
+        user_id,
+        task_id[:100],
+        task_source[:20],
+        invocation_key,
+        merchant,
+        merchant_input[:200],
+        amount,
+        currency,
+        description[:300],
+        connection_version,
+        order_ref[:200] if order_ref else None,
+        state,
+        approval_expires_at,
+    )
+    return _purchase(row)
+
+
+async def transition_purchase(
+    user_id: UUID,
+    purchase_id: UUID,
+    new_state: str,
+    from_states: tuple[str, ...],
+    **fields: Any,
+) -> dict[str, Any] | None:
+    """Guarded lifecycle transition: only from the allowed current states.
+    Returns the updated row, or None when the purchase already moved on —
+    callers treat that as 'someone else won', never as a fresh error."""
+    allowed = ", ".join(f"${i + 4}" for i in range(len(from_states)))
+    sets = ", ".join(f"{name} = ${len(from_states) + 4 + i}" for i, name in enumerate(fields))
+    params: list[Any] = [user_id, purchase_id, new_state, *from_states, *fields.values()]
+    sql = (
+        f"UPDATE purchases SET state=$3, updated_at=now(){', ' + sets if fields else ''} "
+        f"WHERE user_id=$1 AND id=$2 AND state IN ({allowed}) RETURNING *"
+    )
+    row = await _require_pool().fetchrow(sql, *params)
+    return _purchase(row) if row else None
+
+
+async def update_purchase(user_id: UUID, purchase_id: UUID, **fields: Any) -> None:
+    """Field update WITHOUT a state change (e.g. attaching the approval id
+    while the purchase stays awaiting_approval)."""
+    if not fields:
+        return
+    sets = ", ".join(f"{name} = ${2 + i + 1}" for i, name in enumerate(fields))
+    await _require_pool().execute(
+        f"UPDATE purchases SET updated_at=now(), {sets} WHERE user_id=$1 AND id=$2",
+        user_id,
+        purchase_id,
+        *fields.values(),
+    )
+
+
+async def record_purchase_event(
+    user_id: UUID,
+    purchase_id: UUID,
+    event: str,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    await _require_pool().execute(
+        "INSERT INTO purchase_events (purchase_id,user_id,event,detail) VALUES ($1,$2,$3,$4)",
+        purchase_id,
+        user_id,
+        event[:50],
+        detail or {},
+    )
+
+
+async def purchase_month_totals(user_id: UUID, month: date) -> dict[str, Decimal]:
+    """Settled (succeeded) and reserved (executing/unknown) sums for one UTC
+    month. Executing/unknown stay counted — an unfinished purchase still holds
+    its budget until a provider lookup resolves it."""
+    row = await _require_pool().fetchrow(
+        """SELECT
+             COALESCE(SUM(amount) FILTER (WHERE state='succeeded'), 0) AS settled,
+             COALESCE(SUM(amount) FILTER (WHERE state IN ('executing','unknown')), 0) AS reserved
+           FROM purchases WHERE user_id=$1 AND reservation_month=$2""",
+        user_id,
+        month,
+    )
+    return {"settled": Decimal(row["settled"]), "reserved": Decimal(row["reserved"])}
+
+
+async def recent_purchases(user_id: UUID, limit: int = 5) -> list[dict[str, Any]]:
+    rows = await _require_pool().fetch(
+        """SELECT id,merchant,amount,currency,state,failure_reason,created_at
+           FROM purchases WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2""",
+        user_id,
+        min(limit, 20),
+    )
+    return [dict(row) for row in rows]
+
+
+async def claim_purchase(
+    user_id: UUID,
+    purchase_id: UUID,
+    merchant: str,
+    amount: Decimal,
+    now: datetime,
+) -> dict[str, Any]:
+    """The one execution gate: a short per-user-locked transaction that re-reads
+    every gate FRESH (opt-in, connection version, approval state/expiry,
+    allowlist, both caps including existing reservations) and atomically flips
+    the purchase to `executing` — which IS the reservation. Returns a dict:
+    kind=claimed|denied|expired|conflict, reason, purchase.
+
+    Lock anchor: the user's policy row (guaranteed present — a purchase can
+    only be claimed for an opted-in user). Concurrent claimers serialize here;
+    the ready→executing CAS makes a double claim impossible.
+    """
+    async with _require_pool().acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", f"purchase:{user_id}")
+            policy = await conn.fetchrow(
+                "SELECT * FROM purchase_policies WHERE user_id=$1 FOR UPDATE", user_id
+            )
+            purchase = await conn.fetchrow(
+                "SELECT * FROM purchases WHERE user_id=$1 AND id=$2", user_id, purchase_id
+            )
+            if policy is None or purchase is None:
+                return {"kind": "conflict", "reason": "purchase not found", "purchase": None}
+            if purchase["state"] != "ready":
+                return {
+                    "kind": "conflict",
+                    "reason": f"purchase is {purchase['state']}, not ready",
+                    "purchase": dict(purchase),
+                }
+
+            def deny(kind: str, reason: str) -> dict[str, Any]:
+                return {"kind": kind, "reason": reason, "purchase": dict(purchase)}
+
+            if not settings.payments.enabled or not settings.payments.provider:
+                return deny("denied", "purchases were disabled before execution")
+            user = await conn.fetchrow("SELECT status, plan_tier FROM users WHERE id=$1", user_id)
+            if user is None or user["status"] != "active":
+                return deny("denied", "account is not active")
+            plan = settings.plan_for(user["plan_tier"])
+            if not plan.payments_enabled:
+                return deny("denied", f"payments not enabled on the {user['plan_tier']} plan")
+            if not policy["opted_in"]:
+                return deny("denied", "purchases are opted out")
+            connection = await conn.fetchrow(
+                "SELECT * FROM purchase_connections WHERE user_id=$1", user_id
+            )
+            if (
+                connection is None
+                or connection["status"] != "active"
+                or connection["provider"] != settings.payments.provider
+                or connection["connection_version"] != purchase["connection_version"]
+            ):
+                return deny("denied", "the payment connection changed — approve again after reconnecting")
+            if merchant not in (policy["merchant_allowlist"] or []):
+                return deny("denied", "merchant is no longer allowlisted")
+            if amount > policy["per_transaction_cap_usd"]:
+                return deny("denied", "amount now exceeds your per-transaction cap")
+            month = now.date().replace(day=1)
+            totals = await conn.fetchrow(
+                """SELECT COALESCE(SUM(amount) FILTER (WHERE state IN ('succeeded','executing','unknown')), 0)
+                   AS committed FROM purchases
+                   WHERE user_id=$1 AND reservation_month=$2 AND id <> $3""",
+                user_id,
+                month,
+                purchase_id,
+            )
+            if Decimal(totals["committed"]) + amount > policy["monthly_cap_usd"]:
+                return deny("denied", "amount now exceeds your remaining monthly cap")
+            if purchase["approval_id"] is not None:
+                approval = await conn.fetchrow(
+                    "SELECT status FROM approvals WHERE id=$1 AND user_id=$2",
+                    purchase["approval_id"],
+                    user_id,
+                )
+                if approval is None or approval["status"] != "approved":
+                    return deny("denied", "the approval for this purchase is no longer granted")
+                if purchase["approval_expires_at"] is not None and now > purchase["approval_expires_at"]:
+                    return deny("expired", "the approval for this purchase expired")
+            updated = await conn.fetchrow(
+                """UPDATE purchases SET state='executing', reservation_month=$3, updated_at=now()
+                   WHERE user_id=$1 AND id=$2 AND state='ready' RETURNING *""",
+                user_id,
+                purchase_id,
+                month,
+            )
+            if updated is None:
+                return deny("conflict", "purchase already claimed")
+            return {"kind": "claimed", "reason": None, "purchase": dict(updated)}
+
+
+async def unresolved_purchases(limit: int = 20) -> list[dict[str, Any]]:
+    """Purchases stuck in executing/unknown — startup + scheduler-tick
+    reconciliation input. THE cross-tenant query for this table, same
+    documented exception as due_jobs: it returns rows only to the system
+    reconciler, which re-scopes every write by user_id."""
+    rows = await _require_pool().fetch(
+        """SELECT * FROM purchases WHERE state IN ('executing','unknown')
+           ORDER BY updated_at LIMIT $1""",
+        min(limit, 100),
+    )
+    return [dict(row) for row in rows]
+
+
 async def create_session(user_id: UUID, token_hash: str, expires_at: datetime) -> SessionInfo:
     row = await _require_pool().fetchrow(
         "INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3) RETURNING *",

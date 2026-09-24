@@ -1,4 +1,9 @@
-# Revised phase prompts: 5–7
+# Legacy AgentAI revised phase prompts: 5–7
+
+For the new single-owner OpenClaw plan, use
+[openclaw/README.md](openclaw/README.md). This file documents the older
+multi-user Python service; its Phase 6 purchase work remains disabled and
+Phase 7 is unfinished.
 
 Use these in order, one per coding session. Phases 1–4 are already built;
 these prompts extend that implementation. These are now the only phase 5–7
