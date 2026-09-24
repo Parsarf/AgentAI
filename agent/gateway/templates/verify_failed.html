@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Verification failed{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>Verification failed</h1>
+  <p class="error">{{ error }}</p>
+  <p class="muted">Request a new signup or a password reset, depending on what you were doing.</p>
+</div>
+{% endblock %}

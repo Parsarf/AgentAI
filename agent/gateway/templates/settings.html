@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+{% if saved %}<p class="ok">Saved.</p>{% endif %}
+<div class="card">
+  <h1>Settings</h1>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <h2>Timezone <span class="muted">(job schedules run in this timezone)</span></h2>
+    <input name="timezone" value="{{ user.timezone }}">
+    <h2>Quiet hours <span class="muted">(non-urgent notifications are held)</span></h2>
+    {% set qh = user_settings.get("quiet_hours", {}) %}
+    <label>Start</label><input name="quiet_hours_start" value="{{ qh.get('start', '22:00') }}">
+    <label>End</label><input name="quiet_hours_end" value="{{ qh.get('end', '08:00') }}">
+    <h2>Approval rule overrides <span class="muted">(JSON; defaults from limits.yaml; plan floor still applies)</span></h2>
+    <textarea name="limits_json" rows="5" placeholder='{"rules": [{"match": {"tools": ["http_request"]}, "action": "deny"}]}'>{{ user_limits.get("rules") and (user_limits | tojson) or "" }}</textarea>
+    <button>Save settings</button>
+  </form>
+</div>
+<div class="card">
+  <h2>AI model API key</h2>
+  {% if model_key_saved %}
+    <p class="ok">Your Anthropic key is saved (not yet tested). It is used for your agent tasks and is never shown again.</p>
+  {% elif operator_model_key_available %}
+    <p>Using the app's Anthropic key. You can add your own key below to use it instead.</p>
+  {% else %}
+    <p>Add your Anthropic API key to run agent tasks. This app currently supports Anthropic for its agent loop; OpenAI and other provider keys are not yet supported.</p>
+  {% endif %}
+  <form method="post" action="/settings/model-key">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Anthropic API key</label><input name="api_key" type="password" autocomplete="new-password" required>
+    <button>Save key</button>
+  </form>
+  {% if model_key_saved %}
+    <form method="post" action="/settings/model-key/delete">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="ghost">Remove my key</button>
+    </form>
+  {% endif %}
+  <p class="muted">Keep your provider account's spending limits enabled. Model usage is still tracked against this app's plan limits. Saving a key does not enable purchases.</p>
+</div>
+<div class="card">
+  <h2>Agent purchases <span class="pill">Unavailable</span></h2>
+  <p>Purchases are off. A supported user-funded merchant payment connection is not configured. Your subscription payment method is never used for purchases. Saving draft limits does not opt you in.</p>
+  <form method="post" action="/settings/purchases">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>USD per-purchase cap</label><input name="per_transaction_cap_usd" value="{{ purchase_policy.per_transaction_cap_usd }}">
+    <label>USD monthly cap</label><input name="monthly_cap_usd" value="{{ purchase_policy.monthly_cap_usd }}">
+    <label>Merchant hostnames, one per line</label><textarea name="merchant_allowlist" rows="3">{{ purchase_policy.merchant_allowlist | join('\n') }}</textarea>
+    <button>Save draft limits</button>
+  </form>
+</div>
+<div class="card">
+  <h2>Telegram</h2>
+  {% if chats %}
+    <p class="ok">Linked chats: {{ chats | join(", ") }}</p>
+  {% endif %}
+  <p>Generate a code, then paste it to the bot in Telegram.</p>
+  <form method="post" action="/settings/link-code">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn-inline">Generate link code</button>
+  </form>
+  {% if link_code %}
+    <p>Your code (expires in 10 minutes, works once):</p>
+    <p><span class="code">{{ link_code }}</span></p>
+  {% endif %}
+</div>
+<div class="card">
+  <h2>Jobs <span class="muted">(created by you via the agent)</span></h2>
+  {% if jobs %}
+    <table>
+      <tr><th>Kind</th><th>Schedule</th><th>Instruction</th><th>Next run</th><th>Status</th><th></th></tr>
+      {% for j in jobs %}
+        <tr>
+          <td>{{ j.kind }}</td>
+          <td><code>{{ j.schedule }}</code></td>
+          <td>{{ j.instruction[:60] }}</td>
+          <td>{% if j.active and j.next_run_at %}{{ j.next_run_at.strftime('%m-%d %H:%M %Z') }}{% else %}—{% endif %}</td>
+          <td>
+            {% if j.active %}<span class="pill">active</span>{% else %}<span class="pill">paused</span>{% endif %}
+            {% if j.state_json.get('consecutive_failures') %}<span class="pill">fails: {{ j.state_json['consecutive_failures'] }}</span>{% endif %}
+          </td>
+          <td>
+            <form method="post" action="/settings/jobs/{{ j.id }}/pause" class="btn-inline">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button class="ghost btn-inline" {% if not j.active %}disabled{% endif %}>Pause</button>
+            </form>
+            <form method="post" action="/settings/jobs/{{ j.id }}/delete" class="btn-inline">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button class="ghost btn-inline">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="muted">No jobs yet. Ask your agent to create one (e.g. "check X every morning").</p>
+  {% endif %}
+</div>
+<div class="card">
+  <h2>Skills <span class="muted">(your agent's personal library)</span></h2>
+  {% if skills %}
+    <table>
+      <tr><th>Name</th><th>Kind</th><th>Uses</th><th>OK</th><th>Failed</th><th></th></tr>
+      {% for s in skills %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td>{{ s.kind }}</td>
+          <td>{{ s.uses }}</td>
+          <td>{{ s.successes }}</td>
+          <td>{{ s.failures }}</td>
+          <td>{% if s.needs_review %}<span class="pill">needs review</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="muted">No skills saved yet. Skills are private to your account.</p>
+  {% endif %}
+</div>
+<div class="card">
+  <h2>Credentials vault <span class="muted">(encrypted per-user; values are never shown)</span></h2>
+  {% if sites %}
+    <p>Sites stored:</p>
+    <table>
+      {% for s in sites %}
+        <tr>
+          <td>{{ s }}</td>
+          <td>
+            <form method="post" action="/settings/vault/delete" class="btn-inline">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="site" value="{{ s }}">
+              <button class="ghost btn-inline">Remove</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="muted">Nothing stored yet.</p>
+  {% endif %}
+  <h2 class="mt">Add a credential <span class="muted">(e.g. example.com — used by browser_login)</span></h2>
+  <form method="post" action="/settings/vault">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Site</label><input name="site" placeholder="example.com" required>
+    <label>Username (optional)</label><input name="username" autocomplete="off">
+    <label>Password</label><input name="password" type="password" autocomplete="new-password" required>
+    <button>Store credential</button>
+  </form>
+</div>
+{% endblock %}

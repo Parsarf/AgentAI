@@ -1,0 +1,27 @@
+# mcp_servers.yaml — optional integrations users may connect (Phase 4+).
+# The operator registers each OAuth app ONCE (Part 0a item #10); each user
+# then consents individually. Everything ships disabled — enabling a server
+# without registering its OAuth app will fail loudly at use time.
+#
+# client_id_env names the ENV VARIABLE holding that provider's client id
+# (secret stays out of this file).
+
+servers:
+  - name: gmail
+    enabled: false           # flip to true only after OAuth app registration
+    oauth:
+      client_id_env: GMAIL_OAUTH_CLIENT_ID
+      scopes:
+        - https://www.googleapis.com/auth/gmail.readonly
+        - https://www.googleapis.com/auth/gmail.send
+      auth_url: https://accounts.google.com/o/oauth2/v2/auth
+      token_url: https://oauth2.googleapis.com/token
+
+  - name: google_calendar
+    enabled: false
+    oauth:
+      client_id_env: GCAL_OAUTH_CLIENT_ID
+      scopes:
+        - https://www.googleapis.com/auth/calendar.events
+      auth_url: https://accounts.google.com/o/oauth2/v2/auth
+      token_url: https://oauth2.googleapis.com/token

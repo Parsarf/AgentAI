@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Chat{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>Chat with your agent</h1>
+  <form method="post" action="/tasks">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="request_text" rows="3" placeholder="e.g. Find the three most-cited papers on retrieval-augmented generation this year and summarize each in two sentences" required></textarea>
+    <button>Send task</button>
+  </form>
+  <p class="muted">Tasks run asynchronously — open one to watch progress live. Telegram: link your chat in Settings and message the bot.</p>
+</div>
+<div class="card">
+  <h2>Recent tasks</h2>
+  <table>
+    {% for t in tasks %}
+    <tr>
+      <td><a href="/tasks/{{ t.id }}">{{ t.request[:90] }}</a></td>
+      <td><span class="pill">{{ t.status }}</span></td>
+      <td class="muted">{{ t.created_at.strftime("%m-%d %H:%M") }}</td>
+      <td class="muted">${{ t.cost_usd }}</td>
+    </tr>
+    {% else %}
+    <tr><td class="muted">No tasks yet — send your first one above.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

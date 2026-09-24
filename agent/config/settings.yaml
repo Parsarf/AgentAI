@@ -1,0 +1,134 @@
+# settings.yaml — core runtime tunables (Phase 1).
+# Every value is commented. Loaded into typed pydantic models by core/config.py;
+# a typo here fails loudly at startup with the key and file named.
+
+models:
+  # Which model fills each role. Roles are resolved by core/router.py:
+  #   planner — decomposes/steers tasks
+  #   worker  — the main agent loop
+  #   cheap   — summarization, focused extraction, embeddings-adjacent glue
+  # IDs verified against the live /v1/models API on 2026-09-22.
+  planner: claude-sonnet-5
+  worker: claude-sonnet-5
+  cheap: claude-haiku-4-5-20251001
+
+# USD price per million tokens, per model — used by core/router.py to meter
+# each user's api_costs. Keep as strings so Decimal parses them exactly.
+# Verified 2026-09-23 against https://platform.claude.com/docs/en/about-claude/pricing
+# First-party standard, 5-minute cache write and cache read rates.
+model_prices:
+  claude-sonnet-5:
+    input_per_mtok_usd: "2.00"
+    output_per_mtok_usd: "10.00"
+    cache_write_per_mtok_usd: "2.50"
+    cache_read_per_mtok_usd: "0.20"
+  claude-haiku-4-5-20251001:
+    input_per_mtok_usd: "1.00"
+    output_per_mtok_usd: "5.00"
+    cache_write_per_mtok_usd: "1.25"
+    cache_read_per_mtok_usd: "0.10"
+
+billing:
+  # False keeps local caps and disables Stripe network flows.
+  enabled: false
+  # Live Stripe keys require an explicit production decision.
+  allow_live: false
+  # SDK's built-in max-budget is a stop-after-cost control, not an exact
+  # provider-side limit. A run reserves this much before it starts.
+  sdk_task_budget_usd: "0.50"
+  # Past-due subscriptions retain access briefly, then revert to free.
+  past_due_grace_days: 3
+
+payments:
+  # No arbitrary-merchant, user-funded provider integration is configured.
+  enabled: false
+
+# Cost charged to the calling user per web_search call (shared search API,
+# metered per user). String for Decimal.
+search_per_query_usd: "0.005"
+
+limits:
+  # Step caps differ by task source: interactive (user present) vs job/watcher
+  # (autonomous, tighter by the safety model).
+  max_steps_interactive: 40
+  max_steps_job: 15
+  # Hard wall-clock budget per task, seconds.
+  task_timeout_seconds: 900
+  # Context window budget in tokens for core/context.py (Phase 2), with
+  # headroom reserved for tool schemas and the reply.
+  context_token_budget: 160000
+  # How long an approval request waits for its user before defaulting to deny.
+  approval_timeout_seconds: 600
+
+sandbox:
+  # Per-container resource caps for user code execution (Phase 2).
+  cpu_quota: 1.0          # CPU cores per sandbox container
+  memory_mb: 1024         # memory cap per sandbox container
+  pids_limit: 128         # process count cap (fork-bomb guard)
+  network_enabled: true   # sandbox containers get network egress (per-user network)
+  # How long a finished task's workspace stays on disk for debugging before
+  # the purge sweep removes it.
+  workspace_retention_hours: 24
+
+scheduler:
+  # How often the scheduler service (core/scheduler_service.py) wakes to look
+  # for due jobs across all users. Jobs are claimed and advanced atomically
+  # per tick; a wake event from job.changed can shorten the wait.
+  tick_seconds: 30
+  # A job auto-pauses (active=false, owner notified) after this many
+  # consecutive failed runs.
+  max_consecutive_failures: 3
+
+# Default timezone for new users and for quiet-hours evaluation.
+timezone_default: "UTC"
+
+# Outside these hours, non-urgent notifications are held (per user setting).
+quiet_hours:
+  start: "22:00"
+  end: "08:00"
+
+browser:
+  # Playwright runs headless by default (cost + reliability); screenshots
+  # are the fallback, text snapshots the main view (Phase 4).
+  headless: true
+  # Dev/test mode: run a LOCAL chromium with per-user persistent profiles
+  # instead of a per-user container reached over CDP. Keep false in
+  # production — container mode is where per-user network isolation applies.
+  local_mode: false
+  # Default navigation/action timeout for browser tools.
+  default_timeout_ms: 15000
+  # Text snapshot size cap (chars) before truncation.
+  snapshot_max_chars: 20000
+  # Root dir for per-user persistent browser profiles. Defaults to the
+  # /data volume convention; override (e.g. a repo-local dir) for local dev.
+  profile_root: "/data/browser_profiles"
+  # Unused profiles older than this many days are purged by the maintenance
+  # sweep (0 = never).
+  profile_retention_days: 30
+
+vault:
+  # null (below) → wrap per-user data keys with VAULT_MASTER_KEY from .env
+  # (base64). A KMS entry wraps them through the provider SDK instead, so
+  # the root key never touches app memory:
+  #   kms: {provider: aws_kms, key_id: alias/agent-vault}
+  kms: null
+  # Seconds an unwrapped per-user data key may sit in the in-memory cache
+  # (0 = process lifetime). The cache is memory-only in both cases.
+  cache_seconds: 0
+
+# Embeddings for per-user memory recall (Phase 2). provider "local" uses a
+# sentence-transformers model — no extra operator signup required.
+embeddings:
+  provider: local
+  model: all-MiniLM-L6-v2
+  dimensions: 384        # must match the vector(N) column in db migrations
+
+email:
+  # Transactional provider for verification/reset emails (core/auth.py).
+  provider: brevo       # resend | postmark | brevo — must match EMAIL_API_KEY
+  # Verified sender address shown on outgoing emails.
+  from_address: agent@example.com
+
+web:
+  # Which search provider adapter tools/web.py uses (must match SEARCH_API_KEY).
+  search_provider: brave # brave | serpapi | google_pse

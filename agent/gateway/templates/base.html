@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Agent{% endblock %}</title>
+  <style>
+    :root { --ink:#1a1d21; --mut:#68707a; --line:#e3e6ea; --bg:#f6f7f9; --acc:#2456d6; --bad:#b3372f; --ok:#1e7b45; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+    header { background:#fff; border-bottom:1px solid var(--line); padding:10px 20px; display:flex; gap:18px; align-items:center; }
+    header a { color:var(--ink); text-decoration:none; padding:6px 10px; border-radius:6px; }
+    header a:hover { background:var(--bg); }
+    header .brand { font-weight:700; color:var(--acc); }
+    header form { margin-left:auto; }
+    main { max-width:860px; margin:28px auto; padding:0 18px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px 22px; margin-bottom:18px; }
+    h1 { font-size:22px; margin:0 0 14px; } h2 { font-size:17px; margin:0 0 10px; }
+    input, textarea, select { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:7px; font:inherit; margin:4px 0 12px; background:#fff; }
+    button { background:var(--acc); border:0; color:#fff; padding:9px 16px; border-radius:7px; font:inherit; cursor:pointer; }
+    button.ghost { background:transparent; color:var(--acc); border:1px solid var(--acc); }
+    .btn-inline { display:inline; width:auto; }
+    .muted { color:var(--mut); font-size:13px; }
+    .error { color:var(--bad); margin:8px 0; }
+    .ok { color:var(--ok); }
+    .code { font-family:ui-monospace,Menlo,monospace; font-size:20px; background:var(--bg); padding:10px 14px; border-radius:8px; letter-spacing:2px; display:inline-block; }
+    table { width:100%; border-collapse:collapse; } td, th { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:14px; }
+    .pill { font-size:12px; padding:2px 9px; border-radius:99px; background:var(--bg); }
+    .bar { height:10px; background:var(--bg); border-radius:99px; overflow:hidden; margin:10px 0; }
+    .bar > div { height:100%; background:var(--acc); }
+    .msg { padding:10px 14px; border-radius:8px; margin:8px 0; }
+    .msg.user { background:#eef2fe; } .msg.agent { background:var(--bg); }
+  </style>
+</head>
+<body>
+<header>
+  <span class="brand">agent</span>
+  {% if user %}
+    <a href="/chat">Chat</a><a href="/approvals">Approvals</a><a href="/usage">Usage</a><a href="/settings">Settings</a>
+    <form action="/logout" method="post" class="btn-inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost btn-inline">Log out</button></form>
+  {% endif %}
+</header>
+<main>
+{% block body %}{% endblock %}
+</main>
+</body>
+</html>

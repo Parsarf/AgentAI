@@ -1,0 +1,34 @@
+# plans.yaml — subscription tiers (Phase 1 defines them; Phase 5 bills them).
+# Each tier caps what a user can do and spend. Money values are strings so
+# Decimal parses them exactly (never float).
+#
+# Feature flags here are the plan FLOOR: a user can never loosen their own
+# approval rules past what their tier allows (e.g. free can never enable
+# payments or browser tools regardless of the rules they set).
+
+tiers:
+  free:
+    # Usage metering (USD per calendar month, from api_costs).
+    monthly_included_usage_usd: "5.00"
+    # Hard ceiling — core/router refuses new model calls past this even if
+    # included usage remains. Real-time, not after-the-fact.
+    hard_cap_usd: "10.00"
+    # How many of this user's tasks may run concurrently.
+    concurrent_tasks: 1
+    # Max concurrently-active scheduled jobs. 0 = autonomous jobs disabled.
+    max_active_jobs: 0
+    autonomous_jobs: false    # jobs/watchers entirely off at this tier
+    browser_tools: false      # login-gated browsing off (Phase 4)
+    payments_enabled: false   # agent-directed spending off (Phase 6)
+    # Stripe price ID for Checkout — filled in during Phase 5 setup.
+    stripe_price_id: null
+
+  pro:
+    monthly_included_usage_usd: "40.00"
+    hard_cap_usd: "100.00"
+    concurrent_tasks: 4
+    max_active_jobs: 20
+    autonomous_jobs: true
+    browser_tools: true
+    payments_enabled: true    # still opt-in per user + hard job-layer in code
+    stripe_price_id: null     # fill in during Phase 5

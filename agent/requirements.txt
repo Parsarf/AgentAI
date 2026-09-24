@@ -1,0 +1,50 @@
+# Runtime dependencies (spec: Phase 1 file list).
+# Pinned to the exact versions Phase 1 was built and tested against
+# (Python 3.12.3, macOS arm64). Bump deliberately, with tests.
+
+# --- agent/model layer ---
+anthropic==1.8.0
+claude-agent-sdk==0.2.157
+
+# --- web / api ---
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+
+# --- database (Postgres, not SQLite — multi-tenant needs concurrent writers) ---
+asyncpg==0.31.0
+pgvector==0.5.0
+
+# --- config & models ---
+pydantic==2.13.5
+pydantic-settings==2.15.0
+PyYAML==6.0.3
+python-dotenv==1.2.3
+Jinja2==3.1.6              # web dashboard templates (Phase 2)
+
+# --- embeddings for per-user memory (Phase 2; pulls torch/transformers) ---
+sentence-transformers==6.1.0
+
+# --- gateways ---
+python-telegram-bot==22.8
+playwright==1.63.0
+
+# --- tools / infra ---
+httpx==0.28.1
+trafilatura==2.2.0
+apscheduler==3.11.3
+docker==7.2.0
+
+# --- auth & secrets ---
+passlib==1.7.4
+argon2-cffi==25.1.0
+PyJWT==2.14.0
+cryptography==50.0.1
+itsdangerous==2.2.0
+
+# --- billing (Phase 5; declared now per spec) ---
+stripe==15.6.1
+
+# --- dev / test ---
+pytest==9.1.1
+pytest-asyncio==1.4.0
+ruff==0.16.8

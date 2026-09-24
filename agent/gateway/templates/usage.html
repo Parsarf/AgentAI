@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Usage{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>Usage & plan</h1>
+  <p>Plan: <strong>{{ summary.plan_tier }}</strong> · period {{ summary.period_start }} → {{ summary.period_end }}</p>
+  <p>Subscription: {{ user.billing_state }}{% if user.billing_grace_until %} · grace through {{ user.billing_grace_until }}{% endif %}</p>
+  <div class="bar"><div style="width: {{ pct }}%"></div></div>
+  <p>${{ summary.total_cost }} settled{% if reserved > 0 %} + ${{ reserved }} reserved{% endif %} of ${{ plan.hard_cap_usd }} hard cap ({{ pct }}%)
+     · included: ${{ summary.included_allowance }}
+     {% if summary.overage > 0 %}· above included allowance: ${{ summary.overage }} (no metered charge){% endif %}</p>
+  <p>Usage resets after {{ summary.period_end }} UTC. Subscription renewals may have a different date.</p>
+  {% if billing_enabled %}
+    {% for tier, offer in offers.items() %}
+    <form method="post" action="/usage/checkout">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="operation_key" value="{{ checkout_key }}">
+      <input type="hidden" name="plan_tier" value="{{ tier }}">
+      <button type="submit">Choose {{ tier }}</button>
+    </form>
+    {% endfor %}
+    {% if user.stripe_customer_id %}
+    <form method="post" action="/usage/portal">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit">Manage billing</button>
+    </form>
+    {% endif %}
+  {% else %}
+    <p class="muted">Billing setup is not available yet. Usage limits still apply.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Task{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>Task</h1>
+  <p>{{ task.request }}</p>
+  <p>
+    <span class="pill" id="status">{{ task.status }}</span>
+    <span class="muted">cost so far: ${{ task.cost_usd }}</span>
+  </p>
+</div>
+<div class="card">
+  <h2>Progress</h2>
+  <div id="steps"></div>
+  <p class="muted" id="hint">This page live-updates while the task runs.</p>
+  <script>
+    const stepsEl = document.getElementById("steps");
+    const statusEl = document.getElementById("status");
+    const hint = document.getElementById("hint");
+    function add(note) {
+      const div = document.createElement("div");
+      div.className = "msg agent";
+      div.textContent = note || "(step)";
+      stepsEl.prepend(div);
+    }
+    const es = new EventSource("/tasks/{{ task.id }}/events");
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.note) add(data.note);
+      if (data.status) statusEl.textContent = data.status;
+      if (data.done) { es.close(); hint.textContent = "Final result appears in the list above."; }
+    };
+    es.onerror = () => { es.close(); hint.textContent = "Stream closed — refresh to see the latest."; };
+  </script>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+# secrets & environment
+.env
+secret.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# runtime state
+logs/
+data/
+backups/
+skills/
+
+# editors
+.DS_Store
+.idea/
+.vscode/

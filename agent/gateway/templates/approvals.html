@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Approvals{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>Pending approvals</h1>
+  {% for a in pending %}
+  <div class="card" style="margin:10px 0; background:var(--bg)">
+    <p><strong>{{ a.action_summary }}</strong></p>
+    <p class="muted">requested {{ a.created_at.strftime("%m-%d %H:%M") }} · risk: {{ a.details.get("risk", "?") }}</p>
+    <form method="post" action="/approvals/{{ a.id }}/decide" class="btn-inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button name="decision" value="approve" class="btn-inline">Approve</button>
+      <button name="decision" value="deny" class="ghost btn-inline">Deny</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="muted">Nothing waiting on you.</p>
+  {% endfor %}
+</div>
+<div class="card">
+  <h2>Recent decisions</h2>
+  <table>
+    {% for a in past %}
+    <tr>
+      <td>{{ a.action_summary[:80] }}</td>
+      <td><span class="pill">{{ a.status }}</span></td>
+      <td class="muted">{{ a.decided_at.strftime("%m-%d %H:%M") if a.decided_at else "" }}</td>
+    </tr>
+    {% else %}
+    <tr><td class="muted">None yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

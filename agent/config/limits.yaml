@@ -1,0 +1,59 @@
+# limits.yaml — the DEFAULT approval-tier rules every new user starts with.
+# Users can tighten/loosen their own rules later within what their plan tier
+# allows (enforced in core/approvals.py, Phase 2) — these defaults are the
+# baseline from Phase 1.
+#
+# Rules are evaluated top-down; FIRST match wins. If nothing matches, the
+# `fallback` action applies. Match conditions combine with AND; omit a
+# condition and it matches anything.
+#
+# Actions:
+#   auto            — run silently
+#   auto_and_log    — run, but record the decision (auditable)
+#   require_approval — block until the user approves (timeout => deny)
+#   deny            — refuse outright
+
+rules:
+  # Anything marked "safe" just runs, from anywhere.
+  - match:
+      risk: safe
+      source: any          # user | job | any
+    action: auto
+    note: "safe tools never need a gate"
+
+  # Moderate tools from a live user: run, but on the record.
+  - match:
+      risk: moderate
+      source: user
+    action: auto_and_log
+    note: "user is present; moderate risk proceeds, logged"
+
+  # Moderate tools from autonomous jobs: no human watching — ask first.
+  - match:
+      risk: moderate
+      source: job
+    action: require_approval
+    note: "autonomous mode floor: anything above safe needs approval"
+
+  # High risk from the user: always ask, even interactively.
+  - match:
+      risk: high
+      source: user
+    action: require_approval
+    note: "spending, destructive actions: explicit consent"
+
+  # High risk from jobs: deny outright. Jobs never self-authorize high risk.
+  - match:
+      risk: high
+      source: job
+    action: deny
+    note: "no self-granted exceptions in autonomous mode"
+
+# Extra per-tool rules can be appended here; e.g. once Phase 6 lands:
+#   - match: {tools: [make_purchase], source: any}
+#     action: require_approval
+# (Payments additionally get a hard-coded job-can-never-auto-approve layer
+#  in code — config cannot weaken it.)
+
+# What to do when no rule matches. Default to asking.
+fallback: require_approval

@@ -1,0 +1,17 @@
+# sandbox/Dockerfile.playwright — per-user browser container (Phase 4).
+# One container per user, joined to that user's Docker network; the app
+# drives chromium over CDP (port 9222) and mounts the user's persistent
+# profile at /data/profile.
+#
+# Build (operator, once):
+#   docker build -t agent-browser:latest -f sandbox/Dockerfile.playwright .
+
+FROM mcr.microsoft.com/playwright/python:v1.63.0-noble
+
+WORKDIR /data
+# Chromium launches with --user-data-dir=/data/profile --remote-debugging-port=9222
+# (the app passes the command; nothing else needs to live in the image).
+EXPOSE 9222
+CMD ["chromium", "--headless=new", "--no-sandbox", \
+     "--remote-debugging-address=0.0.0.0", "--remote-debugging-port=9222", \
+     "--user-data-dir=/data/profile"]
