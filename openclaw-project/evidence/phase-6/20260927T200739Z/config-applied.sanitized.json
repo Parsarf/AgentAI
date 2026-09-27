@@ -1,0 +1,284 @@
+[
+  {
+    "path": "mcp.servers.google-readonly",
+    "value": {
+      "enabled": false,
+      "transport": "stdio",
+      "command": "/usr/bin/docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=128",
+        "--memory=384m",
+        "--cpus=0.5",
+        "--user=1000:1000",
+        "--tmpfs",
+        "/tmp:rw,nosuid,nodev,size=64m",
+        "--mount",
+        "type=bind,src=/opt/openclaw-production/integrations/google/private,dst=/data",
+        "--env",
+        "USER_GOOGLE_EMAIL=<owner-google-account>",
+        "--env",
+        "WORKSPACE_MCP_LOG_DIR=/tmp/logs",
+        "--env",
+        "WORKSPACE_MCP_MAX_FILE_BYTES=5242880",
+        "--env",
+        "WORKSPACE_MCP_DISABLE_LOCAL_FILES=true",
+        "sha256:17620499dba778fa67572e0ac5f93ae59c570734901b5671ddfbb1197fc0fc4c"
+      ],
+      "connectionTimeoutMs": 30000,
+      "requestTimeoutMs": 20000,
+      "toolFilter": {
+        "include": [
+          "search_gmail_messages",
+          "get_gmail_message_content",
+          "get_gmail_messages_content_batch",
+          "list_calendars",
+          "get_events",
+          "search_drive_files",
+          "get_drive_file_content",
+          "list_drive_items"
+        ]
+      },
+      "codex": {
+        "agents": [
+          "researcher"
+        ]
+      }
+    }
+  },
+  {
+    "path": "mcp.servers.github-readonly",
+    "value": {
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "transport": "streamable-http",
+      "enabled": false,
+      "connectionTimeoutMs": 10000,
+      "requestTimeoutMs": 20000,
+      "toolFilter": {
+        "include": [
+          "get_me",
+          "get_file_contents",
+          "list_commits",
+          "get_commit",
+          "list_branches",
+          "list_issues",
+          "issue_read",
+          "list_pull_requests",
+          "pull_request_read"
+        ]
+      },
+      "codex": {
+        "agents": [
+          "researcher"
+        ]
+      }
+    }
+  },
+  {
+    "path": "tools.alsoAllow",
+    "value": [
+      "session_status",
+      "read",
+      "ls",
+      "write",
+      "edit",
+      "apply_patch",
+      "exec",
+      "process",
+      "web_fetch",
+      "sessions_spawn",
+      "sessions_yield",
+      "subagents",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  },
+  {
+    "path": "tools.sandbox.tools.allow",
+    "value": [
+      "session_status",
+      "read",
+      "ls",
+      "write",
+      "edit",
+      "apply_patch",
+      "exec",
+      "process",
+      "web_fetch",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  },
+  {
+    "path": "agents.entries.researcher.tools.profile",
+    "value": "coding"
+  },
+  {
+    "path": "agents.entries.researcher.tools.allow",
+    "value": [
+      "session_status",
+      "read",
+      "ls",
+      "write",
+      "edit",
+      "web_fetch",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  },
+  {
+    "path": "agents.entries.main.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "web_search",
+      "web_fetch",
+      "sessions_send",
+      "message",
+      "portal",
+      "sessions",
+      "plugins",
+      "openclaw",
+      "bundle-mcp",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  },
+  {
+    "path": "agents.entries.browser-worker.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "exec",
+      "process",
+      "apply_patch",
+      "message",
+      "web_search",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal",
+      "bundle-mcp",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  },
+  {
+    "path": "agents.entries.critic.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "exec",
+      "process",
+      "write",
+      "edit",
+      "apply_patch",
+      "message",
+      "web_search",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal",
+      "bundle-mcp",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  },
+  {
+    "path": "agents.entries.codex-builder.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "web_search",
+      "web_fetch",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "message",
+      "portal",
+      "sessions",
+      "plugins",
+      "openclaw",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal",
+      "bundle-mcp",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  },
+  {
+    "path": "agents.entries.codex-debugger.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "web_search",
+      "web_fetch",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "message",
+      "portal",
+      "sessions",
+      "plugins",
+      "openclaw",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal",
+      "bundle-mcp",
+      "google-readonly__*",
+      "github-readonly__*"
+    ]
+  }
+]

@@ -14,15 +14,15 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 repo = Path(__file__).resolve().parents[2]
-env_file = repo / "agent/.env"
+env_file = repo / "openclaw-project/.env"
 if stat.S_IMODE(env_file.stat().st_mode) & 0o077:
-    raise SystemExit("agent/.env must be private (mode 0600)")
+    raise SystemExit("openclaw-project/.env must be private (mode 0600)")
 values = dotenv_values(env_file)
 user = values.get("OPENCLAW_SSH_USER", "")
 if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
-    raise SystemExit("Set a valid OPENCLAW_SSH_USER in agent/.env")
+    raise SystemExit("Set a valid OPENCLAW_SSH_USER in openclaw-project/.env")
 if not values.get("OPENCLAW_SSH_PASSWORD"):
-    raise SystemExit("Set OPENCLAW_SSH_PASSWORD in agent/.env")
+    raise SystemExit("Set OPENCLAW_SSH_PASSWORD in openclaw-project/.env")
 target = user + "@69.48.206.62"
 
 with tempfile.TemporaryDirectory(prefix="openclaw-ui-") as directory:
@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="openclaw-ui-") as directory:
     askpass.write_text(
         "#!" + sys.executable + "\n"
         "from dotenv import dotenv_values\n"
-        "print(dotenv_values(" + repr(str(repo / "agent/.env")) + ")[\"OPENCLAW_SSH_PASSWORD\"])\n"
+        "print(dotenv_values(" + repr(str(repo / "openclaw-project/.env")) + ")[\"OPENCLAW_SSH_PASSWORD\"])\n"
     )
     askpass.chmod(0o700)
     env = os.environ.copy()

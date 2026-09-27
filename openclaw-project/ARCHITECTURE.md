@@ -1,5 +1,21 @@
 # OpenClaw personal agent architecture
 
+Latest increment: Phase6 personal integration preparation is applied. Native
+Google/GitHub definitions are disabled pending account authentication and
+repository selection. Only researcher is eligible to consume those read-only
+tools; main and other workers explicitly deny MCP. Phase5 memory setup is
+applied, with behavioral acceptance deferred. The historical phase details
+below retain their original evidence limitations; no outstanding gate is passed.
+
+Google runs as a pinned `workspace-mcp1.29.0` non-root stdio container spawned
+by the trusted Gateway's existing Docker CLI. It mounts only a dedicated private
+Google client/token directory, with no Docker socket, Gateway state or worker
+workspace. Provider network egress is necessary; root filesystem is read-only,
+resource limits and tmpfs logs configured. Native filters expose reads only;
+local proposals handle drafts. GitHub uses its official hosted read-only MCP
+endpoint; selected-repository credential setup is pending. No connector write
+approval mechanism or runtime behavior is asserted from configuration alone.
+
 Status: Phase 3 (trust-separated workers) is live on the IONOS VPS. Gate 1
 still awaits Telegram owner/non-owner evidence, Gate 2 awaits a real owner
 approval-card interaction, and Gate 3 awaits two budget-blocked checks
@@ -21,9 +37,10 @@ not the Claude CLI login.
 
 OpenClaw is the sole new agent runtime. Production state and secrets belong on
 the server in private persistent storage. This repository holds only non-secret
-templates and review artifacts. The local staging state is gitignored and
-private; its temporary Gateway passed `/healthz` and was stopped. The existing
-Python service and `~/.openclaw` are untouched.
+templates and review artifacts. Local operator credentials are in ignored mode0600
+`openclaw-project/.env`. Owner-authorized cleanup removed the old Python
+application’s working tree and disposable Mac staging state; current server
+services/databases, recovery backups and `~/.openclaw` were untouched.
 
 ## Authority and trust
 
@@ -100,3 +117,24 @@ records real health-check evidence. The final workflow requires sourced
 research, a Codex build, tests, browser verification, independent review,
 budget enforcement and successful restart recovery. A documented gap or
 skipped check is not a pass.
+
+## Phase 5 memory and objective setup (2026-09-27)
+
+Main alone has builtin MemoryCore FTS retrieval: provider/fallback none,
+memory-only sources, no extra roots or transcript recall. Compact USER.md is
+startup context; detailed project notes live under memory/. Dreaming stays off,
+compaction flush is disabled, and workers are denied memory/goal tools.
+Prose attribution is a note convention, not native provenance/trust metadata.
+
+Native per-session goals persist objectives. Owner resume reconciles checkpoint,
+actual child task/flow IDs and side-effect receipts. Task/flow persistence does
+not restart a process; no managed workflow controller is activated. Records
+have native retention (normally7days; lost tasks24hours), so durable project
+artifacts hold essential receipts. Cancellation covers children/schedules
+separately from goal clear.
+
+The one Phase5 script job is disabled and limited to session_status, one call,
+five seconds, no model or delivery. Its runtime boundary is not yet proven.
+Installed scheduler capacity is fixed8; concurrency1 cannot be configured.
+All12 older jobs were preserved. Gate5 acceptance and earlier missing fixtures
+remain deferred. See RUNBOOK.md and evidence/phase-5/20260927T180152Z/.

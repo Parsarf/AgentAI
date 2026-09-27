@@ -1,0 +1,215 @@
+[
+  {
+    "path": "agents.entries.main.memory.search.enabled",
+    "value": true
+  },
+  {
+    "path": "agents.entries.main.memory.search.provider",
+    "value": "none"
+  },
+  {
+    "path": "agents.entries.main.memory.search.fallback",
+    "value": "none"
+  },
+  {
+    "path": "agents.entries.main.memory.search.sources",
+    "value": [
+      "memory"
+    ]
+  },
+  {
+    "path": "agents.entries.main.memory.search.extraPaths",
+    "value": []
+  },
+  {
+    "path": "agents.entries.main.memory.search.rememberAcrossConversations",
+    "value": false
+  },
+  {
+    "path": "tools.alsoAllow",
+    "value": [
+      "session_status",
+      "read",
+      "ls",
+      "write",
+      "edit",
+      "apply_patch",
+      "exec",
+      "process",
+      "web_fetch",
+      "sessions_spawn",
+      "sessions_yield",
+      "subagents",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal"
+    ]
+  },
+  {
+    "path": "agents.entries.main.tools.alsoAllow",
+    "value": [
+      "session_status",
+      "read",
+      "ls",
+      "write",
+      "edit",
+      "apply_patch",
+      "exec",
+      "process",
+      "sessions_spawn",
+      "sessions_yield",
+      "subagents",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal"
+    ]
+  },
+  {
+    "path": "agents.entries.researcher.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "exec",
+      "process",
+      "apply_patch",
+      "message",
+      "web_search",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal"
+    ]
+  },
+  {
+    "path": "agents.entries.browser-worker.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "exec",
+      "process",
+      "apply_patch",
+      "message",
+      "web_search",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal"
+    ]
+  },
+  {
+    "path": "agents.entries.critic.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "exec",
+      "process",
+      "write",
+      "edit",
+      "apply_patch",
+      "message",
+      "web_search",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal"
+    ]
+  },
+  {
+    "path": "agents.entries.codex-builder.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "web_search",
+      "web_fetch",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "message",
+      "portal",
+      "sessions",
+      "plugins",
+      "openclaw",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal"
+    ]
+  },
+  {
+    "path": "agents.entries.codex-debugger.tools.deny",
+    "value": [
+      "browser",
+      "canvas",
+      "view_image",
+      "nodes",
+      "automations",
+      "cron",
+      "gateway",
+      "web_search",
+      "web_fetch",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_yield",
+      "subagents",
+      "message",
+      "portal",
+      "sessions",
+      "plugins",
+      "openclaw",
+      "memory_search",
+      "memory_get",
+      "get_goal",
+      "create_goal",
+      "update_goal"
+    ]
+  },
+  {
+    "path": "agents.defaults.compaction.memoryFlush.enabled",
+    "value": false
+  },
+  {
+    "path": "agents.defaults.userTimezone",
+    "value": "America/Los_Angeles"
+  }
+]

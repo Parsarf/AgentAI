@@ -11,7 +11,9 @@ The owner already has an IONOS VPS at `69.48.206.62` with Ubuntu 24.04,
 ED25519 host key matches the key already recorded on this Mac (fingerprint
 `SHA256:HBaF3x2ux+XYjWcTUFIuCHzueudk5GK0Gbe65zctehY`), but public-key
 authentication for `root` failed in the earlier session. The owner directed
-credential lookup to `agent/.env` and supplied working access there. SSH now
+credential lookup to the former `agent/.env` and supplied working access there.
+Cleanup relocated that private file to `openclaw-project/.env`; helpers now
+use the new path. SSH now
 works with strict verification against the recorded host key. The host has
 3.8 GiB RAM, 2 GiB swap and about 88 GiB free disk. Docker 29.2.1 and Compose
 5.0.2 were already installed. A dedicated SSH key remains an operations
@@ -68,10 +70,10 @@ bypass ordinary firewall rules.
    review, scheduled recovery, backup restore, security audit, and a server
    restart. Confirm the bot still works with the Mac shut down.
 
-The existing Python AgentAI service stays intact until these gates pass and
-the owner chooses to retire it. Running both with the same Telegram token
-causes polling conflicts; do not launch the new poller until the old one is
-located and stopped or a dedicated token is chosen.
+The owner retired the legacy AgentAI working-tree code on2026-09-27.
+Production OpenClaw and database services were preserved. Do not restore or
+start a second Telegram poller using the same token; it would conflict with
+the running OpenClaw poller.
 
 ## Sources checked
 

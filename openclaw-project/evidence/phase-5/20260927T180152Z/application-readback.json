@@ -1,0 +1,271 @@
+{
+  "batch": [
+    {
+      "path": "agents.entries.main.memory.search.enabled",
+      "value": true
+    },
+    {
+      "path": "agents.entries.main.memory.search.provider",
+      "value": "none"
+    },
+    {
+      "path": "agents.entries.main.memory.search.fallback",
+      "value": "none"
+    },
+    {
+      "path": "agents.entries.main.memory.search.sources",
+      "value": [
+        "memory"
+      ]
+    },
+    {
+      "path": "agents.entries.main.memory.search.extraPaths",
+      "value": []
+    },
+    {
+      "path": "agents.entries.main.memory.search.rememberAcrossConversations",
+      "value": false
+    },
+    {
+      "path": "tools.alsoAllow",
+      "value": [
+        "session_status",
+        "read",
+        "ls",
+        "write",
+        "edit",
+        "apply_patch",
+        "exec",
+        "process",
+        "web_fetch",
+        "sessions_spawn",
+        "sessions_yield",
+        "subagents",
+        "memory_search",
+        "memory_get",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ]
+    },
+    {
+      "path": "agents.entries.main.tools.alsoAllow",
+      "value": [
+        "session_status",
+        "read",
+        "ls",
+        "write",
+        "edit",
+        "apply_patch",
+        "exec",
+        "process",
+        "sessions_spawn",
+        "sessions_yield",
+        "subagents",
+        "memory_search",
+        "memory_get",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ]
+    },
+    {
+      "path": "agents.entries.researcher.tools.deny",
+      "value": [
+        "browser",
+        "canvas",
+        "view_image",
+        "nodes",
+        "automations",
+        "cron",
+        "gateway",
+        "sessions_spawn",
+        "sessions_send",
+        "sessions_yield",
+        "subagents",
+        "exec",
+        "process",
+        "apply_patch",
+        "message",
+        "web_search",
+        "memory_search",
+        "memory_get",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ]
+    },
+    {
+      "path": "agents.entries.browser-worker.tools.deny",
+      "value": [
+        "browser",
+        "canvas",
+        "view_image",
+        "nodes",
+        "automations",
+        "cron",
+        "gateway",
+        "sessions_spawn",
+        "sessions_send",
+        "sessions_yield",
+        "subagents",
+        "exec",
+        "process",
+        "apply_patch",
+        "message",
+        "web_search",
+        "memory_search",
+        "memory_get",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ]
+    },
+    {
+      "path": "agents.entries.critic.tools.deny",
+      "value": [
+        "browser",
+        "canvas",
+        "view_image",
+        "nodes",
+        "automations",
+        "cron",
+        "gateway",
+        "sessions_spawn",
+        "sessions_send",
+        "sessions_yield",
+        "subagents",
+        "exec",
+        "process",
+        "write",
+        "edit",
+        "apply_patch",
+        "message",
+        "web_search",
+        "memory_search",
+        "memory_get",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ]
+    },
+    {
+      "path": "agents.entries.codex-builder.tools.deny",
+      "value": [
+        "browser",
+        "canvas",
+        "view_image",
+        "nodes",
+        "automations",
+        "cron",
+        "gateway",
+        "web_search",
+        "web_fetch",
+        "sessions_spawn",
+        "sessions_send",
+        "sessions_yield",
+        "subagents",
+        "message",
+        "portal",
+        "sessions",
+        "plugins",
+        "openclaw",
+        "memory_search",
+        "memory_get",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ]
+    },
+    {
+      "path": "agents.entries.codex-debugger.tools.deny",
+      "value": [
+        "browser",
+        "canvas",
+        "view_image",
+        "nodes",
+        "automations",
+        "cron",
+        "gateway",
+        "web_search",
+        "web_fetch",
+        "sessions_spawn",
+        "sessions_send",
+        "sessions_yield",
+        "subagents",
+        "message",
+        "portal",
+        "sessions",
+        "plugins",
+        "openclaw",
+        "memory_search",
+        "memory_get",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ]
+    },
+    {
+      "path": "agents.defaults.compaction.memoryFlush.enabled",
+      "value": false
+    },
+    {
+      "path": "agents.defaults.userTimezone",
+      "value": "America/Los_Angeles"
+    }
+  ],
+  "job": {
+    "id": "4435c5f6-ca9e-46a0-9f1e-24edb5202c27",
+    "declarationKey": "phase5-quiet-status-v1",
+    "agentId": "critic",
+    "name": "phase5-quiet-status-v1",
+    "enabled": false,
+    "createdAtMs": 1790532214992,
+    "updatedAtMs": 1790532214992,
+    "schedule": {
+      "kind": "cron",
+      "expr": "0 8 * * *",
+      "tz": "America/Los_Angeles",
+      "staggerMs": 0
+    },
+    "sessionTarget": "isolated",
+    "wakeMode": "now",
+    "payload": {
+      "kind": "script",
+      "timeoutSeconds": 5,
+      "toolBudget": 1,
+      "toolsAllow": [
+        "session_status"
+      ],
+      "script": "// Native automation script: one read-only status call, no model or delivery.\n// toolsAllow must be exactly [\"session_status\"] and toolBudget must be 1.\nconst result = await tools.session_status({});\nif (!result || result.isError) {\n  throw new Error(\"The native session status check was unavailable.\");\n}\nreturn {\n  state: {\n    schemaVersion: 1,\n    check: \"session_status\",\n    lastCheckedAt: new Date().toISOString(),\n    result: \"ok\"\n  }\n};"
+    },
+    "delivery": {
+      "mode": "none",
+      "channel": "last"
+    },
+    "state": {},
+    "scheduledToolPolicy": {
+      "version": 1,
+      "mode": "trusted"
+    },
+    "configRevision": "sha256:O_QI8wnY4h04kwdEA2Bn5G84ivgVmGVJK37l6F2x_Tg",
+    "effectiveAgentId": "critic",
+    "status": "disabled"
+  },
+  "applicationReadback": {
+    "matchedConfigPaths": 15,
+    "ownerSourceFilesPreserved": true,
+    "preexistingJobsUnchanged": 12,
+    "totalJobs": 13
+  },
+  "backup": {
+    "path": "/opt/openclaw-production/backups/phase5-config-20260927T180152Z",
+    "scope": [
+      "openclaw.json",
+      "AGENTS.md",
+      "USER.md"
+    ],
+    "restoreTest": "not_run"
+  },
+  "configHash": "14ff5d67ea3f3743bd38a911bcba4c74749336d8c23c1c2d43b2bc3137916ff5"
+}

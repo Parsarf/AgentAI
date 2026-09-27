@@ -1,0 +1,11 @@
+{
+  "url": "https://api.githubcopilot.com/mcp/readonly",
+  "transport": "streamable-http",
+  "enabled": false,
+  "connectionTimeoutMs": 10000,
+  "requestTimeoutMs": 20000,
+  "toolFilter": {
+    "include": ["get_me", "get_file_contents", "list_commits", "get_commit", "list_branches", "list_issues", "issue_read", "list_pull_requests", "pull_request_read"]
+  },
+  "codex": {"agents": ["researcher"]}
+}

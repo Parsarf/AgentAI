@@ -1,8 +1,12 @@
 # AgentAI to OpenClaw migration decisions
 
-Status: draft for Phase 0 review, 2026-09-24. The existing Python service is
-untouched and must remain runnable while the new system is built and checked.
-No data has been migrated or archived.
+Status: migration map retained as design history. On2026-09-27 the owner
+authorized deleting unnecessary legacy files. The old application’s working
+tree, original prompts/spec/build notes and disposable Mac staging files were
+removed. Local credentials moved intact to ignored mode0600
+`openclaw-project/.env`; helpers now use a minimal python-dotenv environment.
+Git history, current OpenClaw work/evidence, server databases and recovery
+backups were preserved. Earlier phase acceptance gaps remain unpassed.
 
 | AgentAI component | Decision for single-owner system | Reason or follow-up |
 |---|---|---|
@@ -20,23 +24,20 @@ No data has been migrated or archived.
 | `core/purchases.py`, `tools/payments.py` | Drop | Purchase execution is unfinished and disabled. Do not import or enable it. |
 | `core/events.py` | Replace | Use OpenClaw's native task/event delivery as documented. |
 | `sandbox/*` | Replace | Use OpenClaw sandboxing once a supported container runtime is available. |
-| `tests/*`, backup scripts | Keep as historical evidence | Do not copy the pytest stack; carry over useful test scenarios and require disposable restore proof. |
+| `tests/*`, backup scripts | Retain in Git history | Do not copy the pytest stack; carry over useful test scenarios and require disposable restore proof. |
 
 ## Data and rollback
 
-The old repo has uncommitted work and a local PostgreSQL-backed app. Do not
-archive, delete, reset, migrate, or push it automatically. First enumerate
-owner-specific memories, tasks, projects, credentials and exports through
-read-only tools; redact secrets; let the owner choose what to retain. Preserve
-the old database and code until the OpenClaw acceptance workflow succeeds and
-the owner approves retirement. A git tag alone is not a database backup.
+The user explicitly authorized obsolete-file cleanup after the old/current
+project distinction was explained. Legacy application files had no pending
+edits; tracked versions remain recoverable through Git. No database was dropped
+or migrated, no server service stopped, and no provider credential revoked.
+Current OpenClaw uncommitted work was preserved. Git history is not a database
+backup; keep private recovery archives and server data.
 
-## Open decisions
+## Continuing decisions
 
-- Provision an always-on server; the Mac is staging only and must not be
-  required for uptime.
-- Enforce the chosen Anthropic API spending ceilings of $2/day and $25/month
-  before making paid requests.
-- Supply owner-only Telegram and optional Google/GitHub connections through
-  documented secret flows, never through this repository.
-- Verify a Docker sandbox and private remote access on the server.
+- The VPS is the runtime; the Mac provides operator helpers only.
+- Preserve existing spending caps and private access boundaries.
+- Finish account connections through protected flows when the owner is ready.
+- Resume deferred acceptance checks only when explicitly directed.

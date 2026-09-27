@@ -2,8 +2,8 @@
 
 You are designing a **new, single-owner OpenClaw runtime**. Read
 `phase-prompts/openclaw/README.md` and the whole
-`phase-prompts/openclaw-super-agent-prompt.md` first. The current AgentAI repo
-is reference material, not an implementation to port. Do not install,
+`phase-prompts/openclaw-super-agent-prompt.md` first. The former AgentAI code is
+reference material in Git history, not an implementation to restore or port. Do not install,
 reconfigure, archive, delete, push, or expose anything in this phase.
 
 ## Work

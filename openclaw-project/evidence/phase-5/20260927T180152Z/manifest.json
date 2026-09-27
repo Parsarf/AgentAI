@@ -1,0 +1,203 @@
+{
+  "phase": 5,
+  "run_id": "20260927T180152Z",
+  "started_at": "2026-09-27T17:57:59Z",
+  "finished_at": "2026-09-27T18:07:28.015229+00:00",
+  "gate": "BLOCKED",
+  "implementation_status": "applied; acceptance deferred",
+  "target": {
+    "host": "69.48.206.62",
+    "deployment": "/opt/openclaw-production"
+  },
+  "versions": {
+    "openclaw": "2026.9.6",
+    "openclaw_revision": "eb377ac",
+    "gateway_image": "openclaw-gateway:2026.9.6-sdk-peer",
+    "gateway_image_id": "sha256:de9b14d86157547f83ddcf52414fa749417f9de6bb43d02c89a8d532c541a444",
+    "node": "24.19.0",
+    "managed_codex": "0.155.1"
+  },
+  "tested_revision": {
+    "repository_base": "63da739",
+    "working_tree": "Phase5 additions uncommitted; no tests run",
+    "applied_config_sha256": "14ff5d67ea3f3743bd38a911bcba4c74749336d8c23c1c2d43b2bc3137916ff5"
+  },
+  "owner_direction": [
+    "Advance to Phase5 with prior Gate4 unpassed.",
+    "Defer tests until explicitly resumed.",
+    "Owner handles Chrome/sign-in."
+  ],
+  "documentation_links": [
+    "https://docs.openclaw.ai/concepts/memory",
+    "https://docs.openclaw.ai/reference/memory-config",
+    "https://docs.openclaw.ai/concepts/memory-provenance",
+    "https://docs.openclaw.ai/tools/goal",
+    "https://docs.openclaw.ai/automation/tasks",
+    "https://docs.openclaw.ai/automation/taskflow",
+    "https://docs.openclaw.ai/automation/cron-jobs/payloads"
+  ],
+  "changes": [
+    "Main-only local FTS memory with provider/fallback none, memory-only sources, no transcript recall.",
+    "Memory and native goal tools allowed to main, denied to five workers.",
+    "Compaction memory flush disabled; dreaming remained disabled.",
+    "Bounded attributed notes and objective artifact template installed, existing USER/AGENTS preserved.",
+    "One disabled daily native script job; finite session_status cap, five seconds, budget one, no delivery."
+  ],
+  "checks": [
+    {
+      "id": "native_config_schema",
+      "status": "pass",
+      "command": "node dist/index.js config set --batch-file /tmp/phase5.batch.json --dry-run; node dist/index.js config validate --json",
+      "observed_result": "15 updates validated; applied command exited 0; config valid true, warnings []. Application safeguard only.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "exact_application_readback",
+      "status": "pass",
+      "command": "Compare authored config fields and owner-file bytes; native automations list --all --json",
+      "observed_result": "15 paths match; original owner-file content preserved with delimited additions; one disabled script job with exact finite tool cap; all 12 original jobs retained with unchanged enabled/schedule/payload fields.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "single_run_concurrency_requirement",
+      "status": "blocked",
+      "command": "Installed native schema dry-run and source inspection: /app/dist/service-C-O17TZr.mjs resolveRunConcurrency",
+      "observed_result": "automations is not a config key; cron.maxConcurrentRuns is unsupported. Scheduler admission capacity is fixed at 8. No unsupported override or scheduler patch applied. Job is disabled.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "selective_recall",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "correction",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "deletion",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "hostile_candidate",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "restart",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "ambiguous_checkpoint",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "cancellation",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "scheduled_run",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "unattended_approval",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "doctor",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "secrets_security_audits",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "backup_restore",
+      "status": "not_run",
+      "command": "Deferred owner verification; see Phase 5 prompt and runbook.",
+      "observed_result": "Owner explicitly deferred tests. No acceptance assertion made.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "attributed_note_application",
+      "status": "pass",
+      "command": "Compare installed memory/phase5-runtime-decisions.md SHA256 against authored runtime-memory.md",
+      "observed_result": "Exact hash match; no retrieval/index fixture run.",
+      "evidence_path": "source-integrity.json"
+    },
+    {
+      "id": "authored_artifact_safety",
+      "status": "pass",
+      "command": "Inspect diff whitespace and scan authored Phase5 artifacts for credential patterns",
+      "observed_result": "No whitespace errors or credential-pattern findings. Not a native secrets/security audit.",
+      "evidence_path": "summary.md"
+    }
+  ],
+  "cost": {
+    "explicit_model_requests": 0,
+    "explicit_embedding_requests": 0,
+    "new_job_executions": 0,
+    "attributed_provider_charge": "unknown; invoice/accountUsage not queried",
+    "existing_budget_caps": "unchanged: $2/UTC day, $25/30 days; Anthropic workspace $25",
+    "background_jobs": "Four previously enabled weekly jobs retained; unrelated spend cannot be attributed to this setup."
+  },
+  "warnings": [
+    "Native goals persist objectives; automatic multi-step resume requires a supported controller, not activated.",
+    "Fixed scheduler global capacity 8; stricter effective runtime policy/approval behavior still unverified.",
+    "Readback confirms configured tools cap, not runtime enforcement.",
+    "Prior Phase4 review/browser and baseline Doctor warnings remain unresolved.",
+    "Temporary batch ownership corrected after EACCES. Memory-note readback reference path corrected before successful hash comparison; cleanup then completed. No behavior fixture run."
+  ],
+  "blockers": [
+    "Owner-deferred behavior/recovery/security fixtures.",
+    "No supported single-run global concurrency setting in installed version.",
+    "No managed workflow controller activated; restart completion demonstration pending."
+  ],
+  "backup": {
+    "path": "/opt/openclaw-production/backups/phase5-config-20260927T180152Z",
+    "scope": [
+      "openclaw.json",
+      "AGENTS.md",
+      "USER.md"
+    ],
+    "restoreTest": "not_run"
+  },
+  "schedule_id": "4435c5f6-ca9e-46a0-9f1e-24edb5202c27",
+  "cleanup": [
+    "No fixture, paid probe, active goal, Chrome action, sign-in, schedule activation or manual run.",
+    "Own temporary server staging files removed after source readback."
+  ],
+  "rollback": "Disable/remove only this job; restore captured authored config fields and delimited source sections while preserving later unrelated edits. Remove new phase5-runtime-decisions note/template; invalidate main memory index if necessary. See RUNBOOK.md.",
+  "previous_gate": "Phase4 remains unpassed; proceeding is an owner-authorized exception."
+}

@@ -41,7 +41,11 @@ You are building a personal AI super-agent for one owner, using **OpenClaw** as 
 
 ## 2. The decision already made: start from zero
 
-An older project ("AgentAI") exists at `../agentai-archive` (read-only). It was a multi-tenant Python service with its own agent loop, tool registry, router, approvals, memory, scheduler, sandbox and Telegram gateway. **OpenClaw natively provides nearly all of that**, more maturely.
+The former AgentAI application is retained in this repository’s Git history.
+Its working-tree code and old prompts were deleted at the owner’s request;
+there is no required external archive directory. It was a multi-tenant Python
+service with its own agent loop, tools, approvals, memory and scheduler.
+Use OpenClaw’s native features.
 
 Therefore:
 
@@ -277,7 +281,9 @@ Work strictly in order. At each gate: run the checks, write a short report in `B
 ### Phase 0 — Research and design (no installs yet)
 
 - Read the current docs for every feature in §5. Record exact config keys, commands and any differences from this prompt.
-- Skim `../agentai-archive` and produce `MIGRATION_DECISIONS.md`: for each AgentAI component, one line: REPLACED BY (OpenClaw feature), or KEEP (with concrete justification), or DROP. Expect nearly everything to be REPLACED or DROP.
+- Use the existing `MIGRATION_DECISIONS.md`; consult AgentAI’s Git history
+  only if a migration question remains. Do not recreate a deleted archive
+  or port the old application merely to repeat this historical phase.
 - Produce `ARCHITECTURE.md`: agents, their models, tool profiles, sandbox settings, which ones touch untrusted content, approval rules, budget settings.
 
 **Gate 0:** the owner reviews both documents. Nothing is installed until approved.

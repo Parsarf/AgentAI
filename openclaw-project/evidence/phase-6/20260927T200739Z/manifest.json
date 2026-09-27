@@ -1,0 +1,203 @@
+{
+  "phase": 6,
+  "run_id": "20260927T200739Z",
+  "started_at": "2026-09-27T20:07:39Z",
+  "finished_at": "2026-09-27T20:21:17.603466+00:00",
+  "gate": "BLOCKED",
+  "implementation_status": "Revised deliverable complete: extensible connection base and connector manager installed; owner deliberately defers account setup; full Gate6 acceptance unpassed",
+  "target": {
+    "host": "69.48.206.62",
+    "deployment": "/opt/openclaw-production"
+  },
+  "versions": {
+    "openclaw": "2026.9.6 eb377ac",
+    "workspace_mcp": "1.29.0",
+    "python_base": "python@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f",
+    "google_image": "sha256:17620499dba778fa67572e0ac5f93ae59c570734901b5671ddfbb1197fc0fc4c"
+  },
+  "tested_revision": {
+    "repository_base": "63da739",
+    "working_tree": "Prior Phase5 edits preserved; Phase6 additions uncommitted; no paid tests"
+  },
+  "required_scope": [
+    "gmail",
+    "calendar",
+    "drive",
+    "selected GitHub repositories"
+  ],
+  "owner_direction": [
+    "Proceed to next phase despite earlier open gates",
+    "Skip heavy and expensive tests; discover issues through normal use",
+    "Gmail, Calendar, Drive and selected GitHub repositories",
+    "Google account target provided; identity not verified",
+    "Owner will do account setup later; build base with an easy way to connect any tool"
+  ],
+  "documentation_links": [
+    "https://docs.openclaw.ai/tools/mcp",
+    "https://docs.openclaw.ai/cli/mcp/registry",
+    "https://docs.openclaw.ai/cli/mcp/transports",
+    "https://github.com/taylorwilsdon/google_workspace_mcp/tree/v1.29.0",
+    "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md"
+  ],
+  "changes": [
+    "mcp.servers.google-readonly",
+    "mcp.servers.github-readonly",
+    "tools.alsoAllow",
+    "tools.sandbox.tools.allow",
+    "agents.entries.researcher.tools.profile",
+    "agents.entries.researcher.tools.allow",
+    "agents.entries.main.tools.deny",
+    "agents.entries.browser-worker.tools.deny",
+    "agents.entries.critic.tools.deny",
+    "agents.entries.codex-builder.tools.deny",
+    "agents.entries.codex-debugger.tools.deny",
+    "Appended bounded main/researcher integration instructions",
+    "Prepared operator-only native Google OAuth helper",
+    "Temporary logging fixed, local file parameters disabled, download cap5MiB",
+    "Reusable native MCP connector manager installed on VPS",
+    "Mac bin/connect-tool wrapper and CONNECT_TOOLS.md guide",
+    "Automatic per-connector reader policy, exact tool selection and disabled registration"
+  ],
+  "checks": [
+    {
+      "id": "native_config_schema",
+      "status": "pass",
+      "command": "Native config set --batch-file --dry-run; config validate --json",
+      "observed_result": "11 primary paths and per-server controls applied; valid true, warnings [].",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "authored_readback",
+      "status": "pass",
+      "command": "Compare exact authored fields against private post-change config; mcp status --json",
+      "observed_result": "Both definitions disabled; exact filters, scopes and role policies read back.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "installed_connector",
+      "status": "pass",
+      "command": "Docker build; workspace-mcp --help; SDK imports; pip freeze",
+      "observed_result": "workspace-mcp1.29.0 installed; readonly/service flags available; dependency inventory captured.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "mcp_static",
+      "status": "pass",
+      "command": "mcp doctor --json",
+      "observed_result": "Static registry check exited0. No live probe or provider connection.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "security",
+      "status": "pass",
+      "command": "security audit --json",
+      "observed_result": "0critical,2warnings,1info; profile/model-tier warnings retained.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "secrets",
+      "status": "pass",
+      "command": "secrets audit --json",
+      "observed_result": "0plaintext,0unresolved,0shadowed,0store residue; existing OAuth legacy residue1.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "gateway_health",
+      "status": "pass",
+      "command": "HTTP GET /healthz",
+      "observed_result": "HTTP200 after config application.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "local_syntax",
+      "status": "pass",
+      "command": "Python source compile; git diff --check",
+      "observed_result": "Auth/setup helpers compile; whitespace check passed.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "google_identity_and_scopes",
+      "status": "blocked",
+      "command": "Owner OAuth client installation and consent",
+      "observed_result": "Owner email supplied, but no OAuth client/token or verified identity. Connection disabled.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "github_identity_and_repositories",
+      "status": "blocked",
+      "command": "Selected-repository credential setup",
+      "observed_result": "Repository names and server credential not provided. Connection disabled.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "provider_reads_drafts_refresh",
+      "status": "not_run",
+      "command": "Bounded provider checks",
+      "observed_result": "No account read or provider draft created; drafts are local proposals only.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "authorization_injection_outage",
+      "status": "not_run",
+      "command": "Heavy acceptance fixtures",
+      "observed_result": "Deferred by explicit owner direction. Runtime assertions not made from config.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "doctor_restore",
+      "status": "not_run",
+      "command": "General Doctor / isolated restore",
+      "observed_result": "Deferred; no clean Doctor or restore claim.",
+      "evidence_path": "application-readback.json"
+    },
+    {
+      "id": "google_auth_helper",
+      "status": "not_run",
+      "command": "Operator native start_google_auth flow",
+      "observed_result": "Prepared and SDK-import checked only; OAuth helper not executed.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "connector_manager_delivery",
+      "status": "pass",
+      "command": "Installed manager --help; local wrapper add --help; wrapper list",
+      "observed_result": "Manager installed; CLI help/syntax verified; native status lists both existing definitions disabled. Generic add/login/enable provider flows not exercised.",
+      "evidence_path": "summary.md"
+    }
+  ],
+  "cost": {
+    "explicit_model_calls": 0,
+    "explicit_embedding_calls": 0,
+    "provider_content_calls": 0,
+    "new_jobs": 0,
+    "attributed_charge": "unknown; provider/invoice not queried; unrelated preexisting jobs preserved",
+    "budget_caps": "unchanged"
+  },
+  "warnings": [
+    "No provider sign-in/identity/scope verification; both connectors disabled",
+    "Effective researcher MCP behavior/credential isolation and native approval posture untested",
+    "Two baseline audit warnings and OAuth legacy residue retained",
+    "General Doctor and prior gates remain unpassed",
+    "Google read-only scopes include all accessible mail/calendars/Drive items; requested item window is not provider per-item isolation",
+    "Prepared OAuth helper import checked but authentication unexecuted",
+    "Installed MCP header/env schema does not support SecretRef objects; native oauth.authProfileId mapping documented, GitHub token compatibility still unverified."
+  ],
+  "blockers": [
+    "Full Gate6 provider acceptance remains unpassed; account setup and heavy/paid tests deliberately deferred by owner. No blocker to requested base delivery."
+  ],
+  "backup": {
+    "path": "/opt/openclaw-production/integrations/phase6/20260927T200739Z",
+    "scope": [
+      "openclaw.json",
+      "main AGENTS.md",
+      "researcher AGENTS.md"
+    ],
+    "restore_test": "not_run"
+  },
+  "cleanup": [
+    "Removed only own root-owned temporary batch and upload files",
+    "No provider fixture, test draft, sign-in or connector execution retained",
+    "No connector enabled; image/private empty credential directory retained for onboarding"
+  ],
+  "rollback": "Disable/remove only google-readonly/github-readonly; restore authored native config fields and remove Phase6-delimited note sections, preserving later edits. See RUNBOOK.md."
+}

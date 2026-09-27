@@ -1,0 +1,13 @@
+{
+  "authored_sha256": {
+    "config/phase5/main-memory-AGENTS-append.md": "187c0f216fccc831f13098cd720d463277ffd77e343ac9f0a76aa2e786645e2a",
+    "config/phase5/objective-note.template.md": "479b45e2d6edc43dd27d59353171e0d2817c0477fdfb6c977543b2b5169fbbe8",
+    "config/phase5/owner-preferences-USER-append.md": "76592aa30e7fd0ff7a294ab96223c9e867aa2efc3efee7a85d2f744657c23f7b",
+    "config/phase5/quiet-status.js": "1225cc8238198fd2396cbc5235b33222e69c038ae5864da79785f66831cf8a20",
+    "config/phase5/runtime-memory.md": "aa7f268169f9d7612a9444d760e78f67bd1c740935b505c99fd6ed9eb7e56427",
+    "config/phase5-native-memory.batch.json": "ad2e7cfa451249a51ee7331750d05a2d288b1e084f7d3c5d1df84d5883888429"
+  },
+  "installed_memory_note_matches": true,
+  "phase5_script_matches_native_payload": true,
+  "behavior_tested": false
+}

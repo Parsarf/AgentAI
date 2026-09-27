@@ -1,5 +1,76 @@
 # OpenClaw build log
 
+## Owner-authorized legacy cleanup — 2026-09-27
+
+- Owner explicitly requested deleting unnecessary files after the obsolete
+  AgentAI/current OpenClaw distinction was explained. Removed legacy `agent/`,
+  seven old root phase prompts, README-lean, original multi-user spec and
+  BUILD_NOTES. Tracked history remains in Git; no legacy app edits were pending.
+- Moved private `agent/.env` intact to `openclaw-project/.env` (mode0600,
+  ignored); updated SSH/Control UI helpers and current runbook paths. No
+  credentials printed or revoked. Historical entries below retain old paths.
+- Removed disposable Mac OpenClaw state/workspace, restore clone, Node compile
+  cache and Finder metadata. Current config, plans, evidence, skills, research,
+  private recovery backups and all preceding uncommitted OpenClaw work preserved.
+- Replaced the1.6GiB legacy Python environment with a small helper environment
+  containing python-dotenv1.2.3. Reinstalled from an offline wheel made from
+  the already-installed distribution; no network/model calls required.
+- New root README and local dependency file explain the active project/setup.
+  Removed stale archive/legacy execution instructions from current docs.
+- Verified credential bytes preserved, private file ignored, helper syntax and
+  imports valid, native SSH works and VPS healthHTTP200. No server mutation,
+  database deletion, browser sign-in or paid test occurred.
+
+
+## Phase 6 — personal integration setup, 2026-09-27 (BLOCKED: account prerequisites)
+
+Scope clarification: owner will perform account setup later and requested
+an extensible base with an easy way to connect tools. Delivered native connector
+manager on VPS plus `bin/connect-tool` Mac wrapper and `CONNECT_TOOLS.md`.
+Register HTTPS/stdio adapters with exact tool selection, automatic reader policy,
+private backup/schema/readback, disabled default; login/enable/check/disable/
+logout/remove use native MCP commands. Base is installed; account connection is
+deliberately deferred, not required to finish this revised deliverable. Full
+Gate6 provider acceptance remains unpassed.
+
+- Owner requested the next phase without heavy/expensive tests, accepting
+  discovery through normal use. Required scope confirmed: Gmail, Calendar,
+  Drive, selected GitHub repositories. Google target supplied; GitHub selection
+  and Google OAuth client/consent still missing. Prior gates remain unpassed.
+- Built `workspace-mcp==1.29.0` with resolved Python base digest, frozen
+  dependency inventory and immutable image ID. Dedicated private token/client
+  directory; non-root, restricted container with read-only root and tmpfs logs.
+- Applied11 native config paths, then native per-server Codex prompt controls;
+  exact authored field readback passed. Main/researcher instructions preserved
+  and bounded Phase6 sections appended. Researcher alone is eligible; other
+  agents explicitly deny MCP. Both connectors disabled pending authentication.
+- Google read-only Gmail/Calendar/Drive and official GitHub read-only endpoint
+  configured with exact tool inclusion. Drafts remain local proposals; no send,
+  share, modify/delete or push/merge capabilities added. No new job or budget change.
+- Free setup checks: installed help/imports, native config validation, static
+  MCP doctor, healthHTTP200. Security0critical/2documented warnings; secrets
+  plaintext/unresolved/shadowed/store residue0, existing OAuth legacy residue1.
+  General Doctor and behavior suites deferred; no clean Doctor claim.
+- Corrected root-owned temporary-file cleanup and redirected connector file
+  logging into tmpfs. Added5MiB download cap and disabled local-file parameters.
+  No model/provider content call, auth flow, or integration activation performed.
+- [Plan/permission matrix](plans/phase-6.md),
+  [evidence](evidence/phase-6/20260927T200739Z/manifest.json).
+  Private config/source backups under
+  `/opt/openclaw-production/integrations/phase6/20260927T200739Z`.
+  Cost: explicit inference0; background/provider invoice not queried.
+
+
+## Phase 5 — native setup, 2026-09-27 (BLOCKED; tests deferred)
+
+- Owner authorized Phase5 advancement despite unpassed Gate4; all tests remain deferred.
+- Applied15 schema-validated config paths: main-only local memory and native goal tools, worker denials, compaction flush off, explicit owner timezone.
+- Preserved existing owner files, added attributed memory rules/note and objective template.
+- Created one disabled finite-tool script job; all12 existing jobs retained.
+- Installed scheduler capacity is fixed8; proposed concurrency1 unsupported. No managed workflow controller activated or autonomous recovery claimed.
+- No new model/embedding call, schedule execution, Chrome/sign-in or budget change. Provider charge unknown; old enabled jobs retained.
+- [Evidence](evidence/phase-5/20260927T180152Z/manifest.json), [plan](plans/phase-5.md), native diff `config/phase5-native-memory.batch.json`.
+
 ## Phase 4 — server recovery and manual handoff, 2026-09-27 (verification deferred)
 
 - Preserved prior native app/debug artifacts; identified failed coordinator

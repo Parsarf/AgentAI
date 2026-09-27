@@ -53,9 +53,9 @@ files changes the future instructions; it does not pass any runtime gate.
 
 ## Relationship to the older prompts
 
-The root `phase-1` through `phase-7` files describe the existing **multi-user
-Python AgentAI** service. They remain available for history and are **not**
-instructions for the new OpenClaw build. Its Phase 6 purchase path is partial
+The former root phase1–7 prompts and multi-user Python AgentAI code were
+deleted at the owner’s request on2026-09-27. Their tracked history remains
+in Git; they are no longer part of this working implementation. Its Phase 6 purchase path is partial
 and disabled; do not enable it or import its payment code. Its Phase 7
 deployment and test work was not completed; carry its useful *outcomes*
 (backups, restore proof, failure recovery, tenant-data export decisions) into

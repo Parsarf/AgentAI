@@ -1,0 +1,127 @@
+{
+  "run_id": "20260927T200739Z",
+  "backup": "/opt/openclaw-production/integrations/phase6/20260927T200739Z",
+  "base": "python@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f",
+  "google_image": "sha256:17620499dba778fa67572e0ac5f93ae59c570734901b5671ddfbb1197fc0fc4c",
+  "validation": {
+    "valid": true,
+    "path": "/home/node/.openclaw/openclaw.json",
+    "warnings": []
+  },
+  "status": {
+    "path": "/home/node/.openclaw/openclaw.json",
+    "servers": [
+      {
+        "name": "github-readonly",
+        "configured": true,
+        "enabled": false,
+        "ok": false,
+        "transport": "streamable-http",
+        "launch": "https://api.githubcopilot.com/mcp/readonly",
+        "requestTimeoutMs": 20000,
+        "connectionTimeoutMs": 10000,
+        "supportsParallelToolCalls": false,
+        "toolFilter": {
+          "include": [
+            "get_me",
+            "get_file_contents",
+            "list_commits",
+            "get_commit",
+            "list_branches",
+            "list_issues",
+            "issue_read",
+            "list_pull_requests",
+            "pull_request_read"
+          ]
+        },
+        "codex": {
+          "agents": [
+            "researcher"
+          ],
+          "defaultToolsApprovalMode": "prompt"
+        }
+      },
+      {
+        "name": "google-readonly",
+        "configured": true,
+        "enabled": false,
+        "ok": false,
+        "transport": "stdio",
+        "launch": "/usr/bin/docker run --rm -i --read-only --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=128 --memory=384m --cpus=0.5 --user=1000:1000 --tmpfs /tmp:rw,nosuid,nodev,size=64m --mount type=bind,src=/opt/openclaw-production/integrations/google/private,dst=/data --env USER_GOOGLE_EMAIL=<owner-google-account> --env WORKSPACE_MCP_LOG_DIR=/tmp/logs --env WORKSPACE_MCP_MAX_FILE_BYTES=5242880 --env WORKSPACE_MCP_DISABLE_LOCAL_FILES=true sha256:17620499dba778fa67572e0ac5f93ae59c570734901b5671ddfbb1197fc0fc4c",
+        "requestTimeoutMs": 20000,
+        "connectionTimeoutMs": 30000,
+        "supportsParallelToolCalls": false,
+        "toolFilter": {
+          "include": [
+            "search_gmail_messages",
+            "get_gmail_message_content",
+            "get_gmail_messages_content_batch",
+            "list_calendars",
+            "get_events",
+            "search_drive_files",
+            "get_drive_file_content",
+            "list_drive_items"
+          ]
+        },
+        "codex": {
+          "agents": [
+            "researcher"
+          ],
+          "defaultToolsApprovalMode": "prompt"
+        }
+      }
+    ]
+  },
+  "changed_paths": [
+    "mcp.servers.google-readonly",
+    "mcp.servers.github-readonly",
+    "tools.alsoAllow",
+    "tools.sandbox.tools.allow",
+    "agents.entries.researcher.tools.profile",
+    "agents.entries.researcher.tools.allow",
+    "agents.entries.main.tools.deny",
+    "agents.entries.browser-worker.tools.deny",
+    "agents.entries.critic.tools.deny",
+    "agents.entries.codex-builder.tools.deny",
+    "agents.entries.codex-debugger.tools.deny"
+  ],
+  "connections_enabled": false,
+  "model_calls": 0,
+  "provider_calls": 0,
+  "cleanup": "root-owned staging files removed; logging redirected to tmpfs, download cap 5MiB, local-file tool parameters disabled",
+  "setup_checks": {
+    "security": {
+      "exit_code": 0,
+      "summary": {
+        "critical": 0,
+        "warn": 2,
+        "info": 1
+      },
+      "finding_ids": [
+        "summary.attack_surface",
+        "tools.profile_minimal_overridden",
+        "models.weak_tier"
+      ]
+    },
+    "secrets": {
+      "exit_code": 0,
+      "summary": {
+        "plaintextCount": 0,
+        "unresolvedRefCount": 0,
+        "shadowedRefCount": 0,
+        "storeResidueCount": 0,
+        "legacyResidueCount": 1
+      },
+      "finding_count": 1
+    },
+    "mcp_static": {
+      "exit_code": 0,
+      "disabled_servers_expected": true,
+      "static_only": true
+    },
+    "health": {
+      "http_status": "200",
+      "exit_code": 0
+    }
+  }
+}
