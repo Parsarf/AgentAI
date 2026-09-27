@@ -1,0 +1,6 @@
+# Repair the missing host-package peer link for bundled native Codex setup.
+# Base remains the previously deployed OpenClaw 2026.9.6 digest.
+FROM ghcr.io/openclaw/openclaw@sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730
+USER root
+RUN test ! -e /app/node_modules/openclaw && ln -s /app /app/node_modules/openclaw
+USER node

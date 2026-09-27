@@ -1,0 +1,94 @@
+name: openclaw-production
+
+x-openclaw-environment: &openclaw-environment
+  HOME: /home/node
+  OPENCLAW_HOME: /home/node
+  OPENCLAW_STATE_DIR: /home/node/.openclaw
+  OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+  OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+  OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+  OPENCLAW_GATEWAY_PORT: "18789"
+  OPENCLAW_DISABLE_BONJOUR: "1"
+
+x-openclaw-volumes: &openclaw-volumes
+  - ./openclaw-state:/home/node/.openclaw
+  - ./workspace:/home/node/.openclaw/workspace
+
+services:
+  postgres:
+    image: postgres@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74
+    env_file:
+      - path: ./secrets/postgres.env
+        format: raw
+    networks: [budget-data]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+
+  litellm:
+    image: docker.litellm.ai/berriai/litellm@sha256:87f34979b9f8cb274fac90ca8a4fdda07d8480de22755562a26adeb95ce20d02
+    command: ["--config", "/app/config.yaml"]
+    env_file:
+      - path: ./secrets/litellm.env
+        format: raw
+    networks: [budget-data, agent]
+    volumes:
+      - ../config/litellm.example.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose: ["4000"]
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+
+  openclaw-gateway:
+    # The Gateway is the trusted Docker controller; agent tool containers do not
+    # receive this socket or the Docker CLI mount.
+    profiles: [agent]
+    image: ghcr.io/openclaw/openclaw@sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730
+    environment: *openclaw-environment
+    volumes:
+      - ./openclaw-state:/home/node/.openclaw
+      - ./workspace:/home/node/.openclaw/workspace
+      - /usr/bin/docker:/usr/local/bin/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${OPENCLAW_DOCKER_SOCKET_GID:?set to the numeric group owning /var/run/docker.sock}"
+    networks: [agent]
+    ports:
+      - "127.0.0.1:18789:18789"
+      - "127.0.0.1:18790:18790"
+      - "127.0.0.1:3978:3978"
+    cap_drop: ["NET_RAW", "NET_ADMIN"]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    restart: unless-stopped
+    command: ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
+
+  openclaw-cli:
+    profiles: [maintenance]
+    image: ghcr.io/openclaw/openclaw@sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730
+    environment: *openclaw-environment
+    volumes: *openclaw-volumes
+    network_mode: service:openclaw-gateway
+    cap_drop: [NET_RAW, NET_ADMIN]
+    security_opt: ["no-new-privileges:true"]
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["node", "dist/index.js"]
+
+volumes:
+  postgres-data:
+
+networks:
+  budget-data:
+    internal: true
+  agent:

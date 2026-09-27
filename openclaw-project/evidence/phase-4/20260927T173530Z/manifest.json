@@ -1,0 +1,79 @@
+{
+  "phase": 4,
+  "run_id": "20260927T173530Z",
+  "started_at": "2026-09-27T17:35:30Z",
+  "finished_at": "2026-09-27T17:43:00Z",
+  "gate": "DEFERRED_OWNER_VERIFICATION",
+  "owner_direction": [
+    "Owner will perform sign-in and Chrome operation; no assistant Chrome automation.",
+    "Owner explicitly deferred all remaining tests until later. No further tests or review inference started after that instruction."
+  ],
+  "prior_build_and_debug_evidence": "../20260926T225237Z/manifest.json",
+  "checks": [
+    {
+      "id": "offline_state_backup",
+      "status": "pass",
+      "observed_result": "Gateway stopped only after0 active recent sessions. Private stopped-state archive readable;47 SQLite quick_checks,0 failures. Restore not tested.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "offline_doctor",
+      "status": "incomplete",
+      "observed_result": "Migration lease conflict absent offline. Doctor produced diagnostics then timed out124 during cleanup. One-off container removed; Gateway restarted. Not a clean Doctor pass.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "health_recovery",
+      "status": "pass",
+      "observed_result": "Gateway HTTP200 after restart, before owner deferred further tests.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "saved_codex_auth_and_quota",
+      "status": "pass",
+      "observed_result": "Native protected accountUsage succeeded: Plus,5h5% used,week16%,zero credits. No sign-in needed now.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "manual_chrome",
+      "status": "deferred_by_owner",
+      "observed_result": "Preview prepared without Chrome automation; owner asked to defer tests, preview stopped. No manual/browser pass claimed.",
+      "evidence_path": "../../../plans/phase-4-manual-chrome.md"
+    },
+    {
+      "id": "independent_acp_review",
+      "status": "pending",
+      "observed_result": "Cached ACP Claude adapter0.76.0 and SDK0.3.257 discovered. Inspected tool-control support; not configured/activated and no reviewer model call made. Remains pending under owner verification deferral.",
+      "evidence_path": "summary.md"
+    }
+  ],
+  "warnings": [
+    "Doctor reports bwrap user-namespace probe denied; no host AppArmor/sysctl/capability change made. Actual prior sandbox_exec checks remain evidence for that tested execution path only.",
+    "Doctor also reports stale routing in1 session, an existing failed automation, missing/unused skills and unsupported sandbox skill_workshop; no unrelated fix or automation change made.",
+    "Prior main coordinator later ended failed after child completed; native builder app and debug proof remain successful. Completion collection is not claimed successful."
+  ],
+  "backup": {
+    "path": "/opt/openclaw-production/backups/phase4-offline-check-20260927T173624Z/stopped-state.tar.gz",
+    "sha256": "256d18cccabab1a8bc687bd398e53a8c044710808c2b2852b3baad20d65263c9",
+    "sqlite_files_checked": 47,
+    "restore_tested": false
+  },
+  "cleanup": [
+    "Local preview session stopped exit0 after owner deferred tests.",
+    "Offline one-off Doctor container removed and production Gateway restarted.",
+    "No Chrome automation, login changes, paid reviewer request, API fallback, spending-cap increase or new cron."
+  ],
+  "remaining": [
+    "Owner Chrome checks deferred.",
+    "Independent ACP review and findings disposition pending.",
+    "Doctor warnings and incomplete exit remain documented."
+  ],
+  "cost": {
+    "new_reviewer_model_requests": 0,
+    "codex_quota_observed_epoch_ms": 1790530797983,
+    "five_hour_used_percent": 5,
+    "weekly_used_percent": 16,
+    "credit_balance": 0,
+    "invoice_cost_usd": null
+  }
+}

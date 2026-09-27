@@ -1,0 +1,32 @@
+[
+  {
+    "path": "plugins.entries.codex",
+    "value": {
+      "enabled": true,
+      "config": {
+        "discovery": {
+          "enabled": true
+        },
+        "appServer": {
+          "mode": "guardian",
+          "homeScope": "agent",
+          "clearEnv": [
+            "OPENAI_API_KEY",
+            "CODEX_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "TELEGRAM_BOT_TOKEN",
+            "GH_TOKEN",
+            "GITHUB_TOKEN"
+          ],
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "auto_review",
+          "sandbox": "workspace-write"
+        },
+        "sessionCatalog": {
+          "enabled": false
+        }
+      }
+    }
+  }
+]

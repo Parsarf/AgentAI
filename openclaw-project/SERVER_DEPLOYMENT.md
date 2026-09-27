@@ -1,7 +1,8 @@
 # Always-on server deployment plan
 
-Status: prepared, not deployed. The owner requires the agent to keep working
-while the Mac is off. SSH authentication is pending.
+Status: live VPS deployment inspected and hardened during Phase 1. See
+[BUILD_LOG.md](BUILD_LOG.md) for results and [deploy/README.md](deploy/README.md)
+for fresh-deployment instructions. Gate 1 still awaits owner access checks.
 
 ## Chosen host
 
@@ -9,17 +10,19 @@ The owner already has an IONOS VPS at `69.48.206.62` with Ubuntu 24.04,
 2 vCPUs, 4 GiB RAM, and a 120 GiB disk. TCP port 22 responds. The current
 ED25519 host key matches the key already recorded on this Mac (fingerprint
 `SHA256:HBaF3x2ux+XYjWcTUFIuCHzueudk5GK0Gbe65zctehY`), but public-key
-authentication for `root` failed. Obtain the private initial password through
-the owner-provided mode-0600 intake file, inspect existing services and free
-resources first, then install a dedicated SSH key. No new VPS purchase is
-needed. Four GiB may constrain concurrent browser and sandbox sessions; cap
-concurrency at one until measured, and add swap if the host lacks it.
+authentication for `root` failed in the earlier session. The owner directed
+credential lookup to `agent/.env` and supplied working access there. SSH now
+works with strict verification against the recorded host key. The host has
+3.8 GiB RAM, 2 GiB swap and about 88 GiB free disk. Docker 29.2.1 and Compose
+5.0.2 were already installed. A dedicated SSH key remains an operations
+follow-up; no key was installed in this session. Browser/sandbox concurrency
+must be limited in the later phases.
 
 Do not expose OpenClaw's Gateway, bridge, or Teams ports publicly. Reach the
 Control UI through an SSH tunnel or a private authenticated network.
 
 The official OpenClaw Docker image and Compose file from the pinned v2026.9.6
-source tag are the proposed runtime. The browser image is
+source tag match the live Gateway version. The browser image is
 `ghcr.io/openclaw/openclaw:2026.9.6-browser`; the Docker sandbox must be built
 and verified on the server. The official Compose file publishes three ports by
 default, so bind all three to `127.0.0.1` on the host before starting it:
@@ -30,7 +33,7 @@ OPENCLAW_BRIDGE_PORT=127.0.0.1:18790
 OPENCLAW_MSTEAMS_PORT=127.0.0.1:3978
 ```
 
-Inspect `docker compose config` and `ss -lnt` to verify the effective host
+Inspect `docker compose config --quiet` and `ss -lnt` to verify the effective host
 bindings. Do not rely on a host firewall alone: Docker's published ports can
 bypass ordinary firewall rules.
 

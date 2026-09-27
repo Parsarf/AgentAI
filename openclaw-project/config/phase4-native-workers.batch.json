@@ -1,0 +1,203 @@
+[
+  {
+    "path": "agents.defaults.modelPolicy.allow",
+    "value": [
+      "litellm/claude-sonnet-4-6",
+      "litellm/claude-haiku-4-5",
+      "openai/gpt-6-sol"
+    ]
+  },
+  {
+    "path": "agents.defaults.models.openai/gpt-6-sol",
+    "value": {
+      "agentRuntime": {
+        "id": "codex"
+      },
+      "params": {
+        "fastMode": false
+      }
+    }
+  },
+  {
+    "path": "auth.order.openai",
+    "value": [
+      "openai:default"
+    ]
+  },
+  {
+    "path": "agents.entries.codex-builder",
+    "value": {
+      "name": "codex-builder",
+      "workspace": "/home/node/.openclaw/work/phase4/board",
+      "agentDir": "/home/node/.openclaw/agents/codex-builder/agent",
+      "model": {
+        "primary": "openai/gpt-6-sol",
+        "fallbacks": []
+      },
+      "utilityModel": "openai/gpt-6-sol",
+      "modelPolicy": {
+        "allow": [
+          "openai/gpt-6-sol"
+        ]
+      },
+      "sandbox": {
+        "mode": "all",
+        "backend": "docker",
+        "scope": "agent",
+        "workspaceAccess": "rw",
+        "docker": {
+          "image": "ghcr.io/openclaw/openclaw@sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730",
+          "user": "1000:1000",
+          "readOnlyRoot": true,
+          "network": "none",
+          "capDrop": [
+            "ALL"
+          ],
+          "pidsLimit": 128,
+          "memory": "768m",
+          "memorySwap": "1g",
+          "cpus": 1
+        }
+      },
+      "tools": {
+        "profile": "coding",
+        "allow": [
+          "session_status",
+          "read",
+          "ls",
+          "write",
+          "edit",
+          "apply_patch",
+          "exec",
+          "process"
+        ],
+        "deny": [
+          "browser",
+          "canvas",
+          "view_image",
+          "nodes",
+          "automations",
+          "cron",
+          "gateway",
+          "web_search",
+          "web_fetch",
+          "sessions_spawn",
+          "sessions_send",
+          "sessions_yield",
+          "subagents",
+          "message",
+          "portal",
+          "sessions",
+          "plugins",
+          "openclaw"
+        ],
+        "elevated": {
+          "enabled": false
+        },
+        "exec": {
+          "host": "sandbox",
+          "timeoutSeconds": 120
+        }
+      },
+      "skills": [
+        "software-project"
+      ],
+      "subagents": {
+        "allowAgents": []
+      }
+    }
+  },
+  {
+    "path": "agents.entries.codex-debugger",
+    "value": {
+      "name": "codex-debugger",
+      "workspace": "/home/node/.openclaw/work/phase4/debug-repo",
+      "agentDir": "/home/node/.openclaw/agents/codex-debugger/agent",
+      "model": {
+        "primary": "openai/gpt-6-sol",
+        "fallbacks": []
+      },
+      "utilityModel": "openai/gpt-6-sol",
+      "modelPolicy": {
+        "allow": [
+          "openai/gpt-6-sol"
+        ]
+      },
+      "sandbox": {
+        "mode": "all",
+        "backend": "docker",
+        "scope": "agent",
+        "workspaceAccess": "rw",
+        "docker": {
+          "image": "ghcr.io/openclaw/openclaw@sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730",
+          "user": "1000:1000",
+          "readOnlyRoot": true,
+          "network": "none",
+          "capDrop": [
+            "ALL"
+          ],
+          "pidsLimit": 128,
+          "memory": "768m",
+          "memorySwap": "1g",
+          "cpus": 1
+        }
+      },
+      "tools": {
+        "profile": "coding",
+        "allow": [
+          "session_status",
+          "read",
+          "ls",
+          "write",
+          "edit",
+          "apply_patch",
+          "exec",
+          "process"
+        ],
+        "deny": [
+          "browser",
+          "canvas",
+          "view_image",
+          "nodes",
+          "automations",
+          "cron",
+          "gateway",
+          "web_search",
+          "web_fetch",
+          "sessions_spawn",
+          "sessions_send",
+          "sessions_yield",
+          "subagents",
+          "message",
+          "portal",
+          "sessions",
+          "plugins",
+          "openclaw"
+        ],
+        "elevated": {
+          "enabled": false
+        },
+        "exec": {
+          "host": "sandbox",
+          "timeoutSeconds": 120
+        }
+      },
+      "skills": [
+        "debugging"
+      ],
+      "subagents": {
+        "allowAgents": []
+      }
+    }
+  },
+  {
+    "path": "agents.entries.main.subagents.allowAgents",
+    "value": [
+      "researcher",
+      "browser-worker",
+      "critic",
+      "codex-builder",
+      "codex-debugger"
+    ]
+  }
+]

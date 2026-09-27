@@ -1,0 +1,253 @@
+{
+  "phase": 4,
+  "run_id": "20260926T220330Z",
+  "started_at": "2026-09-26T22:03:30Z",
+  "updated_at": "2026-09-26T22:38:55.276732+00:00",
+  "finished_at": null,
+  "gate": "BLOCKED",
+  "target": "IONOS VPS 69.48.206.62 /opt/openclaw-production",
+  "versions": {
+    "openclaw": "2026.9.6 eb377ac",
+    "codex_bundled": "0.155.1",
+    "gateway_image": "sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730",
+    "node": "24.19.0",
+    "browser_image": "sha256:67526310a29737631880f6a1af93c7953587a20c484725351dcab1160c3c11cd"
+  },
+  "tested_revision": {
+    "workspace_base": "5e6f3fa3fb4a3ead1deb4cf8c12d5ce3a69d7538",
+    "board_baseline": "6ba1d0d7ae3ff7aec95f02e13730dda4b5068f1d",
+    "debug_baseline": "2d238359735e3ad0944272ac37fb90ccd8d8289a"
+  },
+  "documentation": [
+    "https://learn.chatgpt.com/docs/auth",
+    "https://docs.openclaw.ai/plugins/codex-harness-reference/auth",
+    "https://docs.openclaw.ai/plugins/codex-harness-reference/approval-and-sandbox",
+    "https://docs.openclaw.ai/tools/acp-agents-setup",
+    "https://docs.openclaw.ai/gateway/sandboxing/images-and-setup"
+  ],
+  "changes": [
+    "Corrected and installed coding/debugging skills",
+    "Installed board spec and fresh-review contract; captured Git baselines",
+    "Built pinned official browser sidecar; tested isolated containers",
+    "Gateway state parent mode0755\u21920700",
+    "Enabled ChatGPT account device-code sign-in with explicit owner confirmation; toggle verified on.",
+    "Validated guardian draft, then applied enabled guardian configuration after saved authentication and a fresh verified backup; Gateway restarted."
+  ],
+  "checks": [
+    {
+      "id": "skills_schema",
+      "status": "pass",
+      "command": "quick_validate.py config/skills/{software-project,debugging}",
+      "observed_result": "Both skills valid.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "skills_installed",
+      "status": "pass",
+      "command": "skills list --agent main --json",
+      "observed_result": "Both eligible, modelVisible, unblocked; installed SHA-256 matches local source.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "backup",
+      "status": "pass",
+      "command": "backup create --verify --output /tmp/phase4-preparation-backup.tar.gz --json",
+      "observed_result": "Verified archive copied privately with Compose backup; archive 0600, parent0700.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "config",
+      "status": "pass",
+      "command": "config validate --json",
+      "observed_result": "valid=true; no schema warnings.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "codex_guardian_draft",
+      "status": "pass",
+      "command": "config set --batch-json <guardian-disabled-config> --dry-run",
+      "observed_result": "One update validated; not applied; plugin remains disabled.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "codex_auth",
+      "status": "pass",
+      "command": "models auth list --agent main --json; authorized browser device flow",
+      "observed_result": "Owner confirmed enabling device-code sign-in; toggle on; browser shows Signed in to Codex; persisted OpenClaw main profile count1, provider openai. No auth values retained.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "browser_readiness_initial",
+      "status": "blocked",
+      "command": "browser doctor --json",
+      "observed_result": "Browser control disabled by existing policy; not counted as working native browser.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "browser_image",
+      "status": "pass",
+      "command": "bin/phase4/build-browser-image.sh",
+      "observed_result": "Official v2026.9.6 source; expected authenticated CDP contract label.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "coding_container_boundary",
+      "status": "pass",
+      "command": "bin/phase4/probe-coding.sh",
+      "observed_result": "Inside write succeeds, outside write denied, canary read absent, host canary unchanged, state and Docker socket absent; Node24.19.0.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "browser_container_boundary",
+      "status": "pass",
+      "command": "bin/phase4/probe-browser.sh",
+      "observed_result": "Authenticated CDP200, absent/wrong auth401, loopback-only binding; no state/socket; Chrome154.0.8037.57; container removed.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "fixture_baseline",
+      "status": "pass",
+      "command": "bin/phase4/record-fixture-baselines.sh",
+      "observed_result": "Three existing debugging tests pass in read-only isolated Node container; seeded defect preserved.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "secrets",
+      "status": "pass",
+      "command": "secrets audit --check --json",
+      "observed_result": "clean; three refs resolved; zero plaintext, unresolved, shadowed or residue findings.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "security",
+      "status": "pass",
+      "command": "security audit --json",
+      "observed_result": "State0755 warning repaired to0700; final zero critical, one existing minimal-profile override warning.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "doctor",
+      "status": "pass",
+      "command": "doctor --non-interactive",
+      "observed_result": "Completed; optional unused skill prerequisites missing and memory search intentionally disabled; not a warning-free pass.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "health",
+      "status": "pass",
+      "command": "curl --fail --silent http://127.0.0.1:18789/healthz",
+      "observed_result": "HTTP200; ok=true status=live.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "native_builder_boundary",
+      "status": "blocked",
+      "command": "Native Codex permission probes",
+      "observed_result": "No authenticated native turn yet; container probes do not substitute.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "native_build",
+      "status": "blocked",
+      "command": "Orchestrator initiates native Codex app build",
+      "observed_result": "Auth saved and guardian plugin enabled; isolated builder not yet configured; account quota and native boundary probes unverified.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "app_acceptance_browser",
+      "status": "not_run",
+      "command": "Final app tests plus restricted browser-worker flows",
+      "observed_result": "No app implemented yet; worker access remains disabled.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "independent_acp_review",
+      "status": "blocked",
+      "command": "Fresh ACP reviewer on tested snapshot",
+      "observed_result": "No delivered source; reviewer auth/isolation not configured or proved; existing Anthropic daily window exhausted per Phase3 evidence.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "native_debug_regression",
+      "status": "not_run",
+      "command": "Same regression fails before and passes after native fix",
+      "observed_result": "Seeded baseline retained; regression and fix must come from native coding path.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "codex_activation",
+      "status": "pass",
+      "command": "config set --batch-file /tmp/phase4-codex-activation.batch.json --dry-run; apply; config validate; docker compose restart openclaw-gateway",
+      "observed_result": "One update validated and applied; guardian/on-request/auto_review/workspace-write; agent-scoped home, cleared credential env, discovery enabled, session catalog disabled. Config valid without warnings.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "codex_catalog",
+      "status": "pass",
+      "command": "models refresh --json; models list --all --provider openai --json",
+      "observed_result": "Hosted catalog unchanged,1069 models/44 providers; seven available OpenAI models: gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5. No inference or quota proof.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "health_after_activation",
+      "status": "pass",
+      "command": "curl /healthz; docker compose ps; free -m",
+      "observed_result": "HTTP200 live; Gateway/Postgres healthy and LiteLLM running;2017MiB available memory,606MiB swap used; only loopback Gateway ports.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "approval_review_availability",
+      "status": "blocked",
+      "command": "Read installed native Codex account-usage RPC schema over SSH",
+      "observed_result": "Command not executed: automatic approval review reached usage limit. This was a review failure, not an unsafe-action determination. No bypass attempted.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "changed_artifact_scan",
+      "status": "pass",
+      "command": "Known-secret value scan of changed Phase4 artifacts; git diff --check",
+      "observed_result": "No known env credentials found in changed artifacts; diff whitespace check clean. No secrets printed.",
+      "evidence_path": "summary.md"
+    }
+  ],
+  "cost": {
+    "inference_requests_this_run": 0,
+    "anthropic": {
+      "daily_cap_usd": 2,
+      "monthly_cap_usd": 25,
+      "window_status": "Exhausted per Phase3; no cap changes or inference retry this run"
+    },
+    "codex": {
+      "auth_route": "ChatGPT device login saved in OpenClaw profile; native ephemeral auth bridge",
+      "inference_requests": 0,
+      "quota": "not yet verified",
+      "attributed_invoice_cost_usd": null
+    }
+  },
+  "warnings": [
+    "Existing main coding-profile override warning",
+    "Unused optional skill prerequisites missing; memory search intentionally disabled",
+    "Browser DBus warnings in disposable probe; authenticated control succeeded",
+    "Gate1 owner/nonowner Telegram and Gate2 owner approval-card checks still pending",
+    "Gate3 research/injection checks pending; deleted cron not recreated"
+  ],
+  "blockers": [
+    "Automatic approval review usage limit prevents further VPS commands; resolve review availability before continuing.",
+    "Subscription quota, isolated native builder configuration and permission probes pending",
+    "Native app/browser/debug proof and fresh ACP reviewer still pending; Anthropic daily cap remains unchanged"
+  ],
+  "cleanup": [
+    "Coding, baseline and browser probe containers removed by --rm/trap",
+    "Synthetic browser control credential file removed",
+    "Synthetic canaries retained in phase4/isolation-probe for evidence",
+    "Device-flow browser success verified; login CLI ended137 when Gateway was deliberately restarted after profile persistence."
+  ],
+  "rollback": {
+    "backup": "/opt/openclaw-production/backups/phase4-preparation-20260926T220832Z/openclaw.tar.gz",
+    "sha256": "c97f0d0ee1b4445c075e4dff27b2c77e4170b5a41e0ec365d85a8e9db7adade6",
+    "method": "Use verified preactivation archive in a separate private directory to recover only the previous plugins.entries.codex field, preserving the saved login and concurrent changes; validate/restart if needed. Restore only this run\u2019s skill/spec hunks. Keep0700 privacy repair. No restore performed.",
+    "restore_tested": false,
+    "activation_backup": "/opt/openclaw-production/backups/phase4-codex-activation-20260926T222626Z/openclaw.tar.gz",
+    "activation_sha256": "419839566f6ed4329ceb6b3d219d1016e5ed9fa0cf616da5e72aa5ca7255759d"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "command": "node .phase4/repo-permission-check.mjs",
+  "cwd": "/workspace",
+  "uid": 1000,
+  "node": "v24.19.0",
+  "checks": {
+    "repoExclusiveCreateAndReadBack": {
+      "passed": true,
+      "path": "/workspace/.phase4/repo-fixture-364-1790463765681.txt",
+      "readBack": "phase4-repo-exclusive-fixture"
+    },
+    "outsideExclusiveCreateDenied": {
+      "passed": true,
+      "code": "EROFS"
+    },
+    "outsideCanaryAbsent": {
+      "passed": true,
+      "code": "ENOENT"
+    },
+    "dockerSocketAbsent": {
+      "passed": true,
+      "code": "ENOENT"
+    },
+    "gatewayConfigAbsent": {
+      "passed": true,
+      "code": "ENOENT"
+    },
+    "providerCredentialEnvAbsent": {
+      "passed": true,
+      "presentNames": []
+    }
+  },
+  "exitCode": 0
+}

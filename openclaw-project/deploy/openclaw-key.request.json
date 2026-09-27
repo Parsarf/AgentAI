@@ -1,0 +1,9 @@
+{
+  "key_alias": "openclaw-owner",
+  "models": ["claude-sonnet-4-6", "claude-haiku-4-5"],
+  "budget_limits": [
+    {"budget_duration": "24h", "max_budget": 2.0},
+    {"budget_duration": "30d", "max_budget": 25.0}
+  ],
+  "max_parallel_requests": 1
+}

@@ -1,0 +1,45 @@
+{
+  "check": "Exported source equals native tested source manifest",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "5133f57084871acb31ab051b347a0b3428bacf1375b85ce2d19cfa8ad97876a5",
+      "matches_native_manifest": true
+    },
+    {
+      "path": "index.html",
+      "sha256": "ee7847b42c42eab6fea853e61dbf342298719479c78a28e291900dc841d582a9",
+      "matches_native_manifest": true
+    },
+    {
+      "path": "package.json",
+      "sha256": "69b23df6aae4fa2a2ccb53c0851874bdf0fd74e396cf2d0fb38558f756566f0d",
+      "matches_native_manifest": true
+    },
+    {
+      "path": "server.mjs",
+      "sha256": "cc41cfee0933bca36871309a185a3659ad158f12064f60f200164158becf1ff4",
+      "matches_native_manifest": true
+    },
+    {
+      "path": "src/app.mjs",
+      "sha256": "abca334ceb7e70c52e9ff8f204477cf666dd4d3dd13486c62d07a540a987a813",
+      "matches_native_manifest": true
+    },
+    {
+      "path": "src/board.mjs",
+      "sha256": "01efa8d60b4183eeb4bde2600faedf7309b0130c126026586fb662c4e552f19c",
+      "matches_native_manifest": true
+    },
+    {
+      "path": "styles.css",
+      "sha256": "43bfec6848766bc4e7b777b4127c06eb08df5435dcc0c40f3250db8ca71f261e",
+      "matches_native_manifest": true
+    },
+    {
+      "path": "tests/board.test.mjs",
+      "sha256": "0e9f73ebc41579b080df3853fad3d8de01d83fd332de4dccfea5fb534626cec1",
+      "matches_native_manifest": true
+    }
+  ]
+}

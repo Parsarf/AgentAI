@@ -24,13 +24,35 @@
         "mode": "all",
         "backend": "docker",
         "scope": "session",
-        "workspaceAccess": "ro",
+        "workspaceAccess": "rw",
         "docker": {
           "image": "openclaw-sandbox:bookworm-slim",
           "readOnlyRoot": true,
           "tmpfs": ["/tmp", "/var/tmp", "/run"],
           "network": "none",
-          "capDrop": ["ALL"]
+          "capDrop": ["ALL"],
+          "pidsLimit": 128,
+          "memory": "768m",
+          "memorySwap": "1g",
+          "cpus": 1
+        }
+      }
+    },
+    "entries": {
+      "main": {
+        "sandbox": {
+          "mode": "all",
+          "backend": "docker",
+          "scope": "session",
+          "workspaceAccess": "rw"
+        },
+        "tools": {
+          "alsoAllow": ["read", "ls", "write", "edit", "apply_patch", "exec", "process"],
+          "deny": ["browser", "canvas", "view_image", "nodes", "automations", "cron", "gateway"],
+          "elevated": {
+            "enabled": true,
+            "allowFrom": { "telegram": ["REPLACE_WITH_NUMERIC_OWNER_ID"] }
+          }
         }
       }
     }
@@ -86,5 +108,26 @@
       "memory-core": { "config": { "dreaming": { "enabled": false } } }
     }
   },
-  "tools": { "elevated": { "enabled": false } }
+  "tools": {
+    "profile": "minimal",
+    "alsoAllow": ["read", "ls", "write", "edit", "apply_patch", "exec", "process"],
+    "deny": ["browser", "canvas", "view_image", "nodes", "automations", "cron", "gateway"],
+    "fs": { "workspaceOnly": true },
+    "exec": {
+      "host": "sandbox",
+      "security": "allowlist",
+      "ask": "always",
+      "strictInlineEval": true
+    },
+    "sandbox": {
+      "tools": {
+        "allow": ["session_status", "read", "ls", "write", "edit", "apply_patch", "exec", "process"],
+        "deny": ["browser", "canvas", "view_image", "nodes", "automations", "cron", "gateway"]
+      }
+    },
+    "elevated": {
+      "enabled": true,
+      "allowFrom": { "telegram": ["REPLACE_WITH_NUMERIC_OWNER_ID"] }
+    }
+  }
 }

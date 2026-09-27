@@ -1,0 +1,23 @@
+[
+  {"path": "agents.defaults.subagents", "value": {"maxConcurrent": 3, "runTimeoutSeconds": 900}},
+  {"path": "agents.entries.main.subagents", "value": {"allowAgents": ["researcher", "browser-worker", "critic"], "delegationMode": "prefer"}},
+  {"path": "agents.entries.main.sandbox.mode", "value": "off"},
+  {"path": "agents.entries.main.tools.profile", "value": "coding"},
+  {"path": "agents.entries.main.tools.alsoAllow", "value": ["session_status", "read", "ls", "write", "edit", "apply_patch", "exec", "process", "sessions_spawn", "sessions_yield", "subagents"]},
+  {"path": "agents.entries.main.tools.deny", "value": ["browser", "canvas", "view_image", "nodes", "automations", "cron", "gateway", "web_search", "web_fetch", "sessions_send", "message", "portal", "sessions", "plugins", "openclaw"]},
+  {"path": "agents.entries.researcher.tools", "value": {"allow": ["session_status", "read", "ls", "write", "edit", "web_fetch"], "deny": ["browser", "canvas", "view_image", "nodes", "automations", "cron", "gateway", "sessions_spawn", "sessions_send", "sessions_yield", "subagents", "exec", "process", "apply_patch", "message", "web_search"], "elevated": {"enabled": false}}},
+  {"path": "agents.entries.researcher.subagents", "value": {"allowAgents": []}},
+  {"path": "agents.entries.researcher.skills", "value": ["deep-research", "untrusted-content"]},
+  {"path": "agents.entries.browser-worker.tools", "value": {"allow": ["session_status", "read", "ls", "write", "edit", "web_fetch"], "deny": ["browser", "canvas", "view_image", "nodes", "automations", "cron", "gateway", "sessions_spawn", "sessions_send", "sessions_yield", "subagents", "exec", "process", "apply_patch", "message", "web_search"], "elevated": {"enabled": false}}},
+  {"path": "agents.entries.browser-worker.subagents", "value": {"allowAgents": []}},
+  {"path": "agents.entries.browser-worker.skills", "value": ["untrusted-content"]},
+  {"path": "agents.entries.critic.tools", "value": {"allow": ["session_status", "read", "ls", "web_fetch"], "deny": ["browser", "canvas", "view_image", "nodes", "automations", "cron", "gateway", "sessions_spawn", "sessions_send", "sessions_yield", "subagents", "exec", "process", "write", "edit", "apply_patch", "message", "web_search"], "elevated": {"enabled": false}}},
+  {"path": "agents.entries.critic.subagents", "value": {"allowAgents": []}},
+  {"path": "agents.entries.critic.skills", "value": ["untrusted-content"]},
+  {"path": "tools.sessions.visibility", "value": "tree"},
+  {"path": "tools.agentToAgent", "value": {"enabled": false}},
+  {"path": "tools.web.fetch.enabled", "value": true},
+  {"path": "tools.web.search.enabled", "value": false},
+  {"path": "tools.alsoAllow", "value": ["session_status", "read", "ls", "write", "edit", "apply_patch", "exec", "process", "web_fetch", "sessions_spawn", "sessions_yield", "subagents"]},
+  {"path": "tools.sandbox.tools.allow", "value": ["session_status", "read", "ls", "write", "edit", "apply_patch", "exec", "process", "web_fetch"]}
+]

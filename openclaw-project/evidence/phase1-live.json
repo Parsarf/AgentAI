@@ -1,0 +1,64 @@
+{
+  "date_local": "2026-09-25",
+  "date_utc": "2026-09-26",
+  "phase": 1,
+  "gate": "pending-owner-access-checks",
+  "versions": {
+    "openclaw": "2026.9.6 (eb377ac)",
+    "litellm": "1.102.1",
+    "docker": "29.2.1",
+    "compose": "5.0.2",
+    "os": "Ubuntu 24.04.4 LTS"
+  },
+  "security": {
+    "config_valid": true,
+    "secret_audit_clean": true,
+    "critical": 0,
+    "warnings": 0,
+    "gateway_host_ports_loopback_only": true,
+    "unauthenticated_tools_http_status": 401,
+    "postgres_provider_credentials_removed": true,
+    "agent_tools": ["session_status"],
+    "sandbox": "off; chat-only baseline, Phase 2 isolation pending"
+  },
+  "doctor": {
+    "ok": false,
+    "dispositions": {
+      "container_lan_bind": "Required for Docker forwarding; host ports verified loopback-only",
+      "skill_workshop_missing": "Deliberately denied by Phase 1 chat-only policy"
+    }
+  },
+  "budgets": {
+    "daily_usd": 2,
+    "monthly_usd": 25,
+    "anthropic_monthly_limit_confirmed_by_owner": true,
+    "reservation_enabled": true,
+    "fail_closed_enabled": true,
+    "daily_probe_http_status": 429,
+    "monthly_probe_http_status": 429,
+    "database_outage_http_status": 503,
+    "database_outage_error_type": "no_db_connection",
+    "temporary_keys_deleted": 3,
+    "recovery_required_proxy_restart": true,
+    "observed_key_spend_before_usd": 1.345983,
+    "observed_key_spend_after_usd": 1.445606,
+    "observed_interval_delta_usd": 0.099623,
+    "cost_attribution": "Aggregate key spend; concurrent owner activity may be included"
+  },
+  "runtime": {
+    "health_http_status": 200,
+    "telegram_probe_ok": true,
+    "native_reply": "PHASE1_OK",
+    "native_reply_provider": "litellm",
+    "native_reply_model": "claude-sonnet-4-6",
+    "native_reply_tool_calls": 0,
+    "control_ui_connected_as_owner": true,
+    "control_ui_reply": "PHASE1_UI_OK",
+    "native_archive_verified": true,
+    "production_restore_tested": false
+  },
+  "remaining": [
+    "Owner Telegram reply",
+    "Different Telegram identity denied"
+  ]
+}

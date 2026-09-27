@@ -1,0 +1,15 @@
+✔ add trims, rejects blank, keeps duplicate titles and unique IDs including zero (2.386673ms)
+✔ toggle and delete affect only selected ID; filters do not mutate collection (0.468101ms)
+✔ namespaced serialization and restore retain completion and advance IDs (1.696855ms)
+✔ corrupt saved data is not silently overwritten; explicit replace works (0.477639ms)
+✔ unavailable storage does not crash; writes are explained (0.29252ms)
+✔ malicious title remains data and app uses text-only DOM assignment (0.464746ms)
+✔ failed write leaves previously valid saved data intact and warns (0.305716ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 108.15385

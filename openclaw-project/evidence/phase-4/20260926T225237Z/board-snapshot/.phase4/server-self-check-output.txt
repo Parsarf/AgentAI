@@ -1,0 +1,10 @@
+{
+  "command": "node .phase4/server-self-check.mjs",
+  "listener": "127.0.0.1:31487",
+  "indexStatus": 200,
+  "scriptStatus": 200,
+  "missingStatus": 404,
+  "privateListenerReported": true,
+  "passed": true
+}
+temporary server stopped

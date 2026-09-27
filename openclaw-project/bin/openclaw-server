@@ -1,0 +1,23 @@
+#!/bin/sh
+# Run from any directory. Never echoes credentials or expands command strings.
+set -eu
+project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+compose_file="$project_dir/deploy/docker-compose.production.yml"
+mode=${1:-}
+case "$mode" in
+  offline)
+    shift
+    # Native local CLI before Gateway startup; no service dependencies started.
+    exec docker compose -f "$compose_file" run --rm --no-deps \
+      --entrypoint node openclaw-gateway dist/index.js "$@"
+    ;;
+  live)
+    shift
+    # Requires an already running Gateway; use its loopback network namespace.
+    exec docker compose -f "$compose_file" run --rm --no-deps openclaw-cli "$@"
+    ;;
+  *)
+    echo 'Usage: openclaw-server offline|live <native OpenClaw arguments>' >&2
+    exit 2
+    ;;
+esac

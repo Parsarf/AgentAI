@@ -7,3 +7,11 @@ backups/
 restore-test/
 *.tar.gz
 .env
+deploy/secrets/
+deploy/openclaw-state/
+deploy/workspace/
+deploy/evidence/
+
+# Version project skill definitions; runtime skills remain ignored.
+!config/skills/
+!config/skills/**

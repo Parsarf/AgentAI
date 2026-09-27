@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private Task Board</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/src/app.mjs"></script>
+</head>
+<body>
+  <main class="board">
+    <header><p class="eyebrow">LOCAL TASKS</p><h1>Task board</h1><p class="intro">A simple place to keep track of what matters next.</p></header>
+    <section class="panel" aria-label="Tasks">
+      <form id="task-form" novalidate>
+        <label for="task-title">New task</label>
+        <div class="add-row"><input id="task-title" name="title" type="text" autocomplete="off" aria-describedby="title-error" placeholder="What needs doing?"><button type="submit">Add task</button></div>
+        <p id="title-error" class="error" role="alert"></p>
+      </form>
+      <div class="toolbar"><div class="filters" role="group" aria-label="Filter tasks"><button type="button" data-filter="all" aria-pressed="true">All</button><button type="button" data-filter="active" aria-pressed="false">Active</button><button type="button" data-filter="completed" aria-pressed="false">Completed</button></div><p id="task-count" aria-live="polite"></p></div>
+      <p id="storage-notice" class="notice" role="status" hidden></p><button id="replace-data" type="button" hidden>Replace saved data</button>
+      <ul id="task-list" aria-label="Task list"></ul><p id="empty-state" class="empty"></p>
+    </section>
+    <footer>Stored only in this browser when storage is available.</footer>
+  </main>
+</body>
+</html>

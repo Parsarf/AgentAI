@@ -6,10 +6,11 @@ a fresh coding session with access to the intended server, from the new
 OpenClaw project directory. Keep `BUILD_LOG.md` there and read it before every phase. A later
 session resumes incomplete work; it does not silently repeat setup.
 
-An isolated Mac bootstrap and its current evidence are in
-[openclaw-project](../../openclaw-project/README.md). Production must run on
-an always-on server and stay available while the owner's Mac is off. The
-staging setup has not passed the sandbox or final acceptance gates.
+Deployment status and gate evidence are in
+[openclaw-project](../../openclaw-project/README.md) and its build log. Production
+must run on an always-on server and stay available while the owner's Mac is
+off. A prompt's presence does not mean that phase has been executed or accepted;
+resume from the actual recorded evidence.
 
 | Phase | Prompt | Gate |
 |---|---|---|
@@ -17,11 +18,38 @@ staging setup has not passed the sandbox or final acceptance gates.
 | 1 | [Secure single agent](phase-1-secure-agent.md) | Owner-only chat, health, usage and budget evidence |
 | 2 | [Sandbox and approvals](phase-2-sandbox-approvals.md) | Isolation and approval denials demonstrated |
 | 3 | [Trust-separated workers](phase-3-trust-workers.md) | Sourced research and injection test |
-| 4 | [Codex and review](phase-4-codex-review.md) | Build, tests, independent review, debugging |
-| 5 | [Memory and durable work](phase-5-memory-scheduling.md) | Selective recall and restart recovery |
-| 6 | [Personal integrations](phase-6-integrations.md) | Read, draft, approval, malicious-content checks |
-| 7 | [Evaluation and operations](phase-7-evals-operations.md) | Repeatable evals, recovery, security gate |
-| 8 | [Acceptance and handoff](phase-8-acceptance.md) | Full owner workflow and runbook |
+| 4 | [Codex and review](phase-4-codex-review.md) | Scoped native build, behavioral/browser proof, independent ACP review, regression fix |
+| 5 | [Memory and durable work](phase-5-memory-scheduling.md) | Selective recall/correction/deletion, restart reconciliation, cancellation, safe scheduled work |
+| 6 | [Personal integrations](phase-6-integrations.md) | Verified accounts/scopes, useful reads/drafts, enforced authorization, hostile-content and auth-failure checks |
+| 7 | [Evaluation and operations](phase-7-evals-operations.md) | Repeatable assertions, security/budget proof, scheduled backup, isolated restore and rollback |
+| 7A | [Jev browser optimization](phase-7a-jev-browser-optimization.md) (optional) | Paired task-success/cost evidence, enforced action boundary, verified fallback and rollback |
+| 8 | [Acceptance and handoff](phase-8-acceptance.md) | Real owner-channel product workflow, correlated evidence, runnable artifact and usable runbook |
+| 9 | [Private control dashboard](phase-9-private-control-dashboard.md) | Private owner product, scoped native controls, authorization/file tests; additional users require approved isolation |
+
+## Executing Phase 4 onward
+
+Each Phase 4–9 prompt has a concrete outcome, ordered procedure, required
+artifacts, observable test cases and a completion gate. Read the shared
+[execution contract](execution-contract.md) before running any of them. It
+defines version discovery, authorization, native-first decisions, bounded
+retries, billing checks, evidence format and truthful gate reporting.
+
+Paste the selected phase into a coding session with this repository available;
+the AI must read the linked contract and project records before implementation.
+If copying a prompt outside the repository, include the contract and relevant
+project records with it. Keep the selected phase's full verification criteria;
+do not replace them with a short instruction to "enable the feature."
+
+The intended progression is: verified coding → useful durable work → scoped
+accounts → repeatable recovery/evaluation → a real owner acceptance run → a
+private dashboard. Optional Phase 7A evaluates Jev after the working baseline
+and before owner acceptance; rollout requires measured reliability and savings.
+Phase 9 starts with the owner; additional audiences are
+separate approved increments with matching isolation tests. Native features
+and currently working services remain the starting point for every decision.
+
+Executing a phase means implementing and verifying it. Editing these prompt
+files changes the future instructions; it does not pass any runtime gate.
 
 ## Relationship to the older prompts
 

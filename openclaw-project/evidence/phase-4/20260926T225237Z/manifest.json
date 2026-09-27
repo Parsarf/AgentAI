@@ -1,0 +1,192 @@
+{
+  "phase": 4,
+  "run_id": "20260926T225237Z",
+  "started_at": "2026-09-26T22:44:00Z",
+  "updated_at": "2026-09-26T23:11:00Z",
+  "finished_at": "2026-09-26T23:11:00Z",
+  "gate": "BLOCKED",
+  "target": "IONOS VPS /opt/openclaw-production",
+  "versions": {
+    "openclaw": "2026.9.6 eb377ac",
+    "gateway_image": "sha256:de9b14d86157547f83ddcf52414fa749417f9de6bb43d02c89a8d532c541a444",
+    "base_image": "sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730"
+  },
+  "changes": [
+    "Built/deployed same-version SDK peer-link repair",
+    "Validated/applied isolated codex-builder and codex-debugger policies",
+    "Completed native builder boundary probe",
+    "Main orchestrator spawned native Codex board build; app and seeded debugging proof completed"
+  ],
+  "checks": [
+    {
+      "id": "codex_quota",
+      "status": "pass",
+      "command": "gateway call codex.accountUsage (protected profile)",
+      "observed_result": "Protected Plus account read: five-hour98% used, weekly15%, zero credits. Reset2026-09-27T03:37:23Z. Shared usage cannot be attributed solely to VPS work.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "sdk_repair",
+      "status": "pass",
+      "command": "Isolated read-only/no-network container imports native Codex setup module",
+      "observed_result": "SDK_MODULE_LOAD_OK; previously missing host package peer link now resolves",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "health",
+      "status": "pass",
+      "command": "curl /healthz after repaired-image deployment",
+      "observed_result": "HTTP200 live",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "worker_preflight",
+      "status": "pass",
+      "command": "config set --batch-file <native worker draft> --dry-run",
+      "observed_result": "Native model validator checked both refs with no errors. Six fields applied and exactly read back; config valid. Apply process timed out124 during plugin cleanup after application, not a clean CLI exit.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "native_permission_probe",
+      "status": "pass",
+      "command": "native codex-builder sandbox_exec permission probe; independent Docker mount inspection",
+      "observed_result": "UID1000; root read-only; networknone; only project/protected skills mounted; outside root EROFS; canary/socket/live-state absent; provider env names absent. Explicit repo write refinement completed in build task, result inspection pending. Outside read tool denied. Explicit repo create/read refinement independently inspected: all checks passed, exit0.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "native_board_build",
+      "status": "pass",
+      "command": "main agent native sessions_spawn to codex-builder",
+      "observed_result": "Main spawned child session17b39191-436f-4770-8b55-70b5d354778b. Child statusdone; source built natively, seven behavioral tests exit0, private server smoke exit0 and stopped. Browser/ACP separate unrun gates.",
+      "evidence_path": "board-snapshot/.phase4/board-build-report.md"
+    },
+    {
+      "id": "config_validate",
+      "status": "pass",
+      "command": "config validate --json",
+      "observed_result": "validtrue warnings[]",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "secrets_audit",
+      "status": "pass_with_info",
+      "command": "secrets audit --check --json",
+      "observed_result": "Exit1: zero plaintext/unresolved/shadowed/store-residue; one informational LEGACY_RESIDUE for saved OAuth profile (outside static SecretRef migration).",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "exported_source_integrity",
+      "status": "pass",
+      "command": "SHA256 comparison of all8 downloaded application files against native dirty-source manifest",
+      "observed_result": "All8 source hashes match. Does not prove browser/ACP acceptance.",
+      "evidence_path": "board-source-integrity.json"
+    },
+    {
+      "id": "security_audit",
+      "status": "pass_with_warnings",
+      "command": "security audit --json",
+      "observed_result": "0critical/2warnings/1info. Coding profile overrides include the new explicit workers; model-tier heuristic labels gpt-6-sol below GPT5. Do not report warning-free. Browser disabled; secretDiagnostics[].",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "doctor",
+      "status": "blocked",
+      "command": "doctor --non-interactive",
+      "observed_result": "Exit1: active builder database lease refused historical transcript-directive migration; later repairs not run. Retry after native work is quiescent; no doctor --fix applied. Offline retry precheck found1 running main phase4 coordinator; aborted before shutdown/backup/migration. Gateway remains healthy. No doctor --fix.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "native_debugging",
+      "status": "pass",
+      "command": "Native codex-debugger reproduces same regression before/after; node --test neighbors",
+      "observed_result": "Run4086f835-92aa-4dff-a057-625242ae7f62 session4200bd53-ee85-468a-9422-66a9770d54ca turn01a0dff8-a0d1-7f70-ae04-7e0d714ec1e9. Regression exit1 before, exit0 after; full suite4/4 exit0. Minimal source/test patch; unchanged HEAD and original3 neighbors. Exported hashes match.",
+      "evidence_path": "debug-snapshot/.phase4/debug-report.md"
+    },
+    {
+      "id": "changed_artifact_scan",
+      "status": "pass",
+      "command": "Pattern scan of36 new/changed phase artifacts for private-key/API token formats; git diff --check",
+      "observed_result": "No matching secrets; diff whitespace check exit0. Pattern scan is not exhaustive.",
+      "evidence_path": "summary.md"
+    },
+    {
+      "id": "final_health",
+      "status": "pass",
+      "command": "curl http://127.0.0.1:18789/healthz",
+      "observed_result": "HTTP200 after native build/debug; no service interruption during blocked Doctor retry.",
+      "evidence_path": "summary.md"
+    }
+  ],
+  "cost": {
+    "native_runs_observed": [
+      {
+        "run_id": "49cac1c7-f8b1-455e-bac2-60cf427ef006",
+        "role": "permission-probe",
+        "input": 15387,
+        "output": 2521,
+        "cache_read": 75392,
+        "reasoning": 647,
+        "total": 93300
+      },
+      {
+        "run_id": "85475c50-6cf7-471f-bec5-5d885402d747",
+        "role": "coordinator-build-start",
+        "input": 18968,
+        "output": 2634,
+        "cache_read": 116992,
+        "reasoning": 315,
+        "total": 138594
+      },
+      {
+        "run_id": "4086f835-92aa-4dff-a057-625242ae7f62",
+        "role": "debugging",
+        "input": 18179,
+        "output": 3552,
+        "cache_read": 161280,
+        "reasoning": 303,
+        "total": 183011
+      }
+    ],
+    "codex_quota_observed": {
+      "updated_at_epoch_ms": 1790464230700,
+      "five_hour_used_percent": 98,
+      "weekly_used_percent": 15,
+      "credit_balance": 0,
+      "reset_at": "2026-09-27T03:37:23Z"
+    },
+    "quota_attribution": "Shared account; changes cannot be attributed solely to VPS runs.",
+    "invoice_cost_usd": null,
+    "anthropic_caps_unchanged": true,
+    "builder_session_reported": {
+      "session_id": "17b39191-436f-4770-8b55-70b5d354778b",
+      "input_tokens": 23513,
+      "output_tokens": 9635,
+      "totalTokens": 21738,
+      "note": "Session-store reported counters; not a full invoice/cache breakdown; do not sum as total billed usage."
+    }
+  },
+  "warnings": [
+    "Native archive verified; some Codex-home SQLite files archived as opaque bytes without live snapshots/integrity checks",
+    "Earlier gates remain pending; Phase4 exception recorded",
+    "Native CLI plugin disposal hook warning after configuration application; bounded timeout and exact field readback used."
+  ],
+  "blockers": [
+    "Restricted browser flows/screenshots/console checks unrun; browser-worker remains disabled.",
+    "Fresh ACP reviewer not configured/authenticated/isolated; existing Anthropic proxy budget admission unavailable until00:00UTC; no cap changes authorized.",
+    "Shared Codex five-hour quota98% used with zero credits; stop new inference until included allowance is available.",
+    "Doctor migration check refused active database lease; offline retry precheck found coordinator running, so shutdown/migration did not occur."
+  ],
+  "rollback": {
+    "backup": "/opt/openclaw-production/backups/phase4-native-workers-20260926T224652Z/openclaw.tar.gz",
+    "sha256": "21ab76b5e1b13a25de0ab5ad0154575e1fe64bd9e26df4488e4a205c35189342",
+    "compose_backup": "Same private directory/docker-compose.yml",
+    "restore_tested": false
+  },
+  "cleanup": [
+    "Builder private HTTP smoke-check server stopped (native retained output).",
+    "Debugger started no HTTP service.",
+    "Offline Doctor precheck refused to interrupt active main coordinator; Gateway was not stopped.",
+    "No cron/schedule recreated; no new API fallback/credits/cap increase."
+  ],
+  "ended_reason": "Native build and debug complete; shared Codex quota98% used, no credits; browser/ACP acceptance pending and Anthropic proxy admission unavailable until UTC reset."
+}

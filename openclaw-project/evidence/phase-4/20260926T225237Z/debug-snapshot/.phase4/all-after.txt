@@ -1,0 +1,12 @@
+✔ add rejects blank titles (1.490026ms)
+✔ add, toggle, remove lifecycle (1.070715ms)
+✔ filter active/completed on nonzero ids (0.360668ms)
+✔ filter includes task zero in its matching state (0.295055ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 93.3013
