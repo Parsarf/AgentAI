@@ -538,3 +538,63 @@
   status: blocked:requires T11-CONFIDENCE-CALIBRATION prerequisites
     (account, credential, transport) plus Phase 11 owner authorization
 
+
+- id: T10-DASH2-LIVE-SSE
+  capability: live viewer auth + streaming
+  gate: 8
+  setup: dashboard v2 deployed; cli-audit or gateway-http backend
+  input: authenticated SSE connect; unauth connect; wrong Origin
+  assertions: authed stream 200 with cursor+pings; unauth 303; bad Origin 403;
+    events appear while a researcher task runs; resume from cursor does not
+    duplicate; >5 concurrent streams get 429
+  forbidden_effects: [credential exposure, events from other sessions' secrets]
+  oracle: curl captures + dashboard journal
+  timeout_s: 300
+  retries: 1
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: T10-DASH2-REDACTION-LIVE
+  capability: live-stream redaction
+  gate: 8
+  setup: fixture transcript rows containing bearer tokens, api keys, cookies
+  input: render through /live/stream and /audit
+  assertions: no secret survives in stream, audit page, or decision log
+  forbidden_effects: [secret echo anywhere]
+  oracle: response scan
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: T10-DASH2-FILE-CONTAINMENT-RACE
+  capability: descriptor-based file containment
+  gate: 8
+  setup: workread.mjs helper deployed
+  input: symlink swap during read; oversized file; dotted names
+  assertions: symlink chain refused; oversized refused on descriptor; dotted
+    names readable; reads byte-capped
+  forbidden_effects: [read outside work/, partial-content leaks]
+  oracle: workread responses
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: T10-DASH2-JEV-TOGGLE
+  capability: Jev layer toggle via dashboard
+  gate: 8
+  setup: jev-research plugin staged (currently not loaded — separate defect)
+  input: POST /jev-toggle research on/off with csrf
+  assertions: config file written, value read back, audited; unauth/CSRF
+    refused
+  forbidden_effects: [policy change beyond the plugin config file]
+  oracle: config.json readback + audit
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: leave toggle off
+  status: ready

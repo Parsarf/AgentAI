@@ -1,5 +1,41 @@
 # OpenClaw build log
 
+## Phase 8B — dashboard v2 with live work viewer, 2026-09-29 (build READY; live SSE verified; deploy completed)
+
+Owner pasted the Phase 8B prompt; VPS was down at start (rebooted by owner
+mid-build). Built locally, then deployed and verified live after recovery.
+
+- **§1 defects fixed with regression tests (17 green):** dotted file names;
+  descriptor-based no-follow containment via new fixed container helper
+  `workread.mjs`; hashed server-side sessions (idle 2h / absolute 24h,
+  per-session logout, rotation); single-use downloads bound to
+  session+path+version+expiry; truthful unhealthy/unknown states with
+  preserved observation timestamps. Two additional real bugs caught by the
+  tests: the v1 `.`-check in `validate()` rejected every v2 token (owner
+  lockout) and the root-listing rejection regression.
+- **Live work viewer implemented and verified LIVE:** session tree, SSE
+  timeline with cursor-resume/pause/filters, web-activity rendering, Jev
+  toggle (documented config file, readback + audit), now-running strip,
+  pending-approvals count. Authenticated SSE returns 200 with cursor+pings
+  every 2s; unauthenticated 303. Two deployment bugs found and fixed live
+  (SSE header buffering — replaced with a raw status-line write; moving
+  audit cursor so events between polls are visible). Paid verification:
+  two small researcher runs observed during streaming; spend today $1.15
+  of $2. **Backend:** cli-audit (verified native); gateway-http history
+  backend implemented but gated on the §0 token+endpoint probe (not_run).
+- **Honest limits:** per-run cost attribution unavailable in the LiteLLM
+  ledger → "unknown" where not exposed; cancel/approval-resolution absent
+  (no verified native path); browser/codex specialized views render from
+  the same transcript stream and are only as complete as the runtime's
+  audit records.
+- Budget integrity re-verified after the owner's reboot: the transient
+  failsafe died with the reboot, so the cap was re-checked and confirmed
+  $2/24h + $25/30d via the budget_limits readback (mechanism documented in
+  `backups/ops/phase4a-restore-budget.sh`).
+- **Artifacts:** `plans/phase-8b.md` (progress/resume), dashboard v2 +
+  `static/` + `workread.mjs` + tests, 4 new T10-DASH2-* cases (suite 39),
+  `evidence/phase-8b/20260929T001500Z/`. Deployed hash matches repo.
+
 ## Phase 4A continuation — verification + close-out, 2026-09-28 ~22:15 UTC (layer NOT promoted)
 
 Another session built Phase 4A up to the toggle and ran out of usage mid-

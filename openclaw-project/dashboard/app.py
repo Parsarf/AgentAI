@@ -23,7 +23,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http import cookies as http_cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -426,13 +426,19 @@ def live_backend() -> str:
         return "cli-audit"
 
 
-def cli_events() -> list[dict]:
-    since = (datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_audit_cursor = {"ts": (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime(
+    "%Y-%m-%dT%H:%M:%SZ")}
 
-    def q():
+
+def cli_events() -> list[dict]:
+    """Poll the native audit trail with a moving cursor (overlap 1 s)."""
+    global _audit_cursor
+    since = _audit_cursor["ts"]
+
+    def _cli_query(since):
         return run(["docker", "exec", GATEWAY, "node", "dist/index.js",
                     "audit", "--after", since, "--json"], timeout=20)
-    (rc, out), _ = cached("live-audit", 4, q)
+    (rc, out), _ = cached("live-audit", 2, lambda: _cli_query(since))
     rows: list[dict] = []
     if rc != 0:
         return rows
@@ -450,6 +456,8 @@ def cli_events() -> list[dict]:
                          "tool": tool, "cls": cls,
                          "text": redact(action + " → " + str(r.get("status", ""))),
                          "agent_key": r.get("sessionId", "")})
+        if rows:
+            _audit_cursor["ts"] = max(rows, key=lambda r: r["ts"])["ts"]
     except json.JSONDecodeError:
         pass
     return rows
@@ -660,6 +668,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/live":
             backend = live_backend()
+            try:
+                with open(os.path.join(JEV_DIR, "config.json")) as f:
+                    jev = "on" if json.load(f).get("enabled") else "off"
+            except (OSError, ValueError):
+                jev = "unknown"
             body = (f"<h2>Live work viewer <span class=muted>({esc(backend)} backend)"
                     f"</span></h2>"
                     f"<p><button id=pause type=button>Pause</button> "
@@ -669,12 +682,20 @@ class Handler(BaseHTTPRequestHandler):
                     f"<option>browser</option><option>exec</option></select> "
                     f"<span id=live-status class=muted>connecting…</span></p>"
                     f"<div id=timeline></div>"
+                    f"<h2>Jev research layer: {esc(jev)}</h2>"
+                    f"<form method=post action=/jev-toggle>"
+                    f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                    f"<input type=hidden name=layer value=research>"
+                    f"<select name=value><option value='off'>off</option>"
+                    f"<option value='on'>on</option></select> "
+                    f"<button type=submit>Apply (read back + audit)</button></form>"
                     f"<p class=muted>All content is escaped, redacted attributed "
-                    f"data. reasoning is not shown (not exposed by the runtime).</p>")
+                    f"data. Model reasoning is not shown (not exposed by the "
+                    f"runtime).</p>")
             return self._send(200, page("live", body, rec))
 
         if path == "/live/stream":
-            if self.headers.get("Origin") not in (None,) | ORIGINS:
+            if self.headers.get("Origin") not in {None, *ORIGINS}:
                 return self._deny(403, "origin not allowed")
             if not rec:
                 return self._deny(403, "session required")
@@ -686,9 +707,12 @@ class Handler(BaseHTTPRequestHandler):
             cursor = int(q.get("cursor", ["0"])[0] or 0)
             seq = cursor
             try:
-                self._headers(200, "text/event-stream",
-                              [("Cache-Control", "no-store"),
-                               ("Connection", "keep-alive")])
+                # Raw status+headers for this route: some callers reject the
+                # send_response() path's buffering for event streams.
+                self.wfile.write(b"HTTP/1.0 200 OK\r\n"
+                                 b"Content-Type: text/event-stream\r\n"
+                                 b"Cache-Control: no-store\r\n"
+                                 b"Connection: close\r\n\r\n")
                 self.wfile.write(b": stream\n\n")
                 self.wfile.flush()
                 idle = 0

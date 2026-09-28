@@ -1,0 +1,27 @@
+{
+  "phase": "8B",
+  "run_id": "20260929T001500Z",
+  "type": "dashboard-live-viewer-build",
+  "generatedAtUtc": "2026-09-29T00:20:00Z",
+  "verified": {
+    "routes": "all 10 pages 200 with owner session; unauth / → login redirect; unauth /live/stream → 303",
+    "sse": "200, text/event-stream, cursor events + pings every 2s (raw status-line write; send_response path buffered header bytes on this route — root-caused by direct byte dump)",
+    "files": "workread.mjs containment: dotted names OK; ../, hidden, absolute, symlinks, >cap rejected (17 offline tests)",
+    "jev_toggle": "live page shows state; POST /jev-toggle writes documented plugin config, readback + audit",
+    "paid_run": "researcher Brave-search + web_fetch runs observed during SSE verification; spend today $1.15 < $2 cap",
+    "budget": "failsafe verified: $2/24h + $25/30d restored and read back after reboot"
+  },
+  "checks": [
+    {"id": "P8B-REGRESSION", "status": "pass", "observed": "17/17 offline tests (containment, sessions, single-use downloads, redaction, truthful status, audit-fail)"},
+    {"id": "P8B-LIVE-SSE", "status": "pass", "observed": "authenticated SSE 200 + streaming; unauth 303; two bugs found+fixed (token dot-check lockout; SSE header buffering)"},
+    {"id": "P8B-GATEWAY-HTTP-BACKEND", "status": "not_run", "reason": "gateway token resolution + history-endpoint probe deferred to next deploy window; cli-audit backend active"},
+    {"id": "P8B-FULL-BROWSER-MATRIX", "status": "not_run", "reason": "Phase 10 scope"}
+  ],
+  "knownLimitations": [
+    "per-run cost attribution: LiteLLM ledger has no session dimension → shown as unknown where the runtime does not expose it",
+    "cli-audit backend sees tool/audit events, not full transcripts; gateway-http backend pending §0 probe",
+    "cancel/approval-resolution controls intentionally absent (no verified native path)"
+  ],
+  "rollback": "restore previous dashboard/app.py from git (b7dee28) or the pre-change ops archive; systemctl restart openclaw-dashboard",
+  "cost": {"modelSpendUsd": 0.6, "note": "two small researcher runs during SSE verification, within existing $2 cap"}
+}
