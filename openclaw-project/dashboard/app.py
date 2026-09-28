@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""OpenClaw private ops dashboard (Phase 8 build).
+"""OpenClaw private owner dashboard v2 (Phase 8B).
 
-Owner-only, read-first, loopback-only HTTP service. Python 3.12 stdlib only.
-Every native operation is a fixed argv list — no client-supplied command,
-path escape, or RPC name is ever executed. Mutating controls are feature-
-gated OFF pending Phase 10 targeted proof and render as disabled.
-Access model: SSH tunnel to 127.0.0.1:18795 + app password (possession +
-knowledge). Not for exposure beyond loopback without TLS.
+Owner-only, loopback-only. stdlib Python. Browser ⇄ dashboard ⇄ fixed native
+operations; no credential reaches the browser. All rendered agent/web content
+is escaped text passed through redact(). Fail-open everywhere: any native
+source that is missing or misshapen renders as "unknown"/"unavailable", never
+as a healthy default. The Jev research layer toggle flips the plugin's
+documented config file with readback; the browser layer is not deployed.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import html
@@ -18,6 +19,7 @@ import os
 import re
 import secrets
 import subprocess
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -31,41 +33,44 @@ AUDIT_DIR = os.path.join(DIR, "audit")
 AUDIT = os.path.join(AUDIT_DIR, "audit.jsonl")
 OWNER_SECRET = os.path.join(DIR, "owner-secret")
 SESSION_SECRET = os.path.join(DIR, "session-secret")
+STATIC = os.path.join(DIR, "static")
 GATEWAY = "openclaw-production-openclaw-gateway-1"
 POSTGRES = "openclaw-production-postgres-1"
-PORT = 18795
-BIND = "127.0.0.1"
-SESSION_TTL = 12 * 3600
-DOWNLOAD_TTL = 300
-MAX_FILE_BYTES = 2_000_000
+LITELLM = "openclaw-production-litellm-1"
+HOST_STATE = os.path.join(BASE, "openclaw-state")  # = container /home/node/.openclaw
+JEV_DIR = os.path.join(HOST_STATE, "jev-research")
+PORT, BIND = 18795, "127.0.0.1"
+SESSION_TTL_IDLE, SESSION_TTL_ABS = 2 * 3600, 24 * 3600
+DOWNLOAD_TTL, MAX_FILE_BYTES = 300, 2_000_000
 WORK_ROOT = "/home/node/.openclaw/work"
-CAPS = {"daily_usd": 2.0, "monthly_usd": 25.0}  # owner-configured targets
+WORKREAD = WORK_ROOT + "/.dashread.mjs"
+CAPS = {"daily_usd": 2.0, "monthly_usd": 25.0}
+MAX_STREAMS = 5
+ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
-FEATURE_GATES = {
-    "new_chat": "awaiting Phase 10 targeted proof",
-    "session_reset": "awaiting Phase 10 targeted proof",
-    "approval_resolve": "native policy stays authoritative; owner resolves via Telegram/Control UI",
-    "connector_toggle": "owner uses bin/connect-tool (command-owner separation)",
-    "file_upload": "requires enforced permissions, size/type limits, malware scan — unavailable",
-    "provisioning": "no additional audience authorized by owner",
-}
-
+_lock = threading.Lock()
 _cache: dict[str, tuple[float, object]] = {}
 _login_fails: dict[str, list[float]] = {}
-
-SPEND_SQL = (
-    "SELECT 'today', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
-    "WHERE \"startTime\" >= date_trunc('day', now() at time zone 'utc') "
-    "UNION ALL SELECT '30d', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
-    "WHERE \"startTime\" >= now() - interval '30 days'"
-)
+_streams = 0
+_used_dl: dict[str, float] = {}
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
 
 
-def run(argv: list[str], timeout: int = 20) -> tuple[int, str]:
+def redact(text: str) -> str:
+    """Central redaction applied before render/log/audit."""
+    t = str(text)
+    t = re.sub(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{10,}", "Bearer [REDACTED]", t)
+    t = re.sub(r"\bsk-[A-Za-z0-9_-]{10,}", "sk-[REDACTED]", t)
+    t = re.sub(r"(?i)((?:api[_-]?key|token|password|secret|authorization)\s*[=:]\s*)(\S{6,})",
+               r"\1[REDACTED]", t)
+    t = re.sub(r"(?i)(set-cookie\s*:\s*)\S{6,}", r"\1[REDACTED]", t)
+    return t
+
+
+def run(argv: list[str], timeout: int = 25) -> tuple[int, str]:
     try:
         p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
         out = p.stdout or ""
@@ -76,7 +81,7 @@ def run(argv: list[str], timeout: int = 20) -> tuple[int, str]:
         return 124, "timeout"
     except FileNotFoundError:
         return 127, "command not found"
-    except Exception as e:  # noqa: BLE001 — boundary must never crash the page
+    except Exception as e:  # noqa: BLE001
         return 125, f"error: {type(e).__name__}"
 
 
@@ -90,9 +95,9 @@ def cached(key: str, ttl: int, fn):
     return value, now
 
 
-def _secret_path_refresh() -> bytes:
-    """Read session secret; (re)generate if absent. Regeneration = global
-    revocation of all cookies (documented as the kill switch)."""
+# ---------- secrets / sessions ----------
+
+def _session_key() -> bytes:
     try:
         with open(SESSION_SECRET, "rb") as f:
             return f.read().strip()
@@ -104,6 +109,10 @@ def _secret_path_refresh() -> bytes:
         return raw
 
 
+def _sign(payload: str) -> str:
+    return hmac.new(_session_key(), payload.encode(), hashlib.sha256).hexdigest()
+
+
 def check_password(supplied: str) -> bool:
     try:
         with open(OWNER_SECRET, "rb") as f:
@@ -113,13 +122,75 @@ def check_password(supplied: str) -> bool:
     return hmac.compare_digest(want, supplied.encode())
 
 
-def _sign(payload: str) -> str:
-    return hmac.new(_secret_path_refresh(), payload.encode(), hashlib.sha256).hexdigest()
+class SessionStore:
+    """Random server-side session IDs; only SHA-256 hashes are stored."""
+
+    def __init__(self, path: str):
+        self.path = path
+        self.lock = threading.Lock()
+
+    def _load(self) -> dict:
+        try:
+            with open(self.path) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def _save(self, d: dict) -> None:
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(d, f)
+
+    def create(self) -> tuple[str, str]:
+        token = secrets.token_urlsafe(32)
+        h = hashlib.sha256(token.encode()).hexdigest()
+        with _lock, self.lock:
+            d = self._load()
+            d[h] = {"created": time.time(), "last": time.time(),
+                    "csrf": secrets.token_hex(16)}
+            self._save(d)
+        return token, d[h]["csrf"]
+
+    def validate(self, token: str) -> dict | None:
+        if not token:
+            return None
+        h = hashlib.sha256(token.encode()).hexdigest()
+        with self.lock:
+            d = self._load()
+            rec = d.get(h)
+            if not rec:
+                return None
+            now = time.time()
+            if now - rec["created"] > SESSION_TTL_ABS or now - rec["last"] > SESSION_TTL_IDLE:
+                del d[h]
+                self._save(d)
+                return None
+            rec["last"] = now
+            self._save(d)
+            return rec
+
+    def destroy(self, token: str) -> None:
+        h = hashlib.sha256(token.encode()).hexdigest()
+        with self.lock:
+            d = self._load()
+            if h in d:
+                del d[h]
+                self._save(d)
+
+    def destroy_all(self) -> int:
+        with self.lock:
+            d = self._load()
+            n = len(d)
+            self._save({})
+            return n
+
+
+SESSIONS = SessionStore(os.path.join(DIR, "sessions.json"))
 
 
 def audit(action: str, target: str, result: str) -> bool:
     rec = {"ts": now_iso(), "actor": "owner", "role": "owner",
-           "action": action, "target": target, "result": result}
+           "action": action, "target": str(target)[:120], "result": result}
     try:
         with open(AUDIT, "a") as f:
             f.write(json.dumps(rec) + "\n")
@@ -128,55 +199,80 @@ def audit(action: str, target: str, result: str) -> bool:
         return False
 
 
-def audit_tail(n: int = 20) -> list[str]:
+def audit_tail(n: int = 25) -> list[str]:
     try:
-        with open(AUDIT, "r") as f:
+        with open(AUDIT) as f:
             return f.readlines()[-n:]
     except OSError:
         return []
 
 
-# ---------- fixed native data operations ----------
+# ---------- fixed native observations ----------
 
-def obs(label: str, state: str, detail: str) -> dict:
-    return {"label": label, "state": state, "detail": detail, "ts": now_iso()}
+def obs(label: str, state: str, detail, ts: str | None = None) -> dict:
+    return {"label": label, "state": state, "detail": detail, "ts": ts or now_iso()}
 
 
 def gw_health() -> dict:
+    ts = now_iso()
     try:
         with urllib.request.urlopen("http://127.0.0.1:18789/healthz", timeout=5) as r:
             ok = r.status == 200
-        return obs("gateway /healthz", "ok" if ok else "down",
-                   f"HTTP {r.status}")
+        return obs("gateway /healthz", "ok" if ok else "down", f"HTTP {r.status}", ts)
     except Exception as e:  # noqa: BLE001
-        return obs("gateway /healthz", "down", f"unavailable: {type(e).__name__}")
+        return obs("gateway /healthz", "down", f"unavailable: {type(e).__name__}", ts)
 
 
 def gw_version() -> dict:
-    rc, out = run(["docker", "exec", GATEWAY, "node", "dist/index.js", "--version"])
-    return obs("gateway release", "ok" if rc == 0 else "unknown",
-               out.splitlines()[0][:120] if out else f"rc={rc}")
-
-
-def containers() -> dict:
-    rc, out = run(["docker", "ps", "--format", "{{.Names}}|{{.Status}}"])
-    if rc != 0:
-        return obs("containers", "unknown", f"rc={rc}")
-    rows = [line.split("|", 1) for line in out.splitlines() if "|" in line]
-    return obs(f"containers ({len(rows)})", "ok", rows)
+    ts = now_iso()
+    (rc, out), _ = cached("gwver", 300,
+                          lambda: run(["docker", "exec", GATEWAY, "node", "dist/index.js", "--version"]))
+    first = out.splitlines()[0][:120] if out else f"rc={rc}"
+    return obs("gateway release", "ok" if rc == 0 else "unknown", first, ts)
 
 
 def postgres() -> dict:
-    rc, out = run(["docker", "exec", POSTGRES, "pg_isready", "-U", "litellm",
-                   "-d", "litellm"])
-    return obs("postgres", "ok" if rc == 0 else "down", out.splitlines()[0][:120])
+    ts = now_iso()
+    rc, out = run(["docker", "exec", POSTGRES, "pg_isready", "-U", "litellm", "-d", "litellm"])
+    return obs("postgres", "ok" if rc == 0 else "down", out.splitlines()[0][:120], ts)
+
+
+def containers() -> dict:
+    ts = now_iso()
+    rc, out = run(["docker", "ps", "--format", "{{.Names}}|{{.Status}}"])
+    if rc != 0:
+        return obs("containers", "unknown", f"rc={rc}", ts)
+    rows, unhealthy = [], 0
+    for line in out.splitlines():
+        if "|" not in line:
+            continue
+        name, status = line.split("|", 1)
+        if "sbx" not in name and "gateway" not in name and "litellm" not in name and "postgres" not in name:
+            continue
+        if "unhealthy" in status:
+            unhealthy += 1
+        rows.append((name.replace("openclaw-production-", "").replace("openclaw-", ""),
+                     status))
+    state = "warn" if unhealthy else "ok"
+    return obs(f"containers ({len(rows)}, {unhealthy} unhealthy)", state, rows, ts)
+
+
+SPEND_SQL = (
+    "SELECT 'today', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
+    "WHERE \"startTime\" >= date_trunc('day', now() at time zone 'utc') "
+    "UNION ALL SELECT '30d', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
+    "WHERE \"startTime\" >= now() - interval '30 days' "
+    "UNION ALL SELECT 'phase4a', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
+    "WHERE key_alias = 'phase4a-jev-eval'")
 
 
 def spend() -> dict:
+    ts = now_iso()
+
     def q():
-        return run(["docker", "exec", POSTGRES, "psql", "-U", "litellm",
-                    "-d", "litellm", "-t", "-A", "-c", SPEND_SQL])
-    (rc, out), ts = cached("spend", 60, q)
+        return run(["docker", "exec", POSTGRES, "psql", "-U", "litellm", "-d", "litellm",
+                    "-t", "-A", "-c", SPEND_SQL])
+    (rc, out), _ = cached("spend", 60, q)
     vals = {}
     for line in (out or "").splitlines():
         if "|" in line:
@@ -186,17 +282,21 @@ def spend() -> dict:
             except ValueError:
                 pass
     if rc != 0 or "today" not in vals:
-        return obs("litellm spend", "unknown", f"query rc={rc}")
-    d, m = vals.get("today", 0.0), vals.get("30d", 0.0)
-    detail = (f"today ${d:.4f} / ${CAPS['daily_usd']:.2f} — "
-              f"30d ${m:.2f} / ${CAPS['monthly_usd']:.2f} (configured targets)")
-    state = "ok"
-    if d >= CAPS["daily_usd"] or m >= CAPS["monthly_usd"]:
-        state = "warn"
-    return obs("litellm spend (proxy ledger)", state, detail)
+        return obs("spend (proxy ledger)", "unknown", f"query rc={rc}", ts)
+    jev = vals.get("phase4a", 0.0)
+    detail = {
+        "today": f"${vals.get('today', 0):.4f} / ${CAPS['daily_usd']:.2f} (cap)",
+        "30d": f"${vals.get('30d', 0):.2f} / ${CAPS['monthly_usd']:.2f} (cap)",
+        "jev_eval_key": f"${jev:.6f} (disposable probe key)",
+        "codex_chatgpt": "unknown (no attribution on this route)",
+    }
+    state = "warn" if (vals.get("today", 0) >= CAPS["daily_usd"]
+                       or vals.get("30d", 0) >= CAPS["monthly_usd"]) else "ok"
+    return obs("spend vs configured caps", state, detail, ts)
 
 
 def backups() -> dict:
+    ts = now_iso()
     ops_dir = os.path.join(BASE, "backups", "ops")
     try:
         newest = max((os.path.join(ops_dir, f) for f in os.listdir(ops_dir)
@@ -204,35 +304,34 @@ def backups() -> dict:
         age_h = int((time.time() - os.path.getmtime(newest)) / 3600)
         state = "ok" if age_h <= 24 else "stale"
         return obs("operator backup", state,
-                   f"{os.path.basename(newest)} age={age_h}h (RPO target 24h)")
+                   f"{os.path.basename(newest)} age={age_h}h (RPO 24h)", ts)
     except (OSError, ValueError):
-        return obs("operator backup", "unknown", "no ops archive found")
+        return obs("operator backup", "unknown", "no ops archive found", ts)
 
 
-def approvals_pending() -> dict:
+def approvals_data() -> dict:
     def q():
         return run(["docker", "exec", GATEWAY, "node", "dist/index.js",
                     "approvals", "pending", "--json"], timeout=30)
     (rc, out), _ = cached("approvals", 15, q)
     if rc != 0:
-        return {"state": "unknown", "text": f"approvals pending rc={rc}"}
+        return {"state": "unknown", "items": [], "count": 0, "raw": f"rc={rc}"}
     try:
         data = json.loads(out)
         if isinstance(data, list):
             items = data
         else:
-            items = (data.get("requests") or data.get("items")
-                     or data.get("pending") or [])
+            items = data.get("requests") or data.get("items") or data.get("pending") or []
         return {"state": "ok", "count": len(items), "items": items}
     except json.JSONDecodeError:
-        return {"state": "ok", "text": out[:1500]}
+        return {"state": "ok", "count": 0, "items": [], "raw": out[:1500]}
 
 
-def sessions() -> dict:
+def sessions_data() -> dict:
     def q():
         return run(["docker", "exec", GATEWAY, "node", "dist/index.js",
-                    "sessions", "list", "--json"], timeout=30)
-    (rc, out), _ = cached("sessions", 30, q)
+                    "sessions", "list", "--json", "--all-agents"], timeout=30)
+    (rc, out), _ = cached("sessions", 20, q)
     if rc != 0:
         return {"state": "unknown", "rows": []}
     try:
@@ -240,9 +339,16 @@ def sessions() -> dict:
         items = data.get("sessions") or data.get("list") or []
         rows = []
         for s in items:
-            key = str(s.get("key", "?"))[:80]
-            agent = key.split(":")[1] if key.count(":") >= 1 else "?"
-            rows.append((key, agent, str(s.get("updatedAtMs", ""))[:13]))
+            key = str(s.get("key", "?"))
+            updated = s.get("updatedAtMs")
+            try:
+                when = datetime.fromtimestamp(int(updated) / 1000, timezone.utc)\
+                    .strftime("%m-%d %H:%M") if updated else None
+            except (TypeError, ValueError, OverflowError):
+                when = None
+            rows.append({"key": key[:90], "agent": key.split(":")[1] if ":" in key else "?",
+                         "when": when or "unknown"})
+        rows.sort(key=lambda r: r["when"] == "unknown")
         return {"state": "ok", "rows": rows}
     except json.JSONDecodeError:
         return {"state": "unknown", "rows": []}
@@ -250,408 +356,602 @@ def sessions() -> dict:
 
 def connectors() -> dict:
     def q():
-        return run(["python3", os.path.join(BASE, "integrations",
-                                            "manage-connectors.py"), "list"],
-                   timeout=30)
+        return run(["python3", os.path.join(BASE, "integrations", "manage-connectors.py"),
+                    "list"], timeout=30)
     (rc, out), _ = cached("connectors", 60, q)
-    state = "ok" if rc == 0 else "unknown"
-    return {"state": state, "text": (out or f"rc={rc}")[:2000]}
+    return {"state": "ok" if rc == 0 else "unknown", "text": (out or f"rc={rc}")[:2000]}
 
 
-def safe_rel(p: str) -> str | None:
-    if p == "":
-        return ""  # the allowlisted root itself
-    if not p or p.startswith("/"):
-        return None
-    parts = [x for x in p.split("/") if x not in ("", ".")]
-    if not parts or ".." in parts:
-        return None
-    if any(x.startswith(".") for x in parts):
-        return None
-    if any(not re.fullmatch(r"[A-Za-z0-9_\- ]{1,80}", x) for x in parts):
-        return None
-    return "/".join(parts)
+def now_running() -> list[str]:
+    since = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-
-def list_files(rel: str) -> dict:
-    r = safe_rel(rel)
-    if r is None:
-        return {"state": "denied", "entries": [], "path": rel}
-    target = f"{WORK_ROOT}/{r}"
-    rc, out = run(["docker", "exec", GATEWAY, "find", target, "-maxdepth", "1",
-                   "-printf", "%y|%s|%TY-%Tm-%Td %TH:%TM|%p\n"])
-    entries = []
+    def q():
+        return run(["docker", "exec", GATEWAY, "node", "dist/index.js",
+                    "audit", "--after", since, "--json"], timeout=20)
+    (rc, out), _ = cached("nowrun", 20, q)
+    active: dict[str, str] = {}
     if rc == 0:
-        for line in out.splitlines():
-            bits = line.split("|", 3)
-            if len(bits) == 4:
-                kind, size, mtime, full = bits
-                name = full.rsplit("/", 1)[-1]
-                if name.startswith("."):
-                    continue
-                sub = f"{r}/{name}" if r else name
-                entries.append({"kind": kind, "size": size, "mtime": mtime,
-                                "name": name, "rel": sub, "dir": kind == "d",
-                                "link": kind == "l"})
-        entries.sort(key=lambda e: (not e["dir"], e["name"]))
-        return {"state": "ok", "entries": entries, "path": r}
-    return {"state": "unknown", "entries": [], "path": r}
+        try:
+            recs = json.loads(out)
+            recs = recs.get("records") if isinstance(recs, dict) else recs
+            for r in recs or []:
+                if r.get("action") == "agent.run.started":
+                    active[str(r.get("runId"))[:8]] = r.get("agentId", "?")
+                if r.get("action") == "agent.run.finished":
+                    active.pop(str(r.get("runId"))[:8], None)
+        except json.JSONDecodeError:
+            pass
+    return [f"{agent} ({rid})" for rid, agent in sorted(active.items())]
 
 
-def read_file(rel: str) -> tuple[str | None, str]:
-    r = safe_rel(rel)
-    if r is None:
-        return None, "path rejected"
-    path = f"{WORK_ROOT}/{r}"
-    rc, _ = run(["docker", "exec", GATEWAY, "test", "-L", path])
-    if rc == 0:
-        return None, "symlinks are not downloadable"
-    rc, out = run(["docker", "exec", GATEWAY, "stat", "-c", "%s", path])
+# ---------- files via fixed container helper ----------
+
+def workread(mode: str, rel: str, max_bytes: int = MAX_FILE_BYTES) -> dict:
+    rc, out = run(["docker", "exec", GATEWAY, "node", WORKREAD, mode, rel, str(max_bytes)])
     if rc != 0:
-        return None, "stat failed"
+        return {"ok": False, "reason": f"helper rc={rc}"}
     try:
-        if int(out) > MAX_FILE_BYTES:
-            return None, "file exceeds 2 MB cap"
-    except ValueError:
-        return None, "bad stat"
-    rc, content = run(["docker", "exec", GATEWAY, "cat", path])
+        return json.loads(out)
+    except json.JSONDecodeError:
+        return {"ok": False, "reason": "helper returned non-JSON"}
+
+
+def file_version(rel: str) -> str:
+    e = workread("stat", rel)  # helper: stat returns size+mtimeMs without content
+    if e.get("ok"):
+        return f"{e.get('size', 0)}:{e.get('mtimeMs', 0)}"
+    return "missing"
+
+
+def claim_download(sig: str, exp: float) -> bool:
+    """Single-use claims: True on first use, False on replay. Expired links
+    are rejected before this is called; claimed sigs are garbage-collected."""
+    now = time.time()
+    with _lock:
+        for s in [s for s, e in _used_dl.items() if e < now]:
+            del _used_dl[s]
+        if sig in _used_dl:
+            return False
+        _used_dl[sig] = exp + 60
+        return True
+
+
+# ---------- live work viewer ----------
+
+def live_backend() -> str:
+    try:
+        with open(os.path.join(DIR, "state", "live-backend.json")) as f:
+            return json.load(f).get("backend", "cli-audit")
+    except (OSError, ValueError):
+        return "cli-audit"
+
+
+def cli_events() -> list[dict]:
+    since = (datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def q():
+        return run(["docker", "exec", GATEWAY, "node", "dist/index.js",
+                    "audit", "--after", since, "--json"], timeout=20)
+    (rc, out), _ = cached("live-audit", 4, q)
+    rows: list[dict] = []
     if rc != 0:
-        return None, "read failed"
-    return content, ""
+        return rows
+    try:
+        recs = json.loads(out)
+        recs = recs.get("records") if isinstance(recs, dict) else recs
+        for r in recs or []:
+            action = str(r.get("action", ""))
+            tool = ""
+            if "tool.action" in action:
+                tool = action.split(":")[-1]
+            cls = "err" if "error" in action or r.get("status") == "failed" else \
+                  ("tool" if tool else "")
+            rows.append({"ts": str(r.get("ts", ""))[:19], "agent": r.get("agentId", "?"),
+                         "tool": tool, "cls": cls,
+                         "text": redact(action + " → " + str(r.get("status", ""))),
+                         "agent_key": r.get("sessionId", "")})
+    except json.JSONDecodeError:
+        pass
+    return rows
+
+
+def gw_history_events(key: str) -> list[dict]:
+    """Documented-native path, only used when the deploy-time probe verified
+    the endpoint and wrote dashboard/gateway-token. Defensive parsing:
+    unknown shapes render as one unparsed row, never invented fields."""
+    try:
+        with open(os.path.join(DIR, "gateway-token")) as f:
+            token = f.read().strip()
+    except OSError:
+        return []
+    q = urllib.parse.urlencode({"includeTools": "1"})
+    url = (f"http://127.0.0.1:18789/sessions/{urllib.parse.quote(key, safe='')}"
+           f"/history?{q}")
+    try:
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read().decode() or "{}")
+    except Exception:  # noqa: BLE001
+        return []
+    rows = []
+    events = data.get("events") or data.get("messages") or []
+    for ev in events:
+        role = str(ev.get("role") or ev.get("type") or "?")
+        tool = str(ev.get("toolName") or ev.get("tool") or "")
+        content = ev.get("text") or ev.get("content") or ev.get("summary") or ""
+        if not isinstance(content, str):
+            content = json.dumps(content)[:400]
+        rows.append({"ts": str(ev.get("ts") or ev.get("timestamp") or "")[:19],
+                     "agent": key.split(":")[1] if ":" in key else "?", "tool": tool,
+                     "cls": "err" if role == "error" else ("tool" if tool else ""),
+                     "text": redact(content[:500]),
+                     "detail": redact(content[500:2500])})
+    return rows
+
+
+def timeline_events() -> tuple[list[dict], str]:
+    backend = live_backend()
+    if backend == "gateway-http" and os.path.exists(os.path.join(DIR, "gateway-token")):
+        s = sessions_data()
+        rows: list[dict] = []
+        for r in s.get("rows", [])[:12]:
+            rows.extend(gw_history_events(r["key"]))
+        rows.sort(key=lambda e: e.get("ts", ""))
+        return rows, backend
+    return cli_events(), "cli-audit"
 
 
 # ---------- html ----------
 
 def esc(v) -> str:
-    return html.escape(str(v), quote=True)
+    return html.escape(redact(v), quote=True)
 
 
-CSS = """
-:root{color-scheme:dark}
-*{box-sizing:border-box}
-body{margin:0;font:15px/1.5 system-ui,sans-serif;background:#101418;color:#e6e6e6}
-header{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;padding:.7rem 1rem;background:#171c22;border-bottom:1px solid #2a323c}
-h1{font-size:1.05rem;margin:0 auto 0 0}
-nav a{color:#7ab7ff;margin-right:.8rem;text-decoration:none}
-nav a:focus,button:focus,input:focus{outline:2px solid #7ab7ff}
-main{padding:1rem;max-width:1100px;margin:0 auto}
-table{border-collapse:collapse;width:100%;margin:.5rem 0}
-th,td{border:1px solid #2a323c;padding:.35rem .55rem;text-align:left;overflow-wrap:anywhere}
-th{background:#171c22}
-.ok{color:#5fd068}.warn{color:#ffc857}.down,.error{color:#ff6b6b}
-.unknown,.stale,.denied{color:#b9a44c}
-.muted{color:#9aa7b3}
-.gate{border:1px dashed #b9a44c;padding:.5rem .7rem;margin:.6rem 0;border-radius:6px}
-form.inline{display:inline}
-button,input[type=password]{font:inherit;padding:.35rem .7rem;border-radius:6px;border:1px solid #2a323c;background:#1d242c;color:#e6e6e6}
-button{cursor:pointer}
-.login{max-width:22rem;margin:18vh auto;text-align:center}
-dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem .9rem}
-@media(max-width:640px){dl{grid-template-columns:1fr}table{font-size:.85rem}}
-"""
-
-
-def page(title: str, body: str, session_valid: bool, csrf: str = "",
-         flash: str = "") -> str:
-    nav = ""
-    logout = ""
-    if session_valid:
-        nav = (f"<nav><a href=/>Overview</a><a href=/sessions>Sessions</a>"
-               f"<a href=/files>Files</a><a href=/decisions>Decisions</a>"
-               f"<a href=/integrations>Integrations</a><a href=/audit>Audit</a></nav>")
+def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
+    nav = logout = ""
+    if rec:
+        nav = ("<nav><a href=/>Overview</a><a href=/live>Live</a>"
+               "<a href=/sessions>Sessions</a><a href=/files>Files</a>"
+               "<a href=/approvals>Approvals</a><a href=/schedules>Schedules</a>"
+               "<a href=/memory>Memory</a><a href=/integrations>Integrations</a>"
+               "<a href=/costs>Costs</a><a href=/audit>Audit</a></nav>")
         logout = (f"<form method=post action=/logout class=inline>"
-                  f"<input type=hidden name=csrf value='{esc(csrf)}'>"
-                  f"<button type=submit>Logout</button></form>")
+                  f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                  f"<button type=submit>Logout</button>"
+                  f"</form><form method=post action=/revoke-all class=inline>"
+                  f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                  f"<button type=submit>Revoke all sessions</button></form>")
     fl = f"<p class=warn>{esc(flash)}</p>" if flash else ""
     return (f"<!doctype html><html><head><meta charset=utf-8>"
             f"<meta name=viewport content='width=device-width, initial-scale=1'>"
             f"<title>{esc(title)} — OpenClaw ops</title>"
-            f"<style>{CSS}</style></head><body>"
-            f"<header><h1>OpenClaw ops</h1>{nav}{logout}</header>"
-            f"<main>{fl}{body}</main></body></html>")
+            f"<link rel=stylesheet href=/static/app.css>"
+            f"</head><body><header><h1>OpenClaw ops</h1>{nav}{logout}</header>"
+            f"<main>{fl}{body}</main>"
+            f"<script src=/static/app.js></script></body></html>")
 
 
 def obs_table(items: list[dict]) -> str:
     rows = "".join(
-        f"<tr><td>{esc(o['label'])}</td><td class={esc(o['state'])}>"
-        f"{esc(o['state'])}</td><td>{esc(o['detail'])}</td>"
-        f"<td class=muted>{esc(o['ts'])}</td></tr>"
-        for o in items)
-    return (f"<table><tr><th>Check</th><th>State</th><th>Detail</th>"
-            f"<th>Observed (UTC)</th></tr>{rows}</table>")
+        f"<tr><td>{esc(o['label'])}</td><td class={esc(o['state'])}>{esc(o['state'])}</td>"
+        f"<td>{esc(o['detail'] if not isinstance(o['detail'], list) else chr(10).join(str(x) for x in o['detail']))}</td>"
+        f"<td class=muted>{esc(o['ts'])}</td></tr>" for o in items)
+    return (f"<table><tr><th>Check</th><th>State</th><th>Detail</th><th>Observed (UTC)</th>"
+            f"</tr>{rows}</table>")
 
 
-def gate_notes() -> str:
-    rows = "".join(f"<div class=gate><b>{esc(k)}</b> — DISABLED: {esc(v)}</div>"
-                   for k, v in FEATURE_GATES.items())
-    return f"<h2>Disabled controls (truthful availability)</h2>{rows}"
+def gate(text: str) -> str:
+    return f"<div class=gate>{esc(text)}</div>"
 
 
-# ---------- http handler ----------
+def table(headers: list[str], rows: list[list[str]], empty: str) -> str:
+    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
+    if not rows:
+        body = f"<tr><td colspan={len(headers)} class=muted>{esc(empty)}</td></tr>"
+    return (f"<table><tr>" + "".join(f"<th>{esc(h)}</th>" for h in headers) +
+            f"</tr>{body}</table>")
+
+
+# ---------- request handler ----------
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, fmt, *args):  # quiet; never log cookies/paths with tokens
+    def log_message(self, fmt, *args):
         pass
 
-    # helpers
-    def _send(self, code: int, body: str, ctype: str = "text/html; charset=utf-8",
-              extra: list[tuple[str, str]] | None = None) -> None:
-        raw = body.encode()
+    def _headers(self, code: int, ctype: str, extra: list[tuple[str, str]]) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy",
-                         "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'")
-        for k, v in (extra or []):
+                         "default-src 'none'; style-src 'self'; script-src 'self'; "
+                         "connect-src 'self'; img-src 'self' data:; base-uri 'none'; "
+                         "frame-ancestors 'none'")
+        for k, v in extra:
             self.send_header(k, v)
+
+    def _send(self, code: int, body: str | bytes, ctype="text/html; charset=utf-8",
+              extra: list[tuple[str, str]] | None = None) -> None:
+        raw = body.encode() if isinstance(body, str) else body
+        self._headers(code, ctype, extra or [])
+        self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
 
-    def _cookie(self, name: str) -> str | None:
-        hdr = self.headers.get("Cookie", "")
+    def _cookie(self, name: str) -> str:
         jar = http_cookies.SimpleCookie()
         try:
-            jar.load(hdr)
+            jar.load(self.headers.get("Cookie", ""))
         except http_cookies.CookieError:
-            return None
-        morsel = jar.get(name)
-        return morsel.value if morsel else None
+            return ""
+        return jar.get(name).value if jar.get(name) else ""
 
-    def _session(self) -> tuple[bool, str]:
-        raw = self._cookie("dsh")
-        if not raw:
-            return False, ""
-        try:
-            ts_s, sig = raw.split(".", 1)
-            ts = int(ts_s)
-        except ValueError:
-            return False, ""
-        if not hmac.compare_digest(_sign(f"s|{ts_s}"), sig):
-            return False, ""
-        if time.time() - ts > SESSION_TTL:
-            return False, ""
-        return True, ts_s
-
-    def _csrf(self, ts_s: str) -> str:
-        return _sign(f"csrf|{ts_s}")
-
-    def _check_csrf(self, ts_s: str, supplied: str) -> bool:
-        return bool(ts_s) and hmac.compare_digest(self._csrf(ts_s), supplied or "")
-
-    def _form(self) -> dict[str, str]:
-        length = min(int(self.headers.get("Content-Length") or 0), 8192)
-        raw = self.rfile.read(length).decode("utf-8", "replace")
-        return {k: v[0] for k, v in urllib.parse.parse_qs(raw, keep_blank_values=True).items()}
-
-    def _page(self, code: int, title: str, body: str, authed: tuple[bool, str],
-              flash: str = "") -> None:
-        ok, ts_s = authed
-        self._send(code, page(title, body, ok, self._csrf(ts_s) if ok else "", flash))
-
-    # routes
-    def do_GET(self) -> None:  # noqa: N802
-        parsed = urllib.parse.urlsplit(self.path)
-        path = parsed.path
-        authed = self._session()
-
-        if path == "/login" or (path == "/" and not authed[0]):
-            body = (f"<div class=login><h2>Owner sign-in</h2>"
-                    f"<form method=post action=/login>"
-                    f"<input type=password name=password placeholder='app password' "
-                    f"autocomplete=current-password required> "
-                    f"<button type=submit>Sign in</button></form></div>")
-            self._send(200, page("sign in", body, False))
-            return
-
-        if not authed[0]:
-            self._redirect("/login")
-            return
-
-        if path == "/":
-            sections = [gw_health(), gw_version(), postgres(), spend(), backups(),
-                        containers()]
-            body = "<h2>Overview</h2>" + obs_table(sections) + gate_notes()
-            self._page(200, "overview", body, authed)
-            return
-
-        if path == "/sessions":
-            s = sessions()
-            if s["state"] != "ok":
-                body = f"<h2>Sessions</h2><p class=unknown>unavailable</p>"
-                rows = ""
-            else:
-                rows = "".join(f"<tr><td>{esc(k)}</td><td>{esc(a)}</td>"
-                               f"<td class=muted>{esc(u)}</td></tr>"
-                               for k, a, u in s["rows"]) or \
-                    "<tr><td colspan=3 class=muted>no sessions</td></tr>"
-                body = (f"<h2>Sessions</h2>"
-                        f"<table><tr><th>Session key</th><th>Agent</th>"
-                        f"<th>Updated (ms epoch)</th></tr>{rows}</table>")
-            body += (f"<div class=gate><b>new_chat / session_reset</b> — DISABLED: "
-                     f"{esc(FEATURE_GATES['new_chat'])}</div>")
-            self._page(200, "sessions", body, authed)
-            return
-
-        if path == "/files":
-            rel = urllib.parse.parse_qs(parsed.query).get("dir", [""])[0]
-            listing = list_files(rel)
-            if listing["state"] == "denied":
-                body = "<h2>Files</h2><p class=denied>path rejected</p>"
-            elif listing["state"] != "ok":
-                body = f"<h2>Files</h2><p class=unknown>listing unavailable</p>"
-            else:
-                rows = ""
-                for e in listing["entries"]:
-                    size = "—" if e["dir"] else f"{int(e['size'] or 0):,} B"
-                    if e["dir"]:
-                        name = f"<a href='/files?dir={urllib.parse.quote(e['rel'])}'>{esc(e['name'])}/</a>"
-                        dl = ""
-                    elif e["link"]:
-                        name, dl = f"{esc(e['name'])} (symlink — download refused)", ""
-                    else:
-                        exp = int(time.time()) + DOWNLOAD_TTL
-                        sig = _sign(f"dl|{e['rel']}|{exp}")
-                        name = esc(e["name"])
-                        dl = (f"<a href='/files/dl?path={urllib.parse.quote(e['rel'])}"
-                              f"&exp={exp}&sig={sig}'>download</a>")
-                    rows += (f"<tr><td>{name}</td><td>{size}</td>"
-                             f"<td class=muted>{esc(e['mtime'])}</td><td>{dl}</td></tr>")
-                body = (f"<h2>Files — allowlisted root <code>work/</code></h2>"
-                        f"<table><tr><th>Name</th><th>Size</th><th>Modified (UTC)</th>"
-                        f"<th></th></tr>{rows or '<tr><td colspan=4 class=muted>empty</td></tr>'}</table>"
-                        f"<div class=gate><b>file_upload</b> — DISABLED: "
-                        f"{esc(FEATURE_GATES['file_upload'])}</div>")
-            self._page(200, "files", body, authed)
-            return
-
-        if path == "/files/dl":
-            q = urllib.parse.parse_qs(parsed.query)
-            rel = q.get("path", [""])[0]
-            try:
-                exp = int(q.get("exp", ["0"])[0])
-            except ValueError:
-                exp = 0
-            sig = q.get("sig", [""])[0]
-            ok, ts_s = authed
-            if not ok:
-                return self._redirect("/login")
-            if exp < time.time() or not hmac.compare_digest(_sign(f"dl|{rel}|{exp}"), sig):
-                return self._deny(403, "download token expired or invalid")
-            content, err = read_file(rel)
-            if content is None:
-                return self._deny(403, err)
-            if not audit("download", rel, "ok"):
-                return self._deny(500, "audit write failed — download refused")
-            self._send(200, content, ctype="application/octet-stream",
-                       extra=[("Content-Disposition",
-                               f"attachment; filename=\"{os.path.basename(rel)}\"")])
-            return
-
-        if path == "/decisions":
-            d = approvals_pending()
-            if d.get("state") != "ok":
-                body = "<h2>Decisions (pending approvals)</h2><p class=unknown>unavailable</p>"
-            elif "items" in d and not d["items"]:
-                body = ("<h2>Decisions (pending approvals)</h2>"
-                        "<p class=ok>no pending approvals</p>")
-            else:
-                text = json.dumps(d.get("items", d.get("text", "")), indent=1)[:3000]
-                body = (f"<h2>Decisions (pending approvals)</h2><pre>{esc(text)}</pre>")
-            body += (f"<div class=gate><b>approval_resolve</b> — DISABLED: "
-                     f"{esc(FEATURE_GATES['approval_resolve'])}</div>")
-            self._page(200, "decisions", body, authed)
-            return
-
-        if path == "/integrations":
-            c = connectors()
-            body = (f"<h2>Integrations</h2><pre>{esc(c['text'])}</pre>"
-                    f"<div class=gate><b>connector_toggle</b> — DISABLED: "
-                    f"{esc(FEATURE_GATES['connector_toggle'])}</div>"
-                    f"<p class=muted>Account sign-in is owner-only via "
-                    f"bin/connect-tool (protected flows; no credentials here).</p>")
-            self._page(200, "integrations", body, authed)
-            return
-
-        if path == "/audit":
-            tail = audit_tail()
-            rows = "".join(f"<tr><td>{esc(l.strip())}</td></tr>" for l in tail) or \
-                "<tr><td class=muted>no audit records yet</td></tr>"
-            body = (f"<h2>Application audit (append-only JSONL)</h2>"
-                    f"<table>{rows}</table>"
-                    f"<p class=muted>Retention: on host; host administrator can "
-                    f"edit — stated, not hidden. Edits/deletes through app roles "
-                    f"are impossible (no such route).</p>")
-            self._page(200, "audit", body, authed)
-            return
-
-        self._deny(404, "not found")
-
-    def do_POST(self) -> None:  # noqa: N802
-        path = urllib.parse.urlsplit(self.path).path
-        if path == "/login":
-            form = self._form()
-            ip = self.client_address[0]
-            now = time.time()
-            fails = [t for t in _login_fails.get(ip, []) if now - t < 3600]
-            if len(fails) >= 5:
-                return self._deny(429, "too many failed attempts; wait an hour")
-            if not check_password(form.get("password", "")):
-                _login_fails.setdefault(ip, []).append(now)
-                audit("login", ip, "failed")
-                return self._deny(403, "wrong password")
-            _login_fails[ip] = []
-            ts_s = str(int(time.time()))
-            cookie = (f"dsh={ts_s}.{_sign('s|' + ts_s)}; HttpOnly; SameSite=Strict; "
-                      f"Max-Age={SESSION_TTL}; Path=/")
-            if not audit("login", ip, "ok"):
-                return self._deny(500, "audit write failed — login refused")
-            self._redirect("/", cookie=cookie)
-            return
-
-        ok, ts_s = self._session()
-        form = self._form()
-        if not ok or not self._check_csrf(ts_s, form.get("csrf", "")):
-            return self._deny(403, "bad session or csrf")
-        if path == "/logout":
-            audit("logout", self.client_address[0], "ok")
-            self._redirect("/", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
-            return
-        if path == "/revoke-all":
-            try:
-                os.remove(SESSION_SECRET)
-            except FileNotFoundError:
-                pass
-            _secret_path_refresh()
-            ok = audit("revoke-all-sessions", "all", "ok")
-            if not ok:
-                return self._deny(500, "audit write failed — action refused")
-            self._redirect("/login", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
-            return
-        self._deny(404, "not found")
+    def _auth(self) -> tuple[dict | None, str]:
+        tok = self._cookie("dsh")
+        rec = SESSIONS.validate(tok)
+        return (rec, tok) if rec else (None, "")
 
     def _redirect(self, loc: str, cookie: str | None = None) -> None:
-        extra = [("Location", loc)]
-        if cookie:
-            extra.append(("Set-Cookie", cookie))
         self.send_response(303)
-        for k, v in extra:
-            self.send_header(k, v)
+        self.send_header("Location", loc)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
         self.send_header("Content-Length", "0")
         self.end_headers()
 
     def _deny(self, code: int, msg: str) -> None:
         body = (f"<div class=login><p class=error>{esc(msg)}</p>"
                 f"<p><a href=/>back</a></p></div>")
-        self._send(code, page("denied", body, self._session()[0]))
+        self._send(code, page("denied", body, None))
+
+    def _form(self) -> dict:
+        n = min(int(self.headers.get("Content-Length") or 0), 8192)
+        return {k: v[0] for k, v in urllib.parse.parse_qs(
+            self.rfile.read(n).decode("utf-8", "replace"), keep_blank_values=True).items()}
+
+    # ---- GET ----
+    def do_GET(self):  # noqa: N802
+        parsed = urllib.parse.urlsplit(self.path)
+        path, q = parsed.path, urllib.parse.parse_qs(parsed.query)
+        rec, tok = self._auth()
+
+        if path == "/static/app.css":
+            return self._static("app.css", "text/css; charset=utf-8")
+        if path == "/static/app.js":
+            return self._static("app.js", "text/javascript; charset=utf-8")
+        if path == "/login" or (path == "/" and not rec):
+            return self._send(200, page("sign in",
+                    "<div class=login><h2>Owner sign-in</h2>"
+                    "<form method=post action=/login>"
+                    "<input type=password name=password placeholder='app password' "
+                    "autocomplete=current-password required> "
+                    "<button type=submit>Sign in</button></form></div>", None))
+        if not rec:
+            return self._redirect("/login")
+
+        if path == "/":
+            items = [gw_health(), gw_version(), postgres(), spend(), backups(),
+                     containers()]
+            strip = now_running()
+            ap = approvals_data()
+            strip_html = ("<h2>Now running</h2>" + ("<div class=strip>" + "".join(
+                f"<span class=chip>{esc(x)}</span>" for x in strip) + "</div>"
+                if strip else "<p class=muted>nothing running</p>"))
+            gates = ("<h2>Disabled / scoped controls</h2>" +
+                     gate("session cancel: no owner-scoped native abort verified on "
+                          "this build — use the Control UI") +
+                     gate("approval resolution: read-only here; resolve via "
+                          "Telegram/Control UI (native policy authoritative)") +
+                     gate("new chat: Control UI / Telegram"))
+            body = ("<h2>Overview</h2>" + obs_table(items) + strip_html +
+                    f"<h2>Pending approvals: {esc(ap.get('count', 0))}</h2>" + gates)
+            return self._send(200, page("overview", body, rec))
+
+        if path == "/sessions":
+            s = sessions_data()
+            rows = [(esc(r["key"]), esc(r["agent"]), esc(r["when"])) for r in s["rows"]]
+            body = ("<h2>Sessions (main + worker runs)</h2>" +
+                    table(["Session", "Agent", "Updated (UTC)"], rows,
+                          "no sessions") +
+                    gate("cancel/reset: not available from the dashboard on this "
+                         "build — no verified owner-scoped native abort path"))
+            return self._send(200, page("sessions", body, rec))
+
+        if path == "/live":
+            backend = live_backend()
+            body = (f"<h2>Live work viewer <span class=muted>({esc(backend)} backend)"
+                    f"</span></h2>"
+                    f"<p><button id=pause type=button>Pause</button> "
+                    f"<select id=filter-agent><option value=''>all agents</option></select> "
+                    f"<select id=filter-tool><option value=''>all tools</option>"
+                    f"<option>web_fetch</option><option>brave_web_search</option>"
+                    f"<option>browser</option><option>exec</option></select> "
+                    f"<span id=live-status class=muted>connecting…</span></p>"
+                    f"<div id=timeline></div>"
+                    f"<p class=muted>All content is escaped, redacted attributed "
+                    f"data. reasoning is not shown (not exposed by the runtime).</p>")
+            return self._send(200, page("live", body, rec))
+
+        if path == "/live/stream":
+            if self.headers.get("Origin") not in (None,) | ORIGINS:
+                return self._deny(403, "origin not allowed")
+            if not rec:
+                return self._deny(403, "session required")
+            global _streams
+            with _lock:
+                if _streams >= MAX_STREAMS:
+                    return self._deny(429, "too many live streams")
+                _streams += 1
+            cursor = int(q.get("cursor", ["0"])[0] or 0)
+            seq = cursor
+            try:
+                self._headers(200, "text/event-stream",
+                              [("Cache-Control", "no-store"),
+                               ("Connection", "keep-alive")])
+                self.wfile.write(b": stream\n\n")
+                self.wfile.flush()
+                idle = 0
+                while _streams and idle < 150:  # ~5 min without events then re-probe
+                    events, backend = timeline_events()
+                    for e in events:
+                        seq += 1
+                        e["seq"] = seq
+                        self.wfile.write(f"data: {json.dumps(e)}\n\n".encode())
+                    self.wfile.write(f"data: {json.dumps({'cursor': seq})}\n\n".encode())
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    time.sleep(2)
+                    idle += 1
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                with _lock:
+                    _streams -= 1
+            return
+
+        if path == "/files":
+            rel = q.get("dir", [""])[0]
+            res = workread("list", rel)
+            if not res.get("ok"):
+                reason = res.get("reason", "unavailable")
+                body = (f"<h2>Files — allowlisted root <code>work/</code></h2>"
+                        f"<p class={'denied' if reason == 'path_rejected' else 'unknown'}>"
+                        f"{esc(reason)}</p>")
+            else:
+                rows = []
+                for e in res["entries"]:
+                    name = e["name"]
+                    if e["dir"]:
+                        link = f"<a href='/files?dir={urllib.parse.quote(e['name'])}'>{esc(name)}/</a>"
+                        dl = ""
+                    elif e["link"]:
+                        link, dl = f"{esc(name)} (symlink — refused)", ""
+                    else:
+                        exp = int(time.time()) + DOWNLOAD_TTL
+                        ver = f"{e['size']}:{e['mtimeMs']}"
+                        sig = _sign(f"dl|{rec['csrf']}|{rel}/{name}|{ver}|{exp}")
+                        qs = urllib.parse.urlencode({"path": f"{rel}/{name}".lstrip("/"),
+                                                     "ver": ver, "exp": exp, "sig": sig})
+                        link, dl = esc(name), f"<a href='/files/dl?{qs}'>download</a>"
+                    rows.append([link, "—" if e["dir"] else f"{int(e.get('size') or 0):,} B",
+                                 time.strftime("%m-%d %H:%M", time.gmtime(e.get("mtimeMs", 0)/1000)),
+                                 dl])
+                body = ("<h2>Files — allowlisted root <code>work/</code></h2>" +
+                        table(["Name", "Size", "Modified (UTC)", ""], rows, "empty") +
+                        gate("file_upload disabled: requires enforced permissions, "
+                             "size/type limits and malware scanning — unavailable"))
+            return self._send(200, page("files", body, rec))
+
+        if path == "/files/dl":
+            if not rec:
+                return self._deny(403, "session required")
+            rel, ver = q.get("path", [""])[0], q.get("ver", [""])[0]
+            try:
+                exp = int(q.get("exp", ["0"])[0])
+            except ValueError:
+                exp = 0
+            sig = q.get("sig", [""])[0]
+            now = time.time()
+            bound = _sign(f"dl|{rec['csrf']}|{rel}|{ver}|{exp}")
+            if exp < now or not hmac.compare_digest(bound, sig):
+                return self._deny(403, "download link expired, replayed, or invalid")
+            if not claim_download(sig, exp):
+                return self._deny(403, "download link already used (replay)")
+            res = workread("read", rel, MAX_FILE_BYTES)
+            if not res.get("ok"):
+                return self._deny(403, str(res.get("reason", "read refused")))
+            if not audit("download", rel, "ok"):
+                return self._deny(500, "audit write failed — download refused")
+            name = os.path.basename(rel.replace("\\", "/"))
+            return self._send(200, res["content"], "application/octet-stream",
+                              [("Content-Disposition", f"attachment; filename=\"{name}\"")])
+
+        if path == "/approvals":
+            a = approvals_data()
+            if a.get("state") != "ok":
+                body = "<h2>Approvals (pending)</h2><p class=unknown>unavailable</p>"
+            elif not a["items"]:
+                body = "<h2>Approvals (pending)</h2><p class=ok>no pending approvals</p>"
+            else:
+                text = json.dumps(a["items"], indent=1)[:3000]
+                body = f"<h2>Approvals (pending)</h2><pre>{esc(text)}</pre>"
+            body += gate("resolution is read-only here: resolve via Telegram/Control "
+                         "UI — native policy stays authoritative")
+            return self._send(200, page("approvals", body, rec))
+
+        if path == "/schedules":
+            def q2():
+                return run(["docker", "exec", GATEWAY, "node", "dist/index.js",
+                            "cron", "list", "--json"], timeout=30)
+            (rc, out), _ = cached("cron", 30, q2)
+            rows = []
+            if rc == 0:
+                try:
+                    for j in json.loads(out).get("jobs", []):
+                        sch = j.get("schedule", {})
+                        when = (time.strftime("%m-%d %H:%M", time.gmtime(j["nextRunAtMs"]/1000))
+                                if j.get("nextRunAtMs") else "?")
+                        rows.append([esc(j.get("name", "?")), esc(str(j.get("enabled"))),
+                                     esc(json.dumps(sch)[:60]), esc(when)])
+                except json.JSONDecodeError:
+                    rows = [["parse error", "?", "?", "?"]]
+            body = ("<h2>Schedules (native automations)</h2>" +
+                    table(["Name", "Enabled", "Schedule", "Next run (UTC)"], rows,
+                          "no jobs"))
+            return self._send(200, page("schedules", body, rec))
+
+        if path == "/memory":
+            mem = os.path.join(HOST_STATE, "workspace", "memory")
+            rows = []
+            try:
+                for f in sorted(os.listdir(mem)):
+                    if f.endswith(".md"):
+                        with open(os.path.join(mem, f), errors="replace") as fh:
+                            excerpt = fh.read(300)
+                        rows.append([esc(f), f"<pre>{esc(excerpt)}…</pre>"])
+            except OSError:
+                pass
+            body = ("<h2>Memory (read-only view)</h2>" +
+                    table(["File", "Excerpt"], rows, "no memory files") +
+                    gate("correction/deletion happens through the agent's native "
+                         "memory tools; this page is read-only"))
+            return self._send(200, page("memory", body, rec))
+
+        if path == "/integrations":
+            c = connectors()
+            body = (f"<h2>Integrations</h2><pre>{esc(c['text'])}</pre>"
+                    f"<p class=muted>Sign-in is owner-only via bin/connect-tool "
+                    f"(protected flows; no credentials here).</p>")
+            return self._send(200, page("integrations", body, rec))
+
+        if path == "/costs":
+            def q2():
+                return run(["docker", "exec", POSTGRES, "psql", "-U", "litellm", "-d",
+                            "litellm", "-t", "-A", "-c",
+                            "SELECT date(\"startTime\"), key_alias, ROUND(SUM(spend),6) "
+                            "FROM \"LiteLLM_SpendLogs\" WHERE \"startTime\" >= now() - "
+                            "interval '7 days' GROUP BY 1,2 ORDER BY 1 DESC LIMIT 40"])
+            (rc, out), _ = cached("costs", 120, q2)
+            rows = [[esc(p[0]), esc(p[1]), esc("$" + p[2])] for p in
+                    (line.split("|") for line in (out or "").splitlines() if "|" in line)]
+            body = ("<h2>Costs — LiteLLM ledger, last 7 days</h2>" +
+                    table(["Day (UTC)", "Key alias", "Spend"], rows, "no spend recorded") +
+                    f"<p class=muted>Jev decisions: {esc(jev_cost_line())} · "
+                    f"Codex/ChatGPT spend: unknown (no attribution on that route)</p>")
+            return self._send(200, page("costs", body, rec))
+
+        if path == "/audit":
+            rows = [[esc(l.strip())] for l in audit_tail()] or \
+                [["no audit records yet"]]
+            return self._send(200, page("audit",
+                    "<h2>Application audit (append-only JSONL)</h2>" +
+                    table(["Record"], rows, ""), rec))
+
+        if path == "/logout":
+            SESSIONS.destroy(tok)
+            return self._redirect("/", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
+
+        self._deny(404, "not found")
+
+    # ---- POST ----
+    def do_POST(self):  # noqa: N802
+        path = urllib.parse.urlsplit(self.path).path
+        if path == "/login":
+            ip = self.client_address[0]
+            now = time.time()
+            fails = [t for t in _login_fails.get(ip, []) if now - t < 3600]
+            if len(fails) >= 5:
+                return self._deny(429, "too many failed attempts; wait an hour")
+            form = self._form()
+            if not check_password(form.get("password", "")):
+                _login_fails.setdefault(ip, []).append(now)
+                if not audit("login", ip, "failed"):
+                    return self._deny(500, "audit write failed")
+                return self._deny(403, "wrong password")
+            _login_fails[ip] = []
+            if not audit("login", ip, "ok"):
+                return self._deny(500, "audit write failed — login refused")
+            token, _ = SESSIONS.create()  # rotation: fresh id every login
+            cookie = (f"dsh={token}; HttpOnly; SameSite=Strict; Path=/; "
+                      f"Max-Age={SESSION_TTL_ABS}")
+            return self._redirect("/", cookie=cookie)
+
+        rec, tok = self._auth()
+        form = self._form()
+        if not rec or not hmac.compare_digest(rec["csrf"], form.get("csrf", "")):
+            return self._deny(403, "bad session or csrf")
+        if path == "/logout":
+            if not audit("logout", ip := self.client_address[0], "ok"):
+                return self._deny(500, "audit write failed")
+            SESSIONS.destroy(tok)
+            return self._redirect("/", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
+        if path == "/revoke-all":
+            n = SESSIONS.destroy_all()
+            try:
+                os.remove(SESSION_SECRET)
+            except FileNotFoundError:
+                pass
+            _session_key()
+            if not audit("revoke-all-sessions", "all", f"revoked={n}"):
+                return self._deny(500, "audit write failed — action refused")
+            return self._redirect("/login", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
+        if path == "/jev-toggle":
+            layer = form.get("layer", "")
+            value = form.get("value", "")
+            if layer != "research" or value not in ("on", "off"):
+                return self._deny(400, "unsupported layer or value")
+            target = os.path.join(JEV_DIR, "config.json")
+            try:
+                os.makedirs(JEV_DIR, exist_ok=True)
+                with open(target, "w") as f:
+                    json.dump({"enabled": value == "on"}, f)
+                os.chmod(target, 0o600)
+                with open(target) as f:
+                    readback = json.load(f)
+            except OSError as e:
+                return self._deny(500, f"toggle failed: {type(e).__name__}")
+            if not audit("jev-toggle", layer, f"{value}; readback={readback}"):
+                return self._deny(500, "audit write failed — change refused")
+            body = (f"<h2>Jev research layer</h2>"
+                    f"<p>Requested <b>{esc(value)}</b>; read back "
+                    f"<b>{esc(json.dumps(readback))}</b>.</p>"
+                    f"<p><a href=/live>back to live viewer</a></p>")
+            return self._send(200, page("jev toggle", body, rec))
+        self._deny(404, "not found")
+
+    def _static(self, name: str, ctype: str) -> None:
+        try:
+            with open(os.path.join(STATIC, name), "rb") as f:
+                self._send(200, f.read(), ctype)
+        except OSError:
+            self._deny(404, "missing asset")
+
+
+def jev_cost_line() -> str:
+    try:
+        total = 0.0
+        path = os.path.join(JEV_DIR, "decisions.jsonl")
+        if os.path.exists(path):
+            with open(path) as f:
+                for line in f:
+                    try:
+                        c = json.loads(line).get("cost_usd")
+                        if isinstance(c, (int, float)):
+                            total += c
+                    except ValueError:
+                        continue
+        return f"${total:.6f} across logged decisions"
+    except OSError:
+        return "unknown"
 
 
 def main() -> None:
     os.makedirs(AUDIT_DIR, exist_ok=True)
+    os.makedirs(STATIC, exist_ok=True)
+    os.makedirs(os.path.join(HOST_STATE, "jev-research"), exist_ok=True)
     os.chmod(DIR, 0o700)
-    _secret_path_refresh()
+    _session_key()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True
     print(f"dashboard listening on {BIND}:{PORT}", flush=True)

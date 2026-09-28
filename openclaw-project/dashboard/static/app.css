@@ -1,0 +1,35 @@
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 system-ui,sans-serif;background:#101418;color:#e6e6e6}
+body.light{background:#f5f6f8;color:#1a1d21}
+body.light header,body.light th{background:#e9ecf0}
+body.light table,body.light .gate{border-color:#c8cfd8}
+a{color:#7ab7ff;text-decoration:none}
+header{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;padding:.7rem 1rem;background:#171c22;border-bottom:1px solid #2a323c;position:sticky;top:0;z-index:2}
+h1{font-size:1.05rem;margin:0 auto 0 0}
+h2{font-size:1rem;margin:1rem 0 .4rem}
+nav{display:flex;flex-wrap:wrap;gap:.7rem}
+nav a{color:#7ab7ff}
+nav a:focus,button:focus,input:focus,select:focus{outline:2px solid #7ab7ff}
+main{padding:1rem;max-width:1200px;margin:0 auto}
+table{border-collapse:collapse;width:100%;margin:.5rem 0;font-size:.92rem}
+th,td{border:1px solid #2a323c;padding:.3rem .5rem;text-align:left;overflow-wrap:anywhere;vertical-align:top}
+th{background:#171c22;position:sticky;top:3.4rem}
+.ok,.pass{color:#5fd068}.warn,.stale{color:#ffc857}.down,.error,.fail{color:#ff6b6b}
+.unknown,.denied{color:#b9a44c}.muted{color:#8d99a6}
+.gate{border:1px dashed #b9a44c;padding:.5rem .7rem;margin:.6rem 0;border-radius:6px}
+.card{border:1px solid #2a323c;border-radius:8px;padding:.6rem .8rem;margin:.6rem 0}
+form.inline{display:inline}
+button,input[type=password],input[type=text],select{font:inherit;padding:.3rem .6rem;border-radius:6px;border:1px solid #2a323c;background:#1d242c;color:inherit}
+button{cursor:pointer}
+.login{max-width:22rem;margin:16vh auto;text-align:center}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1013;padding:.5rem;border-radius:6px;max-height:26rem;overflow:auto}
+body.light pre{background:#eceff2}
+.strip{display:flex;flex-wrap:wrap;gap:.4rem}
+.chip{border:1px solid #2a323c;border-radius:999px;padding:.1rem .6rem;font-size:.85rem}
+.evt{border-left:3px solid #2a323c;padding:.2rem .5rem;margin:.25rem 0}
+.evt.tool{border-color:#4f8fd6}.evt.err{border-color:#ff6b6b}.evt.jev{border-color:#b9a44c}
+.evt.inj{border-color:#ff6b6b;background:#2a1414}
+.evt .meta{color:#8d99a6;font-size:.8rem}
+#timeline{max-height:70vh;overflow:auto}
+@media(max-width:640px){main{padding:.6rem}table{font-size:.8rem}th{position:static}}
