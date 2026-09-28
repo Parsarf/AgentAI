@@ -1,0 +1,10 @@
+{
+  "name": "openclaw-jev-research",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Jev research fetch decisions (fail-open middleware for researcher web_fetch)",
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  }
+}

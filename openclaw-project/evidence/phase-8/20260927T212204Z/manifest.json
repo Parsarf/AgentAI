@@ -1,0 +1,48 @@
+{
+  "phase": 8,
+  "runId": "20260927T212204Z",
+  "type": "dashboard-build",
+  "generatedAtUtc": "2026-09-27T21:30:00Z",
+  "target": {
+    "host": "69.48.206.62 (IONOS VPS)",
+    "service": "openclaw-dashboard.service (host systemd, hardened)",
+    "listener": "127.0.0.1:18795 (loopback only)",
+    "stack": "Python 3.12.3 stdlib only — no third-party dependencies",
+    "source": "openclaw-project/dashboard/app.py -> /opt/openclaw-production/dashboard/app.py"
+  },
+  "audience": "one owner, private, read-first; operator/user roles designed but disabled; no provisioning requested or built",
+  "changes": [
+    "dashboard/app.py (new, local + deployed)",
+    "/opt/openclaw-production/dashboard/{owner-secret,session-secret,audit/} (new, 0600/0700)",
+    "/etc/systemd/system/openclaw-dashboard.service (new, enabled; MemoryMax=200M, CPUQuota=25%, ProtectSystem=strict, NoNewPrivileges, PrivateTmp)",
+    "plans/phase-8.md (boundary, endpoint map, role matrix, gates, rollback)",
+    "evals/cases.yaml +8 dashboard acceptance cases (definitions only)",
+    "RUNBOOK.md + ARCHITECTURE.md dashboard sections"
+  ],
+  "checks": [
+    {"id": "P8-COMPILE", "status": "pass", "command": "python3 -m py_compile app.py (local + remote)", "observed": "clean; two bugs found and fixed pre-install (dead conditional, approvals JSON ternary)"},
+    {"id": "P8-LISTENER", "status": "pass", "command": "ss -ltn", "observed": "127.0.0.1:18795 only"},
+    {"id": "P8-AUTH-SMOKE", "status": "pass", "command": "authenticated curl smoke (cookie jar on host, deleted after)", "observed": "/login 200; wrong password 403 (+audited); all six authed routes 200; overview renders real gateway health data; CSP + X-Frame-Options present"},
+    {"id": "P8-GATES", "status": "pass", "command": "design review + smoke", "observed": "no mutating route exists server-side; gates render disabled with reasons"},
+    {"id": "P8-SECRETS", "status": "pass", "command": "manual review", "observed": "no secret values in responses; app stores only its own auth secrets + audit; no OpenClaw state/tokens copied"},
+    {"id": "P8-FULL-BROWSER-MATRIX", "status": "not_run", "reason": "Phase 10 (per build contract)"},
+    {"id": "P8-PAID-REVIEW", "status": "not_run", "reason": "Phase 10"}
+  ],
+  "featureGates": {
+    "new_chat": "disabled", "session_reset": "disabled",
+    "approval_resolve": "disabled (native policy authoritative)",
+    "connector_toggle": "disabled", "file_upload": "disabled",
+    "provisioning": "disabled"
+  },
+  "cost": {"modelCalls": 0, "paidSuites": 0},
+  "warnings": [
+    "no TLS / no Secure cookie flag: listener is loopback-only behind SSH; TLS is a hard prerequisite before any non-loopback exposure (recorded)",
+    "file reads are docker-exec based; TOCTOU race theoretically possible — Phase 10 case T10-DASH-FILE-TRAVERSAL covers traversal/symlink abuse",
+    "audit stream is host-file based; host administrator can edit it — stated in UI, not claimed tamper-proof"
+  ],
+  "blockers": [],
+  "buildStatus": "READY",
+  "acceptanceStatus": "DEFERRED (Phase 10)",
+  "cleanup": "smoke cookie jar deleted; no temp artifacts left",
+  "rollback": "systemctl disable --now openclaw-dashboard; rm /etc/systemd/system/openclaw-dashboard.service; daemon-reload; rm -rf /opt/openclaw-production/dashboard"
+}

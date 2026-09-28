@@ -1,0 +1,41 @@
+{
+  "phase": 9,
+  "runId": "20260927T215500Z",
+  "type": "browser-optimization-build",
+  "generatedAtUtc": "2026-09-27T22:00:00Z",
+  "target": "local build only (browser-opt/ in repo); nothing deployed to the runtime",
+  "primarySourcesChecked": [
+    "https://docs.typesafe.ai/models (2026-09-27): jev-1.13.0, POST /v1/systemone, $0.042/Mtok input / output free, 64k/32k context, text-only, English-first, rate limits dynamic",
+    "https://docs.typesafe.ai/confidence (2026-09-27): confidence on Choice/Score only (Noul has none); three-range risk-scaled routing; thresholds provisional",
+    "model-jaggedness and confidence-routing pages: NOT fetched this run — flagged for Phase 11 calibration prep",
+    "research/jev-model.md (2026-09-26) consistent with re-checked values"
+  ],
+  "changes": [
+    "browser-opt/jev_adapter.py (new: candidates, fail-closed validation, decide(), LocalBudget, pluggable transport)",
+    "browser-opt/config.json (new: pinned model, master kill switch enabled=false, provisional thresholds, deadline/retries, local-estimate budget)",
+    "browser-opt/test_jev_adapter.py (new: 19 offline tests)",
+    "browser-opt/fixtures.yaml (new: 10 dev + 10 held-out synthetic scenarios)",
+    "browser-opt/compare_runner.py (new: paired scaffold; refuses disabled route; refuses Phase 11 benchmark)",
+    "plans/phase-9.md; remaining-build-items.md #9; RUNBOOK + ARCHITECTURE sections; 4 T11 eval cases (suite now 35: 12 paid / 23 free)"
+  ],
+  "checks": [
+    {"id": "P9-COMPILE", "status": "pass", "command": "python3 -m py_compile (3 files)", "observed": "clean"},
+    {"id": "P9-UNIT", "status": "pass", "command": "python3 test_jev_adapter.py", "observed": "19/19 OK after fixing a test-assertion bug (adapter behavior correct; replace-target mismatch in the NaN test)"},
+    {"id": "P9-KILLSWITCH", "status": "pass", "command": "compare_runner optimized with and without --enable-optimized; config readback", "observed": "refused both times (exit 3, config OFF); enabled=false readback; decide() returns route_disabled without calling transport (unit-proven)"},
+    {"id": "P9-SCHEMA-STATIC", "status": "pass", "command": "unit suite membership checks", "observed": "unknown id, prob-set mismatch, non-finite, sum drift, argmax mismatch, missing confidence, model-pin mismatch all rejected"},
+    {"id": "P9-NO-PROVIDER", "status": "pass", "command": "transport monkeypatched in all tests", "observed": "zero network/provider calls"},
+    {"id": "P9-NO-TRANSPORT-DEPLOY", "status": "pass", "observed": "nothing installed on VPS; runtime unchanged; existing browser route untouched"}
+  ],
+  "cost": {"modelCalls": 0, "providerCalls": 0, "paidSuites": 0},
+  "warnings": [
+    "transport gap: worker→adapter path needs isolation review (remaining-build-items #9)",
+    "no TypeSafe account/credential exists; account + data handling + spend controls are separate owner decisions",
+    "thresholds are provisional settings, not measured claims",
+    "jaggedness/confidence-routing doc pages not yet read (Phase 11 prep)"
+  ],
+  "blockers": [],
+  "buildStatus": "READY",
+  "acceptanceStatus": "DEFERRED (Phase 11; requires owner authorization + account + transport)",
+  "cleanup": "usage/ and __pycache__ removed; no server artifacts created",
+  "rollback": "delete browser-opt/ — the runtime never loaded it"
+}

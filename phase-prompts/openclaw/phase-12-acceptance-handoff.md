@@ -1,4 +1,4 @@
-# Phase 8 — End-to-end owner acceptance and operational handoff
+# Phase 12 — Final owner acceptance and operational handoff
 
 Demonstrate that the owner can give one product objective and receive a
 working, verified result from one coherent agent. Test the configured system
@@ -6,12 +6,15 @@ through its actual owner channel, then hand over accurate capabilities,
 evidence and recovery instructions. Avoid introducing new authority to make
 the demonstration succeed.
 
-Read [the execution contract](execution-contract.md), accepted Gate 7 evidence,
+Test phase 3, after all selected builds and the Phase 10 system evaluation.
+Run only when the owner explicitly authorizes the final workflow; prior paid-
+test deferral remains active until then. Read
+[the execution contract](execution-contract.md), accepted Gate 10 evidence,
 evaluation results, architecture, migration decisions and runbook. Recheck the
 current release/configuration against the tested versions. Rerun affected
 checks if they changed; a prior passing suite is not proof for a new policy.
 If the selected browser route includes Jev, require accepted
-[Gate 7A](phase-7a-jev-browser-optimization.md) evidence and use that final
+[Gate 11](phase-11-browser-evaluation.md) evidence and use that final
 tested route in this owner-channel run. If optimization failed or was excluded,
 record the baseline route; do not activate Jev just for the acceptance demo.
 
@@ -21,7 +24,9 @@ One real Telegram-initiated research → design → native Codex build → tests
 browser verification → independent ACP review → fix → handoff run. The
 artifact works in its private project workspace, stays within the objective
 budget and has a trace linking every required stage to actual evidence.
-Existing personal integrations remain within their approved scope.
+Existing personal integrations remain within their approved scope. The
+connection base may be accepted separately from owner-deferred live accounts;
+required connected-account acceptance still needs actual identity/read proof.
 Verify that OpenClaw is the sole agent runtime serving this new workflow;
 there must be no duplicate loop, router, approval engine or scheduler.
 
@@ -108,14 +113,14 @@ instructions. Verify representative commands in an isolated target where
 necessary, and state their required host/account.
 
 Update `ARCHITECTURE.md`, `MIGRATION_DECISIONS.md` and `BUILD_LOG.md` to match
-reality. Record old AgentAI retention separately; acceptance does not authorize
-its deletion or stopping a separately retained service. State its observed
-status rather than claiming it was retired. Keep secrets/backups out of git
+reality. Record old AgentAI retention separately; the owner already authorized
+working-tree retirement, recorded in the build log. Do not recreate the old
+code or delete any remaining database/service as part of acceptance. Keep secrets/backups out of git
 and review the complete diff.
-Produce `plans/phase-8.md`, the acceptance checklist, correlated run summary,
+Produce `plans/phase-12.md`, the acceptance checklist, correlated run summary,
 artifact instructions and execution-contract manifest.
 
-## Gate 8 — Definition of done
+## Gate 12 — Definition of done
 
 PASS requires OpenClaw to serve the new workflow without a duplicate runtime;
 the real owner-channel objective and every artifact acceptance assertion to
@@ -129,5 +134,8 @@ decision, never inferred from silence.
 
 Give one concise handoff: what works, where the project is, how to run it,
 evidence, observed spend, known limits and shutdown/recovery steps. Identify
-optional follow-ups separately. Stop after Phase 8; the later dashboard is a
-separate product phase, not a condition to retroactively claim this run passed.
+optional follow-ups separately. Include the dashboard already built in Phase 8 and evaluated in Phase 10: the
+owner can inspect the objective, costs, files and pending native decisions
+through its actual supported UI. Disabled/deferred controls must remain
+truthfully labeled. Retain `evidence/phase-12/<UTC-run-id>/` final manifest.
+Stop after Phase 12; no additional build phase follows this handoff.

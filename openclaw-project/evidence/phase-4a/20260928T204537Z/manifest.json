@@ -1,0 +1,39 @@
+{
+  "phase": "4A",
+  "run_id": "20260928T204537Z",
+  "timestamp_utc": "2026-09-28T20:45:37Z",
+  "target": "OpenClaw production preflight; no deployment",
+  "status": "blocked",
+  "tested_revision": "workspace state on 2026-09-28; existing unrelated edits preserved",
+  "versions": {
+    "openclaw": "2026.9.6 (eb377ac)",
+    "litellm": "1.102.1",
+    "typesafe_model_planned": "jev-1.13.0",
+    "typesafe_sdk_documented": "0.7.2; not installed for this path"
+  },
+  "documentation": [
+    "https://docs.typesafe.ai/models",
+    "https://docs.typesafe.ai/primitives/choice",
+    "https://docs.typesafe.ai/confidence",
+    "https://docs.typesafe.ai/model-jaggedness/jev-1.13",
+    "https://docs.typesafe.ai/sdk/python/changelog",
+    "https://docs.typesafe.ai/legal",
+    "https://docs.litellm.ai/docs/pass_through/typesafe",
+    "https://docs.openclaw.ai/plugins/sdk-agent-harness/attempt-runtime"
+  ],
+  "changes": ["Added Phase 4A preflight plan, evidence, and status documentation", "Converted owner's existing bare jev: entry in local gitignored .env to TYPESAFE_API_KEY assignment; no runtime change"],
+  "checks": [
+    {"id":"P4A-LIVE-STATE","status":"pass","action":"Read live tool/role config and installed versions","observed":"Brave MCP researcher search and browser-worker browser live; native web_search off; OpenClaw 2026.9.6 and LiteLLM 1.102.1","evidence":"summary.md"},
+    {"id":"P4A-GATE3-BASELINE","status":"blocked","action":"Inspect evals/RESULTS.md","observed":"T10-RESEARCH-CITATIONS and T10-INJECTION-NO-EFFECT blocked; no passing baseline","evidence":"../../../evals/RESULTS.md"},
+    {"id":"P4A-JEV-ACCESS","status":"blocked","action":"Check approved deployment secret names and proxy version","observed":"Existing local key now named; not in production. Proxy pass-through unverified in pinned LiteLLM 1.102.1","evidence":"summary.md"},
+    {"id":"P4A-LOCAL-SECRET","status":"pass","action":"Convert bare jev label to named assignment without displaying value; check ignore and mode","observed":"One TYPESAFE_API_KEY assignment, bare label absent, gitignored, mode 0600","evidence":"summary.md"},
+    {"id":"P4A-BUDGET","status":"blocked","action":"Query anonymous 24-hour spend by virtual key","observed":"Active key spend $2.227560 against $2 cap; paid baseline withheld","evidence":"summary.md"},
+    {"id":"P4A-MIDDLEWARE","status":"pass","action":"Inspect installed OpenClaw runtime symbols","observed":"registerAgentToolResultMiddleware exists; callback provenance contract still needs verification","evidence":"summary.md"},
+    {"id":"P4A-UNIT-INJECTION-PAIRED","status":"not_run","action":"No implementation or paid comparison before prerequisites","observed":"No Jev result or promotion","evidence":"../../../plans/phase-4a.md"}
+  ],
+  "cost": {"measured_jev_usd": null, "measured_total_phase_usd": null, "estimated_jev_eval_usd": 0.0063, "note":"Estimate only; no Jev or model evaluation calls in this preflight"},
+  "warnings": ["Rolling spend aggregate is not a per-key remaining-cap measurement", "Research/injection baseline is not passed"],
+  "blockers": ["Gate 3 baseline and paid evaluation headroom", "Deploy existing TypeSafe key through approved server secret store after proxy route verified", "Verified LiteLLM Jev pass-through and budget accounting"],
+  "cleanup": "None required; no temporary server resources created",
+  "rollback": "No runtime changes. Future one-step toggle is JEV_RESEARCH_ENABLED=false, to be tested live before promotion."
+}

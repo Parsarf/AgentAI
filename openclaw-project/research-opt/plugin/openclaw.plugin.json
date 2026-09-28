@@ -1,0 +1,13 @@
+{
+  "id": "jev-research",
+  "name": "Jev Research Fetch Decisions",
+  "version": "0.1.0",
+  "contracts": {
+    "agentToolResultMiddleware": ["openclaw"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

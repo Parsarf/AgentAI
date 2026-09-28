@@ -1,37 +1,40 @@
-# Phase 7 — Repeatable evaluation, backup and operational recovery
+# Phase 10 — Test the completed system, dashboard and recovery
 
-Prove the system's quality and safety with a repeatable suite and a working
-recovery drill. Produce measurements another session can reproduce. This phase
-carries useful recovery outcomes from old AgentAI without copying its runtime,
-pytest architecture or database assumptions.
-
-Read [the execution contract](execution-contract.md), accepted Gates 4–6,
-their evidence and current deployment. Verify installed-version docs for
-[backup/restore](https://docs.openclaw.ai/cli/backup),
-[updates](https://docs.openclaw.ai/install/updating),
-[security audits](https://docs.openclaw.ai/gateway/security) and
-[diagnostics](https://docs.openclaw.ai/cli/doctor). Reuse valid earlier evidence
-where behavior/version is unchanged; new recovery and evaluation claims need
-their own actual runs.
+Test phase 1, after all selected build phases7–9. Run only when the owner
+explicitly resumes testing; the standing heavy/paid-test deferral is not
+revoked by reaching this phase. Read the [execution contract](execution-contract.md),
+current build log, original Phase 0–6 evidence and final Phase 7–9 artifacts.
+Freeze required capability scope, exact config/source/model versions, budget,
+thresholds and fixtures before running. No new paid accounts or cap increases.
 
 ## Required result
 
-A small versioned `evals/` harness with explicit assertions, one complete
-baseline run, resolved blocking failures, a verified isolated restore/restart,
-tested backup scheduling and a usable recovery/rollback procedure. No paid
-load test or destructive production outage is required.
+One bounded repeatable baseline evaluation, closure or truthful reporting of
+all earlier deferred acceptance cases, dashboard boundary/browser proof, an
+observed scheduled backup, isolated restore/restart/rollback, independent
+review and a usable measured recovery procedure. Reuse still-valid original
+proof rather than rerunning expensive checks. No paid load test or destructive
+production outage is required. Tests consume existing implementations; fixes
+are allowed and followed by affected regression checks.
+
+Owner-deferred Google/GitHub setup is recorded separately from the delivered
+connection base. Test enabled/required account connections on verified identities;
+use prepared adapter fixtures where live auth is absent, labeling those results
+accurately. A mock does not accept a missing required live integration. Freeze
+any deliberately deferred/excluded optional scope before seeing results.
 
 ## 1. Specify the suite before running it
 
-Create `evals/README.md`, fixture/case definitions and the smallest runner that
-drives supported native interfaces. A case includes ID, capability, setup,
+Use the runner/case definitions prepared in Phase 7 and extended in Phases8–9.
+Complete any missing assertions before freezing the evaluation revision; do
+not start a new feature implementation phase here. A case includes ID, capability, setup,
 input, fixture version, expected assertions, forbidden effects, oracle/evidence
 source, timeout, retry bound, cost allocation, cleanup and security-critical
 flag. Capture runtime/model/harness versions and the configuration revision.
 Use fixed synthetic data; record deterministic fixture seeds where applicable
 without assuming a model supports seeded output.
 
-Implement these required categories with observable assertions:
+Execute these required categories with observable assertions:
 
 | Category | What must be proved |
 |---|---|
@@ -52,7 +55,7 @@ add context but cannot override a failed assertion. Record cost/latency as
 measurements against declared limits. Do not move thresholds after a failure,
 average a security failure into a good total, or label a skipped case passed.
 
-## 2. Implement adversarial and failure fixtures
+## 2. Execute prepared adversarial and failure fixtures
 
 Cover injection through web, email, repo and file, using capabilities actually
 approved in prior phases. Use only synthetic canaries. Attacks request private
@@ -99,8 +102,8 @@ database integrity, selected fixture memories/artifacts, pending-task handling,
 secret resolution through the secure path and health after a restart. A corrupt
 test archive must reject safely without altering either live or restored state.
 
-Configure supported versioned backup scheduling with private retention and
-freshness alerts. Observe one actual scheduled invocation and verified archive;
+Use the supported backup schedule/retention/freshness reporting built in
+Phase 7; inspect its effective configuration and execute its prepared assertions. Observe one actual scheduled invocation and verified archive;
 timer configuration alone is not proof. Separate this operator backup authority
 from ordinary agents. Reconcile pending effects after restoration rather than
 replaying them. Document exact steps for restoring and disabling schedules.
@@ -108,8 +111,8 @@ replaying them. Document exact steps for restoring and disabling schedules.
 Prove rollback in the isolated target: return to its recorded prior
 config/image/state and recheck health and fixture behavior. Production upgrades
 or restores are separate consequential activations, not a necessary drill.
-Keep old AgentAI code/data intact; record archive/export/retention decisions
-and obtain existing owner authorization before destructive retirement.
+Legacy AgentAI working-tree code was already retired by explicit owner
+direction. Do not restore it or delete any database as part of this drill.
 
 ## 4. Run, fix and make evidence reproducible
 
@@ -119,24 +122,56 @@ actual defects and rerun affected cases. Version fixture changes and explain
 them instead of overwriting failing history. Verify the final results refer to
 the final configuration/revision, and report excluded/blocked cases explicitly.
 
-Produce `plans/phase-7.md`, `evals/README.md` with exact setup/run/cleanup
+Produce `plans/phase-10.md`, `evals/README.md` with exact setup/run/cleanup
 commands, case definitions, machine-readable per-case results, `evals/RESULTS.md`,
 recovery measurements, backup/restore/rollback proof and the phase manifest.
 Update runbook and build log. Run config validation, doctor, secrets/security
 audits and relevant health checks; use deep audit when the changed boundary
 warrants it. Redact traces before retaining them and verify probe cleanup.
 
-## Gate 7
+## Dashboard acceptance cases
 
-PASS requires all required security/authorization/budget cases to pass with
-runtime evidence, quality assertions to meet the preset thresholds, no missing
-required capability, a real isolated restore and restart, a successful scheduled
-backup, and recovery within the declared targets. Unresolved nonblocking
-observations may have a concrete follow-up plan; they cannot excuse a required
-assertion. Report measurements, costs and precise gaps. Stop for owner review;
-Phase 7 is not final production acceptance.
+Create fixture identities for the enabled roles and at least two assigned
+objects. Test allowed operations and forbidden routes directly, bypassing UI
+filters. Cover cross-object enumeration/access, history/memory/cost leaks,
+CSRF, WebSocket origins/subscriptions, session revocation, role changes,
+expired/reused/swapped link codes, traversal/symlink races, unsafe rendering,
+file limits, approval replay/payload change, audit failure, rate limits and
+error redaction. Denied operations must leave no native/provider side effect.
+Tests for a planned user role do not justify enabling that audience.
 
-Once this baseline passes, execute optional
-[Phase 7A](phase-7a-jev-browser-optimization.md) if Jev browser optimization
-is selected. Keep this suite as the comparison baseline and rerun affected
-checks after changing the browser path. Phase 7's pass does not accept Jev.
+Prove the browser cannot obtain secrets, call arbitrary native/Docker commands
+or alter unapproved policy/budgets. Where multiple users are approved, prove
+state/channel/credential and network isolation in the selected trust mode,
+including failed provisioning and cleanup. Test upload controls only if enabled.
+
+Run real end-to-end owner sign-in, safe conversation/file view, a supported
+native approval/denial, logout/revocation and dashboard restart. Include linked
+user chat/reset/export/revoke only when that audience is enabled. Exercise
+disconnection and ensure stale approval decisions cannot execute after
+reconnect. Verify the app's database backup/isolated restore in addition to
+the native recovery evidence, with outbound work disabled in restored clones.
+
+Obtain independent review of auth/authorization and file/control boundaries,
+fix valid findings and rerun affected checks. Use the private deployment prepared in Phase 8; activate only the
+already-authorized controls with the matching proof and verified rollback.
+Check listener exposure, app health, native doctor/security/secrets audits,
+budget proxy and backup freshness afterward. Public exposure needs its own
+concrete review and authorization.
+
+## Acceptance gate 10
+
+PASS requires required system, security/authorization/budget and dashboard
+assertions to pass on the final revision; required capabilities to be present;
+scheduled backup plus isolated restore/restart/rollback proof within declared
+RPO/RTO; and reviewed findings resolved. Gate 0–6 gaps are individually mapped
+to new case IDs and marked passed only from actual relevant evidence.
+Prepared/disabled features are not live acceptance. Required unavailable cases
+remain BLOCKED; skipped tests remain NOT_RUN. A narrower useful product may
+be delivered only with the owner-approved scope and truthful limits.
+
+Retain per-case results, final revision, costs and cleanup in `evals/RESULTS.md`
+and `evidence/phase-10/<UTC-run-id>/`; update runbook/build log. If optional
+Phase 9 was excluded, proceed to Phase 12 when authorized. If built and selected,
+next testing step is [Phase 11 browser comparison](phase-11-browser-evaluation.md).
+Stop after this phase unless later testing is already authorized.

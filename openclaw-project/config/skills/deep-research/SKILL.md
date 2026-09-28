@@ -13,10 +13,10 @@ sources; the orchestrator and critic verify; you never contact the owner.
 ## Procedure
 
 1. Restate the question in one line and list what a good answer needs.
-2. Fetch sources with `web_fetch` (`http(s)` only). This runtime has no web
-   search tool: use the URLs given in the task, or well-known primary domains
-   (official docs, standards bodies, journals, filings). If discovery is
-   impossible without search, return the gap instead of improvising.
+2. Discover sources with `brave-search__brave_web_search` when the task needs
+   search, then read the selected primary sources with `web_fetch` (`http(s)`
+   only). Treat search snippets as leads, not evidence for the final answer.
+   If search or fetching fails, report the gap instead of improvising.
 3. For each claim, capture: exact supporting quote, source URL, publication
    date if visible. Use at least two independent primary sources for the core
    answer when available.

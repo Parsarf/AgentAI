@@ -138,3 +138,52 @@ five seconds, no model or delivery. Its runtime boundary is not yet proven.
 Installed scheduler capacity is fixed8; concurrency1 cannot be configured.
 All12 older jobs were preserved. Gate5 acceptance and earlier missing fixtures
 remain deferred. See RUNBOOK.md and evidence/phase-5/20260927T180152Z/.
+
+## Operations layer (Phase 7)
+
+A host systemd timer (`openclaw-ops-backup`, 03:17 UTC daily) performs the
+operator backup — a consistency-aware native OpenClaw archive with post-write
+verification plus a LiteLLM PostgreSQL dump for spend history and virtual-key
+identity — bounded local retention (14 sets), and a local-only freshness
+report. The timer is outside agent authority: agent cron jobs are untouched,
+and the backup job makes no model calls and sends nothing. Restore/rollback
+entry points stage isolated clones with channels, schedules and delivery
+disabled before any start; drills are Phase 10 acceptance work. The
+repeatable acceptance suite is defined but unexecuted in `evals/`.
+
+## Private control dashboard (Phase 8)
+
+A separate, minimal owner dashboard (`dashboard/app.py`, stdlib-only,
+loopback-only, systemd-hardened) composes read-only operational truth from
+fixed native operations — gateway/LiteLLM/Postgres health, container state,
+spend vs configured caps, backup freshness, pending approvals, connector
+state — plus scoped session listing and an allowlisted virtual file view
+over the container `work/` root. It stores only its own auth secrets and an
+append-only application audit stream; it holds no OpenClaw state, tokens or
+model credentials. All mutating controls are feature-gated off server-side
+pending Phase 10 targeted proof; the native Control UI remains the
+chat/settings surface. Additional audiences remain unauthorized by default.
+
+## Browser optimization adapter (Phase 9, disabled)
+
+A self-contained adapter library owns deterministic snapshot→candidate
+building, fail-closed response validation against the pinned TypeSafe
+`jev-1.13.0` schema (candidate membership, finite unit-sum probabilities,
+argmax consistency, Choice-only confidence), a local-estimate action budget,
+bounded retries, and explicit escalate/stop/no-valid-action outcomes. Jev
+holds no authority: its only possible effect is choosing among code-created
+candidates; execution, identity re-checks and outcome verification stay in
+code, and owner approvals are unchanged. The route is disabled at the
+config level and unwired from the runtime pending a reviewed transport and
+an owner-authorized TypeSafe account (Phase 11).
+
+## Browser/search tool surfaces (2026-09-28)
+
+Browser capability is worker-scoped: only `browser-worker` may call browser
+tools; sessions spawn pinned per-session sandbox-browser containers
+(authenticated CDP relay, no host publishing beyond the sandbox bridge) and
+the orchestrator stays browser-denied. Brave search is available to
+`researcher` as the `brave-search__brave_web_search` MCP tool, backed by a
+pinned official Brave container and a private mounted key file. Main and all
+other workers explicitly deny its namespace. Native `web_search` remains
+disabled because this build does not support Brave as a native provider.

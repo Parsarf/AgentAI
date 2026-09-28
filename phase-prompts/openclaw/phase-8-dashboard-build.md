@@ -1,21 +1,26 @@
-# Phase 9 — Private operator dashboard with scoped control
+# Phase 8 — Build the private control dashboard
 
-Build a useful private dashboard around the verified OpenClaw runtime. The
-owner should see truthful health, work, costs, files and pending decisions,
-and use narrowly authorized controls. Deliver a working operator product with
-tested access boundaries, rather than a browser proxy for host administration.
+Build phase 2 of the remaining sequence. Read the
+[execution contract](execution-contract.md), [phase index](README.md), current
+build log/runbook, Phase 7 build artifacts and recorded prior evidence. Build
+an owner product around the existing OpenClaw runtime, then test it with the
+rest of the completed system in Phase 10. Passing final acceptance is not a
+prerequisite to authoring or privately previewing this dashboard.
 
-Read [the execution contract](execution-contract.md), accepted Gate 8 evidence,
-the runbook and current deployment. Verify installed-version docs for
+## Required result
+
+A private authenticated dashboard with real health/work/cost/file/decision/
+connection data, maintainable source and locked dependencies, scoped native
+API adapters, and prepared fixtures. Reuse the existing native Control UI
+where it meets the product requirements; implement only the actual product
+gaps. No second agent loop, scheduler, budget or approval engine.
+
+Check installed-version official docs for
 [Control UI](https://docs.openclaw.ai/web/control-ui),
-[external-app integration](https://docs.openclaw.ai/gateway/external-apps),
+[external apps](https://docs.openclaw.ai/gateway/external-apps),
 [Gateway protocol](https://docs.openclaw.ai/gateway/protocol),
-[approvals](https://docs.openclaw.ai/tools/exec-approvals),
-[security](https://docs.openclaw.ai/gateway/security) and
-[tenant boundaries](https://docs.openclaw.ai/gateway/multi-tenant-hosting).
-Inspect native UI/client capabilities before selecting custom components.
-Reuse supported APIs; do not recreate runtime, memory, scheduling, budgeting
-or approval engines in a dashboard database.
+[approvals](https://docs.openclaw.ai/tools/exec-approvals) and
+[trust boundaries](https://docs.openclaw.ai/gateway/multi-tenant-hosting).
 
 ## 1. Freeze the audience and safe starting conditions
 
@@ -29,11 +34,12 @@ provisioning explicitly requested by the owner remains required: implement and
 test it with controlled identities, and report any missing live-audience
 authorization as an activation blocker rather than silently dropping it.
 
-Before enabling privileged controls, confirm private authenticated Gateway
-access, effective sandbox/tool boundaries, daily/monthly budget rejection and
-budget-store fail-closed behavior, verified scheduled backups/restore, and
-accepted doctor/security findings. A changed or missing prerequisite blocks
-the affected control; do not silently disable isolation to expose it.
+Implement privileged controls behind server-side disabled feature gates when
+prior behavioral evidence is missing. Existing authenticated native surfaces
+remain available within their present authority. Building routes/components
+can proceed before Phase 10 acceptance; enabling new mutating/provisioning
+controls requires their targeted authorization proof. Do not widen tools,
+isolation, spending or browser privileges to make controls appear usable.
 
 Inventory server RAM/disk and service headroom. Choose the smallest maintainable
 stack with a vetted identity/session component, locked dependencies and a
@@ -44,7 +50,7 @@ not copies of OpenClaw agent state or model credentials.
 
 ## 2. Specify the server boundary before building controls
 
-Write `plans/phase-9.md` with browser → dashboard server → native API adapter
+Write `plans/phase-8.md` with browser → dashboard server → native API adapter
 → OpenClaw/LiteLLM data flows, trust assumptions, role matrix, storage,
 resource limits and rollout/rollback. Define every endpoint and event stream:
 request/response schema, role, object ownership, allowed native operation,
@@ -107,9 +113,8 @@ Implement a small coherent UI with actual server data:
   credential/OAuth flows and preserve OpenClaw command-owner separation.
 
 Add clear loading, empty, disconnected, error and permission-denied states,
-keyboard access, readable contrast and responsive layouts. Exercise the
-actual owner flows in a browser; placeholder metrics or fake approvals do
-not satisfy the product. File upload/write/delete is a separate authorized
+keyboard access, readable contrast and responsive layouts. Use real server data rather than placeholder metrics or fake approvals.
+Comprehensive owner browser flows are exercised later in Phase 10. File upload/write/delete is a separate authorized
 increment: enable only with enforced permissions, size/type limits, safe
 storage and malware scanning. If those are unavailable, keep uploads disabled.
 
@@ -118,8 +123,8 @@ storage and malware scanning. If those are unavailable, keep uploads disabled.
 For Telegram linking, verify numeric identity through the supported provider/
 authenticated channel mechanism, not a claimed ID or display name. A one-time
 link code is bound to the signed-in account and intended identity, expires
-quickly, is rate-limited and consumed atomically. Test expiry, reuse, swapping
-accounts and concurrent consumption. Linking a dashboard account must not
+quickly, is rate-limited and consumed atomically. Author later cases for expiry, reuse, swapping
+accounts and concurrent consumption; execute them in Phase 10. Linking a dashboard account must not
 silently add it to the OpenClaw command-owner allowlist. Support disable,
 active-session revocation and scoped export/delete with retention disclosure.
 
@@ -136,58 +141,40 @@ Choose and document the appropriate trust mode:
 
 If provisioning is in scope, make it asynchronous, idempotent and recoverable
 with pending/ready/failed states, quota/concurrency checks and receipts. Mark
-ready only after real health, identity, budget and isolation checks. On partial
+ready only after real health/identity and the targeted budget/isolation
+checks in Phase 10. Build the lifecycle path now; leave activation disabled. On partial
 failure, preserve evidence and rollback only the run's resources. Never give
 the web app a Docker socket to implement provisioning. A narrow authorized
 native/operator service must own host lifecycle operations. Do not promise
 dedicated Telegram bots without owner-supplied bot tokens or a verified
 authorized provisioning mechanism. Do not overcommit this VPS to add users.
 
-## 5. Test, review and roll out privately
+## 5. Prepare acceptance fixtures and privately deploy
 
-Create fixture identities for the enabled roles and at least two assigned
-objects. Test allowed operations and forbidden routes directly, bypassing UI
-filters. Cover cross-object enumeration/access, history/memory/cost leaks,
-CSRF, WebSocket origins/subscriptions, session revocation, role changes,
-expired/reused/swapped link codes, traversal/symlink races, unsafe rendering,
-file limits, approval replay/payload change, audit failure, rate limits and
-error redaction. Denied operations must leave no native/provider side effect.
-Tests for a planned user role do not justify enabling that audience.
+Implement the fixture identities/objects, direct-route assertions, browser
+scenario definitions and isolated app-database restore support needed by
+Phase 10. Cover auth/object ownership, approvals, file traversal/symlink races,
+CSRF/origins, revocation, replay, audit failures, error redaction and any
+explicitly approved extra-user provisioning. Do not run the full suite or
+independent paid review during this build. Scope is one owner unless additional
+audience authorization was actually given; do not introduce public signup.
 
-Prove the browser cannot obtain secrets, call arbitrary native/Docker commands
-or alter unapproved policy/budgets. Where multiple users are approved, prove
-state/channel/credential and network isolation in the selected trust mode,
-including failed provisioning and cleanup. Test upload controls only if enabled.
+Use a private deployment/preview with real data, authenticated access, bounded
+resources and a reversible config/image change. Lightweight checks: install/
+build/type or syntax checks, schema/readback, startup and health/listener check,
+no-secret browser assets, and a single basic authenticated page smoke where
+practical. No paid model workflow, adversarial suite, full browser matrix or
+restore drill. New controls without proof remain implemented but disabled
+server-side; show their actual availability clearly without invented metrics.
 
-Run real end-to-end owner sign-in, safe conversation/file view, a supported
-native approval/denial, logout/revocation and dashboard restart. Include linked
-user chat/reset/export/revoke only when that audience is enabled. Exercise
-disconnection and ensure stale approval decisions cannot execute after
-reconnect. Verify the app's database backup/isolated restore in addition to
-the native recovery evidence, with outbound work disabled in restored clones.
+## Artifacts and build completion
 
-Obtain independent review of auth/authorization and file/control boundaries,
-fix valid findings and rerun affected checks. Deploy first to a private staging
-address; activate only the already-authorized scope with a verified rollback.
-Check listener exposure, app health, native doctor/security/secrets audits,
-budget proxy and backup freshness afterward. Public exposure needs its own
-concrete review and authorization.
-
-## Artifacts and Gate 9
-
-Produce the dashboard source/lockfiles, threat model/API-role matrix, tested
-native version contract, startup/config examples without secrets, native-call
-adapter tests, browser evidence, independent review/dispositions and the
-execution-contract manifest. Update build log, architecture and runbook with
-access, revocation, alert response, backup/restore and rollback. Explain which
-audience and controls are enabled and which remain optional/disabled.
-
-PASS requires the agreed private product to work with truthful data; every
-enabled route/event/file/action to enforce identity and object authorization;
-no browser/app access to raw host/Docker/secret controls; native approvals to
-remain authoritative; audit/replay/revocation/negative tests to pass; and
-sandbox, budgets, backups and restart recovery to retain objective evidence.
-Additional-user scope requires its matching isolation proof. A missing
-required boundary leaves Gate 9 BLOCKED/FAIL. A useful read-only owner view may
-be handed over as partial work, with disabled controls and the incomplete gate
-clearly reported. Stop after Phase 9.
+Produce `plans/phase-8.md`, dashboard source/lockfiles, API-role matrix, native
+version contract, auth/session/file/control enforcement, prepared Phase 10
+cases, private access/start/stop instructions and rollback. Update architecture,
+runbook and build log; retain a sanitized `evidence/phase-8/<UTC-run-id>/`
+manifest describing setup checks and disabled controls.
+Build status READY/PARTIAL/BLOCKED is separate from acceptance DEFERRED to
+Phase 10. Delivery must say exactly which features are built and usable versus
+waiting for credentials/proof. Stop after Phase 8 unless more is authorized.
+Next build is optional [Phase 9 browser optimization](phase-9-browser-optimization-build.md).

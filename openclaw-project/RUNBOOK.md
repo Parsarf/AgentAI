@@ -1,5 +1,17 @@
 # OpenClaw operations runbook
 
+## Phase 4A Jev research layer (inactive)
+
+There is currently no Jev research plugin, toggle, or decision log in
+production. `web_fetch` is the unchanged path. The planned one-switch
+configuration is `JEV_RESEARCH_ENABLED=false`; do not set it true until
+Gate 3, proxy billing, privacy/injection, paired quality, and live fallback
+tests in `plans/phase-4a.md` pass. When deployed, its host-only JSONL log
+location and LiteLLM Jev spend query must be added here and verified live;
+unknown Jev spend must never be shown as zero. The one-step rollback will
+turn that switch off and reload the plugin, with a live equality check against
+plain `web_fetch`. Interactive browser decisions remain Phase 7A.
+
 Production belongs on the IONOS VPS and must work while the Mac is off. The
 deployment plan is [SERVER_DEPLOYMENT.md](SERVER_DEPLOYMENT.md). The temporary
 Mac Node/OpenClaw binaries were removed to recover disk space. Its private
@@ -468,3 +480,148 @@ no plaintext/unresolved/shadowed/store-residue findings. General Doctor,
 provider reads/refresh, boundary/injection/outage fixtures and restore are
 deferred. Gate6 remains BLOCKED by missing authentication/repository selection
 and unrun acceptance. Existing enabled jobs may still incur unrelated spend.
+
+## Operations backup & recovery (Phase 7)
+
+- Nightly operator backup: `openclaw-ops-backup.timer` (03:17 UTC ±5m, host
+  systemd — separate from agent authority). Runs
+  `/opt/openclaw-production/bin/ops-backup.sh`: native
+  `backup create --verify` archive plus a LiteLLM `pg_dump` (spend history
+  and virtual-key identity) plus SHA256SUMS into
+  `/opt/openclaw-production/backups/ops/` (dir 0700, files 0600). Retention
+  keeps the newest 14 own `oc-ops-*` sets; historical `phase*` archives are
+  never pruned. No model calls, no outbound messages.
+- Freshness: `bin/ops-status.sh` writes `backups/ops/status.txt`; exit 0 =
+  fresh (RPO target 24 h, proposed) / 1 = stale or error. Local report only
+  — no delivery authority is configured, so alerts are intentionally absent.
+- Isolated restore drill: `bin/ops-restore.sh <archive>` verifies and
+  restores into `restore-drill/<ts>/clone` offline and refuses to boot it.
+  Before any start, sanitize the clone (telegram channel off,
+  automations/cron off, delivery off, distinct port/db) using
+  `OPENCLAW_STATE_DIR`/`OPENCLAW_CONFIG_PATH` + `config set`, then
+  `config validate`. Never overwrite live state for a drill.
+- Rollback sequence: quiesce gateway → restore chosen archive to a fresh dir
+  → point state/config at the restored assets → offline `doctor` → start.
+  LiteLLM spend history/key identity restore from the nightly `pg_dump`;
+  never use `down --volumes`; preserve `LITELLM_SALT_KEY`/master key.
+- Off-host encrypted retention: **PENDING owner** (destination + key
+  custody). Prepared options: `openclaw backup git --remote <private>` or
+  an encrypted rclone target. Do not add a paid storage account without
+  approval.
+- RPO 24 h / RTO 30 min are proposed initial targets until the owner picks
+  others. Acceptance evidence belongs to Phase 10.
+
+## Private ops dashboard (Phase 8)
+
+- `openclaw-dashboard.service` on the VPS: owner-only, read-first ops
+  overview (gateway/proxy/db health, containers, LiteLLM spend vs the
+  configured $2/$25 targets, Phase 7 backup freshness, pending approvals,
+  connector state, app audit). Loopback `127.0.0.1:18795` only, stdlib
+  Python, hardened systemd unit (200 MB memory cap). Source:
+  `openclaw-project/dashboard/app.py`, deployed to
+  `/opt/openclaw-production/dashboard/`.
+- Owner access: SSH tunnel `ssh -L 18795:127.0.0.1:18795 <user>@69.48.206.62`,
+  then http://127.0.0.1:18795. The app password is the file
+  `/opt/openclaw-production/dashboard/owner-secret` (0600) — read it over
+  SSH; it is never displayed by the app.
+- Stop/start/rollback: `systemctl disable --now openclaw-dashboard` ( +
+  remove unit + delete the directory to fully roll back). `POST /revoke-all`
+  regenerates the session secret and kills every live session.
+- Mutating controls (chat, resets, approval resolution, connector toggles,
+  uploads, provisioning) are server-side disabled with visible reasons;
+  native approvals are resolved through Telegram/Control UI as before.
+
+## Browser optimization adapter (Phase 9 — DISABLED)
+
+- `openclaw-project/browser-opt/` holds the Jev action-selection adapter
+  (`jev_adapter.py`, pinned `jev-1.13.0` via `POST /v1/systemone`), pinned
+  `config.json` (master kill switch `"enabled": false`), offline unit tests
+  (19, no network), dev + held-out synthetic fixtures, and
+  `compare_runner.py`.
+- Kill switch: `config.json "enabled": false` makes `decide()` return
+  `route_disabled` without any network call; `compare_runner.py
+  --route optimized` additionally refuses without `--enable-optimized`.
+  Rollback = delete the directory; the runtime never loaded it.
+- Fallback: the existing browser-worker route; fires only when the
+  optimized route executed nothing (no duplicate effects).
+- NOT wired to any runtime yet: no TypeSafe account/credential exists
+  (separate owner decision and billing), and the worker→adapter transport
+  (host service / bridge allowlist / native plugin) is an open gap recorded
+  in `plans/remaining-build-items.md` #9. Provisional thresholds
+  (0.5 floor / 0.7 act) are settings, not measured claims; calibration and
+  the 30-scenario comparison belong to Phase 11 under explicit owner
+  authorization.
+
+## Web search and browser tool status (2026-09-28)
+
+- **Browser tool: ENABLED for `browser-worker` only.** `browser.enabled`,
+  `browser.evaluateEnabled=false`, sandbox browser via pinned
+  `openclaw-sandbox-browser@sha256:6752…` (contract
+  `2026-05-12-cdp-relay-auth`; the gateway launches per-session browser
+  containers and relays authenticated CDP itself). Grant layers touched:
+  agent allow +, agent deny −, `tools.sandbox.tools.allow` +, and `browser`
+  removed from BOTH global denies (`tools.deny`, `tools.sandbox.tools.deny`)
+  — deny wins over every allow layer, which hid the tool initially. `main`
+  keeps its own deny; critic lacks the allow. Live probe: browser-worker
+  opened example.com, snapshot heading returned, per-session browser
+  container spawned from the pinned digest.
+- **Brave search: ENABLED for `researcher` only** as the
+  `brave-search__brave_web_search` MCP tool. The official Brave MCP image is
+  pinned to `docker.io/mcp/brave-search@sha256:f58a5c22c1196ec7bd1ca586ce216f2334fc298550ddcf652c0e8adb6d256d78`.
+  Gateway launches it through `/usr/local/bin/docker` with a read-only root,
+  dropped capabilities, resource limits, and no published port. It reads only
+  `/opt/openclaw-production/integrations/brave/private/api-key` (owner 1000,
+  mode 0400) through a read-only mount; no key is stored in MCP config. Its
+  server and native tool filters expose only `brave_web_search`. Search is
+  read-only and auto-approved for researcher. Main and all other workers deny
+  the MCP namespace. `mcp doctor brave-search --probe`, `mcp probe
+  brave-search --json`, a direct Brave API call, and one researcher turn passed.
+  The old `BRAVE_API_KEY` gateway env entry was removed; the mounted file is
+  the active credential location.
+- **Native `web_search`: disabled.** This build rejects Brave as a native
+  provider ("install or enable plugin brave"). Use the MCP tool for Claude
+  workers. A different supported native provider would need its own credential.
+- **Brave rollback:** `bin/connect-tool disable brave-search`, then
+  `bin/connect-tool remove brave-search` if removal is required. The private
+  pre-change config and researcher instruction backups are under
+  `/opt/openclaw-production/integrations/connector-backups/20260928T190244311040Z`;
+  restore only the Brave-authored fields and instruction text, preserving later
+  edits. Removal does not revoke the Brave API key. Rollback (browser): revert
+  the seven paths from the pre-p11 backup archive.
+
+The key appeared in a diagnostic tool transcript during installation. Rotate
+it in the Brave dashboard. From a trusted interactive VPS terminal, run
+`python3 /opt/openclaw-production/integrations/brave/rotate-key.py` and enter
+the replacement key at its hidden prompt. From the Mac, run
+`bin/connect-tool check brave-search`, then make one bounded search before
+revoking the old key. Never put the new key in chat, a shell argument, or
+tracked configuration.
+
+## Phase 4A Jev research layer — CORRECTED status (2026-09-28 ~22:10 UTC)
+
+Supersedes the earlier "no plugin exists" note. Current truth:
+
+- `jev-research` plugin source: `research-opt/` (Python reference adapter +
+  tests, and the deployed Node middleware `plugin/index.mjs` with 10+node
+  tests green). Staged at `openclaw-state/extensions/jev-research/` and
+  config-enabled — **but the gateway does not load it at runtime** (absent
+  from the startup plugin list; suspected manifest/entry contract mismatch
+  in `openclaw.plugin.json`). This is the one open defect.
+- Toggle: `openclaw-state/jev-research/config.json` `{"enabled": true|false}`
+  (currently **false**). Decision log:
+  `openclaw-state/jev-research/decisions.jsonl` (0600; empty — middleware
+  has never fired). Jev key: disposable `phase4a-jev-eval` virtual key
+  ($0.05 cap) mounted read-only at `/run/secrets/phase4a-jev-eval.key`;
+  Jev endpoint `http://litellm:4000/typesafe/v1/systemone` (verified
+  reachable, `jev-1.13.0`, $0.000011676 probe charge recorded).
+- Fail-open is proven: with the plugin inert, researcher fetches return the
+  unmodified baseline result.
+- **Layer verdict: NOT PROMOTED.** Paired comparison (15 cases) not run
+  within the authorized window; per the frozen gate the toggle stays off.
+- Budget: temporary $10/24h auto-restores to $2 at 22:29 UTC via
+  `phase4a-budget-restore.timer` (verified armed). Verify with
+  `config get`-style LiteLLM key readback after the fire.
+- To resume: fix the plugin load contract (read the plugin loader source for
+  the expected manifest fields), confirm `jev-research` appears in the
+  startup plugin list, then run the frozen 15-case paired comparison under
+  a fresh owner-authorized budget window.

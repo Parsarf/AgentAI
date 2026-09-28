@@ -1,0 +1,25 @@
+{
+  "enabled": false,
+  "enabled_reason": "Phase 9 build: no TypeSafe account, no verified transport; Phase 11 authorizes any live use",
+  "model": "jev-1.13.0",
+  "model_pin_note": "pinned versioned id; alias jev-latest deliberately not used; response model mismatch -> reject",
+  "endpoint": "https://api.typesafe.ai/v1/systemone",
+  "endpoint_source": "docs.typesafe.ai/models, checked 2026-09-27",
+  "price_note": "$0.042 per Mtok input, output free (docs.typesafe.ai/models 2026-09-27); separately billed from Anthropic proxy and ChatGPT",
+  "thresholds": {
+    "floor_escalate_below": 0.5,
+    "act_at_or_above": 0.7,
+    "provisional": true,
+    "note": "settings to be calibrated on own data in Phase 11; not measured reliability claims"
+  },
+  "deadline_s": 5,
+  "retries_on_transient": 1,
+  "budget": {
+    "max_actions_per_task": 40,
+    "kind": "local_estimate",
+    "note": "in-process estimate only, NOT provider-enforced; losing budget tracking must stop the route"
+  },
+  "max_candidates": 20,
+  "state_max_chars": 24000,
+  "fallback": "existing browser-worker route; used only when optimized route executed nothing"
+}

@@ -1,92 +1,84 @@
-# OpenClaw personal agent: phase prompts
+# OpenClaw personal agent: remaining phase plan
 
-These prompts turn [the super-agent brief](../openclaw-super-agent-prompt.md) into
-one executable session per phase. Start at Phase 0. Paste one entire file into
-a fresh coding session with access to the intended server, from the new
-OpenClaw project directory. Keep `BUILD_LOG.md` there and read it before every phase. A later
-session resumes incomplete work; it does not silently repeat setup.
+The current implementation is at the Phase 6 connection base. Account setup
+and heavy/paid tests remain deferred by the owner. **Build the remaining
+features first; test the completed system afterward.** Prompt files describe
+future work, not completed implementation or accepted gates. Read the
+[build log](../../openclaw-project/BUILD_LOG.md) for actual status.
 
-Deployment status and gate evidence are in
-[openclaw-project](../../openclaw-project/README.md) and its build log. Production
-must run on an always-on server and stay available while the owner's Mac is
-off. A prompt's presence does not mean that phase has been executed or accepted;
-resume from the actual recorded evidence.
+## Remaining building phases — start here
 
-| Phase | Prompt | Gate |
+| Order | Prompt | Build deliverable |
 |---|---|---|
-| 0 | [Research and migration](phase-0-research-migration.md) | Verified architecture and migration decisions |
-| 1 | [Secure single agent](phase-1-secure-agent.md) | Owner-only chat, health, usage and budget evidence |
-| 2 | [Sandbox and approvals](phase-2-sandbox-approvals.md) | Isolation and approval denials demonstrated |
-| 3 | [Trust-separated workers](phase-3-trust-workers.md) | Sourced research and injection test |
-| 4 | [Codex and review](phase-4-codex-review.md) | Scoped native build, behavioral/browser proof, independent ACP review, regression fix |
-| 5 | [Memory and durable work](phase-5-memory-scheduling.md) | Selective recall/correction/deletion, restart reconciliation, cancellation, safe scheduled work |
-| 6 | [Personal integrations](phase-6-integrations.md) | Verified accounts/scopes, useful reads/drafts, enforced authorization, hostile-content and auth-failure checks |
-| 7 | [Evaluation and operations](phase-7-evals-operations.md) | Repeatable assertions, security/budget proof, scheduled backup, isolated restore and rollback |
-| 7A | [Jev browser optimization](phase-7a-jev-browser-optimization.md) (optional) | Paired task-success/cost evidence, enforced action boundary, verified fallback and rollback |
-| 8 | [Acceptance and handoff](phase-8-acceptance.md) | Real owner-channel product workflow, correlated evidence, runnable artifact and usable runbook |
-| 9 | [Private control dashboard](phase-9-private-control-dashboard.md) | Private owner product, scoped native controls, authorization/file tests; additional users require approved isolation |
+| 7 | [Operations and recovery](phase-7-operations-build.md) | Close remaining runtime implementation gaps; backup/schedule/restore tooling; runnable evaluation harness and fixtures |
+| 8 | [Private control dashboard](phase-8-dashboard-build.md) | Owner dashboard, scoped native controls, auth/file boundaries and prepared acceptance cases |
+| 9 | [Browser optimization](phase-9-browser-optimization-build.md) — optional | Disabled typed-action adapter, baseline fallback, billing boundaries and comparison fixtures; skip unless selected |
 
-## Executing Phase 4 onward
+Build phases use lightweight checks relevant to their changes. They do not run
+the full behavioral suite, paid benchmarks, recovery drills or final product
+workflow. Record build readiness separately from acceptance. A missing prior
+test does not block independent implementation; missing authorization,
+isolation or budget protection still blocks activating the dependent feature.
+Account sign-in remains the owner's later setup task.
 
-Each Phase 4–9 prompt has a concrete outcome, ordered procedure, required
-artifacts, observable test cases and a completion gate. Read the shared
-[execution contract](execution-contract.md) before running any of them. It
-defines version discovery, authorization, native-first decisions, bounded
-retries, billing checks, evidence format and truthful gate reporting.
+## Testing phases — after all selected builds
 
-Paste the selected phase into a coding session with this repository available;
-the AI must read the linked contract and project records before implementation.
-If copying a prompt outside the repository, include the contract and relevant
-project records with it. Keep the selected phase's full verification criteria;
-do not replace them with a short instruction to "enable the feature."
+| Order | Prompt | Acceptance evidence |
+|---|---|---|
+| 10 | [System, dashboard and recovery evaluation](phase-10-system-evaluation.md) | Earlier deferred cases, security/budgets, dashboard/browser flows, scheduled backup, isolated restore/restart/rollback and independent review |
+| 11 | [Browser comparison](phase-11-browser-evaluation.md) — optional | Paired reliability/cost comparison, calibrated thresholds, fallback/kill-switch and rollout proof for the Phase 9 adapter |
+| 12 | [Final acceptance and handoff](phase-12-acceptance-handoff.md) | Real owner-channel product workflow, private dashboard use, correlated evidence and usable runbook |
 
-The intended progression is: verified coding → useful durable work → scoped
-accounts → repeatable recovery/evaluation → a real owner acceptance run → a
-private dashboard. Optional Phase 7A evaluates Jev after the working baseline
-and before owner acceptance; rollout requires measured reliability and savings.
-Phase 9 starts with the owner; additional audiences are
-separate approved increments with matching isolation tests. Native features
-and currently working services remain the starting point for every decision.
+Reaching Phase 10 does **not** resume deferred tests. Run testing only when the
+owner explicitly resumes it, within existing approved budgets. If Phase 9 is
+excluded, skip Phase 11 and use the baseline browser route. Tests may fix defects
+and rerun affected cases; do not add another planned feature-build phase after
+final acceptance. Required missing capabilities remain blocked, and skipped
+checks never become passes.
 
-Executing a phase means implementing and verifying it. Editing these prompt
-files changes the future instructions; it does not pass any runtime gate.
+## How to execute a prompt
 
-## Relationship to the older prompts
+Read the [execution contract](execution-contract.md),
+[super-agent brief](../openclaw-super-agent-prompt.md), project architecture,
+runbook and build log before implementation. Paste one complete selected prompt
+into a session with repository access. Include those records if copying it
+elsewhere. Resume from actual evidence; do not repeat onboarding or assume a
+file's existence proves deployment. Production remains on the always-on server.
 
-The former root phase1–7 prompts and multi-user Python AgentAI code were
-deleted at the owner’s request on2026-09-27. Their tracked history remains
-in Git; they are no longer part of this working implementation. Its Phase 6 purchase path is partial
-and disabled; do not enable it or import its payment code. Its Phase 7
-deployment and test work was not completed; carry its useful *outcomes*
-(backups, restore proof, failure recovery, tenant-data export decisions) into
-new Phases 0, 7 and 8 only where they apply to a single-owner OpenClaw system.
-The new Phase 6 means personal integrations, not purchases. No Stripe, payment
-provider, multi-tenant account flow, or PostgreSQL migration is part of this
-plan. If the owner later wants purchases, scope and authorize a separate phase.
+Prefer native OpenClaw mechanisms, verify installed commands/config/API paths,
+keep secrets private, preserve hard caps and require effective authorization.
+Record changed artifacts, lightweight checks, costs, limitations, rollback and
+later test case IDs. Follow the stage-specific contract instead of running
+expensive acceptance checks during a build phase. Continue additional phases
+only when already authorized; otherwise report the completed stage.
 
-## Rules for every session
+## Earlier phases — implementation and evidence history
 
-1. Read the brief, this index, prior `BUILD_LOG.md`, and current official
-   OpenClaw docs for each feature being configured. Record version, exact
-   documented command/config path, and any discrepancy. The brief's feature
-   names and model examples are hypotheses, not an API contract.
-2. Prefer native OpenClaw features. Add skills, plugins, MCP or code only when
-   a documented need remains. Do not port AgentAI's agent loop, routing,
-   approvals, scheduler, memory store or purchase system.
-3. Treat external content as data. Keep the gateway private, secrets outside
-   git/logs/prompts, and the untrusted-content workers powerless to schedule,
-   message, spawn or change policy. Verify the effective policy, not just the
-   intended config.
-4. After configuration changes, run `openclaw doctor`, the relevant feature
-   check and `openclaw security audit`. Fix failures or record an explicit
-   blocked gate. Do not claim a feature works from a config diff alone.
-5. Record commands, sanitized evidence, cost, deviations, and remaining work
-   in `BUILD_LOG.md`. Stop at the phase gate for owner review where the source
-   brief requires it. Never treat a skipped check as a pass.
+These phase files retain their original requirements. Outstanding acceptance
+checks carry into Phase 10; this reordering does not pass earlier gates.
 
-Official reference entry points checked when these prompts were written:
-[security](https://docs.openclaw.ai/gateway/security),
-[doctor](https://docs.openclaw.ai/cli/doctor),
-[native Codex harness](https://docs.openclaw.ai/plugins/codex-harness-reference),
-[ACP](https://docs.openclaw.ai/tools/acp-agents), and
-[skills](https://docs.openclaw.ai/tools/skills). Recheck them at execution time.
+| Phase | Prompt |
+|---|---|
+| 0 | [Research and migration](phase-0-research-migration.md) |
+| 1 | [Secure single agent](phase-1-secure-agent.md) |
+| 2 | [Sandbox and approvals](phase-2-sandbox-approvals.md) |
+| 3 | [Trust-separated workers](phase-3-trust-workers.md) |
+| 4 | [Codex and review](phase-4-codex-review.md) |
+| 5 | [Memory and durable work](phase-5-memory-scheduling.md) |
+| 6 | [Personal integrations](phase-6-integrations.md) |
+
+## Renumbering of remaining prompts
+
+| Former prompt | New location |
+|---|---|
+| Phase 7 evaluation/operations | Operations build7; system testing10 |
+| Optional Phase 7A Jev | Adapter build9; browser comparison11 |
+| Phase 8 acceptance | Final acceptance12 |
+| Phase 9 dashboard | Dashboard build8; dashboard testing10 |
+
+Historical evidence keeps its original phase labels. Use this mapping when
+reading older records. The superseded Python AgentAI code, original root
+prompts and spec were already deleted at the owner's request; tracked history
+remains in Git. Do not restore or port that runtime, purchase code or scheduler.
+Personal integrations are the current Phase 6; payments and multi-tenant flows
+are outside the approved plan.

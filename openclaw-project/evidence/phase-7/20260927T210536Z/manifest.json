@@ -1,0 +1,54 @@
+{
+  "phase": 7,
+  "runId": "20260927T210536Z",
+  "type": "operations-build",
+  "generatedAtUtc": "2026-09-27T21:20:00Z",
+  "target": {
+    "host": "69.48.206.62 (IONOS VPS, Ubuntu 24.04)",
+    "deployment": "/opt/openclaw-production",
+    "gateway": "openclaw-production-openclaw-gateway-1",
+    "openclawVersion": "2026.9.6 (eb377ac), image openclaw-gateway:2026.9.6-sdk-peer",
+    "litellm": "container openclaw-production-litellm-1",
+    "postgres": "16.10, container openclaw-production-postgres-1"
+  },
+  "documentationChecked": [
+    "https://docs.openclaw.ai/cli/backup",
+    "https://docs.openclaw.ai/install/updating (skipped upgrade; none performed)",
+    "https://docs.openclaw.ai/gateway/security (audits unchanged, no widening)"
+  ],
+  "changes": [
+    "/opt/openclaw-production/bin/ops-backup.sh (new)",
+    "/opt/openclaw-production/bin/ops-status.sh (new)",
+    "/opt/openclaw-production/bin/ops-restore.sh (new)",
+    "/etc/systemd/system/openclaw-ops-backup.service (new)",
+    "/etc/systemd/system/openclaw-ops-backup.timer (new, enabled)",
+    "evals/{README.md,cases.yaml,run.py} (new, local repo)",
+    "plans/phase-7.md, plans/remaining-build-items.md (new)",
+    "RUNBOOK.md, ARCHITECTURE.md (operations sections appended)",
+    "backups/ops/ initial verified archive + LiteLLM dump (free safeguard)"
+  ],
+  "checks": [
+    {"id": "P7-SH-SYNTAX", "status": "pass", "command": "sh -n ops-backup.sh ops-status.sh ops-restore.sh", "observed": "all clean"},
+    {"id": "P7-PY-SYNTAX", "status": "pass", "command": "python -m py_compile evals/run.py", "observed": "clean"},
+    {"id": "P7-EVAL-SCHEMA", "status": "pass", "command": "evals/run.py validate", "observed": "23 cases valid (10 paid, 13 free); one YAML quoting error found and fixed first"},
+    {"id": "P7-TIMER-ENABLED", "status": "pass", "command": "systemctl enable --now openclaw-ops-backup.timer; list-timers", "observed": "enabled/active, next fire 2026-09-28 03:17:54 UTC"},
+    {"id": "P7-INITIAL-BACKUP", "status": "pass", "command": "ops-backup.sh", "observed": "native archive created+verified (oc-ops-20260927T210536Z.tar.gz, 5.9MB), litellm-20260927T210536Z.sql (2.2MB), SHA256SUMS written, exit 0. Safeguard only; NOT a restoration proof."},
+    {"id": "P7-FRESHNESS", "status": "pass", "command": "ops-status.sh", "observed": "overall=OK, exit 0; RPO 24h target"},
+    {"id": "P7-JOBS-PRESERVED", "status": "pass", "command": "openclaw cron list", "observed": "4 existing weekly skill-review jobs retained; no new agent job"},
+    {"id": "P7-HEAVY-DOCTOR", "status": "not_run", "reason": "doctor may migrate/lock state; deferred per phase contract"},
+    {"id": "P7-ACCEPTANCE", "status": "not_run", "reason": "DEFERRED to Phase 10 by plan reordering and owner direction"}
+  ],
+  "cost": {"modelCalls": 0, "paidSuites": 0, "notes": "no inference of any kind; backup is local disk I/O"},
+  "warnings": [
+    "two idle sandbox containers report unhealthy (image 62832668e3e5) — noted in remaining-build-items.md #7, no action taken",
+    "off-host encrypted retention pending owner decision (destination + key custody)",
+    "T10-NATIVE-BUILD-BOARD blocked: owner ChatGPT quota exhausted at last attempt",
+    "T10-INDEPENDENT-ACP-REVIEW blocked: reviewer route admission pending"
+  ],
+  "blockers": [],
+  "buildStatus": "READY",
+  "acceptanceStatus": "DEFERRED (Phase 10)",
+  "cleanup": "none required (no temporary artifacts left; staging dirs removed)",
+  "rollback": "systemctl disable --now openclaw-ops-backup.timer; rm the two unit files + daemon-reload; rm /opt/openclaw-production/bin/ops-*.sh, backups/ops, restore-drill; revert doc appends. No OpenClaw config/agent state touched.",
+  "rpoRto": {"rpoHours": 24, "rtoMinutes": 30, "basis": "proposed initial targets, owner has not chosen others"}
+}

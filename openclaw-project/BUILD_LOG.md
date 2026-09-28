@@ -1,5 +1,272 @@
 # OpenClaw build log
 
+## Phase 4A continuation — verification + close-out, 2026-09-28 ~22:15 UTC (layer NOT promoted)
+
+Another session built Phase 4A up to the toggle and ran out of usage mid-
+verification; this session verified its state and closed out within the
+authorized window (which ends 22:29 UTC).
+
+- **Verified intact:** Brave MCP live (researcher-only); Gate 3 baseline
+  PASSED (research fetch+citations, critic verification, injection reported,
+  no side effects — sessions `p4a-gate3-*-20260928`, audit 21:00–21:03 UTC);
+  LiteLLM Jev pass-through works (`/typesafe/v1/systemone`, `jev-1.13.0`,
+  $0.000011676 probe under the disposable `phase4a-jev-eval` $0.05 key);
+  adapter + middleware sources present with 10 Python + node tests green;
+  plugin staged, config-enabled, private key mounted, `config validate`
+  clean; budget failsafe timer armed ($10 → $2 at 22:29 UTC).
+- **One open defect found by live verification:** the gateway does NOT load
+  the `jev-research` middleware at runtime (absent from the startup plugin
+  list) despite config-enablement — toggle ON produced no decision rows and
+  no Jev spend; both probes correctly behaved as plain baseline fetches
+  (fail-open proven in practice). Suspected manifest/entry contract
+  mismatch in `openclaw.plugin.json`; fix requires the plugin-loader source.
+- **Verdict per the frozen promotion gate: NOT PROMOTED.** Toggle left
+  **off** (`openclaw-state/jev-research/config.json`), no paired comparison
+  run (would not fit the remaining window), no accuracy/cost claims made.
+  RESULTS.md updated: T10-RESEARCH-CITATIONS + T10-INJECTION-NO-EFFECT
+  now **PASS** (Gate 3 baseline closed). RUNBOOK corrected with toggle/log/
+  key paths and resume instructions.
+- Budget: auto-restore verified armed; spend this continuation ≈ $0.10
+  (two trivial fetch turns).
+
+## Phase 4A — Jev research preflight, 2026-09-28 (BLOCKED; inactive)
+
+Verified the live research path and current TypeSafe/OpenClaw/LiteLLM docs.
+Brave MCP search is now live for researcher and browser is live for
+browser-worker; native `web_search` stays disabled. The installed OpenClaw
+contains the documented pre-model tool-result middleware symbol, which is
+the proposed narrow `web_fetch` seam. No plugin or policy was changed.
+
+Gate 3 sourced research and injection checks remain BLOCKED in
+`evals/RESULTS.md`, so there is no valid baseline to optimize. The server
+has no TypeSafe credential in the inspected deployment secret files. The owner
+identified a bare `jev:` key in the local private `.env`; it was converted to
+a named `TYPESAFE_API_KEY` assignment without exposing its value and was not
+copied to production. Fresh anonymous 24-hour spend for the active key was
+$2.227560 versus a $2 cap, so no paid baseline was run. Pinned LiteLLM 1.102.1 predates the documented
+Jev pass-through release; proxy budget accounting must be verified before a
+Jev call. No Jev cost/latency/quality claim was measured and no promotion
+occurred. See `plans/phase-4a.md` and
+`evidence/phase-4a/20260928T204537Z/` for the frozen criteria and checks.
+
+## Brave search MCP enabled, 2026-09-28 (owner-directed)
+
+Owner selected Brave MCP and authorized installation. Pre-change verified ops
+archive `oc-ops-20260928T190201Z.tar.gz` and private connector config backup
+`integrations/connector-backups/20260928T190244311040Z` were taken.
+
+- Registered the official Brave MCP image pinned to
+  `sha256:f58a5c22c1196ec7bd1ca586ce216f2334fc298550ddcf652c0e8adb6d256d78`.
+  The server and MCP filters expose only `brave_web_search`. The key is read
+  from a private mounted file, not stored in the MCP definition. Search is
+  auto-approved for researcher; main and all other workers deny the namespace.
+- Removed the redundant `BRAVE_API_KEY` entry from `secrets/gateway.env`
+  after a private backup and recreated the gateway. The gateway process no
+  longer holds the Brave key; MCP doctor still passes using the mounted file.
+- First probe found `/usr/bin/docker` was absent inside the gateway; fixed to
+  `/usr/local/bin/docker`. The connector manager also did not pass the gateway
+  environment to its subprocess, so the Brave key was moved into an isolated
+  mounted secret file. Live MCP doctor and tool catalog then passed.
+- A direct Brave API query returned the official Brave Search API page. A
+  sandboxed Claude researcher turn completed with a successful
+  `brave-search__brave_web_search` receipt and zero tool failures. Researcher
+  role and deep-research instructions now include source discovery by Brave.
+  Config validation clean; security audit remains 0 critical, 2 baseline
+  warnings. Native `web_search` remains disabled in this build.
+- During diagnosis, the Brave container's `--help` output exposed the current
+  key as a default option value in the tool transcript. Rotate that key in the
+  Brave dashboard and update the private mounted file through the installed
+  interactive `integrations/brave/rotate-key.py` helper; the current key remains
+  operational until rotation.
+
+## Browser tool enabled + web_search assessment, 2026-09-28 (owner-directed)
+
+Owner ordered both OpenClaw surfaces implemented. Pre-change verified backup
+(ops archive + Compose copy). No security-audit regression (critical 0).
+
+- **Browser tool: LIVE for `browser-worker` only.** Enabled browser wiring
+  (`browser.enabled`, `evaluateEnabled=false`), sandbox browser with pinned
+  `openclaw-sandbox-browser@sha256:6752…` (label contract
+  `2026-05-12-cdp-relay-auth` — gateway launches per-session browser
+  containers and relays authenticated CDP; no manual cdpUrl needed). Grant
+  required FOUR layers — agent allow +, agent deny −,
+  `tools.sandbox.tools.allow` +, and removal from both global denies
+  (`tools.deny` + `tools.sandbox.tools.deny`); the global deny had silently
+  overridden the first three (deny wins), exactly the Phase 3 multi-layer
+  lesson. Live probe: browser-worker opened example.com, returned the
+  snapshot heading, pinned browser container spawned automatically.
+  `main` stays browser-denied; critic ungranted.
+- **web_search: NOT enabled — no supported provider credential.** Brave is
+  not a provider in this build (apply-time validation: "install or enable
+  plugin brave"; supported = gemini/xai/minimax/ollama/codex plugin-backed).
+  Owner's Brave key staged at `secrets/gateway.env` → gateway env (unused
+  until a path exists). One config batch activates it the moment a provider
+  key exists; alternatives documented in RUNBOOK. Status: PENDING-OWNER.
+- Ops notes: stale unhealthy sidecar containers from Phase 4 self-reaped;
+  gateway recreated with `env_file` (compose now references
+  `secrets/gateway.env`, mode 0600); LiteLLM budget window had freed —
+  probes ran clean.
+
+## Phase 10 — system evaluation, run 20260927T221952Z (partial; Gate 10 NOT PASSED, zero failures)
+
+Owner explicitly resumed testing. Suite frozen before results
+(`plans/phase-10.md`); case definitions unchanged. Budget-bounded per
+declaration (~$0.45 spent of the $1.20 self-cap).
+
+- **13 cases PASS + 2 reused live proofs** (Phase 1 monthly/DB-outage
+  denials — live DB deliberately not re-broken): full dashboard boundary
+  battery (auth/lockout, CSRF, 4 traversal forms, symlink refusal, download
+  tamper/expiry, revocation, redaction, disabled-control denials), budget
+  admission denial ($1e-9 temp key → 429 → deleted → revocation 404),
+  audits/validate/doctor, restore drill, trivial-no-spawn (391 in 4.1s).
+- **Two real defects found, fixed, re-run green:** (1) ops-restore staging
+  ownership broke archive verification (drill VERIFY_FAIL) — chown fix;
+  (2) dashboard Files root listing never rendered (empty-rel rejected) —
+  safe_rel fix, redeployed, navigation verified. Corrupt-archive rejection
+  re-proven (exit 1) after the fix.
+- **Ceiling hit, reported not evaded:** the key's enforced 24h window
+  rejected mid-orchestration (429, Current 1.9434830/2.0; SpendLogs "today"
+  lags the rolling window). Paid cases stopped per runbook; research/
+  injection/memory/durable/scheduling/browser/integration cases = BLOCKED
+  with resume conditions; injection page serve window closed, port verified
+  closed; temp probe key deleted + revocation verified.
+- **Awaiting:** scheduled-backup observation (03:17 UTC fire + RPO/RTO),
+  rollback drill in the isolated target, owner participation (Telegram
+  reply/deny, approval card, Control UI sign-in), ChatGPT quota (browser
+  build proof), reviewer route admission, owner TypeSafe decision (Phase
+  11). All mapped per case in `evals/RESULTS.md` +
+  `evidence/phase-10/20260927T221952Z/`.
+- Gate 10: **NOT PASSED (partial run; no failures; no skipped-as-passed).**
+
+## Phase 9 — browser optimization adapter build, 2026-09-27 (build READY; optimization acceptance DEFERRED to Phase 11)
+
+Owner selected the optional phase. Build-only: the optimized route is
+**disabled at three layers** (config kill switch, runner flag, and no
+transport/account existing). Zero provider calls; VPS untouched; the
+existing browser-worker route is preserved unchanged.
+
+- **Adapter** (`browser-opt/jev_adapter.py`): deterministic snapshot→typed
+  candidates; one Jev Choice (candidates ∪ escalate/stop/no_valid_action) +
+  one Noul; fail-closed validation (pinned `jev-1.13.0`, candidate
+  membership, finite unit-sum probabilities, argmax consistency, confidence
+  on Choice only per docs); local-estimate budget; 5 s deadline, one
+  transient retry; every non-execute outcome falls back to the existing
+  route without duplicate effects. Jev can only pick code-created
+  candidates — no selectors/shell/JS/tool-call generation is possible;
+  owner approvals unchanged.
+- **Pinned config** verified against docs.typesafe.ai (2026-09-27):
+  `POST /v1/systemone`, $0.042/Mtok input / output free, 64k/32k context,
+  text-only, English-first; Noul carries no confidence; thresholds are
+  provisional settings (0.5 floor / 0.7 act), not measured claims.
+- **Offline tests 19/19 green** after fixing one test-assertion bug
+  (adapter was correct): forged/unknown ids, non-finite and non-summing
+  probabilities, pin mismatch, argmax mismatch, missing confidence,
+  low-confidence escalation, budget stop, 429 no-retry, transient retry,
+  outage fallback, disabled-route refusal that never calls transport.
+- **Fixtures**: 10 dev + 10 frozen held-out synthetic scenarios;
+  **runner** refuses optimized runs unless both switches are on (verified
+  exit 3 both ways) and refuses the 30-scenario benchmark (Phase 11).
+- **Gaps recorded honestly** (`plans/remaining-build-items.md` #9): worker
+  transport needs isolation review; TypeSafe account/data-handling/spend
+  controls are separate owner decisions; jaggedness + confidence-routing
+  doc pages still unread (Phase 11 prep).
+- **Artifacts:** `plans/phase-9.md`, RUNBOOK/ARCHITECTURE sections, 4 new
+  `T11-*` eval cases (suite 35: 12 paid / 23 free, validated),
+  `evidence/phase-9/20260927T215500Z/`. Rollback = delete `browser-opt/`.
+  Build status: **READY**. All build phases (7–9) are now complete; testing
+  (10–12) awaits explicit owner authorization.
+
+## Phase 8 — private control dashboard build, 2026-09-27 (build READY; acceptance DEFERRED to Phase 10)
+
+Owner directed the next build phase. Zero model calls; no paid suites; no
+native policy change; native Control UI remains the chat/settings surface.
+
+- **Deployed** `openclaw-dashboard.service`: owner-only ops dashboard,
+  Python 3.12 stdlib only (no dependency tree), loopback `127.0.0.1:18795`
+  only, hardened systemd unit (MemoryMax 200M, ProtectSystem=strict,
+  NoNewPrivileges, PrivateTmp). Real data: gateway/proxy/Postgres health,
+  containers, LiteLLM spend vs the configured $2/$25 targets, Phase 7
+  backup freshness (RPO 24 h), pending approvals, connector state, app
+  audit; every card carries its observation timestamp.
+- **Read-only by design**: sessions listing sanitized; allowlisted virtual
+  `work/` file view (dotfile/`..`/symlink refusal, 2 MB cap, HMAC-signed
+  5-minute session-bound downloads); pending approvals displayed but
+  resolution stays with native policy; connector toggles stay with
+  `bin/connect-tool`. All six mutating controls are server-side feature
+  gates, rendered disabled with reasons.
+- **Auth**: owner password file (0600), HMAC session cookie (HttpOnly,
+  SameSite=Strict, rotated per login), 5/h lockout, CSRF on all POSTs,
+  CSP/frame-deny/no-store headers, global session revocation. App stores
+  only its own secrets + audit — no OpenClaw state, tokens or model keys.
+- **Verified**: local+remote compile clean (two bugs fixed pre-install);
+  listener loopback-only; authenticated smoke — wrong password 403+audited,
+  all six routes 200, overview shows live data, security headers present.
+- **Recorded limits**: no TLS (loopback/SSH only — TLS required before any
+  broader exposure); file-read TOCTOU covered by a Phase 10 case; audit
+  stream not claimed tamper-proof against host admin; extra audiences stay
+  unauthorized (role matrix designed, nothing activated; no signup).
+- **Artifacts:** `plans/phase-8.md`, `dashboard/app.py`, 8 new Phase 10
+  dashboard cases (evals suite now 31 cases: 10 paid / 21 free, validated),
+  RUNBOOK/ARCHITECTURE sections,
+  `evidence/phase-8/20260927T212204Z/`. Owner access via SSH tunnel per
+  runbook. Rollback: disable service + remove unit + delete dashboard dir.
+  Build status: **READY**. Acceptance: **DEFERRED to Phase 10.**
+
+## Phase 7 — operations build, 2026-09-27 (build READY; acceptance DEFERRED to Phase 10)
+
+Owner directed Phase 7 build only. Earlier gates remain unpassed/deferred;
+nothing from the acceptance suite was run; zero model calls.
+
+- **Backup/recovery implemented:** `/opt/openclaw-production/bin/ops-
+  {backup,status,restore}.sh` + host systemd `openclaw-ops-backup.timer`
+  (03:17 UTC daily, Persistent; enabled, first fire 2026-09-28 03:17 UTC).
+  Backup = native `backup create --verify` archive + LiteLLM `pg_dump`
+  (spend history / key identity so recovery cannot silently reset caps) +
+  SHA256SUMS into `backups/ops/` (0700/0600). Retention keeps the newest 14
+  own sets; historical `phase*` archives never pruned. The 4 existing agent
+  cron jobs are untouched; the timer sits outside agent authority and makes
+  no model calls or notifications.
+- **Initial bounded backup** ran once as the permitted free safeguard:
+  archive created and verified (`oc-ops-20260927T210536Z.tar.gz`, 5.9 MB),
+  `litellm-20260927T210536Z.sql` (2.2 MB), exit 0; freshness report
+  `overall=OK` against the proposed RPO 24 h. **Not a restoration proof.**
+- **Isolated restore:** `ops-restore.sh` verifies and stages clones offline
+  under `restore-drill/<ts>/` with sanitize-before-start instructions;
+  `--start` deliberately refuses (Phase 10 drill). Runbook + architecture
+  updated; **off-host retention PENDING-OWNER** (no destination/key custody
+  approved; none added).
+- **`plans/remaining-build-items.md`:** reviewer route = GAP; browser flows
+  + memory/durable = PARTIAL (implemented, unverified); scheduler = BOUND
+  (capacity 8 fixed; concurrency-1 unsupported; no exactly-once claims);
+  integrations = DEFERRED-OWNER (base done; sign-in is owner's task via
+  CONNECT_TOOLS.md); two unhealthy idle sandbox containers noted, no action.
+- **`evals/` harness:** README + `cases.yaml` (23 cases: 10 paid / 13 free;
+  2 honestly `blocked`: ChatGPT quota, reviewer admission) + `run.py`
+  (list/validate/show only; cannot execute cases). Schema validation passed
+  after fixing one YAML quoting error; `py_compile` clean.
+- **Lightweight checks:** `sh -n` all scripts; timer enabled/active
+  readback; no OpenClaw config change (no drift to validate); heavy doctor
+  deferred (may migrate/lock state) and recorded.
+- **Evidence:** `evidence/phase-7/20260927T210536Z/` (manifest.json,
+  summary.md). Build status: **READY**. Acceptance: **DEFERRED to Phase 10.**
+  Next build: Phase 8 dashboard (owner authorization required to continue).
+
+## Remaining prompt reordering — 2026-09-27 (planning only)
+
+- Owner requested all remaining building phases before testing phases.
+- Split former Phase7 operations/evals into build7 and test10; moved dashboard
+  from former Phase9 to build8 with its acceptance cases in test10; split
+  optional former Phase7A into adapter build9 and comparison test11; moved
+  final acceptance from former Phase8 to test12.
+- Updated the phase index, shared contract and source brief to distinguish
+  lightweight build checks from deferred heavy/paid acceptance. Testing still
+  requires explicit owner resumption. Missing authorization/isolation/budget
+  protection continues to block dependent activation.
+- Earlier evidence retains historical labels. Current deployment remains at
+  Phase6 connection base; no account login, runtime build/config change,
+  service operation, paid call or acceptance test occurred for this edit.
+
+
 ## Owner-authorized legacy cleanup — 2026-09-27
 
 - Owner explicitly requested deleting unnecessary files after the obsolete

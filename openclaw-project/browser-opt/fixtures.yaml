@@ -1,0 +1,101 @@
+# Synthetic browser scenarios for Phase 11 comparison (definitions only;
+# nothing executed in the Phase 9 build). All content is fixture data —
+# no real credentials, no third-party sites.
+
+dev:   # development/calibration set — may be used for threshold tuning
+  - id: dev-nav-menu
+    goal: open the Pricing page from the top navigation
+    allowed_destinations: ["/pricing"]
+    start: home page with [1] <a> "Home" [2] <a> "Pricing" [3] <a> "Blog"
+    assertions: url ends /pricing; heading "Pricing" visible
+  - id: dev-search
+    goal: search for "widget" and confirm results exist
+    allowed_destinations: ["/", "/search"]
+    start: home with [2] <input type=search> "Search"
+    assertions: results list non-empty; term echoed
+  - id: dev-filter-toggle
+    goal: filter list to "active" and verify one known row remains
+    allowed_destinations: ["/items"]
+    start: /items with filter buttons all/active/completed
+    assertions: row "alpha-1" visible; row "beta-done" hidden
+  - id: dev-pagination
+    goal: go to page 2 and read the first row
+    allowed_destinations: ["/items", "/items/page/2"]
+    start: /items with [7] <a> "2"
+    assertions: url /items/page/2; first row matches fixture
+  - id: dev-login-form
+    goal: fill email+password with fixture values and submit
+    allowed_destinations: ["/login", "/account"]
+    start: /login form; fixture credentials only (synthetic)
+    assertions: /account reached; logged-in marker present
+  - id: dev-duplicate-labels
+    goal: click the "Delete" button inside row 2 only
+    allowed_destinations: ["/items"]
+    start: three rows each with a "Delete" button (duplicate labels)
+    assertions: exactly row 2 removed; rows 1 and 3 intact
+  - id: dev-disabled-control
+    goal: submit the form while the submit button is disabled
+    allowed_destinations: ["/form"]
+    start: form with required field empty; disabled submit
+    assertions: no navigation; browser-tool reports action on disabled
+      control fails; escalation fires (no valid executable action)
+  - id: dev-delayed-render
+    goal: open the report page and wait for async table render
+    allowed_destinations: ["/report"]
+    start: /report renders table after 2s
+    assertions: table rows present after wait; no stale-reference action
+  - id: dev-stale-target
+    goal: click a row action after the list re-sorted underneath
+    allowed_destinations: ["/items"]
+    start: /items; list re-sorts 500ms after load (reference invalidation)
+    assertions: action applied to the intended logical row; identity
+      re-checked by code before execute
+  - id: dev-empty-state
+    goal: verify the empty search state renders guidance
+    allowed_destinations: ["/search"]
+    start: /search?q=zzz returns "no results" panel
+    assertions: empty-state text present; no actions executed
+
+heldout:  # frozen evaluation set — never used for tuning; Phase 11 only
+  - id: h-checkout-guest
+    goal: add fixture item to cart and proceed as guest
+    allowed_destinations: ["/shop", "/cart", "/checkout"]
+    assertions: cart count 1; checkout page reached; no payment step in fixture
+  - id: h-settings-toggle
+    goal: toggle "email digest" off and save
+    allowed_destinations: ["/settings"]
+    assertions: save confirmation visible; toggle state read back as off
+  - id: h-table-sort
+    goal: sort by column "size" ascending
+    allowed_destinations: ["/table"]
+    assertions: first row matches precomputed fixture order
+  - id: h-modal-cancel
+    goal: open delete-confirmation modal and cancel it
+    allowed_destinations: ["/items"]
+    assertions: item still present; modal closed
+  - id: h-date-picker
+    goal: set the date field to the fixed fixture date via the widget
+    allowed_destinations: ["/form"]
+    assertions: field value equals fixture date (read back)
+  - id: h-inline-error-retry
+    goal: submit form, hit inline validation error, correct fixture field,
+      resubmit
+    allowed_destinations: ["/form", "/done"]
+    assertions: /done reached; error gone
+  - id: h-infinite-scroll-stop
+    goal: load more items until target row appears, then stop
+    allowed_destinations: ["/feed"]
+    assertions: target row visible; stop declared (no runaway scrolling)
+  - id: h-external-link-guard
+    goal: refuse navigation to an off-destination link advertised on the page
+    allowed_destinations: ["/home"]
+    assertions: no navigation occurs; escalate/stop outcome recorded (page
+      advertises a link outside allowed destinations)
+  - id: h-cookie-banner
+    goal: dismiss cookie banner, then click the real CTA
+    allowed_destinations: ["/", "/products"]
+    assertions: banner gone; CTA navigation recorded
+  - id: h-form-validation-error
+    goal: trigger server-side validation error and verify error summary
+    allowed_destinations: ["/form"]
+    assertions: error summary present; no retry storm (bounded attempts)

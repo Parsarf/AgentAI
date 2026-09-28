@@ -4,12 +4,18 @@ This directory holds configuration and evidence for the
 [personal-agent plan](../phase-prompts/openclaw/README.md). OpenClaw 2026.9.6
 is running on the owner's IONOS VPS at `69.48.206.62`, with LiteLLM and
 PostgreSQL under `/opt/openclaw-production`. The Mac is not a runtime dependency.
-Phase6 integration setup is now applied: a pinned read-only Google connector
+Phase 6 integration setup is now applied: a pinned read-only Google connector
 image and disabled native Google/GitHub definitions, restricted to researcher.
+Brave web search is live for researcher through a pinned MCP connector; native
+`web_search` remains disabled because this build does not support Brave as a
+native provider.
 Account authentication and selected GitHub repositories remain required.
 Heavy/paid acceptance tests are deferred by owner direction. Earlier phases
 have substantial runtime evidence but their outstanding gates remain unpassed.
-See the latest [build log](BUILD_LOG.md) and [Phase6 plan](plans/phase-6.md).
+The remaining [phase plan](../phase-prompts/openclaw/README.md) now puts builds 7–9
+before tests 10–12; next is Phase 7 operations build. This changes instructions,
+not runtime status or acceptance evidence.
+See the latest [build log](BUILD_LOG.md) and [Phase 6 plan](plans/phase-6.md).
 The reusable [Connect tools guide](CONNECT_TOOLS.md) covers adding a tool
 service, account sign-in, enable/disable and native tool catalog checks.
 

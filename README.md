@@ -1,8 +1,10 @@
 # OpenClaw personal agent
 
 The active project is [openclaw-project](openclaw-project/README.md), running
-on the always-on VPS. Its current increment is the Phase6 connection base;
-account setup and heavy acceptance tests are deferred.
+on the always-on VPS. Its current increment is the Phase 6 connection base;
+account setup and heavy acceptance tests are deferred. Next is Phase 7 operations
+build, followed by the dashboard and optional browser optimization; system
+testing and final acceptance follow all selected builds.
 
 - [Connect tools](openclaw-project/CONNECT_TOOLS.md)
 - [Operations and recovery](openclaw-project/RUNBOOK.md)

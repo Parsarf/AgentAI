@@ -1,10 +1,32 @@
-# Execution contract for Phases 4–9
+# Execution contract for Phases 4–12
 
-Read this file before executing any Phase 4–9 prompt, including optional Phase
-7A. It defines how to work;
-the selected phase defines what to build. Execute the selected phase through
-verification and handoff. A plan, configuration diff, mock, or worker's success
-message is not a completed phase.
+Read this file before executing Phase 4 onward. The selected prompt defines
+its build or test deliverable. The [phase index](README.md) is the canonical
+remaining order: builds 7–9, then tests 10–12. The owner requested build-first
+work and deferred heavy/paid tests. This stage-specific order supersedes older
+instructions that require full acceptance before the next remaining build.
+Editing prompts does not execute a phase or pass a runtime gate.
+
+## Build-first execution and deferred testing
+
+- In builds 7–9, implement the actual selected features and prepare their test
+  fixtures, assertions and runner commands. Complete lightweight syntax,
+  dependency/config/schema, effective-policy/readback, bounded health and basic
+  startup checks appropriate to the change. Inspect changed files for secrets.
+- Defer full behavioral/security attack matrices, comprehensive browser flows,
+  paid model/provider probes, load/paired benchmarks, restore/failure drills
+  and the owner product workflow to tests 10–12. A narrowly scoped setup check
+  is not full acceptance. Record each deferred requirement and its later case.
+- Test deferral does not expire when builds finish. Execute tests 10–12 only
+  after explicit owner resumption and within the existing approved budget.
+  Reuse valid prior evidence and rerun only checks affected by corrections.
+- Open earlier gates do not prohibit independent implementation or private
+  preparation. Keep dependent privileged controls disabled when required
+  authorization, isolation or budget protection is missing. Never widen tools,
+  expose services or activate paid routes just to demonstrate build completion.
+- Report build status as READY, PARTIAL or BLOCKED against the selected build
+  deliverables, with acceptance DEFERRED and later phase/case IDs. Use PASS,
+  FAIL or BLOCKED for actual acceptance gates. NOT_RUN is never PASS.
 
 ## Establish the real starting point
 
@@ -78,11 +100,13 @@ provider lookup before retrying. Never loosen security to conceal a failure.
   source support, or absence of a forbidden side effect. A mock demonstrates
   adapter behavior; it does not prove a live connector works.
 - Run checks appropriate to the change: config/schema validation, relevant
-  native feature diagnostics, `openclaw doctor`, secrets audit and security
-  audit using the installed commands. Review effective tools and execution
-  placement. For UI work, exercise actual controls in a browser, including
-  empty, loading, error and narrow-screen states; save sanitized evidence.
-- Back up private state before consequential runtime changes. Test recovery
+  native feature diagnostics and lightweight secrets/security checks using
+  installed commands during builds. Run full doctor/audits and behavioral
+  checks in Phase 10; record any necessary disruptive diagnostic as deferred. Review effective tools and execution
+  placement. For UI builds, use a bounded basic startup/page smoke check. Prepare full
+  control, empty/loading/error and narrow-screen cases for Phase 10; exercise
+  them and save sanitized evidence when testing is resumed.
+- Back up private state before consequential runtime changes. Prepare isolated recovery during Phase 7; execute the drill in Phase 10
   in a separate state tree, with channel polling, outbound delivery and
   scheduled actions disabled so a clone cannot act as the live owner.
 - Fix demonstrated defects, then rerun affected checks. Inspect the final diff
@@ -104,7 +128,8 @@ observed result and evidence path. Link these records from `BUILD_LOG.md`.
 Do not store credentials, private message bodies or hidden model reasoning.
 
 Update architecture/runbook sections only where behavior changed. Record the
-gate as `PASS`, `FAIL` or `BLOCKED` against every required criterion. A skipped
+build status and deferred acceptance separately in builds 7–9. During resumed
+testing, record each gate as `PASS`, `FAIL` or `BLOCKED` against every required criterion. A skipped
 check, missing reviewer, unavailable account or unresolved owner interaction
 cannot be marked passed; distinguish deliberately excluded optional scope.
 

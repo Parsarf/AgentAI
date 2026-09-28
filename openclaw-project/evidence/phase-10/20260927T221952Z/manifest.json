@@ -1,0 +1,30 @@
+{
+  "phase": 10,
+  "runId": "20260927T221952Z",
+  "type": "system-evaluation",
+  "generatedAtUtc": "2026-09-27T22:35:00Z",
+  "authorization": "owner directed next phase after build completion (explicit testing resume)",
+  "frozenSpec": "plans/phase-10.md (thresholds declared before results); suite evals/cases.yaml unchanged",
+  "resultsFile": "evals/RESULTS.md",
+  "counts": {"pass": 13, "pass_reused": 2, "blocked_budget": 8, "blocked_other": 4, "not_run_owner": 7, "pending_time": 1, "excluded_owner": 1, "fail": 0},
+  "defectsFoundAndFixed": [
+    {"id": "P10-FIX-1", "where": "bin/ops-restore.sh", "defect": "root-owned archive staging blocked node-user verification (restore drill VERIFY_FAIL)", "fix": "chown node:node after docker cp", "rerun": "verify ok:true; isolated clone staged; corrupt archive still rejected exit 1"},
+    {"id": "P10-FIX-2", "where": "dashboard/app.py safe_rel", "defect": "empty dir= wrongly rejected -> Files root listing never rendered", "fix": "root path allowed as empty rel", "rerun": "root + phase4 navigation verified live"}
+  ],
+  "budgetCeilingEvidence": {
+    "observed": "gateway log 22:19:17-22:19:34 UTC: 429 Budget has been exceeded, key 24h window Current 1.9434830 / Max 2.0; bounded retries 5/9 then stop",
+    "note": "SpendLogs 'today' ($0.79) lags the enforced rolling window; no key rotation per runbook",
+    "spendThisRunApprox": 0.45,
+    "resumeCondition": "24h window frees as prior-phase spend ages out, or owner temporarily raises cap"
+  },
+  "freeEvidenceHighlights": [
+    "config validate valid/0 warnings; secrets audit clean except 1 known legacy OAuth residue; security audit critical 0 (2 pre-documented warnings); doctor exit 0 with expected disabled-connector allowlist notes",
+    "restore drill: verify ok:true, isolated clone staged, never started, live state untouched; corrupt archive rejected exit 1",
+    "budget admission: $1e-9 temp key -> 429, deleted, revocation 404",
+    "dashboard: auth/lockout, CSRF, traversal (4 forms), symlink refusal, download tamper/expiry 403, revocation, redaction 0 hits, disabled controls deny — all green",
+    "trivial deterministic ask: direct answer 391 in 4.1s, no worker spawn"
+  ],
+  "cleanup": "p10-serve stopped; port 18793 closed; temp scripts/probe files removed; temp budget key deleted+revocation verified; smoke cookie jars deleted",
+  "gate10": "NOT PASSED (partial run; no failures) — blocked/not_run cases mapped in evals/RESULTS.md with precise resume conditions",
+  "cost": {"modelSpendUsdApprox": 0.45, "paidSuites": 0, "withinDeclaredLimit": true}
+}
