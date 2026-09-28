@@ -3,6 +3,10 @@
 // never uses innerHTML with server or agent data.
 (function () {
   "use strict";
+  // active nav highlight
+  document.querySelectorAll("nav a").forEach(function (a) {
+    if (a.getAttribute("href") === location.pathname) a.classList.add("on");
+  });
   // theme
   const themeBtn = document.getElementById("theme-toggle");
   function setTheme(t) {

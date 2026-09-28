@@ -261,9 +261,7 @@ SPEND_SQL = (
     "SELECT 'today', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
     "WHERE \"startTime\" >= date_trunc('day', now() at time zone 'utc') "
     "UNION ALL SELECT '30d', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
-    "WHERE \"startTime\" >= now() - interval '30 days' "
-    "UNION ALL SELECT 'phase4a', COALESCE(SUM(spend),0) FROM \"LiteLLM_SpendLogs\" "
-    "WHERE key_alias = 'phase4a-jev-eval'")
+    "WHERE \"startTime\" >= now() - interval '30 days'")
 
 
 def spend() -> dict:
@@ -283,11 +281,11 @@ def spend() -> dict:
                 pass
     if rc != 0 or "today" not in vals:
         return obs("spend (proxy ledger)", "unknown", f"query rc={rc}", ts)
-    jev = vals.get("phase4a", 0.0)
+    jev = jev_cost_line()
     detail = {
         "today": f"${vals.get('today', 0):.4f} / ${CAPS['daily_usd']:.2f} (cap)",
         "30d": f"${vals.get('30d', 0):.2f} / ${CAPS['monthly_usd']:.2f} (cap)",
-        "jev_eval_key": f"${jev:.6f} (disposable probe key)",
+        "jev_eval_key": jev,
         "codex_chatgpt": "unknown (no attribution on this route)",
     }
     state = "warn" if (vals.get("today", 0) >= CAPS["daily_usd"]
@@ -528,15 +526,64 @@ def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
                   f"<button type=submit>Logout</button>"
                   f"</form><form method=post action=/revoke-all class=inline>"
                   f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
-                  f"<button type=submit>Revoke all sessions</button></form>")
+                  f"<button type=submit>Revoke sessions</button></form>")
     fl = f"<p class=warn>{esc(flash)}</p>" if flash else ""
     return (f"<!doctype html><html><head><meta charset=utf-8>"
             f"<meta name=viewport content='width=device-width, initial-scale=1'>"
             f"<title>{esc(title)} — OpenClaw ops</title>"
             f"<link rel=stylesheet href=/static/app.css>"
-            f"</head><body><header><h1>OpenClaw ops</h1>{nav}{logout}</header>"
-            f"<main>{fl}{body}</main>"
+            f"</head><body><header>"
+            f"<h1><span class=dot></span>OpenClaw ops</h1>{nav}"
+            f"<button id=theme-toggle type=button class=small>Theme</button>{logout}"
+            f"</header><main>{fl}{body}</main>"
             f"<script src=/static/app.js></script></body></html>")
+
+
+def pill(state: str) -> str:
+    return f"<span class='pill {esc(state)}'>{esc(state)}</span>"
+
+
+def toggle_row(name: str, label: str, on: bool | None, enabled: bool,
+               note: str = "") -> str:
+    """Controls row. on=None → unknown state. enabled=False → read-only."""
+    if on is None:
+        state = "<span class='pill unknown'>unknown</span>"
+    else:
+        state = pill("ok" if on else "warn") + f" <b>{'on' if on else 'off'}</b>"
+    if enabled:
+        ctl = (f"<form method=post action=/toggle class=inline>"
+               f"<input type=hidden name=csrf value='{{CSRF}}'>"
+               f"<input type=hidden name=name value='{esc(name)}'>"
+               f"<input type=hidden name=value value='{'off' if on else 'on'}'>"
+               f"<button type=submit class=small>Turn {'off' if on else 'on'}</button>"
+               f"</form>")
+    else:
+        ctl = "<span class=muted>read-only</span>"
+    note_html = f"<div class='small mut'>{esc(note)}</div>" if note else ""
+    return (f"<div class=card style='display:flex;justify-content:space-between;"
+            f"align-items:center;gap:1rem'>"
+            f"<div><b>{esc(label)}</b> {state}{note_html}</div><div>{ctl}</div>")
+
+
+def spend_bars(detail) -> str:
+    def bar(label: str, val: float, cap: float) -> str:
+        pct = min(100.0, (val / cap * 100.0) if cap else 0)
+        hot = " hot" if pct >= 80 else ""
+        return (f"<div class=kv><span>{esc(label)}</span>"
+                f"<span>${val:,.4f} / ${cap:,.2f}</span></div>"
+                f"<div class=bar><i class='{hot}' style='width:{pct:.1f}%'></i></div>")
+    d = detail if isinstance(detail, dict) else {}
+    try:
+        today = float(str(d.get("today", "0")).replace("$", "").split("/")[0].strip())
+        month = float(str(d.get("30d", "0")).replace("$", "").split("/")[0].strip())
+    except (ValueError, IndexError):
+        return "<p class=unknown>spend unavailable</p>"
+    return (bar("Today (24h cap)", today, CAPS["daily_usd"]) +
+            "<div style=height:.45rem></div>" +
+            bar("30 days (monthly cap)", month, CAPS["monthly_usd"]) +
+            f"<div class='small mut' style=margin-top:.45rem>Jev eval key: "
+            f"{esc(d.get('jev_eval_key', 'unknown'))} · Codex/ChatGPT: "
+            f"{esc(d.get('codex_chatgpt', 'unknown'))}</div>")
 
 
 def obs_table(items: list[dict]) -> str:
@@ -643,17 +690,47 @@ class Handler(BaseHTTPRequestHandler):
                      containers()]
             strip = now_running()
             ap = approvals_data()
+            cards = "".join(
+                f"<div class=card><h3>{esc(o['label'])}</h3>{pill(o['state'])}"
+                f"<div class=small style=margin-top:.35rem>"
+                f"{esc(o['detail'] if not isinstance(o['detail'], list) else chr(10).join(str(x) for x in o['detail']))}"
+                f"</div><div class=ts>{esc(o['ts'])}</div></div>"
+                for o in items)
+            spend_card = next((o for o in items if o["label"].startswith("spend")), None)
+            spend_html = ("<div class='card' style='grid-column:1/-1'><h3>Spend vs "
+                          "configured caps</h3>" +
+                          (spend_bars(spend_card["detail"])
+                           if spend_card and spend_card["state"] != "unknown" else
+                           "<p class=unknown>spend unavailable</p>") + "</div>")
             strip_html = ("<h2>Now running</h2>" + ("<div class=strip>" + "".join(
-                f"<span class=chip>{esc(x)}</span>" for x in strip) + "</div>"
-                if strip else "<p class=muted>nothing running</p>"))
-            gates = ("<h2>Disabled / scoped controls</h2>" +
+                f"<span class=chip><span class=live>●</span> {esc(x)}</span>" for x in strip)
+                + "</div>" if strip else "<p class=empty>nothing running right now</p>"))
+            sb = sandbox_browser_enabled()
+            jev_on = jev_research_enabled()
+            controls = ("<h2>Controls</h2><div class=grid>" +
+                        toggle_row("jev_research", "Jev research layer", jev_on, True,
+                                   "fail-open fetch decisions for the researcher") +
+                        toggle_row("sandbox_browser", "Sandbox browser",
+                                   sb, True, "per-session browser containers for "
+                                   "browser-worker (pinned image)") +
+                        toggle_row("web_search", "Native web search", False, False,
+                                   "off — no supported provider credential; Brave MCP "
+                                   "search stays available to the researcher") +
+                        "</div>")
+            gates = ("<h2>Fixed boundaries</h2>" +
                      gate("session cancel: no owner-scoped native abort verified on "
                           "this build — use the Control UI") +
                      gate("approval resolution: read-only here; resolve via "
                           "Telegram/Control UI (native policy authoritative)") +
                      gate("new chat: Control UI / Telegram"))
-            body = ("<h2>Overview</h2>" + obs_table(items) + strip_html +
-                    f"<h2>Pending approvals: {esc(ap.get('count', 0))}</h2>" + gates)
+            body = ("<h2>Health</h2><div class=grid>" + cards + "</div>" +
+                    spend_html + strip_html +
+                    f"<h2>Pending approvals</h2>" +
+                    (f"<div class=card><span class='pill warn'>{ap.get('count', 0)} "
+                     f"pending</span> <a href=/approvals>review</a></div>"
+                     if ap.get("count") else
+                     "<p class=ok>no pending approvals</p>") +
+                    controls + gates)
             return self._send(200, page("overview", body, rec))
 
         if path == "/sessions":
@@ -683,9 +760,9 @@ class Handler(BaseHTTPRequestHandler):
                     f"<span id=live-status class=muted>connecting…</span></p>"
                     f"<div id=timeline></div>"
                     f"<h2>Jev research layer: {esc(jev)}</h2>"
-                    f"<form method=post action=/jev-toggle>"
+                    f"<form method=post action=/toggle>"
                     f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
-                    f"<input type=hidden name=layer value=research>"
+                    f"<input type=hidden name=name value=jev_research>"
                     f"<select name=value><option value='off'>off</option>"
                     f"<option value='on'>on</option></select> "
                     f"<button type=submit>Apply (read back + audit)</button></form>"
@@ -920,6 +997,37 @@ class Handler(BaseHTTPRequestHandler):
             if not audit("revoke-all-sessions", "all", f"revoked={n}"):
                 return self._deny(500, "audit write failed — action refused")
             return self._redirect("/login", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
+        if path == "/toggle":
+            name = form.get("name", "")
+            value = form.get("value", "")
+            if value not in ("on", "off"):
+                return self._deny(400, "bad value")
+            if name == "jev_research":
+                try:
+                    os.makedirs(JEV_DIR, exist_ok=True)
+                    with open(os.path.join(JEV_DIR, "config.json"), "w") as f:
+                        json.dump({"enabled": value == "on"}, f)
+                    os.chmod(os.path.join(JEV_DIR, "config.json"), 0o600)
+                except OSError as e:
+                    return self._deny(500, f"toggle failed: {type(e).__name__}")
+                state = jev_research_enabled()
+            elif name == "sandbox_browser":
+                rc, out = run(["docker", "exec", GATEWAY, "node", "dist/index.js",
+                               "config", "set",
+                               "agents.defaults.sandbox.browser.enabled",
+                               "true" if value == "on" else "false"], timeout=40)
+                vrc, tout = run(["docker", "exec", GATEWAY, "node", "dist/index.js",
+                                 "config", "validate", "--json"], timeout=60)
+                if rc != 0 or vrc != 0:
+                    return self._deny(500, f"config change failed: {out[:120]}")
+                state = sandbox_browser_enabled()
+            else:
+                return self._deny(400, "unsupported toggle")
+            if state is None or (value == "on") != bool(state):
+                return self._deny(500, "readback mismatch — change not confirmed")
+            if not audit("toggle", name, value):
+                return self._deny(500, "audit write failed — change refused")
+            return self._redirect("/")
         if path == "/jev-toggle":
             layer = form.get("layer", "")
             value = form.get("value", "")
@@ -950,6 +1058,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), ctype)
         except OSError:
             self._deny(404, "missing asset")
+
+
+def jev_research_enabled() -> bool | None:
+    try:
+        with open(os.path.join(JEV_DIR, "config.json")) as f:
+            return bool(json.load(f).get("enabled"))
+    except (OSError, ValueError):
+        return None
+
+
+def sandbox_browser_enabled() -> bool | None:
+    rc, out = run(["docker", "exec", GATEWAY, "node", "dist/index.js", "config",
+                   "get", "agents.defaults.sandbox.browser.enabled"], timeout=20)
+    if rc != 0:
+        return None
+    v = out.strip().lower()
+    return True if v == "true" else (False if v == "false" else None)
 
 
 def jev_cost_line() -> str:
