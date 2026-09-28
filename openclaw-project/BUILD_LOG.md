@@ -31,7 +31,9 @@ mid-build). Built locally, then deployed and verified live after recovery.
 - Budget integrity re-verified after the owner's reboot: the transient
   failsafe died with the reboot, so the cap was re-checked and confirmed
   $2/24h + $25/30d via the budget_limits readback (mechanism documented in
-  `backups/ops/phase4a-restore-budget.sh`).
+  `backups/ops/phase4a-restore-budget.sh`). Cron follow-up (2026-09-29):
+  disposable `phase4a-jev-eval` key lifetime spend confirmed **$0.000029
+  (2 calls)** — within its $0.05 cap; production caps read back unchanged.
 - **Artifacts:** `plans/phase-8b.md` (progress/resume), dashboard v2 +
   `static/` + `workread.mjs` + tests, 4 new T10-DASH2-* cases (suite 39),
   `evidence/phase-8b/20260929T001500Z/`. Deployed hash matches repo.
