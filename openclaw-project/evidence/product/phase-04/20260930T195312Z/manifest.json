@@ -1,0 +1,74 @@
+{
+  "phase": 4,
+  "run_id": "20260930T195312Z",
+  "completed_at": "2026-09-30T19:53:12.754694+00:00",
+  "target": "existing VPS/shared domain; two invited accounts, one global customer task",
+  "scope": "local independent components; native/live activation incomplete",
+  "component_build_status": "READY locally",
+  "phase_build_status": "PARTIAL",
+  "acceptance": "NOT_RUN live Phase15",
+  "checks": {
+    "lifecycle_local": 14,
+    "budget_local": 10,
+    "new_api": 9,
+    "account_regressions": 25,
+    "foundation_regressions": 14,
+    "capacity_regressions": 7,
+    "result": "PASS as recorded in reports; no paid/native runtime proof",
+    "final_scoped_audit": "PASS lifecycle/budget audit metadata included only under the exact account/MFA audit grant"
+  },
+  "failed_checks_retained": [
+    "fixture helper overrode TestCase.run; corrected",
+    "database grant allowlist missing lifecycle scopes; new migration corrected",
+    "sandbox denied loopback sockets; approved local rerun passed"
+  ],
+  "cost": {
+    "paid_provider_calls": 0,
+    "paid_spend_usd": "0.00",
+    "service_allocation": "unknown; default admission denied"
+  },
+  "runtime_effects": {
+    "customer_cells_created": 0,
+    "production_migrations": false,
+    "owner_changes": false,
+    "invitations_sent": 0,
+    "public_routes": 0,
+    "payments": 0,
+    "resize_purchase": false
+  },
+  "blockers": [
+    "native lifecycle adapter/privileged host registry/supervisor incomplete",
+    "isolated worker broker, stronger runtime, hard volumes and network policy incomplete",
+    "existing-host complete task footprint unknown",
+    "real all-route price/receipt/admission/stop integration incomplete"
+  ],
+  "rollback": "No production change. Revert local release only or use compatible isolated snapshot; old release rejects added schema. Do not reset usage/identity on restore.",
+  "source_sha256": {
+    "openclaw-project/platform/migrations/0002_lifecycle.sql": "5fc51e68a1d6ef4f3f54b13b28e1893638cfeb22da6f0dac73a5fe95fa069b4e",
+    "openclaw-project/platform/agentai_platform/lifecycle/coordinator.py": "c6989fc3e156f5adaf855ebbcfa8ca9ae36442b9661e6424b56cd274d5bbab73",
+    "openclaw-project/platform/agentai_platform/lifecycle/types.py": "926cb1730d33d4bae92e1dff2f53266d63c8c8b511196bd136ea893b6984a868",
+    "openclaw-project/platform/agentai_platform/lifecycle/fleet_plan.py": "a0e63037bb8906ce504a0a3dcd8aeefe76064fcfafa2e77e987622ad68688a58",
+    "openclaw-project/platform/accounts/lifecycle.py": "14db565866c068947b7d074a8a0ed4bc07775ae413ead55959ab76d2aa48331e",
+    "openclaw-project/platform/accounts/models.py": "2514f971ef623e6609ee03ddb58ca019b1140cc0970cfecb2b60f3756a4d48eb",
+    "openclaw-project/platform/accounts/urls.py": "e26c2fa7a99029d54375042cea6d99a134e1be487338fdb317424e5dbaf20941",
+    "openclaw-project/platform/accounts/management/commands/account_admin.py": "2e0e09805aa8b27e9bd5c0eef161b7e593e0e1b413009c6cd8ad1aa99185fafb",
+    "openclaw-project/platform/accounts/test_lifecycle.py": "52a18208ddddb5dbab90de67f95b415b1ffe4098ff1d3320acae8425023c00be",
+    "openclaw-project/platform/tests/test_lifecycle.py": "8565b21eff7aa8200c30312f4faa29156ec6d7d7a16fad86f3c1b24d2f97c3ce",
+    "openclaw-project/platform/tests/lifecycle_fixture.py": "bda2cbf2df3c1b49925e564dff53191b5dc9fbf743c6c74ca88513a0c06b3bc8",
+    "openclaw-project/plans/product/phase-04-resume-host.json": "6bb74daf9b2cf7150d2319816422d71ce7634a991f181e84b0e25e6a55f4a37e",
+    "openclaw-project/plans/product/phase-04.md": "bc5a3fc522ddf2cb25abe12e0122f3f8945eb36cdb89e1128074c8cb67d8989b",
+    "openclaw-project/plans/product/requirements.json": "feabcd74cc944f91c8dbdfe612b314847cc85f165642ed445afb09c1f739d7c9",
+    "openclaw-project/plans/product/requirements.md": "a29f45b7835d44e5e91242b20f13ef6bab47d8702b5acfb72b5e70c08f94c72f",
+    "openclaw-project/platform/openapi.json": "957222a054e7666b12ec6a3aa6fe07af8f08e751210ac66154c914d71b16382e",
+    "openclaw-project/BUILD_LOG.md": "d2aa3db3e970fa9b8f296ecec051b1ea0e757a484646b1ffc522b926219c2fc3",
+    "openclaw-project/platform/accounts/migrations/0006_lifecycle_grant_integrity.py": "48af23e01bd0d01537764ae872b22ba285c65af9d7b182117c9b4b31925d93f4",
+    "openclaw-project/platform/accounts/migrations/0005_alter_operatorgrant_action.py": "f54c69e274a44229bcd247c2bd67d76d151fd320434d1d72ce87a911cb6c6ec9",
+    "openclaw-project/platform/accounts/migrations/0004_lifecycle_foundation.py": "4a1e938fb9656d470a38279e7ef0b869a1095b21561b8ef78907a1f6afc473ed",
+    "openclaw-project/platform/accounts/migrations/0007_budget_foundation.py": "56efc123262caa9233bfa08abc9d7e2d4926466031fb15d3a336ebebbc9f3afc",
+    "openclaw-project/platform/accounts/views.py": "05fde1fc3afadd2ffec6fb94832f64d24f50bfd515139535663d56600da381b4"
+  },
+  "primary_sources": [
+    "https://docs.openclaw.ai/cli/fleet",
+    "https://docs.openclaw.ai/gateway/multi-tenant-hosting"
+  ]
+}

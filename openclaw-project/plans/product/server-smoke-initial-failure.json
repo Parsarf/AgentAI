@@ -1,0 +1,15 @@
+{
+  "run_id": "20260929T232224Z",
+  "customer_execution": false,
+  "checks": {},
+  "units": [
+    "agentai-foundation-app-20260929T232224Z",
+    "agentai-foundation-control-20260929T232224Z"
+  ],
+  "status": "fail",
+  "error_type": "RuntimeError",
+  "reason": "readiness failed",
+  "cleanup_units_inactive": true,
+  "cleanup_source_removed": true,
+  "cleanup_state_removed": true
+}

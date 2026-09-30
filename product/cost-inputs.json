@@ -1,0 +1,33 @@
+{
+  "as_of": "2026-09-29",
+  "currency": "USD",
+  "prices": {
+    "sonnet_input_per_million": "3",
+    "sonnet_output_per_million": "15",
+    "sonnet_cache_read_per_million": "0.30",
+    "sonnet_cache_write_5m_per_million": "3.75",
+    "haiku_input_per_million": "1",
+    "haiku_output_per_million": "5",
+    "haiku_cache_read_per_million": "0.10",
+    "haiku_cache_write_5m_per_million": "1.25",
+    "brave_search_per_request": "0.005",
+    "jev_input_per_million": "0.042",
+    "stripe_card_fraction": "0.029",
+    "stripe_card_fixed": "0.30",
+    "stripe_billing_fraction": "0.007"
+  },
+  "scenario_tokens": {
+    "low": {"sonnet_input": 4000, "sonnet_output": 1000, "haiku_input": 1000, "haiku_output": 200, "searches": 2},
+    "base": {"sonnet_input": 40000, "sonnet_output": 8000, "haiku_input": 4000, "haiku_output": 800, "searches": 6},
+    "high": {"sonnet_input": 160000, "sonnet_output": 32000, "haiku_input": 16000, "haiku_output": 3200, "searches": 20}
+  },
+  "hypothetical_monthly_assumptions": {
+    "fixed_platform_cost": "40",
+    "dedicated_customer_node": "12",
+    "customer_backup_storage": "1",
+    "identity_mail": "0.20",
+    "monitoring": "0.20",
+    "support_allowance": "5"
+  },
+  "unknown_actuals": ["IONOS invoice", "customer VM quote", "off-host backup quote", "identity/mail provider price", "monitoring invoice", "commercial coding route/model price and usage", "ACP reviewer price and usage", "actual task token distribution", "tenant peak RAM/CPU", "provider retention/region terms"]
+}

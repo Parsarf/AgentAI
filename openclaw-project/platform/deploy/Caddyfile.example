@@ -1,0 +1,9 @@
+# DESIGN ONLY. No domain/public route is activated by this bundle.
+# TLS proxy must overwrite both headers; never accept client forwarding metadata.
+# agent.example.com {
+#   reverse_proxy 127.0.0.1:18800 {
+#     header_up X-Forwarded-Proto https
+#     header_up X-AgentAI-Client-IP {remote_host}
+#   }
+# }
+# Only the app is proxied. Control/Gateway/database have no public paths.

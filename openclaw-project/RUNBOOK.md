@@ -1,5 +1,39 @@
 # OpenClaw operations runbook
 
+## Customer-platform foundation and accounts — product Phases1–3
+
+Private source/config/start/check/rollback instructions are in
+[platform README](platform/README.md) and [deployment guide](platform/deploy/README.md).
+The temporary server smoke for product Phase2 was cleaned up; no persistent
+platform listener/customer activation was installed. Existing owner services
+remain the live system. New platform gates deny all execution/provisioning/
+billing/Telegram/uploads until the corresponding subsequent phase passes.
+Use product/plans records under `plans/product/`, not historical phase numbers.
+Owner-selected offer/limits are in [product contract](../product/CONTRACT.md);
+new customer caps are never applied to existing owner keys during preparation.
+
+## Product Phase3 account operations (prepared, private)
+
+[Account layer](platform/accounts/README.md) and [Phase3 record](plans/product/phase-03.md)
+cover verified identity/session recovery, scoped operator MFA/grants and required
+audit. App unit now targets private Gunicorn; this is a deployment bundle, not an
+installed public sign-in. SMTP is disabled; host CLI/mail worker must not invite
+real customers/send messages without authorization. Generic recovery queues IDs,
+never codes; crashed running/uncertain mail jobs need reconciliation, not retry.
+
+Bootstrap/migrate only dedicated private app state with a random private session
+secret. Never use owner `.env` as app environment. Verify loopback TLS proxy
+header overwrite and actual server resource envelope before installing. Retention
+maintenance/alerts are prepared, not scheduled:180-day minimal audit,90-day chat
+projection tombstones. Native erasure/export/account deletion and restore replay
+must be built in6/8/10/14 before affected activation. No support impersonation,
+unrestricted customer content access or application Docker/cloud authority.
+
+Rollback only platform source/private DB; incompatible schema needs isolated
+snapshot restore/current access reconciliation, not owner/proxy/native restore.
+Force reauthentication after access-state recovery. Full acceptance remains15;
+next build phase4 requires a new request. No account-layer live service exists yet.
+
 ## Phase 4A Jev research layer (inactive)
 
 There is currently no Jev research plugin, toggle, or decision log in
@@ -625,3 +659,46 @@ Supersedes the earlier "no plugin exists" note. Current truth:
   the expected manifest fields), confirm `jev-research` appears in the
   startup plugin list, then run the frozen 15-case paired comparison under
   a fresh owner-authorized budget window.
+
+## Phase4 — shared-VPS assessment, no live provisioning
+
+Owner target is one service-operated VPS/shared domain. See
+[assessment](plans/product/phase-04-single-vps-assessment.md) and
+[capacity calculation](plans/product/phase-04-capacity.json). Current host has
+~0.95GiB available/2vCPU and >99% swap occupied; admit0 customer agents. Do not
+activate the disabled lifecycle driver, remove owner browser containers, resize
+hardware, remount filesystems or change Docker default runtime from this report.
+16GiB/4CPU is a proposed budgeted upgrade candidate, not purchased/tested capacity.
+
+Resume Phase4: prepare scoped backup/upgrade/rollback, distinct tenant identities,
+fixed supervisor + native Fleet adapter/worker broker, verified stronger runtime,
+per-cell persistent disk quotas and egress rules, then private A/B negative tests.
+Gate execution on Phase5 all-route admission and15 acceptance. No separate
+customer-operated VM/domain is required. No live control service or cell exists.
+
+## Existing-VPS trial clarification — 2026-09-30
+
+Owner selected trying the existing server before any upgrade. The current target
+is two invite-only accounts, one global running customer task, on-demand private
+cells and sequential isolated worker stages. Keep every planned feature; no
+hardware upgrade prerequisite for implementation. Default-profile zero-slot
+measurements remain historical evidence, not proof of a smaller profile. Follow
+`product/EXISTING_VPS_TRIAL.md` and deployment policy v2. Measure a fitting profile
+and complete isolation/budget checks before execution. Account invitations do
+not automatically start an agent; later resize changes capacity, not accounts,
+domain or feature scope. No live deployment or feature activation in this update.
+
+## Phase4/5 local continuation — 2026-09-30
+
+Durable lifecycle metadata/coordinator and offline budget reservation/receipt core
+are implemented, with scoped operation/usage read views and fixed MFA operator
+queue routes. See platform/agentai_platform/lifecycle/README.md and platform/BUDGET.md
+(paths relative to openclaw-project). Native lifecycle/worker dispatch, secrets,
+stronger-runtime/quotas/network isolation, real route accounting and a fitting
+existing-host profile remain incomplete; runtime/customer/payment/mail gates stay
+off. No live migration or listener installed. Package new immutable SQL002/003
+and Django004–007 with the release; explicit private bootstrap is required and
+old releases reject the newer schema. Host-only lifecycle_status reads counts;
+seed_trial prepares one seven-day/$1 entitlement without resetting one already
+present. No account or invitation was created. Continue Phase4 native integration
+and Phase5 provider enforcement before dependent chat activation.

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "bind": "127.0.0.1",
+  "app_port": 18800,
+  "control_port": 18801,
+  "state_dir": "./data",
+  "max_connections": 8,
+  "socket_timeout_seconds": 5,
+  "max_body_bytes": 4096,
+  "features": {
+    "customer_execution": false,
+    "provisioning": false,
+    "telegram": false,
+    "uploads": false,
+    "billing_live": false,
+    "optimization": false,
+    "purchases": false
+  }
+}

@@ -1,4 +1,16 @@
-# OpenClaw personal agent architecture
+# OpenClaw runtime and customer platform architecture
+
+## Current customer-platform foundation — 2026-09-29
+
+Product Phases1–2 define the owner-selected $79/$25/$5 plan and a separate
+private product app/control foundation. See [platform architecture](platform/ARCHITECTURE.md),
+[capability matrix](platform/CAPABILITIES.md) and [product contract](../product/CONTRACT.md).
+Foundation readiness was proved with temporary unprivileged/resource-bounded
+server smoke; customer activation remains disabled. Separate tenant VMs are
+the selected boundary; the owner VPS admits no customers. Native OpenClaw
+remains the runtime, and current owner config/state/proxy DB are preserved.
+Historical sections below retain their earlier labels/limitations; latest
+BUILD_LOG and product inventory supersede stale capability statements.
 
 Latest increment: Phase6 personal integration preparation is applied. Native
 Google/GitHub definitions are disabled pending account authentication and
@@ -112,7 +124,7 @@ correct and delete memory. No old AgentAI data is imported by default.
 
 ## Acceptance
 
-Follow the [Phase 0–8 plan](../phase-prompts/openclaw/README.md). Each phase
+Follow the [current Phase 1–19 plan](../phase-prompts/openclaw/README.md). Each phase
 records real health-check evidence. The final workflow requires sourced
 research, a Codex build, tests, browser verification, independent review,
 budget enforcement and successful restart recovery. A documented gap or
@@ -187,3 +199,12 @@ the orchestrator stays browser-denied. Brave search is available to
 pinned official Brave container and a private mounted key file. Main and all
 other workers explicitly deny its namespace. Native `web_search` remains
 disabled because this build does not support Brave as a native provider.
+
+## Product Phase3 account boundary
+
+The separate platform app now uses Django authentication/sessions/CSRF, confirmed
+operator TOTP and private Gunicorn. Read [account architecture](platform/accounts/README.md)
+and [ADR006](platform/ARCHITECTURE.md). Account ownership is resolved server-side,
+not shared owner login/UI filters. New app credentials contain only private
+session/mail custody, never owner Gateway/provider/Telegram/SSH keys. Native
+execution/provisioning/billing remain off; owner services unchanged.

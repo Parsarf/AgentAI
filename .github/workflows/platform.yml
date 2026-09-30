@@ -1,0 +1,29 @@
+name: Customer platform
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: openclaw-project/platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install --require-hashes -r requirements.lock
+      - name: Account API checks
+        run: |
+          export AGENTAI_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          export AGENTAI_STATE_DIR="$(mktemp -d)"
+          export AGENTAI_PUBLIC_ORIGIN=https://localhost
+          python manage.py test accounts --verbosity 1
+      - name: Queue, lifecycle and budget checks
+        run: python -m unittest tests.test_request_queue tests.test_lifecycle tests.test_budget
+      - name: Vercel routing checks
+        run: node deploy/vercel/check.mjs

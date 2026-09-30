@@ -1,0 +1,151 @@
+test_audit_append_only (tests.test_foundation.FoundationTests.test_audit_append_only) ... ok
+test_changed_or_newer_migration_fails_closed (tests.test_foundation.FoundationTests.test_changed_or_newer_migration_fails_closed) ... ok
+test_control_and_customer_mutations_disabled (tests.test_foundation.FoundationTests.test_control_and_customer_mutations_disabled) ... ERROR
+test_cross_account_and_cross_project_foreign_keys (tests.test_foundation.FoundationTests.test_cross_account_and_cross_project_foreign_keys) ... ok
+test_direct_http_cross_account_denial (tests.test_foundation.FoundationTests.test_direct_http_cross_account_denial) ... ERROR
+test_failed_migration_rolls_back_ddl (tests.test_foundation.FoundationTests.test_failed_migration_rolls_back_ddl) ... ok
+test_host_origin_size_denials (tests.test_foundation.FoundationTests.test_host_origin_size_denials) ... ERROR
+test_logs_exclude_body_headers_query (tests.test_foundation.FoundationTests.test_logs_exclude_body_headers_query) ... ERROR
+test_migrations_repeat_and_readiness (tests.test_foundation.FoundationTests.test_migrations_repeat_and_readiness) ... ok
+test_missing_database_readiness_does_not_create_state (tests.test_foundation.FoundationTests.test_missing_database_readiness_does_not_create_state) ... ok
+test_private_health_and_default_identity_denial (tests.test_foundation.FoundationTests.test_private_health_and_default_identity_denial) ... ERROR
+test_public_bind_or_feature_activation_rejected (tests.test_foundation.FoundationTests.test_public_bind_or_feature_activation_rejected) ... ok
+test_scoped_repository_and_revocation (tests.test_foundation.FoundationTests.test_scoped_repository_and_revocation) ... ok
+test_unverified_gateway_never_dispatches (tests.test_foundation.FoundationTests.test_unverified_gateway_never_dispatches) ... ok
+test_invalid_or_boolean_units_rejected (tests.test_capacity.CapacityChecks.test_invalid_or_boolean_units_rejected) ... ok
+test_limits_and_existing_reservations (tests.test_capacity.CapacityChecks.test_limits_and_existing_reservations) ... ok
+test_missing_isolation_or_unmeasured_tenant_blocks (tests.test_capacity.CapacityChecks.test_missing_isolation_or_unmeasured_tenant_blocks) ... ok
+test_negative_headroom_is_zero (tests.test_capacity.CapacityChecks.test_negative_headroom_is_zero) ... ok
+test_other_resources_bound_ram_result (tests.test_capacity.CapacityChecks.test_other_resources_bound_ram_result) ... ok
+test_stale_or_future_measurement_blocks (tests.test_capacity.CapacityChecks.test_stale_or_future_measurement_blocks) ... ok
+test_unknown_peak_is_not_zero_cost_or_a_slot (tests.test_capacity.CapacityChecks.test_unknown_peak_is_not_zero_cost_or_a_slot) ... ok
+
+======================================================================
+ERROR: test_control_and_customer_mutations_disabled (tests.test_foundation.FoundationTests.test_control_and_customer_mutations_disabled)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 95, in test_control_and_customer_mutations_disabled
+    with running(self.config,self.store,service='control') as port: self.assertEqual(request(port,'/v1/operations',method='POST',body='{}')[0],401)
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 21, in running
+    server=BoundedServer(('127.0.0.1',0),Handler,config=config,store=store,service=service,identity=identity)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/agentai_platform/server.py", line 21, in __init__
+    super().__init__(address,handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_direct_http_cross_account_denial (tests.test_foundation.FoundationTests.test_direct_http_cross_account_denial)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 89, in test_direct_http_cross_account_denial
+    with running(self.config,self.store,identity=FixtureIdentity()) as port:
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 21, in running
+    server=BoundedServer(('127.0.0.1',0),Handler,config=config,store=store,service=service,identity=identity)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/agentai_platform/server.py", line 21, in __init__
+    super().__init__(address,handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_host_origin_size_denials (tests.test_foundation.FoundationTests.test_host_origin_size_denials)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 98, in test_host_origin_size_denials
+    with running(self.config,self.store) as port:
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 21, in running
+    server=BoundedServer(('127.0.0.1',0),Handler,config=config,store=store,service=service,identity=identity)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/agentai_platform/server.py", line 21, in __init__
+    super().__init__(address,handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_logs_exclude_body_headers_query (tests.test_foundation.FoundationTests.test_logs_exclude_body_headers_query)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 103, in test_logs_exclude_body_headers_query
+    with running(self.config,self.store) as port, self.assertLogs('agentai',level='INFO') as captured:
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 21, in running
+    server=BoundedServer(('127.0.0.1',0),Handler,config=config,store=store,service=service,identity=identity)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/agentai_platform/server.py", line 21, in __init__
+    super().__init__(address,handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_private_health_and_default_identity_denial (tests.test_foundation.FoundationTests.test_private_health_and_default_identity_denial)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 83, in test_private_health_and_default_identity_denial
+    with running(self.config,self.store) as port:
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 141, in __enter__
+    return next(self.gen)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/tests/test_foundation.py", line 21, in running
+    server=BoundedServer(('127.0.0.1',0),Handler,config=config,store=store,service=service,identity=identity)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/agentai_platform/server.py", line 21, in __init__
+    super().__init__(address,handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.170s
+
+FAILED (errors=5)

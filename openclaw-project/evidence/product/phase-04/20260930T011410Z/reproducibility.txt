@@ -1,0 +1,1 @@
+PASS: capacity JSON reproduces byte-for-byte from saved three-sample inventory; no live admission or resource mutation.

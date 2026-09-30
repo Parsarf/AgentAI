@@ -1,0 +1,189 @@
+{
+  "phase": 3,
+  "run_id": "20260930T003526Z",
+  "completed_at": "2026-09-30T00:39:18.110679+00:00",
+  "revision": "a31997e67af5bd36346bc1a93e65e6971cf164a3",
+  "snapshot": "uncommitted final source SHA256 below; check execution ordering described per observation",
+  "target": "local private synthetic account metadata and loopback Gunicorn only",
+  "build_status": "READY account layer; PARTIAL dependent native retention",
+  "targeted_boundary_result": "PASS",
+  "full_acceptance": "NOT_RUN Phase15",
+  "versions": {
+    "schema_version": 1,
+    "python_supported": ">=3.12,<3.15",
+    "local_verified": "3.14.4",
+    "server_observed": "3.12.3",
+    "dependencies": {
+      "asgiref": "3.12.1",
+      "Django": "5.2.17",
+      "django-otp": "1.7.3",
+      "gunicorn": "26.2.0",
+      "packaging": "26.3",
+      "sqlparse": "0.6.0"
+    },
+    "database": "stdlib sqlite3; deployed SQLite version recorded in evidence",
+    "http": "Gunicorn WSGI app; loopback TLS proxy required. Stdlib control remains disabled/private.",
+    "local_sqlite_verified": "3.53.4",
+    "server_sqlite_observed": "3.45.1",
+    "identity": "Django database sessions/password authentication + django-otp confirmed TOTP operator MFA"
+  },
+  "primary_docs": [
+    "https://www.djangoproject.com/download/",
+    "https://docs.djangoproject.com/en/5.2/topics/auth/default/",
+    "https://docs.djangoproject.com/en/5.2/topics/http/sessions/",
+    "https://docs.djangoproject.com/en/5.2/howto/csrf/",
+    "https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/",
+    "https://django-otp-official.readthedocs.io/en/stable/overview.html",
+    "https://gunicorn.org/2026-news/"
+  ],
+  "changes": [
+    "Maintained identity/session/CSRF and private WSGI transport",
+    "Verified onboarding/hashed atomic recovery/session epoch enforcement",
+    "Scoped operator MFA/role grants; server-owned account mapping",
+    "Audit-required atomic local mutations and safe mail queue receipts",
+    "Account pages, restrictive API DTOs, retention policy/tombstones and deploy/rollback bundle"
+  ],
+  "checks": [
+    {
+      "id": "P03-ACCOUNT-BOUNDARIES",
+      "status": "PASS",
+      "command": "AGENTAI_SESSION_SECRET=<private synthetic value> .venv/bin/python manage.py test accounts --verbosity 1",
+      "observation": "25 synthetic account checks collected and passed. Final confirmation-revocation guard added afterward and rechecked with its focused case.",
+      "evidence": "account-tests.txt"
+    },
+    {
+      "id": "P03-OPERATOR-DEVICE-REVOCATION",
+      "status": "PASS",
+      "command": ".venv/bin/python manage.py test accounts.tests.AccountBoundaryTests.test_operator_requires_mfa_and_scoped_grant --verbosity 1",
+      "observation": "Final code: successful MFA device later unconfirmed; required scope action denied; MFA replay and missing/cross-account grants denied.",
+      "evidence": "final-mfa-check.txt"
+    },
+    {
+      "id": "P03-FOUNDATION-REGRESSION",
+      "status": "PASS",
+      "command": "PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p test_foundation.py -v",
+      "observation": "14 foundation tests passed with maintained deny-by-default control, composite tenant FK, migrations/readiness/log/header/gates.",
+      "evidence": "foundation-tests.txt"
+    },
+    {
+      "id": "P03-ATOMIC-CONSUME",
+      "status": "PASS",
+      "command": "PYTHONPATH=. .venv/bin/python tests/check_account_concurrency.py",
+      "observation": "Disposable file-backed SQLite two concurrent consumers: one completed, one denied; one committed effect/audit; repeat bootstrap/readiness/drift/deployment check pass. Only W021 intentional.",
+      "evidence": "concurrency.txt"
+    },
+    {
+      "id": "P03-REAL-HTTP",
+      "status": "PASS",
+      "command": "PYTHONPATH=. .venv/bin/python tests/check_account_http.py",
+      "observation": "Actual loopback Gunicorn/Django: two authenticated synthetic accounts, own200/other404, routing400/CSRF403, truthful readiness, process log secret canaries absent; temporary state/process removed.",
+      "evidence": "http-smoke.txt"
+    },
+    {
+      "id": "P03-STATIC-DEPENDENCIES",
+      "status": "PASS",
+      "command": "AST/JSON/secret-pattern scan; pip check; git diff --check; fixture migration drift/deployment check",
+      "observation": "Sources parse;121 ledger rows preserved; exact wheel hashes; no broken dependencies; no source credential pattern; no whitespace errors.",
+      "evidence": "static-checks.txt"
+    }
+  ],
+  "deferred": [
+    "Phase15 actual browser/TLS/mail/real identity/independent review/security/provider acceptance",
+    "Actual server Django/Gunicorn memory bounds prior to deployment",
+    "Phase6 native chat history erasure/export/confirmed account deletion;8/10/14 artifacts/index/restore tombstone replay",
+    "Phase4 privileged service isolation and customer VM lifecycle; Phase5 all-route task admission"
+  ],
+  "cost": {
+    "paid_provider_calls": 0,
+    "customer_messages": 0,
+    "live_payments": 0,
+    "known_variable_provider_cost_usd": "0",
+    "unknowns": [
+      "SMTP/identity operating costs",
+      "Customer node/backup infrastructure",
+      "Commercial coding/review/provider prices remain worksheet unknowns"
+    ]
+  },
+  "warnings": [
+    {
+      "id": "security.W021",
+      "disposition": "Intentional no HSTS preload until approved public domain; HTTPS secure cookies/HSTS/frame protection present."
+    }
+  ],
+  "activation_blockers": [
+    "No authorized/configured live SMTP/domain/TLS/customer onboarding",
+    "No tenant lifecycle/budget admission/full acceptance",
+    "Native retention/export/restore adapters missing; affected capabilities disabled"
+  ],
+  "cleanup": {
+    "temporary_http_process": "stopped",
+    "synthetic_file_state": "removed by TemporaryDirectory",
+    "public_routes": "none created",
+    "owner_services": "unchanged",
+    "paid_calls": "none"
+  },
+  "rollback": "No live deployment to roll back. Stop only platform app/worker; compatible code pointer or isolated private DB snapshot/current epoch/tombstone reconciliation; never owner/proxy/native restore.",
+  "source_sha256": {
+    "openclaw-project/platform/API_MATRIX.md": "a871967102343c4a44ae902e516e3fbc1c4504e94aab737d0e64eb9554b9f247",
+    "openclaw-project/platform/ARCHITECTURE.md": "bdb8d5d92e117e278b5f8b1c7b6bccd36be4da8d4277ba4c55d3b300a38c7cbd",
+    "openclaw-project/platform/CAPABILITIES.md": "07b95dc0878ea7caff2ce9fafbebbc2e710734e8689cc5c003b3811478aca2a1",
+    "openclaw-project/platform/README.md": "592739dc467fefb26d8519f3938bac4fdfed12e786786a5a766b2a681015b623",
+    "openclaw-project/platform/THREAT_MODEL.md": "d21cbbe496da92af6eeba4648b613c4c5cc4e2943c00187f6a39c0ff68d59f9c",
+    "openclaw-project/platform/accounts/README.md": "8fd697f5966455d6a539cb29d372342a2a6d4cb56ef6f7b58ea43d411f278242",
+    "openclaw-project/platform/accounts/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "openclaw-project/platform/accounts/delivery.py": "bbe7c5e820b82a027c4585ff0ba0fb0268ddddecfd12396f3c5931c22e6500ed",
+    "openclaw-project/platform/accounts/management/commands/account_admin.py": "bb871930e005f98364ac1694c021785e5450be33d438ff019fa61ffdcafa79a8",
+    "openclaw-project/platform/accounts/management/commands/bootstrap_accounts.py": "1454db45fad03aa79b48aeb36cf23729b75e98b874db5edd5d0ffc7217d79262",
+    "openclaw-project/platform/accounts/management/commands/deliver_account_mail.py": "075f9909009d0e6a6b4d0aa9154e1c71d5c9a9e2cde12317c86f2ae27c9ecaca",
+    "openclaw-project/platform/accounts/management/commands/retention_accounts.py": "63aba108c14779a404171e1ba16ed6092dd960edcf6bd84923ed67ecc3ff0b38",
+    "openclaw-project/platform/accounts/middleware.py": "2ccc34b74f31eea84e3947d24eb9ea1e6c12be48e486c2f39630d8147fc178bd",
+    "openclaw-project/platform/accounts/migrations/0000_foundation.py": "40d1dccfb186298710a8c1c16b26901ddbd379ca0624b5098c42ac0d5d1b31f9",
+    "openclaw-project/platform/accounts/migrations/0001_initial.py": "136ca39ed76700c50adafbb893d985393ffe152b71721ae2d5acc672d5d9457a",
+    "openclaw-project/platform/accounts/migrations/0002_integrity.py": "671381e7d6ae619fc4c0190508a57bf552aef93b90b76622a9cd0f4fef732e86",
+    "openclaw-project/platform/accounts/migrations/0003_emailjob.py": "e2df7645d60a0dbc884d88380b71dedd29cab0999fab1928a226ace7186b3184",
+    "openclaw-project/platform/accounts/migrations/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "openclaw-project/platform/accounts/models.py": "d16df06ff5586b51a408756850f51b1aa3c4c0052d7dfc80901bd20b26141f89",
+    "openclaw-project/platform/accounts/services.py": "29f57658f0828c005693db280289407726bed37c15b90d033dca5be1b2dbae82",
+    "openclaw-project/platform/accounts/settings.py": "ab0b9ffbef41e4c3cb8f2e0878f232b402e64045fcd759758eec7bf07f7e6746",
+    "openclaw-project/platform/accounts/templates/accounts/form.html": "6db3743c1021631dccbbb9fe22d76b66cbe37a4374281cfc745e87dd59b6d75e",
+    "openclaw-project/platform/accounts/templates/accounts/home.html": "f8fc089bdf0f632df1a7463e8e69704c81443dc5e55b7e67b63bb998932dd50d",
+    "openclaw-project/platform/accounts/templates/accounts/result.html": "24f988000b616ddcc5b4031abf8e2e2e09dc1084f2af416d3ead83ba56505309",
+    "openclaw-project/platform/accounts/tests.py": "7425af8805a8d7737bc439f0364f0f9f9516f75e4438008651630dd3ac1afe20",
+    "openclaw-project/platform/accounts/urls.py": "89f53134b7d568aa39523484f89b6277447c15cc312e84c57c8a4528846243b1",
+    "openclaw-project/platform/accounts/views.py": "94e5000aa9e9c20d0c6c90de2d729bcf1041878a6e43df3603f4d8037ff5c768",
+    "openclaw-project/platform/accounts/wsgi.py": "bbe7ebf3b11cb3bee89654188440a79ec9609ae4674e9c9d2e45c10477a5df85",
+    "openclaw-project/platform/agentai_platform/__init__.py": "bac2754c6a989b6877e32991b066fc048e030b1cf9acd27805f93a67db059abb",
+    "openclaw-project/platform/agentai_platform/adapters.py": "60e09dc4ae770780872a43074b5ef501f273360ac0a8671f467c578bfe419eda",
+    "openclaw-project/platform/agentai_platform/config.py": "7ecd99d7cf3cdf9599de6b1736de28f9bea56190bfa9d702020ad6c3b79b7fd9",
+    "openclaw-project/platform/agentai_platform/security.py": "12c6b79a20044dbb21cf791c2d8f4d8e84dff9b56ed47e0930fa00daacd8f3c3",
+    "openclaw-project/platform/agentai_platform/server.py": "d7593d44d0eb7f86ae0ca2ea4831e21a09d5b993f2afaeda4bcb7a200466878f",
+    "openclaw-project/platform/agentai_platform/store.py": "1b7b4a740fa56aef438803100fad668623e6262ce49b58d09766303f3c6b57ec",
+    "openclaw-project/platform/config.example.json": "e4d32a11e507f2cef521aa07e26efba1d4b3b4859a35b644e176a4c579ef8caa",
+    "openclaw-project/platform/deploy/Caddyfile.example": "8206e1922e8b3c9806c00672dd70ece5784c20c21e72009b3e03596b97c209cc",
+    "openclaw-project/platform/deploy/README.md": "2eccfcc5a0b7f61ae5abb766273c8544c011e6099b0f974c7c9ac9374620301e",
+    "openclaw-project/platform/deploy/accounts.env.example": "c4bd7fd114ff5a23345ca1a87c32d2783172a0f46f4df350be68a9c98e9f2ff2",
+    "openclaw-project/platform/deploy/agentai-platform-app.service": "3588776a5baf57caea00c370b2d20afb84f1a8874f0744ec5831eee9c9b5b142",
+    "openclaw-project/platform/deploy/agentai-platform-control.service": "1cdb3e01f0a57b631c9606f4bb6d7c68d9c5f2c9d874e9292b621c62c20c38cb",
+    "openclaw-project/platform/deploy/config.server.example.json": "dce8973adde45e9e3069e78adb167b4210b8690ad253554295fe32a8e564bd6d",
+    "openclaw-project/platform/deploy/gunicorn.conf.py": "d3e6490c6da2d6371b8aaf4144cc84bce4b9567892e51c0c87d22b50cfb95abe",
+    "openclaw-project/platform/fixtures/gateway-capabilities.json": "216985bb85ba862027e525164acf6eed970909b7e16ba2fdde98dd69751a6e06",
+    "openclaw-project/platform/manage.py": "dedefb92251427de67ed1cb32181c596b9368ef95b59f5ea70de1bf104878b6e",
+    "openclaw-project/platform/migrations/0001_foundation.sql": "e99ec3bbfc8448f74ec34b3ca368ec810e99923a5a2c9bbf2cb8459faba95775",
+    "openclaw-project/platform/openapi.json": "39910e881ccc605ebb5b2c6e8aa7b46acbde2aaed398df25f8baa917ce103f43",
+    "openclaw-project/platform/requirements.lock": "20b7d34f5393e6ad1f7992f58dd7a7e7528fc2febde5892ca848ac7c5fbb00a2",
+    "openclaw-project/platform/runtime.lock.json": "82c32b4762a9ec79f50d943d10a93c669a81883234c49afa592511c0f08a4241",
+    "openclaw-project/platform/schemas.json": "863b4170bb6fb7c834cfaab42838ed2ae3e9a8f9af6e0d6548fb306d947a9b90",
+    "openclaw-project/platform/tests/check_account_concurrency.py": "46aef38fab9fd437baa4cb3c77d23c2f35542938a0f6e4c2832b9f243de874d7",
+    "openclaw-project/platform/tests/check_account_http.py": "f3ed537879c46dada168c10aadff65aaa0a582e4764ce6e7293c18e03aa1c1d6",
+    "openclaw-project/platform/tests/test_foundation.py": "7ece675010383e98b3c827ac256e50e5967c088b3c6bfc4b77a3e8386494cfa7"
+  },
+  "evidence_sha256": {
+    "account-tests.txt": "7dc633b876b78f8ce6dc370d99d70448d2a73a4a7e24afcd89bd228a1558b427",
+    "concurrency.txt": "8eefb41f3c2d3c51de2878d8ed5906752b259f2410fca6d5e8566b3ad62b185f",
+    "final-mfa-check.txt": "cf36b8b2a24ef736f3a7d5f62e595c18d3aa258e58cd78302d6d308b05e97b08",
+    "foundation-tests.txt": "775d5e9cee13c6dfd7e69feb8a655de9ddb8d5f4d1728c607c98e973611aa064",
+    "http-smoke.txt": "3d3ccf676446722042cede961bc798bc381c36c855eea31abd2492faaecfcf0a",
+    "implementation-failures.json": "6a6cb58d897f73ea2b89852c9d1ce7a279cc9afd005ebdc5ef26051ee334074b",
+    "static-checks.txt": "dbb5b5a5d9643a9c1ab3bf3f1949c44724a9ee3a0d721d9c560e1b726c2cab91"
+  }
+}

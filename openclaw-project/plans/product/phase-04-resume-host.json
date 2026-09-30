@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-09-30T19:26:26.762260+00:00",
+  "cpu_count": 2,
+  "tools": {
+    "node": true,
+    "openclaw": true,
+    "docker": true,
+    "podman": false,
+    "runsc": false
+  },
+  "memory_bytes": {
+    "MemTotal": 4055998464,
+    "MemAvailable": 953454592,
+    "SwapTotal": 2147479552,
+    "SwapFree": 7749632
+  },
+  "runtime_names": [
+    "io.containerd.runc.v2",
+    "runc"
+  ],
+  "gateway_fleet_host_access": {
+    "docker_socket_present": true,
+    "docker_binary_present": false
+  }
+}

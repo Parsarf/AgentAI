@@ -1,0 +1,43 @@
+{
+  "observed_at": "2026-09-30T01:04:17.283492+00:00",
+  "kvm_device_present": true,
+  "cgroup_v2": true,
+  "native_tool_presence": {
+    "runsc": false,
+    "podman": false,
+    "age": false,
+    "xfs_quota": true,
+    "docker": true
+  },
+  "docker_runtime_metadata": {
+    "exit": 0,
+    "runtimes": [
+      "io.containerd.runc.v2",
+      "runc"
+    ],
+    "default_runtime": "runc",
+    "storage_driver": "overlayfs",
+    "security_options": [
+      "name=apparmor",
+      "name=seccomp,profile=builtin",
+      "name=cgroupns"
+    ],
+    "docker_root": "/var/lib/docker"
+  },
+  "docker_disk_usage": {
+    "exit": 0,
+    "output": "{\"Active\":\"7\",\"Reclaimable\":\"15.73GB (88%)\",\"Size\":\"17.81GB\",\"TotalCount\":\"11\",\"Type\":\"Images\"}\n{\"Active\":\"17\",\"Reclaimable\":\"3.056MB (5%)\",\"Size\":\"57.05MB\",\"TotalCount\":\"18\",\"Type\":\"Containers\"}\n{\"Active\":\"1\",\"Reclaimable\":\"0B (0%)\",\"Size\":\"71.58MB\",\"TotalCount\":\"1\",\"Type\":\"Local Volumes\"}\n{\"Active\":\"0\",\"Reclaimable\":\"55.69MB\",\"Size\":\"3.968GB\",\"TotalCount\":\"64\",\"Type\":\"Build Cache\"}\n"
+  },
+  "disk_mount": {
+    "exit": 0,
+    "output": "ext4   rw,relatime,discard,errors=remount-ro,commit=30\n"
+  },
+  "disk_free": {
+    "exit": 0,
+    "output": "Filesystem        1B-blocks        Used   Available Use% Mounted on\n/dev/vda1      123690532864 34772119552 88901636096  29% /\n"
+  },
+  "listeners": {
+    "exit": 0,
+    "output": "LISTEN 0      4096      127.0.0.54:53    0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32773 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32772 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32775 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32774 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32769 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32768 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32771 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32770 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32777 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:32776 0.0.0.0:*\nLISTEN 0      4096   127.0.0.53%lo:53    0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:18789 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:18790 0.0.0.0:*\nLISTEN 0      5          127.0.0.1:18795 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:3978  0.0.0.0:*\nLISTEN 0      4096         0.0.0.0:22    0.0.0.0:*\nLISTEN 0      4096            [::]:22       [::]:*\n"
+  }
+}

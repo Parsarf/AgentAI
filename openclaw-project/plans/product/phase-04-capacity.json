@@ -1,0 +1,74 @@
+{
+  "observed_at": "2026-09-30T00:54:47.620899+00:00",
+  "source": "phase-04-inventory.json (three short read-only samples; no load benchmark)",
+  "memory_total_bytes": 4055998464,
+  "memory_available_min_bytes": 1014509568,
+  "memory_available_max_bytes": 1043640320,
+  "fixed_unavailable_snapshot_highwater_bytes": 3041488896,
+  "planned_platform_reserve_bytes": 268435456,
+  "planned_safety_headroom_bytes": 536870912,
+  "remaining_after_reserves_bytes": 209203200,
+  "fleet_default_container_limit_bytes": 2147483648,
+  "swap_total_bytes": 2147479552,
+  "swap_free_min_bytes": 7917568,
+  "resource_matrix": {
+    "memory": {
+      "total": 4055998464,
+      "fixed": 3041488896,
+      "reserve": 805306368,
+      "tenant": 2147483648
+    },
+    "cpu": {
+      "total": 2000,
+      "fixed": null,
+      "reserve": 250,
+      "tenant": 2000
+    },
+    "disk": {
+      "total": null,
+      "fixed": null,
+      "reserve": 10737418240,
+      "tenant": null
+    },
+    "pids": {
+      "total": null,
+      "fixed": null,
+      "reserve": 64,
+      "tenant": null
+    }
+  },
+  "assessment": {
+    "memory_slots": 0,
+    "cpu_slots": null,
+    "disk_slots": null,
+    "pid_slots": null,
+    "admitted_slots": 0,
+    "blockers": [
+      "isolation_unverified",
+      "tenant_peak_unverified",
+      "memory_exhausted",
+      "cpu_unknown",
+      "disk_unknown",
+      "pids_unknown"
+    ]
+  },
+  "planned_16gib_scenario": {
+    "status": "UNMEASURED allocation proposal; not admitted capacity",
+    "ram_gib": 16,
+    "vcpus": 4,
+    "beta_accounts": 2,
+    "global_running_tasks": 1,
+    "ram_envelope_gib": {
+      "owner_services": 4,
+      "product_services": 0.5,
+      "safety": 2,
+      "two_gateway_cells": 4,
+      "one_active_worker_set": 3
+    },
+    "sum_envelopes_gib": 13.5,
+    "remaining_gib": 2.5,
+    "cpu_capacity": null
+  },
+  "storage_mount": "ext4   rw,relatime,discard,errors=remount-ro,commit=30",
+  "native_default_runtime": "runc"
+}

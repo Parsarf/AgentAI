@@ -1,0 +1,123 @@
+{
+  "phase": 2,
+  "run_id": "20260929T233120Z",
+  "completed_at": "2026-09-29T23:31:20.889665+00:00",
+  "repository_base_revision": "a31997e67af5bd36346bc1a93e65e6971cf164a3",
+  "tested_revision": "uncommitted workspace snapshot; immutable source hashes attached",
+  "source_hashes": {
+    "product/plan.json": "12a989ddd7bfb7f203ec59881cce58412cd6d9fe931805cff3280befc0a428b1",
+    "product/COST_CAPACITY.md": "84a67b7de05e047ead83f0a20801c18c06386292973aed4bda1fa4c3291ec749",
+    "product/SCREENS.md": "fa434fe6ae872758b617c59312cd048bd122e1fabf16ad7501dc4337fd3a78b7",
+    "product/CONTRACT.md": "f00ccf6411922d3dbcda333ff7a0adc8a3c7f36846d7fb722d85de43c6f8218d",
+    "product/cost-results.json": "debc0ffa3fc289f653587bf40fe13705388342b7be9885d2748ebb3798382953",
+    "product/wireframes.html": "555170fa64b821a706ffdd405e8681eb6d6db017d476576c49f114e2a8f6dcbb",
+    "product/EXAMPLE_TASK.md": "bfb4a24e82582b4d2c0c58d0b03e18ba65e162ce35dd234da40adef0093871ef",
+    "product/calculate_costs.py": "8ade7dc268282b5e567edef48563383fcfd71ab1db301726db42a498ed692d77",
+    "product/cost-inputs.json": "9cfdc0f09849806a07ffac82c77f68fb162aa0351414dba4e37453f483fbe89c",
+    "openclaw-project/platform/ARCHITECTURE.md": "6524b443937619960ed0a030f8c2165a111e5d08e81a6c2d2b08dfd327b53a45",
+    "openclaw-project/platform/API_MATRIX.md": "5f3c68bcc97a52d62af827118293da723d4a7d8725c804bdde2720f3f9894f1e",
+    "openclaw-project/platform/CAPABILITIES.md": "07b95dc0878ea7caff2ce9fafbebbc2e710734e8689cc5c003b3811478aca2a1",
+    "openclaw-project/platform/runtime.lock.json": "b98e73082596221dc6ecbcd5aa8a8b1bb9c8e2b4dba3dbfc288c041b5dca1fc9",
+    "openclaw-project/platform/README.md": "4382ee0d7491170294fc1ca418b64d523d505daccf7e3d6311a9257cec152524",
+    "openclaw-project/platform/config.example.json": "e4d32a11e507f2cef521aa07e26efba1d4b3b4859a35b644e176a4c579ef8caa",
+    "openclaw-project/platform/schemas.json": "863b4170bb6fb7c834cfaab42838ed2ae3e9a8f9af6e0d6548fb306d947a9b90",
+    "openclaw-project/platform/THREAT_MODEL.md": "02d2a283e9a67fa1681fd5dca96de2f8f08a51f3de341acf41c06e06f9e5d17b",
+    "openclaw-project/platform/openapi.json": "a69846f3e199dd914188a083e2f17b6a1c39d5fb105f05a5f990cba490231990",
+    "openclaw-project/platform/requirements.lock": "37bb7f80832cb4581157751659908b5dddc085057602590e85940350f9d1aa6b",
+    "openclaw-project/platform/migrations/0001_foundation.sql": "e99ec3bbfc8448f74ec34b3ca368ec810e99923a5a2c9bbf2cb8459faba95775",
+    "openclaw-project/platform/deploy/agentai-platform-app.service": "db90f701eaa30a7d51862f526010417ed72022281c75ffa170a882bc3f643e68",
+    "openclaw-project/platform/deploy/Caddyfile.example": "0ecbd9de0eb73a4627f378eb03975fdfd3b28a121d4d01b996e30b76ce67703b",
+    "openclaw-project/platform/deploy/README.md": "0a767cd98bd905b437c8cfb0298a6cb5c672a907b7082f1187059d7ea3d5232f",
+    "openclaw-project/platform/deploy/agentai-platform-control.service": "1cdb3e01f0a57b631c9606f4bb6d7c68d9c5f2c9d874e9292b621c62c20c38cb",
+    "openclaw-project/platform/deploy/config.server.example.json": "dce8973adde45e9e3069e78adb167b4210b8690ad253554295fe32a8e564bd6d",
+    "openclaw-project/platform/tests/test_foundation.py": "7ece675010383e98b3c827ac256e50e5967c088b3c6bfc4b77a3e8386494cfa7",
+    "openclaw-project/platform/fixtures/gateway-capabilities.json": "216985bb85ba862027e525164acf6eed970909b7e16ba2fdde98dd69751a6e06",
+    "openclaw-project/platform/agentai_platform/store.py": "26c2a8a11c0d20dbc793fd552147eb8899d0bd422effb532a6a7fe4be6df6bf5",
+    "openclaw-project/platform/agentai_platform/server.py": "d7593d44d0eb7f86ae0ca2ea4831e21a09d5b993f2afaeda4bcb7a200466878f",
+    "openclaw-project/platform/agentai_platform/config.py": "7ecd99d7cf3cdf9599de6b1736de28f9bea56190bfa9d702020ad6c3b79b7fd9",
+    "openclaw-project/platform/agentai_platform/security.py": "12c6b79a20044dbb21cf791c2d8f4d8e84dff9b56ed47e0930fa00daacd8f3c3",
+    "openclaw-project/platform/agentai_platform/__init__.py": "7c1e275a38af2f090f753dc6643d168bad15b636d54c62ddc3edaa6553779863",
+    "openclaw-project/platform/agentai_platform/adapters.py": "60e09dc4ae770780872a43074b5ef501f273360ac0a8671f467c578bfe419eda"
+  },
+  "build_status": "READY",
+  "acceptance_scope": "private foundation targeted checks, not customer activation",
+  "acceptance_status": "PASS",
+  "target": "local disposable fixture DB/HTTP and temporary bounded unprivileged VPS services",
+  "versions": {
+    "local_python": "3.14.4",
+    "server_python": "3.12.3",
+    "server_sqlite": "3.45.1",
+    "openclaw": "2026.9.6 (eb377ac)",
+    "litellm": "1.102.1",
+    "postgresql": "16.10"
+  },
+  "docs": [
+    "https://docs.openclaw.ai/gateway/multi-tenant-hosting",
+    "https://docs.openclaw.ai/gateway/protocol/rpc-session-control",
+    "https://docs.openclaw.ai/gateway/protocol/rpc-bootstrap-and-events",
+    "https://docs.python.org/3/library/sqlite3.html",
+    "https://www.sqlite.org/foreignkeys.html",
+    "https://claude.com/pricing",
+    "https://brave.com/search/api/",
+    "https://stripe.com/pricing",
+    "https://stripe.com/billing/pricing",
+    "https://docs.typesafe.ai/models"
+  ],
+  "cost": {
+    "provider_calls": 0,
+    "project_provider_probe_usd": "0",
+    "payments": 0,
+    "infrastructure_invoice": "unknown, existing host only",
+    "assistant_session_billing": "not attributed to product task ledger"
+  },
+  "customer_activation": false,
+  "warnings": [
+    "Owner host has limited memory/nearly full swap; no customer nodes admitted",
+    "Complete commercial Codex/ACP/task costs unknown",
+    "Wireframe browser rendering not run: file protocol blocked by browser security policy"
+  ],
+  "deferred_cases": [
+    "Phases3\u20135 activation prerequisites",
+    "P15 customer/native/security/provider/recovery suite",
+    "P17 complete customer/payment workflow"
+  ],
+  "cleanup": "Temporary foundation services/code/empty DB stopped and removed; no owner runtime mutation",
+  "rollback": "Revert only this run product/platform/phase records; preserve existing prompt edits and runtime evidence",
+  "checks": [
+    {
+      "id": "P02-BOUNDARY-TESTS",
+      "status": "pass",
+      "command": "python3 -m unittest discover -s tests -v (platform directory)",
+      "observed": "14 collected/passed; real local HTTP, scoped FK/repository, revocation, migrations, gates, log canary",
+      "evidence": "openclaw-project/platform/tests/test_foundation.py"
+    },
+    {
+      "id": "P02-PRIVATE-SMOKE",
+      "status": "pass",
+      "command": "Temporary systemd-run app/control units + HTTP readiness/API denial/listener/property readback",
+      "observed": "Both readiness true/customer_ready false/API401; loopback18800/18801;128MiB/no swap/25%CPU/16tasks; cleanup true",
+      "evidence": "openclaw-project/plans/product/server-smoke.json"
+    },
+    {
+      "id": "P02-INITIAL-SMOKE",
+      "status": "fail",
+      "command": "Initial DynamicUser StateDirectory fixture smoke",
+      "observed": "Safe state symlink refusal; cleaned up, direct RuntimeDirectory corrected fixture, subsequent run passed",
+      "evidence": "openclaw-project/plans/product/server-smoke-initial-failure.json"
+    },
+    {
+      "id": "P02-SOURCE-CHECKS",
+      "status": "pass",
+      "command": "compileall, JSON/link validation, fixed-field logs/config/no-secret review, git diff --check",
+      "observed": "Syntax/JSON/links/whitespace pass; no real secret values in new assets",
+      "evidence": "openclaw-project/platform/README.md"
+    },
+    {
+      "id": "P02-NATIVE-INVENTORY",
+      "status": "pass",
+      "command": "Read-only CLI/version/config and sanitized policy/source inventory",
+      "observed": "Live config valid; installed advertised APIs kept distinct from unprobed client capabilities",
+      "evidence": "openclaw-project/plans/product/runtime-inventory.json"
+    }
+  ]
+}

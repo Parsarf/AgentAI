@@ -1,0 +1,39 @@
+{
+  "created_at": "2026-09-30T23:33:33.152838+00:00",
+  "status": "READY_FOR_GITHUB_WEBSITE_PUBLICATION",
+  "account_api_tests_passed": 37,
+  "queue_lifecycle_budget_tests_passed": 32,
+  "vercel_configuration_checks": "PASS",
+  "candidate_files_scanned": 346,
+  "secret_pattern_findings": "Only the intentionally fake user:password URL in check.mjs; no credential pattern findings elsewhere",
+  "git_ignored_private_paths": [
+    "openclaw-project/.env",
+    "openclaw-project/platform/.venv",
+    "*.sqlite3",
+    ".vercel",
+    "node_modules"
+  ],
+  "github_authentication": "CLI token invalid at local check; user login required before push",
+  "github_push_performed": false,
+  "vercel_deployment_performed": false,
+  "native_execution_enabled": false,
+  "source_sha256": {
+    "README.md": "640a46861d327c72e2b67b4c201555e698836acb788a09fe396c9f4baa69c74c",
+    ".gitignore": "b3b4acf6723d83725be7361efa9ce3d8e34fba09ed39975580179c5bdc18dff0",
+    ".github/workflows/platform.yml": "643f54d52add685eceb74f60f12c93b7fe5da32267e050e502348910ba0aa0e6",
+    "openclaw-project/platform/deploy/vercel/routing.mjs": "f5b04d596f9e8a66323c77b87280f94f07dbadec313919921172962ca78dd605",
+    "openclaw-project/platform/deploy/vercel/vercel.mjs": "93070aad801af02a749e7a058de09c2c22f66e4d4879887a2b575c0c966f8adf",
+    "openclaw-project/platform/deploy/vercel/README.md": "47fe3233682c52746aefe80f9475dba8281ec47c47ce95a7a3fc5abfc121822a",
+    "openclaw-project/platform/deploy/vercel/check.mjs": "ee06c3ebaf8a819cc40fdb8481a43137d8a4c96527939405229169a49a1568cf",
+    "openclaw-project/platform/deploy/vercel/__pycache__/configure.cpython-314.pyc": "c0b66b47511bcdcd96e37fac6e4ae569fb111b025f44b9edb118a5bfa702ac82",
+    "openclaw-project/platform/deploy/vercel/public/index.html": "fc2585cef54a7f9bd549852dce4fa5d1738e579503d4c53d5c192d19771ef1ec",
+    "openclaw-project/platform/deploy/vercel/public/robots.txt": "331ea9090db0c9f6f597bd9840fd5b171830f6e0b3ba1cb24dfa91f0c95aedc1"
+  },
+  "remaining_runtime_setup": [
+    "VPS backend HTTPS hostname and certificate",
+    "Vercel production BACKEND_ORIGIN",
+    "VPS AGENTAI_PUBLIC_ORIGIN",
+    "SMTP and invitations",
+    "Native execution adapter"
+  ]
+}

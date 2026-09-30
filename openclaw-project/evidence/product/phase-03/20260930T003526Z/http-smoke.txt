@@ -1,0 +1,1 @@
+PASS: real loopback Gunicorn startup/readiness; two authenticated accounts; direct cross-account denial; CSRF/routing guards; no secret logs; process/state cleanup

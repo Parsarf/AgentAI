@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Usage — AgentAI</title></head>
+<body><main><h1>Usage</h1>
+{% if unconfigured %}<p>Your usage allowance has not been configured yet.</p>
+{% else %}
+<dl><dt>Reported provider cost (USD)</dt><dd>${{ reported_usd }}</dd>
+<dt>Held for unfinished work (USD)</dt><dd>${{ held_usd }}</dd>
+<dt>Remaining period allowance (USD)</dt><dd>${{ remaining_usd }}</dd></dl>
+<p>Running estimates are unavailable until provider accounting is connected.</p>
+{% if usage.usage_pending %}<p>Some usage is awaiting reconciliation.</p>{% endif %}
+<p>Live provider accounting is not connected yet.</p>
+{% endif %}
+<p><a href="/account/">Back to account</a></p></main></body></html>

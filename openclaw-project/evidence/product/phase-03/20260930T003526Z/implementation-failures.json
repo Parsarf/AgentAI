@@ -1,0 +1,31 @@
+{
+  "failures_retained": [
+    {
+      "case": "initial account fixtures",
+      "result": "FAIL",
+      "reason": "Django TestCase.client attribute shadowed helper; renamed helper"
+    },
+    {
+      "case": "email uniqueness",
+      "result": "FAIL",
+      "reason": "Later auth table migration removed early index; dependency fixed before integrity migration"
+    },
+    {
+      "case": "browser form fixture",
+      "result": "FAIL",
+      "reason": "Fixture sent multipart rather than browser urlencoded form; fixture corrected"
+    },
+    {
+      "case": "readiness test DB path",
+      "result": "FAIL",
+      "reason": "Django supplied string, Store expected Path; normalized input"
+    },
+    {
+      "case": "audit error session restoration",
+      "result": "FAIL",
+      "reason": "Existing cookie cleared after failed mutation; restore prior session on rollback. Added completed-audit failure test preventing unaudited login save"
+    }
+  ],
+  "final_result": "PASS",
+  "production_effects": "none"
+}

@@ -1,0 +1,622 @@
+Creating test database for alias 'default'...
+.........................EEEEEEE
+======================================================================
+ERROR: test_account_bound_operator_queue_and_customer_projection (accounts.test_lifecycle.LifecycleAPIChecks.test_account_bound_operator_queue_and_customer_projection)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: invalid operator grant
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 30, in test_account_bound_operator_queue_and_customer_projection
+    op,user,_=self.operator_grant();response=self.provision(op)
+              ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 27, in operator_grant
+    OperatorGrant.objects.create(user=user,account_id='a',action='lifecycle_create',expires_at=timezone.now()+timedelta(hours=1))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+    ~~~~~~~~~~~~~~^
+        using=using,
+        ^^^^^^^^^^^^
+    ...<2 lines>...
+        update_fields=update_fields,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+        raw,
+    ...<4 lines>...
+        update_fields,
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+        cls._base_manager, using, fields, returning_fields, raw
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ~~~~~~~~~~~~~~~^
+        [self],
+        ^^^^^^^
+    ...<3 lines>...
+        raw=raw,
+        ^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sql, params, many=False, executor=self._execute
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: invalid operator grant
+
+======================================================================
+ERROR: test_customer_cannot_mutate_operations_and_csrf_required (accounts.test_lifecycle.LifecycleAPIChecks.test_customer_cannot_mutate_operations_and_csrf_required)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: invalid operator grant
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 65, in test_customer_cannot_mutate_operations_and_csrf_required
+    op,_,_=self.operator_grant()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 27, in operator_grant
+    OperatorGrant.objects.create(user=user,account_id='a',action='lifecycle_create',expires_at=timezone.now()+timedelta(hours=1))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+    ~~~~~~~~~~~~~~^
+        using=using,
+        ^^^^^^^^^^^^
+    ...<2 lines>...
+        update_fields=update_fields,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+        raw,
+    ...<4 lines>...
+        update_fields,
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+        cls._base_manager, using, fields, returning_fields, raw
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ~~~~~~~~~~~~~~~^
+        [self],
+        ^^^^^^^
+    ...<3 lines>...
+        raw=raw,
+        ^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sql, params, many=False, executor=self._execute
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: invalid operator grant
+
+======================================================================
+ERROR: test_mfa_scoped_grant_and_customer_denials (accounts.test_lifecycle.LifecycleAPIChecks.test_mfa_scoped_grant_and_customer_denials)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: invalid operator grant
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 45, in test_mfa_scoped_grant_and_customer_denials
+    OperatorGrant.objects.create(user=user,account_id='a',action='lifecycle_create',expires_at=timezone.now()+timedelta(hours=1))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+    ~~~~~~~~~~~~~~^
+        using=using,
+        ^^^^^^^^^^^^
+    ...<2 lines>...
+        update_fields=update_fields,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+        raw,
+    ...<4 lines>...
+        update_fields,
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+        cls._base_manager, using, fields, returning_fields, raw
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ~~~~~~~~~~~~~~~^
+        [self],
+        ^^^^^^^
+    ...<3 lines>...
+        raw=raw,
+        ^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sql, params, many=False, executor=self._execute
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: invalid operator grant
+
+======================================================================
+ERROR: test_native_gate_stays_disabled_after_queue (accounts.test_lifecycle.LifecycleAPIChecks.test_native_gate_stays_disabled_after_queue)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: invalid operator grant
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 68, in test_native_gate_stays_disabled_after_queue
+    op,_,_=self.operator_grant();response=self.provision(op);item=response.json()['operation']
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 27, in operator_grant
+    OperatorGrant.objects.create(user=user,account_id='a',action='lifecycle_create',expires_at=timezone.now()+timedelta(hours=1))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+    ~~~~~~~~~~~~~~^
+        using=using,
+        ^^^^^^^^^^^^
+    ...<2 lines>...
+        update_fields=update_fields,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+        raw,
+    ...<4 lines>...
+        update_fields,
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+        cls._base_manager, using, fields, returning_fields, raw
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ~~~~~~~~~~~~~~~^
+        [self],
+        ^^^^^^^
+    ...<3 lines>...
+        raw=raw,
+        ^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sql, params, many=False, executor=self._execute
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: invalid operator grant
+
+======================================================================
+ERROR: test_reject_routing_shell_path_and_secret_fields (accounts.test_lifecycle.LifecycleAPIChecks.test_reject_routing_shell_path_and_secret_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: invalid operator grant
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 59, in test_reject_routing_shell_path_and_secret_fields
+    op,_,_=self.operator_grant()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 27, in operator_grant
+    OperatorGrant.objects.create(user=user,account_id='a',action='lifecycle_create',expires_at=timezone.now()+timedelta(hours=1))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+    ~~~~~~~~~~~~~~^
+        using=using,
+        ^^^^^^^^^^^^
+    ...<2 lines>...
+        update_fields=update_fields,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+        raw,
+    ...<4 lines>...
+        update_fields,
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+        cls._base_manager, using, fields, returning_fields, raw
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ~~~~~~~~~~~~~~~^
+        [self],
+        ^^^^^^^
+    ...<3 lines>...
+        raw=raw,
+        ^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sql, params, many=False, executor=self._execute
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: invalid operator grant
+
+======================================================================
+ERROR: test_revocation_removes_operation_access (accounts.test_lifecycle.LifecycleAPIChecks.test_revocation_removes_operation_access)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: invalid operator grant
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 73, in test_revocation_removes_operation_access
+    op,_,_=self.operator_grant();item=self.provision(op).json()['operation'];client=self.signed('a')
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 27, in operator_grant
+    OperatorGrant.objects.create(user=user,account_id='a',action='lifecycle_create',expires_at=timezone.now()+timedelta(hours=1))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+    ~~~~~~~~~~~~~~^
+        using=using,
+        ^^^^^^^^^^^^
+    ...<2 lines>...
+        update_fields=update_fields,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+        raw,
+    ...<4 lines>...
+        update_fields,
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+        cls._base_manager, using, fields, returning_fields, raw
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ~~~~~~~~~~~~~~~^
+        [self],
+        ^^^^^^^
+    ...<3 lines>...
+        raw=raw,
+        ^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sql, params, many=False, executor=self._execute
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: invalid operator grant
+
+======================================================================
+ERROR: test_scope_expiry_and_idempotency_payload_change (accounts.test_lifecycle.LifecycleAPIChecks.test_scope_expiry_and_idempotency_payload_change)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: invalid operator grant
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 51, in test_scope_expiry_and_idempotency_payload_change
+    op,user,_=self.operator_grant()
+              ~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/accounts/test_lifecycle.py", line 27, in operator_grant
+    OperatorGrant.objects.create(user=user,account_id='a',action='lifecycle_create',expires_at=timezone.now()+timedelta(hours=1))
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 665, in create
+    obj.save(force_insert=True, using=self.db)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 902, in save
+    self.save_base(
+    ~~~~~~~~~~~~~~^
+        using=using,
+        ^^^^^^^^^^^^
+    ...<2 lines>...
+        update_fields=update_fields,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1008, in save_base
+    updated = self._save_table(
+        raw,
+    ...<4 lines>...
+        update_fields,
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1169, in _save_table
+    results = self._do_insert(
+        cls._base_manager, using, fields, returning_fields, raw
+    )
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/base.py", line 1210, in _do_insert
+    return manager._insert(
+           ~~~~~~~~~~~~~~~^
+        [self],
+        ^^^^^^^
+    ...<3 lines>...
+        raw=raw,
+        ^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/query.py", line 1873, in _insert
+    return query.get_compiler(using=using).execute_sql(returning_fields)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/models/sql/compiler.py", line 1882, in execute_sql
+    cursor.execute(sql, params)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 79, in execute
+    return self._execute_with_wrappers(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sql, params, many=False, executor=self._execute
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 92, in _execute_with_wrappers
+    return executor(sql, params, many, context)
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 100, in _execute
+    with self.db.wrap_database_errors:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/utils.py", line 91, in __exit__
+    raise dj_exc_value.with_traceback(traceback) from exc_value
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/utils.py", line 105, in _execute
+    return self.cursor.execute(sql, params)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/parsa/AgentAI/openclaw-project/platform/.venv/lib/python3.14/site-packages/django/db/backends/sqlite3/base.py", line 360, in execute
+    return super().execute(query, params)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+django.db.utils.IntegrityError: invalid operator grant
+
+----------------------------------------------------------------------
+Ran 32 tests in 41.690s
+
+FAILED (errors=7)
+Destroying test database for alias 'default'...
+Found 32 test(s).
+System check identified no issues (0 silenced).

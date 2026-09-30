@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agentai:metadata:v1",
+  "title": "Internal metadata: fields are not automatically public responses",
+  "$defs": {
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "suspended",
+            "deleting",
+            "deleted"
+          ]
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "generation",
+        "state",
+        "secret_binding_id",
+        "runtime_version"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "ready",
+            "stopped",
+            "failed",
+            "deleting",
+            "deleted"
+          ]
+        },
+        "secret_binding_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "runtime_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "name"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "project_id",
+        "deployment_id",
+        "native_session_ref"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "deployment_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "native_session_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "project_id",
+        "conversation_id",
+        "state",
+        "budget_microusd"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "waiting_for_approval",
+            "paused",
+            "cancelled",
+            "failed",
+            "budget_exhausted",
+            "completed",
+            "blocked"
+          ]
+        },
+        "budget_microusd": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "deployment_id",
+        "kind",
+        "state",
+        "idempotency_key",
+        "request_hash",
+        "generation"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "deployment_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "create",
+            "start",
+            "stop",
+            "upgrade",
+            "backup",
+            "restore",
+            "delete"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "completed",
+            "failed",
+            "uncertain"
+          ]
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "request_hash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "task_id",
+        "sequence",
+        "kind",
+        "public_payload"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "public_payload": {
+          "type": "object"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "project_id",
+        "task_id",
+        "version",
+        "display_name",
+        "media_type",
+        "size_bytes",
+        "sha256",
+        "storage_ref"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "storage_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "task_id",
+        "provider",
+        "provider_request_id",
+        "kind",
+        "amount_microusd",
+        "currency",
+        "price_version"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "provider_request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "reserved",
+            "estimated",
+            "reported",
+            "reconciled",
+            "adjusted",
+            "released"
+          ]
+        },
+        "amount_microusd": {
+          "type": "integer"
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "USD"
+          ]
+        },
+        "price_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "entitlement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "account_id",
+        "id",
+        "plan_version",
+        "status",
+        "limits_json",
+        "valid_until"
+      ],
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "plan_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "trial",
+            "active",
+            "grace",
+            "expired",
+            "suspended"
+          ]
+        },
+        "limits_json": {
+          "type": "object"
+        },
+        "valid_until": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    }
+  }
+}

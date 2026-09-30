@@ -1,0 +1,2411 @@
+{
+  "version": 1,
+  "scope_decisions": "product/CONTRACT.md",
+  "historical_results_not_overwritten": true,
+  "requirements": [
+    {
+      "id": "PROD-01",
+      "requirement": "Exact first offer and release scope",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 1,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 1,
+      "acceptance_case": "P01-CONTRACT",
+      "observable_assertion": "Customer offer maps tasks/types/limits/retention/failure to assertions",
+      "dependencies": [],
+      "evidence": [
+        "product/CONTRACT.md",
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "PROD-02",
+      "requirement": "Every screen annotated and responsive",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 1,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 1,
+      "acceptance_case": "P01-SCREENS",
+      "observable_assertion": "14 wireframes define accessible controls and loading/empty/error/offline/denial",
+      "dependencies": [],
+      "evidence": [
+        "product/SCREENS.md",
+        "product/wireframes.html"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "PROD-03",
+      "requirement": "Complete reading-list example",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 1,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 1,
+      "acceptance_case": "P17-COMPLETE-WORKFLOW",
+      "observable_assertion": "Real linked customer receives tested/reviewed versioned reproducible ZIP",
+      "dependencies": [],
+      "evidence": [
+        "product/EXAMPLE_TASK.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "PROD-04",
+      "requirement": "Cost/capacity calculations and unknowns",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 1,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 1,
+      "acceptance_case": "P01-COST",
+      "observable_assertion": "Decimal results reproduce known-price scenarios; unknown complete totals remain null",
+      "dependencies": [],
+      "evidence": [
+        "product/COST_CAPACITY.md",
+        "product/cost-results.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "FOUND-01",
+      "requirement": "Private app/control with resource caps",
+      "source": "phase-prompts/openclaw/phase-02-platform-foundation.md",
+      "release_scope": "launch",
+      "implementation_phase": 2,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 2,
+      "acceptance_case": "P02-PRIVATE-SMOKE",
+      "observable_assertion": "Health/readiness while customer_ready false; loopback ports; unprivileged128MiB",
+      "dependencies": [
+        1
+      ],
+      "evidence": [
+        "openclaw-project/platform/",
+        "openclaw-project/plans/product/server-smoke.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "FOUND-02",
+      "requirement": "Composite tenant/project relationship constraints",
+      "source": "phase-prompts/openclaw/phase-02-platform-foundation.md",
+      "release_scope": "launch",
+      "implementation_phase": 2,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 2,
+      "acceptance_case": "P02-FOREIGN-KEY",
+      "observable_assertion": "Cross-account/wrong-project child insertion raises FK error",
+      "dependencies": [
+        1
+      ],
+      "evidence": [
+        "openclaw-project/platform/",
+        "openclaw-project/plans/product/server-smoke.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "FOUND-03",
+      "requirement": "Scoped repository and versioned API schemas",
+      "source": "phase-prompts/openclaw/phase-02-platform-foundation.md",
+      "release_scope": "launch",
+      "implementation_phase": 2,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 2,
+      "acceptance_case": "P02-OBJECT-BOUNDARY",
+      "observable_assertion": "Current membership required and other/missing IDs return same404",
+      "dependencies": [
+        1
+      ],
+      "evidence": [
+        "openclaw-project/platform/",
+        "openclaw-project/plans/product/server-smoke.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "FOUND-04",
+      "requirement": "Atomic/checksummed immutable migrations",
+      "source": "phase-prompts/openclaw/phase-02-platform-foundation.md",
+      "release_scope": "launch",
+      "implementation_phase": 2,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 2,
+      "acceptance_case": "P02-MIGRATION",
+      "observable_assertion": "Failed migration rolls back DDL; new/edited schema denies startup",
+      "dependencies": [
+        1
+      ],
+      "evidence": [
+        "openclaw-project/platform/",
+        "openclaw-project/plans/product/server-smoke.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "FOUND-05",
+      "requirement": "No secrets in browser/logs and hard-disabled customer gates",
+      "source": "phase-prompts/openclaw/phase-02-platform-foundation.md",
+      "release_scope": "launch",
+      "implementation_phase": 2,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 2,
+      "acceptance_case": "P02-GATES-LOGS",
+      "observable_assertion": "Fake identity headers cannot authorize; enabling gates/bind fails; logs omit secrets",
+      "dependencies": [
+        1
+      ],
+      "evidence": [
+        "openclaw-project/platform/",
+        "openclaw-project/plans/product/server-smoke.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "PASS"
+    },
+    {
+      "id": "FOUND-06",
+      "requirement": "Tenant deployment trust model/native capability inventory",
+      "source": "phase-prompts/openclaw/phase-02-platform-foundation.md",
+      "release_scope": "launch",
+      "implementation_phase": 2,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 2,
+      "acceptance_case": "P02-ARCHITECTURE",
+      "observable_assertion": "Exact installed versions/API advertisement and unverified probes distinguished",
+      "dependencies": [
+        1
+      ],
+      "evidence": [
+        "openclaw-project/platform/",
+        "openclaw-project/plans/product/server-smoke.json",
+        "openclaw-project/plans/product/phase-04-single-vps-assessment.md",
+        "openclaw-project/evidence/product/phase-04/20260930T011410Z/manifest.json",
+        "product/EXISTING_VPS_TRIAL.md"
+      ],
+      "activation_blocker": "Owner changed target to one VPS/shared domain. ADR007 design supersedes VM placement; effective single-host worker/isolation proof is missing4/15. Historical design/source inventory retained, not live runtime proof.",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "ACCOUNT-01",
+      "requirement": "Sign-in/account recovery/session revoke",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 3,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-ACCOUNT",
+      "observable_assertion": "Verified identity only; recovery expiry/replay/role changes/revocation deny",
+      "dependencies": [
+        2
+      ],
+      "evidence": [
+        "openclaw-project/plans/product/phase-03.md",
+        "openclaw-project/platform/accounts/README.md",
+        "openclaw-project/platform/accounts/tests.py",
+        "openclaw-project/evidence/product/phase-03/20260930T003526Z/manifest.json"
+      ],
+      "activation_blocker": "Real TLS/mail onboarding not activated; customer task access additionally requires isolated Phase4 deployment and Phase5 admission; full acceptance15.",
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS",
+      "build_result": "READY"
+    },
+    {
+      "id": "ACCOUNT-02",
+      "requirement": "Roles and audit-required mutations",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 3,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-AUDIT",
+      "observable_assertion": "Explicit scopes; failed audit denies mutation; no support blanket access",
+      "dependencies": [
+        2
+      ],
+      "evidence": [
+        "openclaw-project/plans/product/phase-03.md",
+        "openclaw-project/platform/accounts/README.md",
+        "openclaw-project/platform/accounts/tests.py",
+        "openclaw-project/evidence/product/phase-03/20260930T003526Z/manifest.json"
+      ],
+      "activation_blocker": "Real TLS/mail onboarding not activated; customer task access additionally requires isolated Phase4 deployment and Phase5 admission; full acceptance15.",
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS",
+      "build_result": "READY"
+    },
+    {
+      "id": "TENANT-01",
+      "requirement": "Isolated lifecycle create/start/stop/upgrade/delete",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 4,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-PROVISION",
+      "observable_assertion": "Generation/idempotency partial failure converges; cleanup only assigned deployment",
+      "dependencies": [
+        3
+      ],
+      "evidence": [
+        "openclaw-project/plans/product/phase-04-single-vps-assessment.md",
+        "openclaw-project/plans/product/phase-04-capacity.json",
+        "openclaw-project/evidence/product/phase-04/20260930T011410Z/manifest.json",
+        "product/EXISTING_VPS_TRIAL.md",
+        "openclaw-project/platform/agentai_platform/lifecycle/",
+        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Existing-VPS profile unmeasured; native driver/host-owned supervisor/secret custody/worker broker/stronger runtime/network/persistent quotas and Phase5 all-route dispatch enforcement incomplete. No hardware upgrade prerequisite.",
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS local coordinator/API/capacity checks; no native runtime isolation proof",
+      "build_result": "PARTIAL",
+      "capacity_profile": "two_accounts_one_global_task_existing_vps",
+      "parallel_runtime_acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "TENANT-02",
+      "requirement": "Simultaneous two-customer execution isolation",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 4,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CUSTOMER-BOUNDARY",
+      "observable_assertion": "Two signed-in accounts keep separate chats/memory/files/tools/credentials/network across isolated Fleet cells and workers; trial task execution serialized with atomic global slot; simultaneous-runtime proof required before increasing concurrency",
+      "dependencies": [
+        3
+      ],
+      "evidence": [
+        "openclaw-project/plans/product/phase-04-single-vps-assessment.md",
+        "openclaw-project/plans/product/phase-04-capacity.json",
+        "openclaw-project/evidence/product/phase-04/20260930T011410Z/manifest.json",
+        "product/EXISTING_VPS_TRIAL.md",
+        "openclaw-project/platform/agentai_platform/lifecycle/",
+        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Existing-VPS profile unmeasured; native driver/host-owned supervisor/secret custody/worker broker/stronger runtime/network/persistent quotas and Phase5 all-route dispatch enforcement incomplete. No hardware upgrade prerequisite.",
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS local coordinator/API/capacity checks; no native runtime isolation proof",
+      "build_result": "PARTIAL",
+      "capacity_profile": "two_accounts_one_global_task_existing_vps",
+      "parallel_runtime_acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "TENANT-03",
+      "requirement": "Measured CPU/RAM/PID/disk admission",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 4,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CAPACITY",
+      "observable_assertion": "No overcapacity admission on the shared VPS; owner reserve and account CPU/RAM/PID/disk limits verified before customer execution",
+      "dependencies": [
+        3
+      ],
+      "evidence": [
+        "openclaw-project/plans/product/phase-04-single-vps-assessment.md",
+        "openclaw-project/plans/product/phase-04-capacity.json",
+        "openclaw-project/evidence/product/phase-04/20260930T011410Z/manifest.json",
+        "product/EXISTING_VPS_TRIAL.md",
+        "openclaw-project/platform/agentai_platform/lifecycle/",
+        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Existing-VPS profile unmeasured; native driver/host-owned supervisor/secret custody/worker broker/stronger runtime/network/persistent quotas and Phase5 all-route dispatch enforcement incomplete. No hardware upgrade prerequisite.",
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS local coordinator/API/capacity checks; no native runtime isolation proof",
+      "build_result": "PARTIAL",
+      "capacity_profile": "two_accounts_one_global_task_existing_vps",
+      "parallel_runtime_acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "USAGE-01",
+      "requirement": "Every-provider/task metering and reconciliation",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-USAGE",
+      "observable_assertion": "Receipt-linked ledger includes failure/cache/fallback/reviewer costs; unknown not zero",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "USAGE-02",
+      "requirement": "Atomic concurrent reservation and hard caps",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-BUDGET",
+      "observable_assertion": "Task/day/month/service/inflight limits and store outage deny before provider call",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "CHAT-01",
+      "requirement": "Verified native send/stream/history/retry/cancel",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 6,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CHAT-RECONNECT",
+      "observable_assertion": "Same conversation after refresh/restart; duplicate send cannot start duplicate task",
+      "dependencies": [
+        5
+      ],
+      "evidence": [
+        "openclaw-project/platform/SERIAL_REQUESTS.md",
+        "openclaw-project/evidence/product/phase-06/20260930T213538Z/manifest.json"
+      ],
+      "activation_blocker": "Scoped persistent request intake and serial queue implemented; native send/history/events/abort adapter and Vercel/SMTP deployment still pending",
+      "acceptance_result": "NOT_READY"
+    },
+    {
+      "id": "TG-01",
+      "requirement": "Shared ingress secure numeric account link",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 7,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-TELEGRAM",
+      "observable_assertion": "Single-use code/expiry/conflict/update dedup; unlinked identity no task",
+      "dependencies": [
+        6
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "TG-02",
+      "requirement": "Active project and shared dashboard history",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 7,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CROSS-SURFACE",
+      "observable_assertion": "Scoped project selection records Telegram/dashboard provenance in correct conversation",
+      "dependencies": [
+        6
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "FILES-01",
+      "requirement": "Safe uploads/types/size/quarantine/quotas",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-UPLOAD",
+      "observable_assertion": "Content mismatches/scan failure/overquota denied; no input archive/executable",
+      "dependencies": [
+        7
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "FILES-02",
+      "requirement": "Immutable artifacts/preview/download/provenance/bundle",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-ARTIFACT",
+      "observable_assertion": "Exact version/hash/tested snapshot ZIP; other/revoked account cannot download",
+      "dependencies": [
+        7
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "FILES-03",
+      "requirement": "Race-safe filesystem containment",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-FILE-BOUNDARY",
+      "observable_assertion": "Traversal/intermediate symlink race/host auth/log/private-root access denied",
+      "dependencies": [
+        7
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "EVENT-01",
+      "requirement": "Durable scoped public timeline",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 9,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIVE-EVENTS",
+      "observable_assertion": "Cursor reconnect/replay/revocation; sources/files/tests/errors/result, no private reasoning",
+      "dependencies": [
+        8
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "EVENT-02",
+      "requirement": "Native task controls and approval semantics",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 9,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-APPROVAL",
+      "observable_assertion": "Timeline pause distinct; exact supported cancel/expiry/change/replay no effects",
+      "dependencies": [
+        8
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "NATIVE-01",
+      "requirement": "Restricted roles/effective policies/primary research",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 10,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RESEARCH",
+      "observable_assertion": "Primary claims supported; workers cannot change/spawn/send/schedule/access secrets",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "NATIVE-02",
+      "requirement": "Native coding build/browser/independent reviewer",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 10,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-NATIVE-BUILD",
+      "observable_assertion": "Actual tested/reviewed delivered snapshot; constrained host-side harnesses",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Metered commercial coding/reviewer access + actual host-side confinement required",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "NATIVE-03",
+      "requirement": "Focused debug regression",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 10,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-DEBUG",
+      "observable_assertion": "Same ID-zero regression fails before fix and passes after; neighboring behavior preserved",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "NATIVE-04",
+      "requirement": "Selective inspectable memory/correction/deletion",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 10,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-MEMORY",
+      "observable_assertion": "Relevant preference not12 unrelated facts; correction/delete clears active retrieval",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "NATIVE-05",
+      "requirement": "Durable safe native task restart/resume/cancellation",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 10,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-DURABLE",
+      "observable_assertion": "Plan/receipts survive; reconcile unknown effect; sticky cancel; real controller needed for automatic resume",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "NATIVE-06",
+      "requirement": "Stricter schedules/timezone/quiet watchers",
+      "source": "product/CONTRACT.md",
+      "release_scope": "later",
+      "implementation_phase": 10,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-SCHEDULE",
+      "observable_assertion": "Unchanged zero-model calls; changed admitted; deny unattended approval expiry",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "NATIVE-07",
+      "requirement": "Account-scoped reusable skills/proposed improvements",
+      "source": "product/CONTRACT.md",
+      "release_scope": "later",
+      "implementation_phase": 10,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-SKILLS",
+      "observable_assertion": "Version/list/run within tenant; no automatic policy/skill change",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "INT-01",
+      "requirement": "Google Gmail read-only connection",
+      "source": "product/CONTRACT.md",
+      "release_scope": "later",
+      "implementation_phase": 11,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-GMAIL",
+      "observable_assertion": "Verified identity/scope/bounded read/revoke; local proposal not provider send",
+      "dependencies": [
+        10
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "INT-02",
+      "requirement": "Google Calendar read-only connection",
+      "source": "product/CONTRACT.md",
+      "release_scope": "later",
+      "implementation_phase": 11,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CALENDAR",
+      "observable_assertion": "Verified identity/today correct timezone/empty/expired denial",
+      "dependencies": [
+        10
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "INT-03",
+      "requirement": "Google Drive read-only connection",
+      "source": "product/CONTRACT.md",
+      "release_scope": "later",
+      "implementation_phase": 11,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-DRIVE",
+      "observable_assertion": "Selected source stable ref; broad read scope disclosed; share/write omitted",
+      "dependencies": [
+        10
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "INT-04",
+      "requirement": "GitHub selected-repo read-only connection",
+      "source": "product/CONTRACT.md",
+      "release_scope": "later",
+      "implementation_phase": 11,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-GITHUB",
+      "observable_assertion": "Verified repo allowlist/token expiry; no unauthorized push/merge",
+      "dependencies": [
+        10
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "INT-05",
+      "requirement": "Credentialed browser/session/encrypted native auth custody",
+      "source": "product/CONTRACT.md",
+      "release_scope": "later",
+      "implementation_phase": 11,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-AUTH-BROWSER",
+      "observable_assertion": "Cross-session/swapped-secret/SSRF/private-address/redirect/logout denied",
+      "dependencies": [
+        10
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "OPT-01",
+      "requirement": "Typed Jev browser adapter + transport",
+      "source": "product/CONTRACT.md",
+      "release_scope": "optional",
+      "implementation_phase": 12,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 16,
+      "acceptance_case": "T11-PAIRED-COMPARISON",
+      "observable_assertion": "180 paired runs and frozen success/savings/latency/fallback/kill-switch gate",
+      "dependencies": [
+        11
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "OPT-02",
+      "requirement": "Research middleware loader/citation/quality proof",
+      "source": "product/CONTRACT.md",
+      "release_scope": "optional",
+      "implementation_phase": 12,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 16,
+      "acceptance_case": "P16-RESEARCH-OPT",
+      "observable_assertion": "Actual installed registration + separate primary-source quality/cost comparison",
+      "dependencies": [
+        11
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "BILL-01",
+      "requirement": "Checkout/invoices/entitlement transitions/cancel/failure",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 13,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-BILLING",
+      "observable_assertion": "Verified webhook state, no redirect access, dedup/out-of-order/reconciliation",
+      "dependencies": [
+        12
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "OPS-01",
+      "requirement": "Encrypted off-host tenant restore and RPO/RTO",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 14,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RECOVERY",
+      "observable_assertion": "Restore A without B changes; corrupt reject; current budget/access/tombstones",
+      "dependencies": [
+        13
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Approved encrypted off-host destination and key custody required",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "OPS-02",
+      "requirement": "Monitoring/rates/alerts/incidents/rotation/release rollback",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 14,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-OPERATIONS",
+      "observable_assertion": "Scoped observability and incident controls; actual schedule/fire/rollback",
+      "dependencies": [
+        13
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "OPS-03",
+      "requirement": "Disposable target guards/load/shutdown/smoke",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 14,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LOAD-SHUTDOWN",
+      "observable_assertion": "Required test collection; isolated containers; bounded drain/restart/no cross-talk",
+      "dependencies": [
+        13
+      ],
+      "evidence": [
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "BETA-01",
+      "requirement": "Real customer workflow/support/payment proof",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 17,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 17,
+      "acceptance_case": "P17-COMPLETE-WORKFLOW",
+      "observable_assertion": "Consent/authorized participants and actual workflow/payment evidence, not mocks",
+      "dependencies": [
+        16
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LAUNCH-01",
+      "requirement": "Final reviewed release/paid signup/capacity/rollback",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 18,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P18-LAUNCH",
+      "observable_assertion": "Final-revision checklist with real beta/payment/recovery evidence and authorized rollout",
+      "dependencies": [
+        17
+      ],
+      "evidence": [],
+      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "PURCHASE-01",
+      "requirement": "Optional customer-funded provider purchase lifecycle",
+      "source": "product/CONTRACT.md",
+      "release_scope": "optional",
+      "implementation_phase": 19,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 19,
+      "acceptance_case": "P19-PURCHASE",
+      "observable_assertion": "Real supported sandbox, denial-first/caps/native exact approval/idempotency/unknown receipt recovery",
+      "dependencies": [
+        18
+      ],
+      "evidence": [],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MONTHLY_PRICE_USD",
+      "requirement": "monthly_price_usd = 79.00",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 13,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MONTHLY_PRICE_USD",
+      "observable_assertion": "Enforcing server/adapter uses plan.json monthly_price_usd; above-limit request denied without effect",
+      "dependencies": [
+        12
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-INCLUDED_PROVIDER_COST_USD",
+      "requirement": "included_provider_cost_usd = 25.00",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-INCLUDED_PROVIDER_COST_USD",
+      "observable_assertion": "Enforcing server/adapter uses plan.json included_provider_cost_usd; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json",
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "LIMIT-DAILY_PROVIDER_COST_USD",
+      "requirement": "daily_provider_cost_usd = 5.00",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-DAILY_PROVIDER_COST_USD",
+      "observable_assertion": "Enforcing server/adapter uses plan.json daily_provider_cost_usd; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json",
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_TASK_COST_USD",
+      "requirement": "max_task_cost_usd = 5.00",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_TASK_COST_USD",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_task_cost_usd; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json",
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_RUNNING_TASKS",
+      "requirement": "max_running_tasks = 1",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_RUNNING_TASKS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_running_tasks; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_QUEUED_TASKS",
+      "requirement": "max_queued_tasks = 3",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_QUEUED_TASKS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_queued_tasks; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json",
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_PROJECTS",
+      "requirement": "max_projects = 10",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_PROJECTS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_projects; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_TASK_DURATION_SECONDS",
+      "requirement": "max_task_duration_seconds = 3600",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_TASK_DURATION_SECONDS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_task_duration_seconds; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_APPROVAL_WAIT_SECONDS",
+      "requirement": "max_approval_wait_seconds = 86400",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_APPROVAL_WAIT_SECONDS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_approval_wait_seconds; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_PROVIDER_RETRIES",
+      "requirement": "max_provider_retries = 2",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_PROVIDER_RETRIES",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_provider_retries; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_TASK_STEPS",
+      "requirement": "max_task_steps = 60",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_TASK_STEPS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_task_steps; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_MODEL_CALLS",
+      "requirement": "max_model_calls = 30",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_MODEL_CALLS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_model_calls; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_SEARCH_REQUESTS",
+      "requirement": "max_search_requests = 20",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_SEARCH_REQUESTS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_search_requests; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_UPLOAD_BYTES",
+      "requirement": "max_upload_bytes = 10485760",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_UPLOAD_BYTES",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_upload_bytes; above-limit request denied without effect",
+      "dependencies": [
+        7
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_UPLOAD_BATCH_BYTES",
+      "requirement": "max_upload_batch_bytes = 26214400",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_UPLOAD_BATCH_BYTES",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_upload_batch_bytes; above-limit request denied without effect",
+      "dependencies": [
+        7
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_FILES_PER_BATCH",
+      "requirement": "max_files_per_batch = 10",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_FILES_PER_BATCH",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_files_per_batch; above-limit request denied without effect",
+      "dependencies": [
+        7
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_STORAGE_BYTES",
+      "requirement": "max_storage_bytes = 2147483648",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_STORAGE_BYTES",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_storage_bytes; above-limit request denied without effect",
+      "dependencies": [
+        7
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_ARTIFACT_BYTES",
+      "requirement": "max_artifact_bytes = 104857600",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_ARTIFACT_BYTES",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_artifact_bytes; above-limit request denied without effect",
+      "dependencies": [
+        7
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_ZIP_UNCOMPRESSED_BYTES",
+      "requirement": "max_zip_uncompressed_bytes = 262144000",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_ZIP_UNCOMPRESSED_BYTES",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_zip_uncompressed_bytes; above-limit request denied without effect",
+      "dependencies": [
+        7
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_STREAM_CONNECTIONS",
+      "requirement": "max_stream_connections = 3",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_STREAM_CONNECTIONS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_stream_connections; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_MESSAGE_CHARACTERS",
+      "requirement": "max_message_characters = 16000",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_MESSAGE_CHARACTERS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_message_characters; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-MAX_PROJECT_NAME_CHARACTERS",
+      "requirement": "max_project_name_characters = 120",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-MAX_PROJECT_NAME_CHARACTERS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json max_project_name_characters; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-TRIAL_DAYS",
+      "requirement": "trial_days = 7",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-TRIAL_DAYS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json trial_days; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json",
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "LIMIT-TRIAL_PROVIDER_COST_USD",
+      "requirement": "trial_provider_cost_usd = 1.00",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-TRIAL_PROVIDER_COST_USD",
+      "observable_assertion": "Enforcing server/adapter uses plan.json trial_provider_cost_usd; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json",
+        "openclaw-project/platform/BUDGET.md",
+        "openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json"
+      ],
+      "activation_blocker": "Real provider prices/usage attribution/virtual keys/per-call and runtime stop/time/step fences missing; service allocation unknown; default denies. No live billing/provider proof.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "PARTIAL",
+      "targeted_check_result": "PASS offline budget/usage API checks; route/native enforcement NOT_RUN"
+    },
+    {
+      "id": "LIMIT-TRIAL_PROJECTS",
+      "requirement": "trial_projects = 1",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-TRIAL_PROJECTS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json trial_projects; above-limit request denied without effect",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-AUTOMATIC_OVERAGE",
+      "requirement": "automatic_overage = False",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 13,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-AUTOMATIC_OVERAGE",
+      "observable_assertion": "Enforcing server/adapter uses plan.json automatic_overage; above-limit request denied without effect",
+      "dependencies": [
+        12
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-BILLING_GRACE_HOURS",
+      "requirement": "billing_grace_hours = 72",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 13,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-BILLING_GRACE_HOURS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json billing_grace_hours; above-limit request denied without effect",
+      "dependencies": [
+        12
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-DELETION_ACTIVE_DATA_DAYS",
+      "requirement": "deletion_active_data_days = 7",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 14,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-DELETION_ACTIVE_DATA_DAYS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json deletion_active_data_days; above-limit request denied without effect",
+      "dependencies": [
+        13
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LIMIT-BACKUP_EXPIRY_DAYS",
+      "requirement": "backup_expiry_days = 30",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 14,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-LIMIT-BACKUP_EXPIRY_DAYS",
+      "observable_assertion": "Enforcing server/adapter uses plan.json backup_expiry_days; above-limit request denied without effect",
+      "dependencies": [
+        13
+      ],
+      "evidence": [
+        "product/plan.json"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-OWNER-TELEGRAM-REPLY",
+      "requirement": "Carry forward T10-OWNER-TELEGRAM-REPLY",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-OWNER-TELEGRAM-REPLY",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-OWNER-TELEGRAM-DENY",
+      "requirement": "Carry forward T10-OWNER-TELEGRAM-DENY",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-OWNER-TELEGRAM-DENY",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-UI-OWNER-AUTH",
+      "requirement": "Carry forward T10-UI-OWNER-AUTH",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-UI-OWNER-AUTH",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-APPROVAL-HOST-EXEC-CARD",
+      "requirement": "Carry forward T10-APPROVAL-HOST-EXEC-CARD",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-APPROVAL-HOST-EXEC-CARD",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-APPROVAL-TIMEOUT-DENY",
+      "requirement": "Carry forward T10-APPROVAL-TIMEOUT-DENY",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-APPROVAL-TIMEOUT-DENY",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-TRIVIAL-NO-SPAWN",
+      "requirement": "Carry forward T10-TRIVIAL-NO-SPAWN",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-TRIVIAL-NO-SPAWN",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-RESEARCH-CITATIONS",
+      "requirement": "Carry forward T10-RESEARCH-CITATIONS",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-RESEARCH-CITATIONS",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-INJECTION-NO-EFFECT",
+      "requirement": "Carry forward T10-INJECTION-NO-EFFECT",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-INJECTION-NO-EFFECT",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-NATIVE-BUILD-BOARD",
+      "requirement": "Carry forward T10-NATIVE-BUILD-BOARD",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-NATIVE-BUILD-BOARD",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-BROWSER-FLOWS",
+      "requirement": "Carry forward T10-BROWSER-FLOWS",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-BROWSER-FLOWS",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-INDEPENDENT-ACP-REVIEW",
+      "requirement": "Carry forward T10-INDEPENDENT-ACP-REVIEW",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-INDEPENDENT-ACP-REVIEW",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-MEMORY-SELECTIVE-RECALL",
+      "requirement": "Carry forward T10-MEMORY-SELECTIVE-RECALL",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-MEMORY-SELECTIVE-RECALL",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-MEMORY-CORRECTION-DELETION",
+      "requirement": "Carry forward T10-MEMORY-CORRECTION-DELETION",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-MEMORY-CORRECTION-DELETION",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DURABLE-RESUME-CANCELLATION",
+      "requirement": "Carry forward T10-DURABLE-RESUME-CANCELLATION",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DURABLE-RESUME-CANCELLATION",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-SCHEDULING-ADMISSION",
+      "requirement": "Carry forward T10-SCHEDULING-ADMISSION",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-SCHEDULING-ADMISSION",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-INTEGRATION-AUTH-FAIL-CLOSED",
+      "requirement": "Carry forward T10-INTEGRATION-AUTH-FAIL-CLOSED",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-INTEGRATION-AUTH-FAIL-CLOSED",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-BUDGET-DAILY-CAP",
+      "requirement": "Carry forward T10-BUDGET-DAILY-CAP",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-BUDGET-DAILY-CAP",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-BUDGET-MONTHLY-CAP",
+      "requirement": "Carry forward T10-BUDGET-MONTHLY-CAP",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-BUDGET-MONTHLY-CAP",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-BUDGET-DB-OUTAGE-FAIL-CLOSED",
+      "requirement": "Carry forward T10-BUDGET-DB-OUTAGE-FAIL-CLOSED",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-BUDGET-DB-OUTAGE-FAIL-CLOSED",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-OPS-SCHEDULED-BACKUP-FIRES",
+      "requirement": "Carry forward T10-OPS-SCHEDULED-BACKUP-FIRES",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-OPS-SCHEDULED-BACKUP-FIRES",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-OPS-RESTORE-DRILL",
+      "requirement": "Carry forward T10-OPS-RESTORE-DRILL",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-OPS-RESTORE-DRILL",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-OPS-ROLLBACK",
+      "requirement": "Carry forward T10-OPS-ROLLBACK",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-OPS-ROLLBACK",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-AUTH",
+      "requirement": "Carry forward T10-DASH-AUTH",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-AUTH",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-CSRF-ORIGINS",
+      "requirement": "Carry forward T10-DASH-CSRF-ORIGINS",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-CSRF-ORIGINS",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-FILE-TRAVERSAL",
+      "requirement": "Carry forward T10-DASH-FILE-TRAVERSAL",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-FILE-TRAVERSAL",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-DOWNLOAD-REPLAY",
+      "requirement": "Carry forward T10-DASH-DOWNLOAD-REPLAY",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-DOWNLOAD-REPLAY",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-REVOCATION",
+      "requirement": "Carry forward T10-DASH-REVOCATION",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-REVOCATION",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-AUDIT-FAIL",
+      "requirement": "Carry forward T10-DASH-AUDIT-FAIL",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-AUDIT-FAIL",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-REDACTION",
+      "requirement": "Carry forward T10-DASH-REDACTION",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-REDACTION",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH-DISABLED-CONTROLS",
+      "requirement": "Carry forward T10-DASH-DISABLED-CONTROLS",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH-DISABLED-CONTROLS",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-SECURITY-BUDGET-PROOF",
+      "requirement": "Carry forward T10-SECURITY-BUDGET-PROOF",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-SECURITY-BUDGET-PROOF",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T11-ADAPTER-ROBUSTNESS",
+      "requirement": "Carry forward T11-ADAPTER-ROBUSTNESS",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "optional",
+      "implementation_phase": 16,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 16,
+      "acceptance_case": "T11-ADAPTER-ROBUSTNESS",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        15
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T11-BUDGET-OUTAGE-FALLBACK",
+      "requirement": "Carry forward T11-BUDGET-OUTAGE-FALLBACK",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "optional",
+      "implementation_phase": 16,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 16,
+      "acceptance_case": "T11-BUDGET-OUTAGE-FALLBACK",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        15
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T11-CONFIDENCE-CALIBRATION",
+      "requirement": "Carry forward T11-CONFIDENCE-CALIBRATION",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "optional",
+      "implementation_phase": 16,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 16,
+      "acceptance_case": "T11-CONFIDENCE-CALIBRATION",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        15
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T11-PAIRED-COMPARISON",
+      "requirement": "Carry forward T11-PAIRED-COMPARISON",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "optional",
+      "implementation_phase": 16,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 16,
+      "acceptance_case": "T11-PAIRED-COMPARISON",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        15
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH2-LIVE-SSE",
+      "requirement": "Carry forward T10-DASH2-LIVE-SSE",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH2-LIVE-SSE",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH2-REDACTION-LIVE",
+      "requirement": "Carry forward T10-DASH2-REDACTION-LIVE",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH2-REDACTION-LIVE",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH2-FILE-CONTAINMENT-RACE",
+      "requirement": "Carry forward T10-DASH2-FILE-CONTAINMENT-RACE",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH2-FILE-CONTAINMENT-RACE",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "LEGACY-T10-DASH2-JEV-TOGGLE",
+      "requirement": "Carry forward T10-DASH2-JEV-TOGGLE",
+      "source": "openclaw-project/evals/cases.yaml",
+      "release_scope": "legacy-required",
+      "implementation_phase": 15,
+      "implementation_state": "DEFERRED_TEST",
+      "acceptance_phase": 15,
+      "acceptance_case": "T10-DASH2-JEV-TOGGLE",
+      "observable_assertion": "Use existing frozen assertions, reusing evidence only if final-version boundary still applies",
+      "dependencies": [
+        14
+      ],
+      "evidence": [
+        "openclaw-project/evals/RESULTS.md",
+        "openclaw-project/BUILD_LOG.md"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "RETENTION-CHAT",
+      "requirement": "chat/task summaries: 90days rolling, active deletion\u22647days",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 3,
+      "implementation_state": "PARTIAL",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RETENTION-CHAT",
+      "observable_assertion": "Scoped export/delete/expiry meets 90days rolling, active deletion\u22647days; retained exceptions disclosed; restore respects tombstones",
+      "dependencies": [
+        2,
+        6,
+        8,
+        10,
+        14
+      ],
+      "evidence": [
+        "product/CONTRACT.md",
+        "openclaw-project/plans/product/phase-03.md",
+        "openclaw-project/platform/accounts/README.md",
+        "openclaw-project/platform/accounts/tests.py",
+        "openclaw-project/evidence/product/phase-03/20260930T003526Z/manifest.json"
+      ],
+      "activation_blocker": "Projection expiry/tombstones built. Native history erasure/export/confirmed deletion \u22647days requires Phase6; file/index/restore adapters require8/10/14; acceptance15. Affected capabilities remain off.",
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS",
+      "build_result": "PARTIAL"
+    },
+    {
+      "id": "RETENTION-MEMORY",
+      "requirement": "confirmed memory: until corrected/deleted, retrieval index removal",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 10,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RETENTION-MEMORY",
+      "observable_assertion": "Scoped export/delete/expiry meets until corrected/deleted, retrieval index removal; retained exceptions disclosed; restore respects tombstones",
+      "dependencies": [
+        9
+      ],
+      "evidence": [
+        "product/CONTRACT.md"
+      ],
+      "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "RETENTION-ARTIFACT",
+      "requirement": "uploads and artifact versions: until deleted or30days subscription end",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 8,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RETENTION-ARTIFACT",
+      "observable_assertion": "Scoped export/delete/expiry meets until deleted or30days subscription end; retained exceptions disclosed; restore respects tombstones",
+      "dependencies": [
+        7
+      ],
+      "evidence": [
+        "product/CONTRACT.md"
+      ],
+      "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "RETENTION-EVENTS",
+      "requirement": "detailed timeline: 30days/cursor resync",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 9,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RETENTION-EVENTS",
+      "observable_assertion": "Scoped export/delete/expiry meets 30days/cursor resync; retained exceptions disclosed; restore respects tombstones",
+      "dependencies": [
+        8
+      ],
+      "evidence": [
+        "product/CONTRACT.md"
+      ],
+      "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "RETENTION-AUDIT",
+      "requirement": "minimal audit metadata: 180days restricted retention",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 3,
+      "implementation_state": "REUSE",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RETENTION-AUDIT",
+      "observable_assertion": "Scoped export/delete/expiry meets 180days restricted retention; retained exceptions disclosed; restore respects tombstones",
+      "dependencies": [
+        2
+      ],
+      "evidence": [
+        "product/CONTRACT.md",
+        "openclaw-project/plans/product/phase-03.md",
+        "openclaw-project/platform/accounts/README.md",
+        "openclaw-project/platform/accounts/tests.py",
+        "openclaw-project/evidence/product/phase-03/20260930T003526Z/manifest.json"
+      ],
+      "activation_blocker": "Real TLS/mail onboarding not activated; customer task access additionally requires isolated Phase4 deployment and Phase5 admission; full acceptance15.",
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS",
+      "build_result": "READY"
+    },
+    {
+      "id": "RETENTION-BILLING",
+      "requirement": "financial records: 7years proposed pending jurisdiction review",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 13,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RETENTION-BILLING",
+      "observable_assertion": "Scoped export/delete/expiry meets 7years proposed pending jurisdiction review; retained exceptions disclosed; restore respects tombstones",
+      "dependencies": [
+        12
+      ],
+      "evidence": [
+        "product/CONTRACT.md"
+      ],
+      "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "RETENTION-PROVIDER",
+      "requirement": "provider copies: terms/region reviewed before route activation",
+      "source": "product/CONTRACT.md",
+      "release_scope": "launch",
+      "implementation_phase": 5,
+      "implementation_state": "MISSING",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-RETENTION-PROVIDER",
+      "observable_assertion": "Scoped export/delete/expiry meets terms/region reviewed before route activation; retained exceptions disclosed; restore respects tombstones",
+      "dependencies": [
+        4
+      ],
+      "evidence": [
+        "product/CONTRACT.md"
+      ],
+      "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "acceptance_result": "NOT_RUN"
+    }
+  ]
+}

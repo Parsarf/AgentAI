@@ -1,0 +1,10 @@
+{
+  "runtime_version": "2026.9.6",
+  "protocol_version": 3,
+  "send": false,
+  "history": false,
+  "events": false,
+  "abort": false,
+  "live_probed": false,
+  "reason": "CLI/source advertisement is not authenticated adapter proof"
+}

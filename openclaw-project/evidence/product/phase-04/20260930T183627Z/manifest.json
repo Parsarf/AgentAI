@@ -1,0 +1,68 @@
+{
+  "phase": 4,
+  "run_id": "20260930T183627Z",
+  "completed_at": "2026-09-30T18:36:27.568204+00:00",
+  "scope": "Owner-selected existing-VPS trial plan revision",
+  "target": "existing VPS, shared domain, two invited accounts, one running customer task",
+  "implementation_status": "PARTIAL; lifecycle and later feature adapters not implemented by this update",
+  "execution_status": "NOT_ACTIVATED",
+  "checks": [
+    {
+      "id": "TRIAL-POLICY",
+      "result": "PASS",
+      "observation": "one global cell/task; two-account ceiling; independent cells; no upgrade prerequisite; execution remains off"
+    },
+    {
+      "id": "TRIAL-LEDGER",
+      "result": "PASS",
+      "observation": "121 unique requirements retained; parallel runtime acceptance still NOT_RUN"
+    },
+    {
+      "id": "TRIAL-PRICE",
+      "result": "PASS",
+      "observation": "79/25/5 selected offer unchanged"
+    },
+    {
+      "id": "TRIAL-GATES",
+      "result": "PASS",
+      "observation": "both foundation feature configurations remain all false"
+    }
+  ],
+  "runtime_tests": "NOT_RUN; documentation-only revision",
+  "primary_sources": [
+    "https://docs.openclaw.ai/cli/fleet",
+    "https://docs.openclaw.ai/gateway/multi-tenant-hosting"
+  ],
+  "cost": {
+    "provider_calls": 0,
+    "paid_spend_usd": "0.00",
+    "resize_purchase": false
+  },
+  "effects": {
+    "live_deployment": false,
+    "invitations_sent": false,
+    "owner_workload_changes": false,
+    "feature_activation": false
+  },
+  "capacity_note": "Earlier default-cell zero-slot evidence preserved; low-footprint on-demand profile unmeasured",
+  "rollback": "Revert only this trial-plan revision; no production changes",
+  "source_sha256": {
+    "product/deployment-policy.json": "a55628db26c83a8d3d46b9193eca8200cbebdcebd4e9595f0aaeff39194b8b10",
+    "product/EXISTING_VPS_TRIAL.md": "bf20c8cd951b02928877cfafb29cfa750f7f3be69b62d615a147984e1ca4f30c",
+    "product/CONTRACT.md": "84d824065ae61c0897d3e45837537524b554df932a3e365b5881a8ba8f5da255",
+    "product/COST_CAPACITY.md": "e10b08800b40e9376d521fa56235e74fc560c3aef2fce3de7b4a8d187adbc50a",
+    "phase-prompts/openclaw/execution-contract.md": "b2b93f596a363cb30c6c1af4b1097b29195b4d81dd9efbad28f380cc92785d90",
+    "phase-prompts/openclaw/phase-04-tenant-provisioning.md": "214bb84fb5e9715fafdac438ae04b14ee3d42fab9e634d3e5b5f6ad09bb9a9ae",
+    "phase-prompts/openclaw/phase-05-usage-admission.md": "48255579214e6f2d7b5bb075b75a07e63d883c13a05477d8e69fc8b7bf5299a1",
+    "phase-prompts/openclaw/phase-15-system-acceptance.md": "ba5d35c551ad3ad9f0ab4bcce2ab679fcc33db550fd8258bc983706b362fae44",
+    "phase-prompts/openclaw/phase-17-private-beta.md": "f2f34bf8132de4987beb6a39b0ded203cbd9a07213db815b211479f0cb55008a",
+    "phase-prompts/openclaw/README.md": "22058c5438db43a5d88c418e1ebbc6b2a65c32b838a8d32997752324672803a5",
+    "openclaw-project/platform/ARCHITECTURE.md": "630a35996d9dda53713af76e6878a7612fbdfba7cf34f8d17c698a8bc41548c5",
+    "openclaw-project/RUNBOOK.md": "9a1897873f34c00d4d137624461199232be1baadd400c81b29fd934552f3c415",
+    "openclaw-project/plans/product/phase-04.md": "b3559cb59e31bfb38f4bab4c24076874b1b854846a9c4772ec8b46b19c79c528",
+    "openclaw-project/plans/product/phase-04-single-vps-assessment.md": "3941353118fa4d0ec6e365d8492be30895d57c830c03cea61fc1bb44d16ea92d",
+    "openclaw-project/plans/product/requirements.json": "341c8872bc42f0bba06d58a1184271f66ed957a1ba48d17ef59c14df39048be7",
+    "openclaw-project/plans/product/requirements.md": "938f6530eed645d8b058502876f514576b55c4d4aec8769ac69f440abf094839",
+    "openclaw-project/BUILD_LOG.md": "40c3e062cfe3a2589c1b9d2b83fe02dcf5c451620c8c02a854f32a9f91055885"
+  }
+}

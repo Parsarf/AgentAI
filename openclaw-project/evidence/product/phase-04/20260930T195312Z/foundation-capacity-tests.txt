@@ -1,0 +1,26 @@
+test_audit_append_only (tests.test_foundation.FoundationTests.test_audit_append_only) ... ok
+test_changed_or_newer_migration_fails_closed (tests.test_foundation.FoundationTests.test_changed_or_newer_migration_fails_closed) ... ok
+test_control_and_customer_mutations_disabled (tests.test_foundation.FoundationTests.test_control_and_customer_mutations_disabled) ... ok
+test_cross_account_and_cross_project_foreign_keys (tests.test_foundation.FoundationTests.test_cross_account_and_cross_project_foreign_keys) ... ok
+test_direct_http_cross_account_denial (tests.test_foundation.FoundationTests.test_direct_http_cross_account_denial) ... ok
+test_failed_migration_rolls_back_ddl (tests.test_foundation.FoundationTests.test_failed_migration_rolls_back_ddl) ... ok
+test_host_origin_size_denials (tests.test_foundation.FoundationTests.test_host_origin_size_denials) ... ok
+test_logs_exclude_body_headers_query (tests.test_foundation.FoundationTests.test_logs_exclude_body_headers_query) ... ok
+test_migrations_repeat_and_readiness (tests.test_foundation.FoundationTests.test_migrations_repeat_and_readiness) ... ok
+test_missing_database_readiness_does_not_create_state (tests.test_foundation.FoundationTests.test_missing_database_readiness_does_not_create_state) ... ok
+test_private_health_and_default_identity_denial (tests.test_foundation.FoundationTests.test_private_health_and_default_identity_denial) ... ok
+test_public_bind_or_feature_activation_rejected (tests.test_foundation.FoundationTests.test_public_bind_or_feature_activation_rejected) ... ok
+test_scoped_repository_and_revocation (tests.test_foundation.FoundationTests.test_scoped_repository_and_revocation) ... ok
+test_unverified_gateway_never_dispatches (tests.test_foundation.FoundationTests.test_unverified_gateway_never_dispatches) ... ok
+test_invalid_or_boolean_units_rejected (tests.test_capacity.CapacityChecks.test_invalid_or_boolean_units_rejected) ... ok
+test_limits_and_existing_reservations (tests.test_capacity.CapacityChecks.test_limits_and_existing_reservations) ... ok
+test_missing_isolation_or_unmeasured_tenant_blocks (tests.test_capacity.CapacityChecks.test_missing_isolation_or_unmeasured_tenant_blocks) ... ok
+test_negative_headroom_is_zero (tests.test_capacity.CapacityChecks.test_negative_headroom_is_zero) ... ok
+test_other_resources_bound_ram_result (tests.test_capacity.CapacityChecks.test_other_resources_bound_ram_result) ... ok
+test_stale_or_future_measurement_blocks (tests.test_capacity.CapacityChecks.test_stale_or_future_measurement_blocks) ... ok
+test_unknown_peak_is_not_zero_cost_or_a_slot (tests.test_capacity.CapacityChecks.test_unknown_peak_is_not_zero_cost_or_a_slot) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 3.297s
+
+OK

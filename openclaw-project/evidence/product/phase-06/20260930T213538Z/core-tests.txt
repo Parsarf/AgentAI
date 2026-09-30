@@ -1,0 +1,37 @@
+test_expired_uncertain_no_blind_retry (tests.test_request_queue.SerialQueueChecks.test_expired_uncertain_no_blind_retry) ... ok
+test_fifo_serial_handoff_and_restart (tests.test_request_queue.SerialQueueChecks.test_fifo_serial_handoff_and_restart) ... ok
+test_forged_receipt_undrained_runtime_and_late_completion_denied (tests.test_request_queue.SerialQueueChecks.test_forged_receipt_undrained_runtime_and_late_completion_denied) ... ok
+test_queue_limit_disabled_driver_unknown_capacity (tests.test_request_queue.SerialQueueChecks.test_queue_limit_disabled_driver_unknown_capacity) ... ok
+test_racing_workers_cannot_claim_two (tests.test_request_queue.SerialQueueChecks.test_racing_workers_cannot_claim_two) ... ok
+test_revoked_author_skipped (tests.test_request_queue.SerialQueueChecks.test_revoked_author_skipped) ... ok
+test_running_cancel_does_not_release_slot (tests.test_request_queue.SerialQueueChecks.test_running_cancel_does_not_release_slot) ... ok
+test_scoped_get_cancel_and_idempotency (tests.test_request_queue.SerialQueueChecks.test_scoped_get_cancel_and_idempotency) ... ok
+test_audit_failure_rolls_back_binding (tests.test_lifecycle.LifecycleChecks.test_audit_failure_rolls_back_binding) ... ok
+test_backup_restore_upgrade_and_delete_only_bound_account (tests.test_lifecycle.LifecycleChecks.test_backup_restore_upgrade_and_delete_only_bound_account) ... ok
+test_customer_cannot_queue_and_expired_grant_denied (tests.test_lifecycle.LifecycleChecks.test_customer_cannot_queue_and_expired_grant_denied) ... ok
+test_definite_failure_retry_limit_and_same_deployment (tests.test_lifecycle.LifecycleChecks.test_definite_failure_retry_limit_and_same_deployment) ... ok
+test_expired_lease_cannot_dispatch_or_release_slot (tests.test_lifecycle.LifecycleChecks.test_expired_lease_cannot_dispatch_or_release_slot) ... ok
+test_fixed_account_binding_and_idempotency (tests.test_lifecycle.LifecycleChecks.test_fixed_account_binding_and_idempotency) ... ok
+test_maintenance_denied_while_task_needs_drain (tests.test_lifecycle.LifecycleChecks.test_maintenance_denied_while_task_needs_drain) ... ok
+test_partial_setup_retry_success_preserves_identity (tests.test_lifecycle.LifecycleChecks.test_partial_setup_retry_success_preserves_identity) ... ok
+test_racing_workers_only_one_claim (tests.test_lifecycle.LifecycleChecks.test_racing_workers_only_one_claim) ... ok
+test_receipt_binding_and_late_worker_fenced (tests.test_lifecycle.LifecycleChecks.test_receipt_binding_and_late_worker_fenced) ... ok
+test_single_global_slot_and_stop_before_switch (tests.test_lifecycle.LifecycleChecks.test_single_global_slot_and_stop_before_switch) ... ok
+test_trial_ceiling_and_unique_cells (tests.test_lifecycle.LifecycleChecks.test_trial_ceiling_and_unique_cells) ... ok
+test_unknown_capacity_and_disabled_driver_no_dispatch (tests.test_lifecycle.LifecycleChecks.test_unknown_capacity_and_disabled_driver_no_dispatch) ... ok
+test_unknown_outcome_reconciles_without_repeating_effect (tests.test_lifecycle.LifecycleChecks.test_unknown_outcome_reconciles_without_repeating_effect) ... ok
+test_atomic_task_and_reservation_idempotency (tests.test_budget.BudgetChecks.test_atomic_task_and_reservation_idempotency) ... ok
+test_cross_account_conversation_and_revocation (tests.test_budget.BudgetChecks.test_cross_account_conversation_and_revocation) ... ok
+test_duplicate_changed_foreign_and_late_receipts (tests.test_budget.BudgetChecks.test_duplicate_changed_foreign_and_late_receipts) ... ok
+test_immutable_receipts_and_audit_atomicity (tests.test_budget.BudgetChecks.test_immutable_receipts_and_audit_atomicity) ... ok
+test_period_daily_expiry_and_queue_ceiling (tests.test_budget.BudgetChecks.test_period_daily_expiry_and_queue_ceiling) ... ok
+test_racing_final_allowance_admissions (tests.test_budget.BudgetChecks.test_racing_final_allowance_admissions) ... ok
+test_reported_usage_consumes_hold_without_double_counting (tests.test_budget.BudgetChecks.test_reported_usage_consumes_hold_without_double_counting) ... ok
+test_service_overrun_accounted_and_blocks_new_work (tests.test_budget.BudgetChecks.test_service_overrun_accounted_and_blocks_new_work) ... ok
+test_uncertain_effects_keep_allowance_reserved (tests.test_budget.BudgetChecks.test_uncertain_effects_keep_allowance_reserved) ... ok
+test_unknown_price_currency_and_service_limit_no_task (tests.test_budget.BudgetChecks.test_unknown_price_currency_and_service_limit_no_task) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 0.578s
+
+OK

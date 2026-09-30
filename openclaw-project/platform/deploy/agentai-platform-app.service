@@ -1,0 +1,31 @@
+[Unit]
+Description=AgentAI private customer account application
+After=network.target
+[Service]
+User=agentai-platform
+Group=agentai-platform
+WorkingDirectory=/opt/agentai-platform/current
+EnvironmentFile=/etc/agentai-platform/accounts.env
+ExecStart=/opt/agentai-platform/current/.venv/bin/gunicorn -c deploy/gunicorn.conf.py accounts.wsgi:application
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/agentai-platform
+MemoryMax=128M
+MemorySwapMax=0
+CPUQuota=25%
+TasksMax=16
+TimeoutStopSec=10
+[Install]
+WantedBy=multi-user.target

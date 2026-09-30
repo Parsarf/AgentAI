@@ -1,5 +1,154 @@
 # OpenClaw build log
 
+## Product Phase4/5 continuation — 2026-09-30 (local components READY; full phases PARTIAL)
+
+Built account-bound lifecycle coordinator/queue API, scoped MFA/action grants,
+leases/fences, receipt reconciliation, global execution slot and retry limits;
+file-backed fixtures demonstrate all seven lifecycle operation kinds. Native
+driver/worker/quotas/network/secrets/restore/rollback integration remains missing.
+Independent Phase5 core adds atomic tasks/reservations, append-only provider
+receipts, budget caps, idempotency, late/uncertain usage and scoped usage views;
+real metered routes/per-call dispatch/native fences remain missing.
+
+14 lifecycle +10 budget +9 new API checks passed, with25 account,14 foundation
+and7 capacity regressions. Initial helper/grant-trigger/sandbox failures retained
+and corrected. New schema migrated only into private disposable local databases.
+Fresh read-only VPS check:~909MiB available, swap>99% used, runc only; smaller
+complete-task footprint not proved. No live cell/provider/invite/paid/public effect
+or owner change, and no hardware upgrade requirement/purchase. Every planned
+feature/121 requirements retained; Phase4/5 activation remains blocked.
+
+Evidence: openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json and openclaw-project/evidence/product/phase-05/20260930T195312Z/manifest.json.
+
+
+## Product trial target — 2026-09-30 (existing VPS; plan updated, not deployed)
+
+Owner selected existing-host trial first, every planned feature retained, upgrade
+later. Added product/EXISTING_VPS_TRIAL.md; deployment-policy v2 selects two
+invite-only accounts, one global customer task/cell, on-demand wake/drain/stop
+and sequential isolated worker stages. Revised Phase4/5/15/17 and shared contract
+to remove upgrade-first sequencing and distinguish invitation/account access
+from task capacity. Parallel runtime tests remain capacity-expansion gates;
+serialized trial still requires real isolation/budget/recovery/task proofs.
+Historical default-cell zero-slot result and Phase4 evidence remain unchanged.
+No smaller profile measured, native lifecycle still missing, no live feature
+flags changed, invitations sent, owner workloads stopped or VPS upgrade bought.
+Next implementation remains Phase4 on the existing server.
+
+
+## Product Phase4 assessment — 2026-09-29/30 (shared-VPS target; implementation PARTIAL; agent activation BLOCKED)
+
+Owner clarified one service-operated VPS/shared domain and requested architecture/
+capacity assessment. Earlier ADR002 separate service-owned customer VMs did not
+require customers to own infrastructure, but the target is now shared Fleet cells.
+Recorded ADR007 and revised contract/prompt/ledger with missing effective worker/
+host identity/network/secret/disk isolation and native lifecycle/broker work.
+Unintegrated VM-specific draft withdrawn before any migrations/deployment; Phase3
+settings/models/admin match prior final source hashes exactly.
+
+Read-only owner host inventory:3.78GiB RAM,2CPU,0.94–0.97GiB available,2GiB swap
+>99% used; owner Gateway1.36–1.40GiB, five browsers~876MiB,82.8GiB disk free.
+Only runc runtime; AppArmor/seccomp/cgroupv2 present, gVisor/Podman absent; ext4
+mount has no project-quota option, Docker storage reports overlayfs. KVM device
+present is not VM startup or isolation proof. One public app domain/metadata auth
+already fit; lifecycle remains disabled, no public80/443 app listener installed.
+
+Read-only capacity calculator7 focused checks PASS. After planned256MiB app and
+512MiB headroom reserves,209203200bytes remain; default Fleet2GiB yields0 added
+agents. Native/task peaks and CPU/disk/PID admission remain unknown. Proposed
+16GiB/4CPU/two-beta-account/one-global-task scenario is UNMEASURED, no purchase.
+Current fleet CLI help and official docs support available lifecycle flags;
+whole runtime source copy was rejected by auto-review as internal source egress.
+No bypass; assessment completed from help and public docs.
+
+No provisioning/model/provider/customer message/payment call, owner change or
+cleanup of live workloads. Full Phase4 lifecycle and live A/B isolation not passed;
+resume Phase4 after concrete single-VPS hardware/runtime plan. Phase5 not started.
+See plans/product/phase-04-single-vps-assessment.md and phase-04-capacity.json.
+Evidence: `evidence/product/phase-04/20260930T011410Z/manifest.json`.
+
+## Product Phase 3 — 2026-09-29 (account build READY; private checks PASS; activation blocked)
+
+Added separate Django5.2.17 authentication/database sessions/CSRF, django-otp1.7.3
+confirmed operator TOTP and Gunicorn26.2.0. Exact official wheel hashes locked.
+Verified invite-only onboarding, generic queued recovery with15-minute hashed
+single-use purpose/epoch-bound codes, session rotation/expiry/logout/revocation,
+live membership/account checks, contract rate limits and server-only mappings.
+Operator permissions are one-hour account/action grants requiring MFA; no support
+content/impersonation/export or service browser login. Customer task gates remain off.
+
+Append-only required audit commits with local effects; external mail has durable
+pending/completed/uncertain receipts. Fixed a rollback/session middleware hazard
+and final-auth-migration email-index ordering; explicit negative fixtures pass.
+Restricted180-day audit retention and90-day chat projection/tombstones prepared;
+native erasure/export/7-day account deletion is tracked PARTIAL for6/8/10/14.
+
+25 focused account checks,14 foundation checks, concurrent token/migration checks
+and actual two-account loopback Gunicorn HTTP smoke passed. Temporary process/state
+cleaned. Full browser/SMTP/native/provider/server-resource/load/independent review
+acceptance remains NOT_RUN15. SMTP disabled; no real identities/invites/messages,
+paid calls/public route/permanent deployment or owner runtime change. HSTS preload
+W021 intentionally awaits approved domain. Source/API/architecture/runbook,
+plans/product/phase-03.md, requirement ledger and sanitized evidence updated.
+Evidence: `evidence/product/phase-03/20260930T003526Z/manifest.json`.
+Next authorized-on-request implementation phase is4; this phase stops here.
+
+## Product Phases 1–2 — 2026-09-29 (design READY; private foundation READY; customer acceptance pending)
+
+Owner requested both phases. Product contract,14-screen annotated wireframes,
+complete reading-list example, sourced Decimal cost/capacity scenarios and121
+requirement mappings delivered. Owner selected79USD/month,25USD included provider
+consumption,5USD/task,one running task/customer and no automatic overage.
+Complete commercial coding/reviewer costs remain unknown; later features retain
+IDs/cases. Existing owner caps/config/state/proxy DB preserved.
+
+Built separate dependency-free private app/control skeletons, composite tenant
+metadata schema, immutable/checksummed migrations, deny-by-default identity,
+hard-disabled customer capabilities, fixed log fields, schemas/interfaces and
+architecture/API/isolation/capability/deployment records.14 targeted checks passed,
+including direct scoped HTTP/FK denial and rollback/readiness/revocation/log tests.
+Live read-only inventory confirmed2026.9.6, LiteLLM1.102.1/Postgres16.10, limited
+host RAM and near-full swap. Selected customer boundary: separate VMs; owner host
+admits no customer deployment. Installed Fleet/RPC advertisement is not client proof.
+
+Final actual VPS smoke: both unprivileged loopback app/control startup/readiness
+passed, API401,128MiB/no-swap/25%CPU/16-task limits; observed~13MiB each. Temporary
+units/source/empty DB cleaned up. Initial safe symlink-state refusal retained as
+failed evidence; fixture corrected to direct ephemeral state and passed. Browser
+wireframe rendering NOT_RUN because file protocol blocked by browser policy;
+script/static design checked. No paid model/provider tests, live sign-ins, charges,
+customer messages, public ingress or owner service changes.
+
+Evidence: `evidence/product/phase-01/20260929T233120Z/` and
+`evidence/product/phase-02/20260929T233120Z/`; source hashes identify uncommitted snapshot.
+Next product implementation phase3. Full security/native/provider/recovery/customer
+acceptance remains Phase15 onward. Historical phase labels below remain history.
+
+
+## Customer-platform prompt replacement — 2026-09-29 (planning only)
+
+Owner requested a new sequence from Phase 1 combining ten customer-product
+workstreams with every unfinished previous/future prompt requirement.
+Replaced the old Phase 0–12 executable prompt files and personal-only brief
+with 19 bounded phases (12, 16 and follow-on 19 optional), a shared execution contract and
+an old-to-new coverage ledger. Updated repository entry points. Historical
+implementation plans, eval cases/results and runtime evidence are preserved;
+new records use `plans/product/` and `evidence/product/`.
+
+Scope now includes customer accounts, separate deployments and hosted service
+billing; no retired Python runtime is restored. Budget admission precedes
+chat. Coding/review, memory/durability/scheduling, integrations, off-host
+recovery, unresolved 4A/8B gaps and the 180-run optional browser comparison
+carry forward. Older multi-user prompts from Git were also reviewed: watcher/skill reuse,
+credentialed browser/profile custody, safe load/shutdown tests and optional
+follow-on purchase requirements carry forward in Phases 10/11/15/19.
+Costs/capacity require measured inputs in new Phase 1; none
+were invented. No runtime deployment, paid calls, account connections,
+customer messages, live payments or acceptance tests occurred in this update.
+
+Canonical instructions: `../phase-prompts/openclaw/README.md` and
+`../phase-prompts/openclaw/coverage-ledger.md`. Old labels below are historical.
+
 ## Phase 8B — dashboard v2 with live work viewer, 2026-09-29 (build READY; live SSE verified; deploy completed)
 
 Owner pasted the Phase 8B prompt; VPS was down at start (rebooted by owner
@@ -911,3 +1060,30 @@ template was validated against OpenClaw 2026.9.6 before removal.
 No paid model request was made. Only the Telegram `getMe`, `getWebhookInfo`,
 and `getUpdates` endpoints were used to inspect the bot. Phase 0 review is not
 complete, and later gates have not been run.
+
+Trial-plan update evidence: `openclaw-project/evidence/product/phase-04/20260930T183627Z/manifest.json`. Documentation/configuration intent only; no runtime activation.
+
+### 2026-09-30 — Vercel preparation and serial customer requests
+
+Added host-only trial onboarding, private request page/API and durable global FIFO
+request slot with cancellation, fencing and unknown-outcome reconciliation.
+32 core and28 account/API tests pass. Prepared fixed Vercel rewrites; Vercel CLI
+is logged out and backend HTTPS hostname/project/email are missing. Installed
+fresh private account backend on the existing VPS (loopback18800,128 MiB cap),
+using a separate identity and private state. Added missing venv support packages
+without upgrading/removing installed packages. Customer native execution remains
+disabled; full Phase6 is PARTIAL. See plans/product/phase-06.md and
+platform/SERIAL_REQUESTS.md for implementation and remaining gates.
+
+### 2026-09-30 — Ready for GitHub website publication
+
+Added a directly importable Vercel project with programmatic configuration,
+an initial setup page and optional Production BACKEND_ORIGIN routing. Replaced
+the hostname-dependent generated-config step. Only account/auth/v1 customer
+routes are proxied; internal operator routes are excluded. Added GitHub CI for
+accounts, queue/lifecycle/budget and Vercel routing, strengthened runtime/secret
+ignore rules, and updated the root publication guide. Local verification:37
+account/API tests,32 core tests and Vercel routing checks pass. Candidate-file
+credential-pattern scan found only the intentionally fake validation-test URL.
+GitHub CLI authentication is invalid; no push or Vercel deployment occurred.
+Native execution remains disabled. Publication evidence: evidence/product/publication/20260930T233333Z/manifest.json.

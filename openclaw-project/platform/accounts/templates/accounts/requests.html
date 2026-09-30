@@ -1,0 +1,7 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your requests — AgentAI</title></head><body><main>
+<h1>Your requests</h1><p>Customer requests run one at a time. Your requests are saved while waiting.</p>
+<p>Agent execution is not connected yet. Requests submitted now remain waiting until execution is available.</p>
+<form action="/v1/requests" method="post">{% csrf_token %}<input type="hidden" name="key" value="{{ key }}"><label for="message">What would you like done?</label><br><textarea id="message" name="message" maxlength="16000" rows="6" required></textarea><br><button>Submit request</button></form>
+<p><a href="/account/requests/">Refresh status</a> · <a href="/account/">Back to account</a></p>
+{% for request in requests %}<section><h2>{{ request.state|capfirst }}</h2><p>{{ request.message }}</p>{% if request.result %}<p>{{ request.result }}</p>{% endif %}{% if request.cancel_requested %}<p>Cancellation requested.</p>{% endif %}{% if request.state == 'waiting' or request.state == 'starting' or request.state == 'running' %}<form action="/v1/requests/{{ request.id }}/cancel" method="post">{% csrf_token %}<button>Cancel request</button></form>{% endif %}</section>{% empty %}<p>No requests yet.</p>{% endfor %}
+</main></body></html>

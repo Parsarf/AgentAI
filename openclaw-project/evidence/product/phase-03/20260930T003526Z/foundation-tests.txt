@@ -1,0 +1,19 @@
+test_audit_append_only (test_foundation.FoundationTests.test_audit_append_only) ... ok
+test_changed_or_newer_migration_fails_closed (test_foundation.FoundationTests.test_changed_or_newer_migration_fails_closed) ... ok
+test_control_and_customer_mutations_disabled (test_foundation.FoundationTests.test_control_and_customer_mutations_disabled) ... ok
+test_cross_account_and_cross_project_foreign_keys (test_foundation.FoundationTests.test_cross_account_and_cross_project_foreign_keys) ... ok
+test_direct_http_cross_account_denial (test_foundation.FoundationTests.test_direct_http_cross_account_denial) ... ok
+test_failed_migration_rolls_back_ddl (test_foundation.FoundationTests.test_failed_migration_rolls_back_ddl) ... ok
+test_host_origin_size_denials (test_foundation.FoundationTests.test_host_origin_size_denials) ... ok
+test_logs_exclude_body_headers_query (test_foundation.FoundationTests.test_logs_exclude_body_headers_query) ... ok
+test_migrations_repeat_and_readiness (test_foundation.FoundationTests.test_migrations_repeat_and_readiness) ... ok
+test_missing_database_readiness_does_not_create_state (test_foundation.FoundationTests.test_missing_database_readiness_does_not_create_state) ... ok
+test_private_health_and_default_identity_denial (test_foundation.FoundationTests.test_private_health_and_default_identity_denial) ... ok
+test_public_bind_or_feature_activation_rejected (test_foundation.FoundationTests.test_public_bind_or_feature_activation_rejected) ... ok
+test_scoped_repository_and_revocation (test_foundation.FoundationTests.test_scoped_repository_and_revocation) ... ok
+test_unverified_gateway_never_dispatches (test_foundation.FoundationTests.test_unverified_gateway_never_dispatches) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 3.259s
+
+OK

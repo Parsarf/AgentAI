@@ -1,0 +1,19 @@
+test_audit_failure_rolls_back_binding (tests.test_lifecycle.LifecycleChecks.test_audit_failure_rolls_back_binding) ... ok
+test_backup_restore_upgrade_and_delete_only_bound_account (tests.test_lifecycle.LifecycleChecks.test_backup_restore_upgrade_and_delete_only_bound_account) ... ok
+test_customer_cannot_queue_and_expired_grant_denied (tests.test_lifecycle.LifecycleChecks.test_customer_cannot_queue_and_expired_grant_denied) ... ok
+test_definite_failure_retry_limit_and_same_deployment (tests.test_lifecycle.LifecycleChecks.test_definite_failure_retry_limit_and_same_deployment) ... ok
+test_expired_lease_cannot_dispatch_or_release_slot (tests.test_lifecycle.LifecycleChecks.test_expired_lease_cannot_dispatch_or_release_slot) ... ok
+test_fixed_account_binding_and_idempotency (tests.test_lifecycle.LifecycleChecks.test_fixed_account_binding_and_idempotency) ... ok
+test_maintenance_denied_while_task_needs_drain (tests.test_lifecycle.LifecycleChecks.test_maintenance_denied_while_task_needs_drain) ... ok
+test_partial_setup_retry_success_preserves_identity (tests.test_lifecycle.LifecycleChecks.test_partial_setup_retry_success_preserves_identity) ... ok
+test_racing_workers_only_one_claim (tests.test_lifecycle.LifecycleChecks.test_racing_workers_only_one_claim) ... ok
+test_receipt_binding_and_late_worker_fenced (tests.test_lifecycle.LifecycleChecks.test_receipt_binding_and_late_worker_fenced) ... ok
+test_single_global_slot_and_stop_before_switch (tests.test_lifecycle.LifecycleChecks.test_single_global_slot_and_stop_before_switch) ... ok
+test_trial_ceiling_and_unique_cells (tests.test_lifecycle.LifecycleChecks.test_trial_ceiling_and_unique_cells) ... ok
+test_unknown_capacity_and_disabled_driver_no_dispatch (tests.test_lifecycle.LifecycleChecks.test_unknown_capacity_and_disabled_driver_no_dispatch) ... ok
+test_unknown_outcome_reconciles_without_repeating_effect (tests.test_lifecycle.LifecycleChecks.test_unknown_outcome_reconciles_without_repeating_effect) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.490s
+
+OK

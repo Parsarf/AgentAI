@@ -1,0 +1,17 @@
+{
+  "release": "20260930T212713Z",
+  "backend": "127.0.0.1:18800",
+  "readiness": {
+    "foundation_ready": true,
+    "identity_ready": true,
+    "customer_ready": false,
+    "execution_enabled": false,
+    "mail_configured": false
+  },
+  "service_properties": "MemoryCurrent=46247936\nTasksCurrent=3\nCPUQuotaPerSecUSec=250ms\nMemoryMax=134217728\nMemorySwapMax=0\nActiveState=active\n",
+  "public_ingress": false,
+  "mail_enabled": false,
+  "customer_execution_enabled": false,
+  "source_manifest_sha256": "fd2a6bf8fe1cc1dc1ab9d0875de7ccd73413cb17b07210163b632fbb97e94cac",
+  "source_verification": "All deployed application, SQL, lock and service source hashes match the local files"
+}

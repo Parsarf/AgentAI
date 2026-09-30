@@ -1,21 +1,23 @@
 # OpenClaw server deployment
 
-This directory holds configuration and evidence for the
-[personal-agent plan](../phase-prompts/openclaw/README.md). OpenClaw 2026.9.6
-is running on the owner's IONOS VPS at `69.48.206.62`, with LiteLLM and
-PostgreSQL under `/opt/openclaw-production`. The Mac is not a runtime dependency.
-Phase 6 integration setup is now applied: a pinned read-only Google connector
-image and disabled native Google/GitHub definitions, restricted to researcher.
-Brave web search is live for researcher through a pinned MCP connector; native
-`web_search` remains disabled because this build does not support Brave as a
-native provider.
-Account authentication and selected GitHub repositories remain required.
-Heavy/paid acceptance tests are deferred by owner direction. Earlier phases
-have substantial runtime evidence but their outstanding gates remain unpassed.
-The remaining [phase plan](../phase-prompts/openclaw/README.md) now puts builds 7–9
-before tests 10–12; next is Phase 7 operations build. This changes instructions,
-not runtime status or acceptance evidence.
-See the latest [build log](BUILD_LOG.md) and [Phase 6 plan](plans/phase-6.md).
+This directory holds the existing owner runtime, configuration and evidence
+used by the replacement [customer-platform Phase 1–19 plan](../phase-prompts/openclaw/README.md).
+The owner OpenClaw deployment runs on the always-on IONOS VPS with LiteLLM
+and PostgreSQL; the Mac is not a runtime dependency. Restricted Brave search
+and browser paths, native worker/coding/integration bases, operator tools and
+the owner dashboard/live viewer are reusable starting points. Read the latest
+[BUILD_LOG](BUILD_LOG.md) for actual status; many acceptance gates remain partial.
+Product Phases1–2 now deliver the [customer contract](../product/CONTRACT.md)
+and [secure private foundation](platform/README.md), verified by14 targeted
+checks and an actual resource-bounded server smoke (cleaned up). Customer
+accounts/provisioning/chat/billing remain subsequent product phases.
+
+The [coverage ledger](../phase-prompts/openclaw/coverage-ledger.md) maps every
+old prompt and pending test to its new home. Historical plans/evidence keep
+old numbers. New work uses `plans/product/` and `evidence/product/` to avoid
+collisions. Full/paid testing and owner-deferred account setup remain deferred
+until explicitly resumed. Prompt replacement changes the plan, not the server.
+
 The reusable [Connect tools guide](CONNECT_TOOLS.md) covers adding a tool
 service, account sign-in, enable/disable and native tool catalog checks.
 
@@ -41,3 +43,7 @@ databases were not changed.
 Phase 1 now has a [deployment bundle](deploy/README.md), fresh-state preparation
 and native CLI wrappers. See the latest build-log entry for live evidence and
 the remaining owner checks before Gate 1 can pass.
+
+Product Phase3 account build and targeted private boundaries now pass.
+[Phase3 record](plans/product/phase-03.md) distinguishes this from real TLS/mail/
+tenant activation and full acceptance. Next implementation phase4.

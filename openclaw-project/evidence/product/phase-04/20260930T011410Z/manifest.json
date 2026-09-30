@@ -1,0 +1,190 @@
+{
+  "phase": 4,
+  "run_id": "20260930T011410Z",
+  "completed_at": "2026-09-30T01:14:10.203668+00:00",
+  "revision": "a31997e67af5bd36346bc1a93e65e6971cf164a3",
+  "target": "owner-requested one service-operated VPS/shared domain; read-only owner runtime plus local assessment code",
+  "scope_steering": "Owner changed dedicated-VM inventory response to single-VPS architecture/capacity assessment and proposed changes. Unintegrated VM-specific draft withdrawn before migration/deployment.",
+  "assessment_status": "READY",
+  "lifecycle_build_status": "PARTIAL",
+  "customer_agent_activation": "BLOCKED",
+  "full_acceptance": "NOT_RUN Phase15",
+  "primary_docs": [
+    "https://docs.openclaw.ai/cli/fleet",
+    "https://docs.openclaw.ai/gateway/multi-tenant-hosting",
+    "https://docs.docker.com/engine/containers/resource_constraints/",
+    "https://docs.docker.com/engine/security/rootless/",
+    "https://gvisor.dev/docs/"
+  ],
+  "checks": [
+    {
+      "id": "P04-OWNER-RESOURCE-SNAPSHOT",
+      "status": "PASS",
+      "command": "read-only three /proc/meminfo and docker stats samples; installed Fleet --help",
+      "observation": "Current3.78GiB/2CPU,0.94\u20130.97GiB available, swap>99% used. Runtime2026.9.6 lifecycle flags present; presence is not invoked/proven lifecycle.",
+      "evidence": "openclaw-project/plans/product/phase-04-inventory.json"
+    },
+    {
+      "id": "P04-HOST-ISOLATION-METADATA",
+      "status": "PASS",
+      "command": "read-only docker info/system df, findmnt, df, ss; tool/device presence",
+      "observation": "Only runc registered, cgroupv2/AppArmor/seccomp present; gVisor/Podman absent; ext4 mount without project-quota option, storage overlayfs; KVM device present but untested.",
+      "evidence": "openclaw-project/plans/product/phase-04-host-checks.json"
+    },
+    {
+      "id": "P04-CAPACITY-CHECKS",
+      "status": "PASS",
+      "command": "PYTHONPATH=openclaw-project/platform .venv/bin/python -m unittest discover -s openclaw-project/platform/tests -p test_capacity.py -v",
+      "observation": "7 focused unknown/stale/exhaustion/unit/bottleneck checks pass. Read-only computation, not implemented runtime admission/reservation.",
+      "evidence": "capacity-checks.txt"
+    },
+    {
+      "id": "P04-CAPACITY-REPRODUCTION",
+      "status": "PASS",
+      "command": "python3 openclaw-project/plans/product/calculate_phase04_capacity.py",
+      "observation": "Byte-identical report from saved snapshots;209203200bytes remain after planned reserves,0 memory slots at default2GiB. CPU/disk/PID and tenant peaks unverified.",
+      "evidence": "reproducibility.txt"
+    },
+    {
+      "id": "P04-PRESERVE-PHASE3",
+      "status": "PASS",
+      "command": "source SHA256 compare/AST/JSON/121-ledger validation/git diff --check",
+      "observation": "Previously changed identity files restored byte-identical; no dedicated lifecycle draft/migrations remain.",
+      "evidence": "source-validation.txt"
+    }
+  ],
+  "not_run": [
+    "Native create/start/stop/upgrade/backup/restore/delete",
+    "Two-customer OS/container/coding/browser isolation",
+    "Strong OCI runtime/native sandbox/worker broker compatibility",
+    "Load/tenant peaks/CPU/disk/PID reservation measurements",
+    "Live TLS/customer sign-in/SMTP/Telegram/billing",
+    "Phase15 comprehensive/paid evaluations"
+  ],
+  "approval_review": {
+    "status": "REJECTED",
+    "action": "Copy complete installed Fleet runtime source into local temporary storage",
+    "reason": "Sensitive internal source egress, payload/destination not explicitly authorized",
+    "disposition": "No retry/bypass; complete assessment from approved CLI help and current official docs. Native implementation details remain unprobed."
+  },
+  "capacity": {
+    "observed_at": "2026-09-30T00:54:47.620899+00:00",
+    "source": "phase-04-inventory.json (three short read-only samples; no load benchmark)",
+    "memory_total_bytes": 4055998464,
+    "memory_available_min_bytes": 1014509568,
+    "memory_available_max_bytes": 1043640320,
+    "fixed_unavailable_snapshot_highwater_bytes": 3041488896,
+    "planned_platform_reserve_bytes": 268435456,
+    "planned_safety_headroom_bytes": 536870912,
+    "remaining_after_reserves_bytes": 209203200,
+    "fleet_default_container_limit_bytes": 2147483648,
+    "swap_total_bytes": 2147479552,
+    "swap_free_min_bytes": 7917568,
+    "resource_matrix": {
+      "memory": {
+        "total": 4055998464,
+        "fixed": 3041488896,
+        "reserve": 805306368,
+        "tenant": 2147483648
+      },
+      "cpu": {
+        "total": 2000,
+        "fixed": null,
+        "reserve": 250,
+        "tenant": 2000
+      },
+      "disk": {
+        "total": null,
+        "fixed": null,
+        "reserve": 10737418240,
+        "tenant": null
+      },
+      "pids": {
+        "total": null,
+        "fixed": null,
+        "reserve": 64,
+        "tenant": null
+      }
+    },
+    "assessment": {
+      "memory_slots": 0,
+      "cpu_slots": null,
+      "disk_slots": null,
+      "pid_slots": null,
+      "admitted_slots": 0,
+      "blockers": [
+        "isolation_unverified",
+        "tenant_peak_unverified",
+        "memory_exhausted",
+        "cpu_unknown",
+        "disk_unknown",
+        "pids_unknown"
+      ]
+    },
+    "planned_16gib_scenario": {
+      "status": "UNMEASURED allocation proposal; not admitted capacity",
+      "ram_gib": 16,
+      "vcpus": 4,
+      "beta_accounts": 2,
+      "global_running_tasks": 1,
+      "ram_envelope_gib": {
+        "owner_services": 4,
+        "product_services": 0.5,
+        "safety": 2,
+        "two_gateway_cells": 4,
+        "one_active_worker_set": 3
+      },
+      "sum_envelopes_gib": 13.5,
+      "remaining_gib": 2.5,
+      "cpu_capacity": null
+    },
+    "storage_mount": "ext4   rw,relatime,discard,errors=remount-ro,commit=30",
+    "native_default_runtime": "runc"
+  },
+  "cost": {
+    "paid_provider_calls": 0,
+    "live_messages": 0,
+    "live_payments": 0,
+    "infrastructure_purchase": false,
+    "unknowns": [
+      "VPS upgrade invoice",
+      "Real tenant/worker resource peaks and stronger runtime overhead",
+      "Commercial provider/coding/review route costs",
+      "Off-host backup quote"
+    ]
+  },
+  "blockers": [
+    "Current host0 admissible added agents",
+    "Lifecycle/worker broker not implemented",
+    "Single-host isolation/network/persistent disk quotas not built/verified",
+    "Phase5 per-route admission and Phase15 acceptance required"
+  ],
+  "cleanup": {
+    "live_resources_created": 0,
+    "live_resources_stopped": 0,
+    "owner_changed": false,
+    "temporary_vm_draft": "removed locally before integration",
+    "schema_changed": false
+  },
+  "rollback": "No live changes; revert only added assessment/policy/calculator docs if needed. Owner services/data preserved.",
+  "source_sha256": {
+    "product/deployment-policy.json": "4a474744d0f3b58b84f262d5ac96a2b1880deb60afb2ec1b253b48ee7fdb18d6",
+    "product/CONTRACT.md": "2dc5f53751f0f41bb7b5a2af09166b21884389d74a1fb686670defb5c56118fe",
+    "product/COST_CAPACITY.md": "eb7bc825fe2df24f23266fac151dbb3baa8c9d9c15ace1ed5c5e6183c9569166",
+    "openclaw-project/platform/agentai_platform/capacity.py": "874a61b4865a87fdfb8371ce50aa37bb45aa50432efa0b0f2558860f9c68f948",
+    "openclaw-project/platform/tests/test_capacity.py": "10b7e24bdf7ad70d4e81cf634f6a7b68ab6b3c6088048182f590003a4d503bf5",
+    "openclaw-project/plans/product/phase-04.md": "b1d87434b9cb41950607dcbfd341314481522d6cd7c2e8e353fa589ee6790a11",
+    "openclaw-project/plans/product/phase-04-single-vps-assessment.md": "fff928d4491c8724d79a2acdda5527d140b78f11b0d360fc7781f5538742ce14",
+    "openclaw-project/plans/product/calculate_phase04_capacity.py": "a45f16e950744985cc47519befe3bc59e1acdac9175ff8d7639ca39b1adc39ac",
+    "openclaw-project/plans/product/phase-04-capacity.json": "fefe622243ec69c43e26af0d2ed3037811485f245660b069ffd0e93d9360de41",
+    "openclaw-project/plans/product/phase-04-inventory.json": "0f9afc734482db5781188b94461bd965f274764776cf54cbd5659a771b3f5c90",
+    "openclaw-project/plans/product/phase-04-host-checks.json": "d3c76a0348450fa1001bda36ba35c4e87ace3dc135698db961be8eb9c4501414",
+    "openclaw-project/platform/ARCHITECTURE.md": "db2e836d4dbb0350be76552f6dd471d503b81788a47a4de186ef07271ab39998",
+    "openclaw-project/platform/THREAT_MODEL.md": "2a5e99fe59ca39b89294d02f66b76fb9c40b7f312d40bc75b29ffea97337da97",
+    "phase-prompts/openclaw/phase-04-tenant-provisioning.md": "3ee9a91524dcee6c9e4eea1f2ae0981fbaa785fe0f140dab8f68a10e56a884f1",
+    "phase-prompts/openclaw/execution-contract.md": "1d7885ea9946c9cf27549c70b3f28af1cf789947501eb80e2600d996e9d7235a",
+    "openclaw-project/plans/product/requirements.json": "c8d3f1d06489e2363800e0cef098ca97fcd530758f260403250c3f4842ecbafe",
+    "openclaw-project/plans/product/requirements.md": "7aa786382459cae351603f556dfa24450bcb8c2f8e1209df9a2a968a3474b2a3",
+    "openclaw-project/BUILD_LOG.md": "61a5e56c00dcca9e8fcc52501a8cd5d675ca7d6475f2a02d6ad0251f209321c2"
+  }
+}

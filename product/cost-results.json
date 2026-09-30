@@ -1,0 +1,45 @@
+{
+  "currency": "USD",
+  "actual_complete_task_cost": null,
+  "actual_monthly_service_cost": null,
+  "scenarios": {
+    "low": {
+      "known_research_route_usd": "0.039",
+      "illustrative_50pct_reserve_usd": "0.0585",
+      "complete_coding_task_usd": null
+    },
+    "base": {
+      "known_research_route_usd": "0.278",
+      "illustrative_50pct_reserve_usd": "0.4170",
+      "complete_coding_task_usd": null
+    },
+    "high": {
+      "known_research_route_usd": "1.092",
+      "illustrative_50pct_reserve_usd": "1.6380",
+      "complete_coding_task_usd": null
+    }
+  },
+  "proposed_plan": {
+    "payment_fee_domestic_card_plus_billing": "3.14400",
+    "net_after_payment_and_25usd_provider_allowance": "50.85600",
+    "hypothetical_variable_cost_per_customer": "46.54400",
+    "hypothetical_contribution_per_customer": "32.45600",
+    "hypothetical_fixed_cost": "40",
+    "hypothetical_break_even_customers": 2
+  },
+  "unknown_actuals": [
+    "IONOS invoice",
+    "customer VM quote",
+    "off-host backup quote",
+    "identity/mail provider price",
+    "monitoring invoice",
+    "commercial coding route/model price and usage",
+    "ACP reviewer price and usage",
+    "actual task token distribution",
+    "tenant peak RAM/CPU",
+    "provider retention/region terms"
+  ],
+  "browser_comparison_task_runs": 180,
+  "hypothetical_browser_known_route_cost_180_base_runs": "50.040",
+  "browser_sample_cost_is_not_an_optimization_quote": true
+}

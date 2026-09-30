@@ -1,5 +1,16 @@
 # AgentAI to OpenClaw migration decisions
 
+## Customer-product scope update — 2026-09-29
+
+The user now requested the customer platform and executed product Phases1–2.
+Historical personal-only “Drop” rows below no longer prohibit new customer
+identity/tenancy/billing services. Implement these around native OpenClaw using
+the new phase plan; do not port retired Python loop/router/approval/vault code.
+Accounts/deployment mapping/artifact/event/usage/billing metadata are separate
+product services. [Platform ADRs](platform/ARCHITECTURE.md) document current
+boundaries. Agent purchases stay disabled except a separately selected Phase19.
+No retired database/code or live state was restored by this foundation work.
+
 Status: migration map retained as design history. On2026-09-27 the owner
 authorized deleting unnecessary legacy files. The old application’s working
 tree, original prompts/spec/build notes and disposable Mac staging files were

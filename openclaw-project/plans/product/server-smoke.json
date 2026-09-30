@@ -1,0 +1,37 @@
+{
+  "run_id": "20260929T232843Z",
+  "customer_execution": false,
+  "checks": {
+    "app": {
+      "ready": {
+        "foundation_ready": true,
+        "customer_ready": false,
+        "identity": "disabled",
+        "execution": "disabled"
+      },
+      "unauthenticated_api": 401,
+      "properties": "MemoryCurrent=13656064\nCPUQuotaPerSecUSec=250ms\nMemoryMax=134217728\nMemorySwapMax=0\nTasksMax=16\nUser=agentai-foundation-preview\nDynamicUser=yes"
+    },
+    "control": {
+      "ready": {
+        "foundation_ready": true,
+        "customer_ready": false,
+        "identity": "disabled",
+        "execution": "disabled"
+      },
+      "unauthenticated_api": 401,
+      "properties": "MemoryCurrent=13291520\nCPUQuotaPerSecUSec=250ms\nMemoryMax=134217728\nMemorySwapMax=0\nTasksMax=16\nUser=agentai-foundation-preview\nDynamicUser=yes"
+    }
+  },
+  "units": [
+    "agentai-foundation-app-20260929T232843Z",
+    "agentai-foundation-control-20260929T232843Z"
+  ],
+  "listener_readback": "State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess\nLISTEN 0      4096      127.0.0.54:53         0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32773      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32772      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32775      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32774      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32769      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32768      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32771      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32770      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32777      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:32776      0.0.0.0:*          \nLISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*          \nLISTEN 0      5          127.0.0.1:18801      0.0.0.0:*          \nLISTEN 0      5          127.0.0.1:18800      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:18789      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:18790      0.0.0.0:*          \nLISTEN 0      5          127.0.0.1:18795      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:3978       0.0.0.0:*          \nLISTEN 0      4096         0.0.0.0:22         0.0.0.0:*          \nLISTEN 0      4096            [::]:22            [::]:*",
+  "python": "Python 3.12.3",
+  "sqlite_version": "3.45.1",
+  "status": "pass",
+  "cleanup_units_inactive": true,
+  "cleanup_source_removed": true,
+  "cleanup_state_removed": true
+}

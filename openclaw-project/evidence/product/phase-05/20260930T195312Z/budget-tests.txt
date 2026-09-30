@@ -1,0 +1,15 @@
+test_atomic_task_and_reservation_idempotency (tests.test_budget.BudgetChecks.test_atomic_task_and_reservation_idempotency) ... ok
+test_cross_account_conversation_and_revocation (tests.test_budget.BudgetChecks.test_cross_account_conversation_and_revocation) ... ok
+test_duplicate_changed_foreign_and_late_receipts (tests.test_budget.BudgetChecks.test_duplicate_changed_foreign_and_late_receipts) ... ok
+test_immutable_receipts_and_audit_atomicity (tests.test_budget.BudgetChecks.test_immutable_receipts_and_audit_atomicity) ... ok
+test_period_daily_expiry_and_queue_ceiling (tests.test_budget.BudgetChecks.test_period_daily_expiry_and_queue_ceiling) ... ok
+test_racing_final_allowance_admissions (tests.test_budget.BudgetChecks.test_racing_final_allowance_admissions) ... ok
+test_reported_usage_consumes_hold_without_double_counting (tests.test_budget.BudgetChecks.test_reported_usage_consumes_hold_without_double_counting) ... ok
+test_service_overrun_accounted_and_blocks_new_work (tests.test_budget.BudgetChecks.test_service_overrun_accounted_and_blocks_new_work) ... ok
+test_uncertain_effects_keep_allowance_reserved (tests.test_budget.BudgetChecks.test_uncertain_effects_keep_allowance_reserved) ... ok
+test_unknown_price_currency_and_service_limit_no_task (tests.test_budget.BudgetChecks.test_unknown_price_currency_and_service_limit_no_task) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.224s
+
+OK

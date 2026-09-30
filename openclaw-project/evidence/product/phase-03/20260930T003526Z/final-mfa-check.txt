@@ -1,0 +1,1 @@
+PASS: final confirmed-device revocation check. Ran 1 test, OK. Device confirmation revoked after successful MFA; scoped operator action denied.
