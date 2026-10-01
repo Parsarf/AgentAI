@@ -17,6 +17,8 @@ NODE_VERSION='24.16.0'
 OPENCLAW_VERSION='2026.9.6'
 NODE_SHA256='d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9'
 PACKAGE_INTEGRITY='sha512-Ie0kyQSCVfFqixsgVg39vevUDq01Ch5u3+7Yu5Y3qARczmdAe+lzp8bVnO9925rHiW/+CFp70zfORCyPmCH31g=='
+FS_NATIVE_VERSION='0.18.1'
+FS_NATIVE_INTEGRITY='sha512-FWug2NdenYPJIVdtdzPH1xqBo5a/HYlZJutKEQkxSSM59Z/tBYiY24MsrjdYC5u2+2zwXPv38noB/hZ89Ec1kQ=='
 ROOT=Path('/opt/agentai-native/2026.9.6-node24.16.0')
 
 
@@ -60,14 +62,19 @@ def main():
          'npm_config_cache':str(ROOT/'cache'),'npm_config_userconfig':str(configs/'user.npmrc'),
          'npm_config_globalconfig':str(configs/'global.npmrc')}
     subprocess.run([str(node),str(npm),'install','--prefix',str(target),'--registry','https://registry.npmjs.org',
-        '--ignore-scripts','--omit=dev','--omit=optional','--no-audit','--no-fund',f'openclaw@{OPENCLAW_VERSION}'],
+        '--ignore-scripts','--omit=dev','--omit=optional','--no-audit','--no-fund',f'openclaw@{OPENCLAW_VERSION}',
+        f'@openclaw/fs-safe-linux-x64-gnu@{FS_NATIVE_VERSION}'],
         env=env,check=True,timeout=480)
     lock=json.loads((target/'package-lock.json').read_text())
     package=lock['packages']['node_modules/openclaw']
     if package.get('version')!=OPENCLAW_VERSION or package.get('integrity')!=PACKAGE_INTEGRITY:
         raise SystemExit('CLI package identity mismatch; candidate not verified')
+    native=lock['packages']['node_modules/@openclaw/fs-safe-linux-x64-gnu']
+    if native.get('version')!=FS_NATIVE_VERSION or native.get('integrity')!=FS_NATIVE_INTEGRITY:
+        raise SystemExit('native support identity mismatch; candidate not verified')
     manifest={'node_version':NODE_VERSION,'node_sha256':NODE_SHA256,
         'openclaw_version':OPENCLAW_VERSION,'package_integrity':PACKAGE_INTEGRITY,
+        'fs_native_version':FS_NATIVE_VERSION,'fs_native_integrity':FS_NATIVE_INTEGRITY,
         'lock_sha256':hashlib.sha256((target/'package-lock.json').read_bytes()).hexdigest(),
         'native_execution_enabled':False,'install_scripts_enabled':False}
     (ROOT/'candidate.json').write_text(json.dumps(manifest,indent=2)+'\n')

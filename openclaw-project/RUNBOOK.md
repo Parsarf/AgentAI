@@ -719,3 +719,9 @@ package integrity, a dedicated directory and no install scripts. Run only in a
 bounded transient service,384MiB/no swap/25% CPU/64 tasks/10min, retaining512MiB
 owner headroom. An incomplete staging directory requires scoped investigation
 before retry; no blind overwrite. Installer fit is not customer task admission.
+
+Separate candidate follow-up: Fleet2026.9.6 help and empty registry JSON pass.
+Installed exact fs-safe Linux0.18.1 package after the omitted-optional warning;
+native require mode and synthetic read/traversal/symlink/no-clobber-move checks
+pass, fixtures cleaned. This is not native customer OS/worker isolation. GitHub
+Linux gate for3f0cc73 passes40 account+51 core cases and Vercel routing.

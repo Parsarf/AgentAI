@@ -128,9 +128,12 @@ bounded candidate installer preserves owner binaries/configuration. Its first
 attempt denied headroom; the second hit an npm config-file collision before
 CLI installation. Corrected that collision and removed only its unused staging.
 The corrected attempt installed320 packages successfully. Bounded Fleet create
-help and empty separate registry JSON probes passed. A native fs-safe support
-warning blocks candidate promotion; no cell was created. Exact results are in
-this run's manifest.
+help and empty separate registry JSON probes passed. The fs-safe support
+warning was repaired with the exact Linux0.18.1 package. Native require-mode
+read/path/symlink and atomic no-clobber move checks passed on disposable files;
+fixtures cleaned. No cell was created; full native readiness remains unverified.
+GitHub Linux gate passes all51 core and40 account cases plus Vercel routing.
+Exact results are in this run's manifest.
 
 Phase4 remains PARTIAL. Native backend/drain proof, secret/provider custody,
 stronger worker runtime, persistent disk/network quotas, dispatch-side admission,

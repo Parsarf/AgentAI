@@ -1,7 +1,7 @@
 {
   "phase": 4,
   "run_id": "20261001T014000Z",
-  "recorded_at": "2026-10-01T02:03:22.359885+00:00",
+  "recorded_at": "2026-10-01T03:11:42.901856+00:00",
   "base_revision": "cff61341ebd07a80f94724dc3ac3f64fa2877809",
   "target": "existing VPS; two invited accounts; one global customer task",
   "build_result": "PARTIAL",
@@ -17,15 +17,16 @@
     "openclaw-project/platform/agentai_platform/lifecycle/types.py": "a51ccd198e4de299f3fa54f53c8fbf2a39c41311916052f4928bd4be41f5532e",
     "openclaw-project/platform/agentai_platform/lifecycle/fleet_plan.py": "a0e63037bb8906ce504a0a3dcd8aeefe76064fcfafa2e77e987622ad68688a58",
     "openclaw-project/platform/tests/test_supervisor.py": "805e01095551a7fa463a47d804b202a9761f72ad322b29643a2d8f140cd04dca",
-    "openclaw-project/platform/deploy/prepare_native_cli.py": "46b5256ecfa328d199947169b9fcfa664d46afbe9a35ad3634d84b8516394313",
-    "openclaw-project/platform/deploy/agentai-supervisor.service": "e52b94e7e0ca0650f5bb5a63581dd3c155bbff7a426c5b61c3e5e7337b913220"
+    "openclaw-project/platform/deploy/prepare_native_cli.py": "531f2f5e4021345c51efca2d0a87966981edaa2b5bf6f6ca36432c1506faec64",
+    "openclaw-project/platform/deploy/agentai-supervisor.service": "e52b94e7e0ca0650f5bb5a63581dd3c155bbff7a426c5b61c3e5e7337b913220",
+    "openclaw-project/platform/deploy/check_native_fs.mjs": "b434db8f9e3bf6273e9da4e12295accb4c06bb837b67b0813ef4b73527efe370"
   },
   "checks": [
     {
       "id": "P04-SUPERVISOR-CORE",
       "status": "PASS",
       "command": "python -m unittest tests.test_supervisor tests.test_lifecycle tests.test_request_queue tests.test_budget",
-      "observation": "51 cases:49 pass;2 Linux peer/socket cases skipped on macOS and assigned GitHub CI"
+      "observation": "macOS:49 pass/2 Linux skips; Linux GitHub gate:all51 pass, no skips"
     },
     {
       "id": "P03-REGRESSION",
@@ -47,8 +48,8 @@
     },
     {
       "id": "P04-NATIVE-CANDIDATE",
-      "status": "PASS_WITH_WARNING",
-      "observation": "separate Node24.16.0 and OpenClaw2026.9.6 installed; bounded Fleet create help passed; native fs-safe support warning blocks promotion"
+      "status": "PASS",
+      "observation": "separate Node24.16.0/OpenClaw2026.9.6 candidate installed; Fleet create help and empty registry read passed; initial filesystem warning repaired with exact Linux package and native require-mode fixture proof"
     },
     {
       "id": "P04-EMPTY-REGISTRY-PROBE",
@@ -59,6 +60,12 @@
       "id": "P04-NATIVE-BOUNDARY",
       "status": "NOT_RUN",
       "observation": "no native cell or worker started; orchestration fixtures do not establish OS isolation"
+    },
+    {
+      "id": "P04-NATIVE-FS",
+      "status": "PASS",
+      "command": "bounded Node deploy/check_native_fs.mjs in isolated candidate",
+      "observation": "native require mode, positive read, traversal/symlink denial and native-only atomic no-clobber move passed; fixtures cleaned; not customer OS isolation"
     }
   ],
   "host_observations": {
@@ -96,15 +103,25 @@
       "npm user/global config collision before CLI install; unused staging removed after stopped-service/no-candidate checks",
       "corrected configs:320 packages installed in3min; native effects disabled"
     ],
-    "warning": "fs-safe native support unavailable; native backend not promoted",
-    "systemd_peak_accounting": "Reported sub-MiB peak is not accepted as representative process memory; limits are hard bounds, not tenant peak measurements."
+    "warning": "Initial fs-safe native support warning repaired and native-only fixture passed; full lifecycle/worker readiness still unverified",
+    "systemd_peak_accounting": "Reported sub-MiB peak is not accepted as representative process memory; limits are hard bounds, not tenant peak measurements.",
+    "fs_native_version": "0.18.1",
+    "fs_native_integrity": "sha512-FWug2NdenYPJIVdtdzPH1xqBo5a/HYlZJutKEQkxSSM59Z/tBYiY24MsrjdYC5u2+2zwXPv38noB/hZ89Ec1kQ==",
+    "filesystem_probe_attempts": [
+      "first failed an inaccurate require.cache assertion",
+      "second require-mode probe failed because systemd expanded JS template variables; no fixture created",
+      "third removed template variables; documented require mode and native-only move passed"
+    ]
   },
   "primary_sources": [
     "https://docs.openclaw.ai/cli/fleet",
     "https://registry.npmjs.org/openclaw/2026.9.6",
     "https://nodejs.org/dist/v24.16.0/SHASUMS256.txt",
     "https://docs.docker.com/reference/cli/dockerd/",
-    "https://gvisor.dev/docs/user_guide/install/"
+    "https://gvisor.dev/docs/user_guide/install/",
+    "https://registry.npmjs.org/@openclaw%2ffs-safe/0.18.1",
+    "https://registry.npmjs.org/@openclaw%2ffs-safe-linux-x64-gnu/0.18.1",
+    "https://github.com/openclaw/fs-safe"
   ],
   "public_source_inspection": {
     "source": "integrity-verified public npm archive, not installed private owner runtime",
@@ -122,7 +139,6 @@
     "native_task_cost_and_peak": "unknown"
   },
   "blockers": [
-    "native fs-safe support",
     "native backend and executor drain receipts",
     "automatic host enrollment",
     "stronger runtime and worker broker",
@@ -135,5 +151,15 @@
     "Phase15 native A/B isolation, full lifecycle, restore/failure/load acceptance"
   ],
   "rollback": "No app release/schema or owner config/service changes. Source rollback; remove only separate CLI candidate after confirming no executor uses it. Never reset unresolved operation custody.",
-  "github_ci": "PENDING"
+  "github_ci": {
+    "status": "PASS",
+    "url": "https://github.com/Parsarf/AgentAI/actions/runs/36804214754",
+    "observed_counts": {
+      "accounts": 40,
+      "core": 51,
+      "linux_peer_skips": 0
+    },
+    "vercel_routing": "PASS"
+  },
+  "implementation_revision": "3f0cc730a6920a45c950ecc0c116c42a69e6c242"
 }

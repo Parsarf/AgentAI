@@ -1169,3 +1169,9 @@ in Phase4 evidence. No paid provider call, new invitation, hardware purchase,
 customer cell, live supervisor or account migration. Phase4 remains PARTIAL;
 native isolation, quotas, credentials/admission and recovery integration remain.
 Evidence: evidence/product/phase-04/20261001T014000Z/manifest.json.
+
+Separate candidate follow-up: Fleet2026.9.6 help and empty registry JSON pass.
+Installed exact fs-safe Linux0.18.1 package after the omitted-optional warning;
+native require mode and synthetic read/traversal/symlink/no-clobber-move checks
+pass, fixtures cleaned. This is not native customer OS/worker isolation. GitHub
+Linux gate for3f0cc73 passes40 account+51 core cases and Vercel routing.

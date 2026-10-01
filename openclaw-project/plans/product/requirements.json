@@ -270,7 +270,7 @@
       ],
       "activation_blocker": "Host custody/journal and Unix transport implemented but native backend, automatic enrollment, secret/provider custody, worker broker/stronger runtime, network/persistent quotas, dispatch admission, safe recovery/upgrade and usable existing-VPS profile remain incomplete. No hardware upgrade prerequisite.",
       "acceptance_result": "NOT_RUN",
-      "targeted_check_result": "PASS local journal/binding/fence/replay/uncertainty/IPC/core/account/capacity checks; Linux peer/socket cases assigned CI; no native runtime isolation proof",
+      "targeted_check_result": "PASS:51 core and40 account cases plus Vercel routing in Linux CI;21 local capacity/foundation; isolated CLI/empty-registry/native-filesystem candidate probes. No customer OS isolation proof.",
       "build_result": "PARTIAL",
       "capacity_profile": "two_accounts_one_global_task_existing_vps",
       "parallel_runtime_acceptance_result": "NOT_RUN"
@@ -300,7 +300,7 @@
       ],
       "activation_blocker": "Host custody/journal and Unix transport implemented but native backend, automatic enrollment, secret/provider custody, worker broker/stronger runtime, network/persistent quotas, dispatch admission, safe recovery/upgrade and usable existing-VPS profile remain incomplete. No hardware upgrade prerequisite.",
       "acceptance_result": "NOT_RUN",
-      "targeted_check_result": "PASS local journal/binding/fence/replay/uncertainty/IPC/core/account/capacity checks; Linux peer/socket cases assigned CI; no native runtime isolation proof",
+      "targeted_check_result": "PASS:51 core and40 account cases plus Vercel routing in Linux CI;21 local capacity/foundation; isolated CLI/empty-registry/native-filesystem candidate probes. No customer OS isolation proof.",
       "build_result": "PARTIAL",
       "capacity_profile": "two_accounts_one_global_task_existing_vps",
       "parallel_runtime_acceptance_result": "NOT_RUN"
@@ -330,7 +330,7 @@
       ],
       "activation_blocker": "Host custody/journal and Unix transport implemented but native backend, automatic enrollment, secret/provider custody, worker broker/stronger runtime, network/persistent quotas, dispatch admission, safe recovery/upgrade and usable existing-VPS profile remain incomplete. No hardware upgrade prerequisite.",
       "acceptance_result": "NOT_RUN",
-      "targeted_check_result": "PASS local journal/binding/fence/replay/uncertainty/IPC/core/account/capacity checks; Linux peer/socket cases assigned CI; no native runtime isolation proof",
+      "targeted_check_result": "PASS:51 core and40 account cases plus Vercel routing in Linux CI;21 local capacity/foundation; isolated CLI/empty-registry/native-filesystem candidate probes. No customer OS isolation proof.",
       "build_result": "PARTIAL",
       "capacity_profile": "two_accounts_one_global_task_existing_vps",
       "parallel_runtime_acceptance_result": "NOT_RUN"
