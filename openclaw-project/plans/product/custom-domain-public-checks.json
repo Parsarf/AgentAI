@@ -1,0 +1,40 @@
+{
+  "main": {
+    "status": 200,
+    "final_url": "https://getlumina.pro/account/login/",
+    "cache_control": "no-store",
+    "login_form_present": true,
+    "setup_page_absent": true
+  },
+  "csrf_cookie": [
+    {
+      "name": "__Host-agentai_csrf",
+      "secure": true,
+      "http_only": true,
+      "same_site": "Strict",
+      "host": "getlumina.pro"
+    }
+  ],
+  "anonymous_requests": {
+    "status": 401
+  },
+  "anonymous_usage": {
+    "status": 401
+  },
+  "internal_unpublished": {
+    "status": 404
+  },
+  "valid_csrf_invalid_login": {
+    "status": 401
+  },
+  "wrong_origin_denied": {
+    "status": 403
+  },
+  "www_redirect_destination": "https://getlumina.pro/account/login/",
+  "backend_certificate": {
+    "not_after": "Dec 29 23:24:45 2026 GMT",
+    "dns_names": [
+      "backend.getlumina.pro"
+    ]
+  }
+}

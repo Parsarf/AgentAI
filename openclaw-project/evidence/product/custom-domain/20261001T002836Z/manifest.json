@@ -1,0 +1,36 @@
+{
+  "created_at": "2026-10-01T00:28:36.025205+00:00",
+  "website": "https://getlumina.pro",
+  "backend": "https://backend.getlumina.pro",
+  "vercel_project": "agentai-vercel",
+  "deployed_source_commit": "625fc3e89f99acad2abd61b42b6b5d5375576184",
+  "deployment_id": "dpl_12PnPcyBiNmKB8h3S8VdRQJMxrdf",
+  "result": "PASS",
+  "checks": [
+    "Main URL reaches login",
+    "Trusted backend certificate",
+    "Secure HttpOnly Strict host cookie",
+    "No-store account responses",
+    "Anonymous requests and usage return401",
+    "Internal routes return404",
+    "Valid CSRF reaches credential validation",
+    "Wrong Origin returns403",
+    "www redirects to root domain"
+  ],
+  "initial_routing_failure": "Static setup page took precedence and account trailing-slash routes failed; replaced programmatic rewrites with explicit Build Output API routing and removed connected-mode static index",
+  "smtp_configured": false,
+  "native_execution_enabled": false,
+  "paid_model_calls": 0,
+  "real_customer_invites_created": 0,
+  "evidence_sha256": {
+    "custom-domain-public-checks.json": "cb882a7f468995278441049ef305ab2ba4417f5fc0a78574bbec7b901f7a9df5",
+    "custom-domain-deployment.json": "f80f13f3423227c997c5698f28dfb15210f1fbf6580c9eeef0fdd4430c58f541"
+  },
+  "github_workflow": {
+    "conclusion": "success",
+    "url": "https://github.com/Parsarf/AgentAI/actions/runs/36796238081"
+  },
+  "owner_gateway_loopback_open": true,
+  "caddy_boot_enabled": true,
+  "old_vercel_domain_redirect": "getlumina.pro"
+}

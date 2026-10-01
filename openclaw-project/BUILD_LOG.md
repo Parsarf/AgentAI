@@ -1087,3 +1087,22 @@ account/API tests,32 core tests and Vercel routing checks pass. Candidate-file
 credential-pattern scan found only the intentionally fake validation-test URL.
 GitHub CLI authentication is invalid; no push or Vercel deployment occurred.
 Native execution remains disabled. Publication evidence: evidence/product/publication/20260930T233333Z/manifest.json.
+
+### 2026-10-01 UTC — getlumina.pro connected to existing VPS
+
+Verified GoDaddy DNS: root→Vercel and backend.getlumina.pro→existing VPS.
+Installed Ubuntu Caddy plus libnss3-tools with no package upgrades/removals.
+Customer-only HTTPS edge forwards account/auth/v1 to private Gunicorn18800,
+with fixed Host/scheme and peer IP. Internal routes return404; owner Gateway
+remains private. Caddy has128 MiB memory, no swap,25% CPU and32-task limits.
+Canonical website origin is https://getlumina.pro; www redirects to it.
+Production Vercel BACKEND_ORIGIN points to https://backend.getlumina.pro.
+
+First redeployment exposed a routing defect: static index retained priority and
+account trailing slashes did not proxy correctly. Corrected this using explicit
+Build Output API rules and omit the setup index when connected. GitHub commit
+625fc3e deployed successfully. Public checks pass: login page, secure host-only
+CSRF cookie, no-store caching, anonymous API401, internal404, valid-CSRF invalid
+login401 and wrong-Origin403. Certificate validation passes. Synthetic negative
+login only; no real identity/invitation, SMTP, customer cell or paid model call.
+Native agent execution remains disabled. Evidence: evidence/product/custom-domain/20261001T002836Z/manifest.json.

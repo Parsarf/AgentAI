@@ -56,9 +56,10 @@ Vercel serves the shared customer origin via fixed
 external rewrites to HTTPS on the existing VPS. SQLite/agent/task worker stays
 on the VPS. No Gateway/control socket is published. Set the exact Vercel production
 origin for secure cookies, links and CSRF; verify actual cookie forwarding and
-no-store caching before invitations. Vercel CLI was logged out during this turn;
-project access, backend TLS/DNS hostname, verified SMTP and first-invitation email
-are still missing. No temporary unclaimed deployment or live identity was created.
+no-store caching before invitations. Vercel CLI was initially logged out;
+project access and backend HTTPS were subsequently configured for getlumina.pro.
+Live login/cookie/CSRF/routing checks pass through that origin. Verified SMTP
+and first-invitation email are still missing. No temporary unclaimed deployment or live identity was created.
 
 New migration: SQL0004 + Django0008. Explicit private bootstrap before code cutover;
 back up existing metadata using SQLite backup, preserve reservations/queued work,

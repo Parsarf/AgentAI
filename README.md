@@ -5,6 +5,9 @@ on the always-on VPS. The existing owner agent/dashboard is the starting point
 for the customer platform: accounts, isolated deployments, dashboard/Telegram
 work, project artifacts, live progress, enforceable usage and hosted billing.
 
+Customer account site: **https://getlumina.pro**. HTTPS and Vercel-to-VPS routing
+are connected. Email invitations and agent execution are still pending.
+
 ## Publish from GitHub to Vercel
 
 Import this repository into Vercel with root directory

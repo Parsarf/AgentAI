@@ -25,8 +25,13 @@ tests pass. Two synthetic accounts test login and direct cross-account access.
 These are protocol/database tests; no real provider or isolated agent execution
 is claimed. See deployment readback for private service checks.
 
-Remaining: Vercel authentication/project, stable production origin, HTTPS backend
-DNS/certificate, SMTP sender/credentials and first test email. Native agent
+Update 2026-10-01 UTC: Vercel project is connected at https://getlumina.pro;
+backend.getlumina.pro has trusted automatic HTTPS on the existing VPS. Public
+login/cookie/CSRF/no-store/anonymous denial checks pass. Routing fix625fc3e
+and its GitHub workflow pass. Owner Gateway remains private and available.
+See custom-domain-deployment.json and custom-domain-public-checks.json.
+
+Remaining: SMTP sender/credentials and first test email. Native agent
 adapter must prove isolation/capacity, budget admission, send/history/events,
 confirmed abort/drain and public result projection. Full dashboard chat and
 end-to-end serial tasks are not ready.

@@ -70,8 +70,8 @@ Customers choose their own passwords. Never put codes or mail credentials in Git
 
 ## Current limitations
 
-HTTPS backend hostname/certificate, Vercel project, stable origin, verified SMTP
-and first invitation email still need configuration. The global queue and
+The getlumina.pro production HTTPS connection is configured. Verified SMTP
+and the first invitation email still need configuration. The global queue and
 account APIs are implemented; the native execution adapter is disabled, so
 saved requests wait. This package is ready to publish a website, not to launch
 paid autonomous agents. See ../../SERIAL_REQUESTS.md and
