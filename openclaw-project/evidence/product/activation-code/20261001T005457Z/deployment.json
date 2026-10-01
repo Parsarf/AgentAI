@@ -1,0 +1,17 @@
+{
+  "release": "20261001T005331Z-activation",
+  "previous_release": "20261001T004622Z-csrf",
+  "readiness": {
+    "foundation_ready": true,
+    "identity_ready": true,
+    "customer_ready": false,
+    "execution_enabled": false,
+    "mail_configured": true
+  },
+  "source_sha256": {
+    "accounts/views.py": "5818a479e05a5bb51399ba6b0e9e7ecb145f0113fa65cf9902a2b4783109fe05",
+    "accounts/templates/accounts/form.html": "b6e2b47c7bffcd053a084e211a9ebdb2db0f53799100ca4ff8fb72e80aefba9c",
+    "accounts/templates/accounts/activation_error.html": "36836508dab0eb7168a7d0045ced17be8fb6207c6b924137fa944255625b6be2"
+  },
+  "database_migration_performed": false
+}

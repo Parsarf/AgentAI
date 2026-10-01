@@ -175,7 +175,18 @@ def recovery(request):
 @endpoint(['POST'], ['code','password'])
 def finish(request,purpose):
     rate('token.ip',request.client_ip,5,900)
-    consume(request.input.get('code',''),purpose,request.input.get('password',''),request.request_id)
+    code=''.join(request.input.get('code','').split())
+    retry='/account/activate/' if purpose=='onboarding' else '/account/reset/'
+    try:
+        consume(code,purpose,request.input.get('password',''),request.request_id)
+    except Denied:
+        if request.content_type!='application/x-www-form-urlencoded': raise
+        audit(request.user.pk if request.user.is_authenticated else 'anonymous',request.account_id,
+              'identity','identity.code_invalid','denied',request.request_id)
+        return render(request,'accounts/activation_error.html',{'retry':retry,'invalid_code':True},status=404)
+    except ValidationError as error:
+        if request.content_type!='application/x-www-form-urlencoded': raise
+        return render(request,'accounts/activation_error.html',{'retry':retry,'password_errors':error.messages},status=400)
     return JsonResponse({'completed':True,'next':'/account/login/'})
 
 @endpoint(['POST'], ['code'])

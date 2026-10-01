@@ -121,6 +121,28 @@ class AccountBoundaryTests(TestCase):
         self.assertNotIn('CANARY_ACTIVATION_CODE',self.output.getvalue())
         self.assertNotIn('evil.invalid',self.output.getvalue())
 
+    def test_activation_code_paste_and_readable_errors(self):
+        from urllib.parse import urlencode
+        user=self.users['a'];user.is_active=False;user.save(update_fields=['is_active'])
+        identity=user.identity;identity.verified=False;identity.save(update_fields=['verified'])
+        raw=token_for(user,'onboarding');c=self.new_client()
+        page=c.get('/account/activate/',secure=True)
+        token=re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"',page.content.decode()).group(1)
+        def submit(code,password):
+            return c.post('/auth/activate',urlencode({'code':code,'password':password,'csrfmiddlewaretoken':token}),
+                   content_type='application/x-www-form-urlencoded',secure=True,HTTP_REFERER='https://localhost/account/activate/')
+        invalid=submit('CANARY_WRONG_CODE',PASSWORD)
+        self.assertContains(invalid,'Request a new verification email',status_code=404)
+        self.assertNotIn('CANARY_WRONG_CODE',invalid.content.decode());self.assertNotIn(PASSWORD,invalid.content.decode())
+        weak=submit(raw,'short')
+        self.assertContains(weak,'Choose a different password',status_code=400)
+        self.assertNotIn(raw,weak.content.decode());user.refresh_from_db();self.assertFalse(user.is_active)
+        pasted=' '+raw[:20]+' \n'+raw[20:]+'\t'
+        valid=submit(pasted,PASSWORD);self.assertEqual(valid.status_code,302)
+        user.refresh_from_db();self.assertTrue(user.is_active)
+        repeated=submit(raw,PASSWORD);self.assertContains(repeated,'already used',status_code=404)
+        self.assertNotIn(raw,self.output.getvalue());self.assertNotIn(PASSWORD,self.output.getvalue())
+
     def test_secure_cookie_rotation_logout_and_expiry(self):
         c=self.signed(); cookie=c.cookies[settings.SESSION_COOKIE_NAME]
         self.assertTrue(cookie['secure']);self.assertTrue(cookie['httponly']);self.assertEqual(cookie['samesite'],'Strict')

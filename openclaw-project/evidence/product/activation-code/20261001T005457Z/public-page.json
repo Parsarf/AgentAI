@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "referrer_policy": "same-origin",
+  "cache_control": "no-store",
+  "newest_email_instructions": true,
+  "paste_autocapitalization_disabled": true,
+  "csrf_present": true
+}

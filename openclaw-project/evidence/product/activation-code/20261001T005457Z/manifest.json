@@ -1,0 +1,25 @@
+{
+  "created_at": "2026-10-01T00:54:57.694688+00:00",
+  "result": "PASS",
+  "reported_error": "unavailable during activation",
+  "production_account_status": "pending at initial check",
+  "fresh_invitation": "SMTP accepted; generated because previous code expired or had less than five minutes remaining",
+  "code_changes": [
+    "Remove whitespace from submitted codes before purpose-bound hash validation",
+    "Readable form errors for invalid/expired/used codes and password validation",
+    "Link to existing rate-limited recovery flow for fresh activation instructions",
+    "Disable code-field autocapitalization and spellcheck"
+  ],
+  "local_regression_checks": 28,
+  "positive_activation_test": "Synthetic disposable identity, including wrapped code and password correction",
+  "public_page_check": "GET only; no additional activation attempts consumed",
+  "production_password_or_code_collected": false,
+  "trial_or_rate_limits_reset": false,
+  "database_migration": false,
+  "native_execution_enabled": false,
+  "evidence_sha256": {
+    "deployment.json": "b620dae0bbd26aa8e40ab8665a125f4bb90e23eb7b3aa050eca7a4d602519451",
+    "account-regression.txt": "d55ee81283052f8a05310dc8b084dad8f28ce26d29e9848d20885fbf9531a0c6",
+    "public-page.json": "88045046f6a7228d983adc88910ded54d84703ba6277ecd3ada586f05028adf8"
+  }
+}

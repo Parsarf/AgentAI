@@ -1134,3 +1134,18 @@ New private release deployed with rollback guard; no DB migration. Public form
 checks pass through getlumina.pro, while foreign/missing origin/referrer remain
 403. Existing owner code was still usable; no replacement email sent.
 Evidence: evidence/product/csrf-fix/20261001T004843Z/manifest.json.
+
+### 2026-10-01 UTC — Activation code paste and error recovery
+
+Owner reported unavailable after activation-code attempts. CSRF now passes;
+account remained pending. Issued one fresh invitation because the existing code
+was expired or near expiry; SMTP accepted it. Removed pasted whitespace before
+the existing purpose/epoch/expiry/single-use code checks. Browser form errors now
+explain invalid/expired/used codes and password validation, with fresh-email and
+retry links; API denial behavior remains unchanged. No code/password is echoed.
+28 account regression checks pass, including successful wrapped-code activation,
+password correction without consuming the code, and used-code rejection.
+Deployed a new release with rollback guard, preserving private state and limits.
+Live page checks used GET only to preserve the owner's retry allowance.
+No account activation or password override was performed by the operator.
+Evidence: evidence/product/activation-code/20261001T005457Z/manifest.json.
