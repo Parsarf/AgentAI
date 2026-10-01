@@ -1,0 +1,13 @@
+{
+  "public_origin": "https://getlumina.pro",
+  "backend_origin": "https://backend.getlumina.pro",
+  "private_readiness": {
+    "foundation_ready": true,
+    "identity_ready": true,
+    "customer_ready": false,
+    "execution_enabled": false,
+    "mail_configured": false
+  },
+  "caddy_service": "MemoryCurrent=12115968\nMemoryMax=134217728\nActiveState=active\n",
+  "listener_readback": "State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess\nLISTEN 0      16         127.0.0.1:18800      0.0.0.0:*          \nLISTEN 0      4096       127.0.0.1:18789      0.0.0.0:*          \nLISTEN 0      4096               *:443              *:*          \nLISTEN 0      4096               *:80               *:*          \n"
+}

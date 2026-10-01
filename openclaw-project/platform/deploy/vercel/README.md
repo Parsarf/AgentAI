@@ -20,12 +20,14 @@ Vercel → Add New → Project → Import the GitHub repository.
 |---|---|
 | Root Directory | openclaw-project/platform/deploy/vercel |
 | Framework Preset | Other |
-| Build Command | Leave empty; no build required |
+| Build Command | node build.mjs (from vercel.json) |
 | Install Command | Leave empty; no dependencies |
-| Output Directory | public |
+| Output Directory | Leave override disabled; Build Output API produces .vercel/output |
 
-vercel.mjs exports the configuration using Vercel's programmatic configuration
-support. No generated vercel.json is needed. Keep only this configuration file.
+vercel.json runs the dependency-free build.mjs script. It produces Vercel Build
+Output API routing before filesystem lookup, preserving Django account URLs.
+The setup index is omitted when a backend is configured. Do not add vercel.mjs
+or a second configuration file.
 The first deployment shows the setup page. Note the stable production URL, for
 example https://agentai-your-team.vercel.app. Git pushes redeploy the website;
 they do not deploy Python code or restart services on the VPS.
@@ -77,4 +79,13 @@ paid autonomous agents. See ../../SERIAL_REQUESTS.md and
 
 Local check: node check.mjs. Official documentation:
 https://vercel.com/docs/git and
-https://vercel.com/docs/project-configuration/vercel-ts .
+https://vercel.com/docs/build-output-api/configuration .
+
+## Current production connection
+
+Canonical website: https://getlumina.pro . www redirects to this address.
+Backend: https://backend.getlumina.pro on the existing VPS, with Caddy
+automatic HTTPS. Production BACKEND_ORIGIN is configured. The account service
+uses AGENTAI_PUBLIC_ORIGIN=https://getlumina.pro. Customer-only proxy configuration
+is in ../caddy/Caddyfile.getlumina. Owner Gateway and internal routes stay private.
+SMTP/invitations and native execution are still pending.

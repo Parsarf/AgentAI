@@ -8,8 +8,9 @@ work, project artifacts, live progress, enforceable usage and hosted billing.
 ## Publish from GitHub to Vercel
 
 Import this repository into Vercel with root directory
-`openclaw-project/platform/deploy/vercel`, framework **Other**, no build/install
-command, and output directory **public**. It deploys a setup page immediately.
+`openclaw-project/platform/deploy/vercel`, framework **Other** and the build command from `vercel.json`. Keep the
+output-directory override disabled: the build emits Vercel Build Output API files.
+It deploys a setup page when no backend is configured.
 To connect customer login, configure the VPS HTTPS backend and Vercel's
 `BACKEND_ORIGIN` environment variable. See the complete
 [publication guide](openclaw-project/platform/deploy/vercel/README.md).
