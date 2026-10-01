@@ -70,8 +70,9 @@ Customers choose their own passwords. Never put codes or mail credentials in Git
 
 ## Current limitations
 
-The getlumina.pro production HTTPS connection is configured. Verified SMTP
-and the first invitation email still need configuration. The global queue and
+The getlumina.pro production HTTPS connection and Gmail SMTP delivery are
+configured. The first owner invitation was accepted by SMTP; the recipient
+must complete activation using the email code. The global queue and
 account APIs are implemented; the native execution adapter is disabled, so
 saved requests wait. This package is ready to publish a website, not to launch
 paid autonomous agents. See ../../SERIAL_REQUESTS.md and
@@ -88,4 +89,5 @@ Backend: https://backend.getlumina.pro on the existing VPS, with Caddy
 automatic HTTPS. Production BACKEND_ORIGIN is configured. The account service
 uses AGENTAI_PUBLIC_ORIGIN=https://getlumina.pro. Customer-only proxy configuration
 is in ../caddy/Caddyfile.getlumina. Owner Gateway and internal routes stay private.
-SMTP/invitations and native execution are still pending.
+Gmail delivery is configured and the owner invitation sent; native execution
+is still pending.

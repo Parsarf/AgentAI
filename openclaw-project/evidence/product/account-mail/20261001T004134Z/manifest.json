@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-10-01T00:41:34.035512+00:00",
+  "smtp_provider": "Gmail SMTP",
+  "smtp_authentication": "PASS",
+  "smtp_tls": true,
+  "private_configuration": "root-owned mode0600; credential transferred through verified SSH stdin",
+  "recipient": "owner-provided address; omitted from repository evidence",
+  "invitation_smtp_accepted": true,
+  "invitation_job_state": "completed",
+  "previous_unsent_jobs_superseded": 1,
+  "code_valid_minutes": 15,
+  "recipient_activation": "pending user action at time of send",
+  "mail_timer_active": true,
+  "future_delivery": "bounded pending jobs every60 seconds; running/uncertain jobs never automatically resent",
+  "real_customer_invitations_sent": 1,
+  "paid_model_calls": 0,
+  "native_execution_enabled": false,
+  "source_sha256": {
+    "openclaw-project/platform/deploy/agentai-platform-mail.service": "c1dd7d18062c92509ea39f2c49ebe2fac40da3ea9af694aca9fb2e9d76846843",
+    "openclaw-project/platform/deploy/agentai-platform-mail.timer": "74e830143028bae8aa3aba83ce8d8010a7a68d25ace6c1856e87866d85d595db"
+  }
+}

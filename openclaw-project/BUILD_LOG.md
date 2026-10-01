@@ -1106,3 +1106,16 @@ CSRF cookie, no-store caching, anonymous API401, internal404, valid-CSRF invalid
 login401 and wrong-Origin403. Certificate validation passes. Synthetic negative
 login only; no real identity/invitation, SMTP, customer cell or paid model call.
 Native agent execution remains disabled. Evidence: evidence/product/custom-domain/20261001T002836Z/manifest.json.
+
+### 2026-10-01 UTC — Gmail invitation delivery configured
+
+Owner supplied a Google app password in a private ignored local file. Validated
+without displaying it, authenticated Gmail SMTP over STARTTLS, transferred
+credential via strict-host-key SSH stdin and installed it in root-owned0600
+server settings. Replaced the owner's stale unsent onboarding job with a fresh
+job; SMTP accepted one authorized invitation and the job is completed. Account
+activation remains the owner's action; no code or password appears in evidence.
+No trial/identity budget reset. Enabled bounded mail service/timer for queued
+account instructions (96 MiB/no swap/25% CPU; <=10 jobs per invocation).
+Uncertain/crashed jobs are not automatically resent. Native execution remains
+disabled. Evidence: evidence/product/account-mail/20261001T004134Z/manifest.json.

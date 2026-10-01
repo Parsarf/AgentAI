@@ -6,7 +6,7 @@ for the customer platform: accounts, isolated deployments, dashboard/Telegram
 work, project artifacts, live progress, enforceable usage and hosted billing.
 
 Customer account site: **https://getlumina.pro**. HTTPS and Vercel-to-VPS routing
-are connected. Email invitations and agent execution are still pending.
+are connected. Gmail invitation delivery is configured; agent execution is still pending.
 
 ## Publish from GitHub to Vercel
 

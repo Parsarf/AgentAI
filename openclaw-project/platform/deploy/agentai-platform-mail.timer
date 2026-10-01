@@ -1,0 +1,9 @@
+[Unit]
+Description=Check pending AgentAI account email jobs
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+RandomizedDelaySec=5s
+Unit=agentai-platform-mail.service
+[Install]
+WantedBy=timers.target

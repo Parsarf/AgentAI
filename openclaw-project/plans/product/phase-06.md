@@ -31,7 +31,10 @@ login/cookie/CSRF/no-store/anonymous denial checks pass. Routing fix625fc3e
 and its GitHub workflow pass. Owner Gateway remains private and available.
 See custom-domain-deployment.json and custom-domain-public-checks.json.
 
-Remaining: SMTP sender/credentials and first test email. Native agent
+Update: Gmail SMTP and bounded delivery timer configured; one owner invitation
+accepted by SMTP. User activation remains pending at send time.
+
+Remaining: native agent integration and acceptance below. Native agent
 adapter must prove isolation/capacity, budget admission, send/history/events,
 confirmed abort/drain and public result projection. Full dashboard chat and
 end-to-end serial tasks are not ready.

@@ -104,3 +104,19 @@ old releases reject the newer schema. Host-only lifecycle_status reads counts;
 seed_trial prepares one seven-day/$1 entitlement without resetting one already
 present. No account or invitation was created. Continue Phase4 native integration
 and Phase5 provider enforcement before dependent chat activation.
+
+## Enabled Gmail delivery on the existing VPS
+
+Gmail SMTP is configured privately using the owner's app password, STARTTLS587
+and the matching Gmail sender. Do not place credentials in Vercel or Git.
+agentai-platform-mail.service runs the existing bounded command as the separate
+platform identity. Its timer checks pending jobs every60 seconds and is enabled
+on reboot. At most10 jobs are processed per invocation; uncertain or crashed
+running jobs require reconciliation and are never automatically replayed.
+Activation codes remain single-use and expire15 minutes after issuance.
+One owner invitation was accepted by SMTP; inbox receipt is verified by the user.
+
+Disable outgoing mail with systemctl disable --now agentai-platform-mail.timer,
+then set AGENTAI_MAIL_ENABLED=0 in the private server settings and restart only
+agentai-platform-app. Preserve email job/token/audit history. Never reset trial
+entitlements to reissue an invitation.
