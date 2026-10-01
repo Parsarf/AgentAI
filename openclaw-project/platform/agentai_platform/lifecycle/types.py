@@ -31,6 +31,7 @@ class Receipt:
     applied: bool
     quiesced: bool
     backup_ref: str | None = None
+    fence: int = 0
 
 class Driver(Protocol):
     def check(self, kind: str) -> None: ...

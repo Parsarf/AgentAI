@@ -1,5 +1,10 @@
 # Lifecycle coordination — Phase 4 continuation
 
+Host custody/journal and Unix transport are now implemented separately from
+the app coordinator. See [supervisor contract](SUPERVISOR.md). Native backend,
+worker isolation, credentials, quotas and measured admission remain incomplete;
+the shipped supervisor entry point cannot execute native effects.
+
 Implemented locally: immutable schema extension, one deployment binding per
 account, two-cell trial ceiling, fixed create/start/stop/backup/restore/upgrade/
 delete requests, scoped operator queue API and customer operation reads.

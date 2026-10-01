@@ -1,0 +1,139 @@
+{
+  "phase": 4,
+  "run_id": "20261001T014000Z",
+  "recorded_at": "2026-10-01T02:03:22.359885+00:00",
+  "base_revision": "cff61341ebd07a80f94724dc3ac3f64fa2877809",
+  "target": "existing VPS; two invited accounts; one global customer task",
+  "build_result": "PARTIAL",
+  "native_acceptance": "NOT_RUN",
+  "customer_execution_enabled": false,
+  "supervisor_installed": false,
+  "source_sha256": {
+    "openclaw-project/platform/agentai_platform/lifecycle/coordinator.py": "49254fd8d685db176a6ae5f3d6ce55451ee29af2284c2eca036c7c069a359a58",
+    "openclaw-project/platform/agentai_platform/lifecycle/supervisor.py": "2a561f478f189a3080c12bcc7cd18ac96204bf0b5bb70480210cf25b91e0354b",
+    "openclaw-project/platform/agentai_platform/lifecycle/supervisor_main.py": "eb0e5b3c6be2e178d13e9f7ef0ad493d49cb624f866f852a4e8106be39af4538",
+    "openclaw-project/platform/agentai_platform/lifecycle/supervisor_transport.py": "143e3cf3837c947508a74e8a5cd5f56fd8de7ada7e5b98b510b6d9a8a3e9fd1c",
+    "openclaw-project/platform/agentai_platform/lifecycle/__init__.py": "5870a807e8f2833622aaf166e6f56852a87b077b7b4dc1ffe14a453a3c13bc2e",
+    "openclaw-project/platform/agentai_platform/lifecycle/types.py": "a51ccd198e4de299f3fa54f53c8fbf2a39c41311916052f4928bd4be41f5532e",
+    "openclaw-project/platform/agentai_platform/lifecycle/fleet_plan.py": "a0e63037bb8906ce504a0a3dcd8aeefe76064fcfafa2e77e987622ad68688a58",
+    "openclaw-project/platform/tests/test_supervisor.py": "805e01095551a7fa463a47d804b202a9761f72ad322b29643a2d8f140cd04dca",
+    "openclaw-project/platform/deploy/prepare_native_cli.py": "46b5256ecfa328d199947169b9fcfa664d46afbe9a35ad3634d84b8516394313",
+    "openclaw-project/platform/deploy/agentai-supervisor.service": "e52b94e7e0ca0650f5bb5a63581dd3c155bbff7a426c5b61c3e5e7337b913220"
+  },
+  "checks": [
+    {
+      "id": "P04-SUPERVISOR-CORE",
+      "status": "PASS",
+      "command": "python -m unittest tests.test_supervisor tests.test_lifecycle tests.test_request_queue tests.test_budget",
+      "observation": "51 cases:49 pass;2 Linux peer/socket cases skipped on macOS and assigned GitHub CI"
+    },
+    {
+      "id": "P03-REGRESSION",
+      "status": "PASS",
+      "command": "platform/.venv/bin/python manage.py test accounts --verbosity 1",
+      "observation": "40 cases pass; initial repository-venv invocation failed because Django was absent, corrected to platform environment"
+    },
+    {
+      "id": "P04-CAPACITY-FOUNDATION",
+      "status": "PASS",
+      "command": "python -m unittest tests.test_capacity tests.test_foundation",
+      "observation": "21 cases pass; initial sandbox attempt denied five loopback socket cases, permitted rerun passed"
+    },
+    {
+      "id": "P06-VERCEL-REGRESSION",
+      "status": "PASS",
+      "command": "node deploy/vercel/check.mjs",
+      "observation": "configuration and actual build routing pass"
+    },
+    {
+      "id": "P04-NATIVE-CANDIDATE",
+      "status": "PASS_WITH_WARNING",
+      "observation": "separate Node24.16.0 and OpenClaw2026.9.6 installed; bounded Fleet create help passed; native fs-safe support warning blocks promotion"
+    },
+    {
+      "id": "P04-EMPTY-REGISTRY-PROBE",
+      "status": "PASS",
+      "observation": "separate bounded Fleet list --json returned {cells:[]}; no native customer cell or owner registry was accessed"
+    },
+    {
+      "id": "P04-NATIVE-BOUNDARY",
+      "status": "NOT_RUN",
+      "observation": "no native cell or worker started; orchestration fixtures do not establish OS isolation"
+    }
+  ],
+  "host_observations": {
+    "initial_measured_at": "2026-10-01T01:35:29.891872+00:00",
+    "cpu_count": 2,
+    "MemTotal": 4055998464,
+    "MemAvailable": 885022720,
+    "SwapTotal": 2147479552,
+    "SwapFree": 16384,
+    "disk_free": 88851292160,
+    "runsc_present": false,
+    "kvm_present": true,
+    "host_cli": "2026.2.24",
+    "host_node": "22.22.0",
+    "docker_version": "29.2.1",
+    "docker_storage": "overlayfs",
+    "default_runtime": "runc",
+    "live_restore": false,
+    "recovery": "SSH/login briefly timed out, then public login200 and owner Gateway/database healthy. Cause not established."
+  },
+  "native_candidate": {
+    "path": "/opt/agentai-native/2026.9.6-node24.16.0",
+    "node_sha256": "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
+    "openclaw_package_integrity": "sha512-Ie0kyQSCVfFqixsgVg39vevUDq01Ch5u3+7Yu5Y3qARczmdAe+lzp8bVnO9925rHiW/+CFp70zfORCyPmCH31g==",
+    "install_limits": {
+      "memory_mib": 384,
+      "swap_mib": 0,
+      "cpu_percent": 25,
+      "tasks": 64,
+      "duration_seconds": 600,
+      "owner_headroom_mib": 512
+    },
+    "attempts": [
+      "initial headroom denial before filesystem changes",
+      "npm user/global config collision before CLI install; unused staging removed after stopped-service/no-candidate checks",
+      "corrected configs:320 packages installed in3min; native effects disabled"
+    ],
+    "warning": "fs-safe native support unavailable; native backend not promoted",
+    "systemd_peak_accounting": "Reported sub-MiB peak is not accepted as representative process memory; limits are hard bounds, not tenant peak measurements."
+  },
+  "primary_sources": [
+    "https://docs.openclaw.ai/cli/fleet",
+    "https://registry.npmjs.org/openclaw/2026.9.6",
+    "https://nodejs.org/dist/v24.16.0/SHASUMS256.txt",
+    "https://docs.docker.com/reference/cli/dockerd/",
+    "https://gvisor.dev/docs/user_guide/install/"
+  ],
+  "public_source_inspection": {
+    "source": "integrity-verified public npm archive, not installed private owner runtime",
+    "archive_bytes": 95336387,
+    "modules": [
+      "dist/fleet-cli-CR5twLfa.mjs",
+      "dist/commands.runtime-C4tYq_s0.mjs"
+    ],
+    "finding": "Docker/Podman engine option alone does not select a stronger OCI runtime. Restore requires archive tenant identity to match target; quarantined orchestration remains missing."
+  },
+  "cost": {
+    "paid_provider_calls": 0,
+    "provider_actual_usd": 0,
+    "new_service_or_hardware_purchases": 0,
+    "native_task_cost_and_peak": "unknown"
+  },
+  "blockers": [
+    "native fs-safe support",
+    "native backend and executor drain receipts",
+    "automatic host enrollment",
+    "stronger runtime and worker broker",
+    "persistent disk quotas and egress policy",
+    "host dispatch-side capacity and provider admission",
+    "quarantined restore/pinned upgrade/rollback/retention",
+    "usable measured existing-host profile"
+  ],
+  "deferred": [
+    "Phase15 native A/B isolation, full lifecycle, restore/failure/load acceptance"
+  ],
+  "rollback": "No app release/schema or owner config/service changes. Source rollback; remove only separate CLI candidate after confirming no executor uses it. Never reset unresolved operation custody.",
+  "github_ci": "PENDING"
+}

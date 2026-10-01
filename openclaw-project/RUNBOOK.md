@@ -702,3 +702,20 @@ old releases reject the newer schema. Host-only lifecycle_status reads counts;
 seed_trial prepares one seven-day/$1 entitlement without resetting one already
 present. No account or invitation was created. Continue Phase4 native integration
 and Phase5 provider enforcement before dependent chat activation.
+
+## Product Phase4 supervisor continuation — 2026-10-01
+
+Read `platform/agentai_platform/lifecycle/SUPERVISOR.md` before installation or
+recovery. The new host journal is independent of app metadata; never reset a
+global hold or delete an uncertain intent to retry. Obtain a bound native drain
+receipt first. Keep the web user out of the controller group; never proxy the
+Unix control socket. Shipped native backend is disabled and service uninstalled.
+
+The host `openclaw` executable is2026.2.24/Node22.22.0; earlier Fleet2026.9.6
+evidence does not establish that host command's compatibility. Do not run owner
+doctor --fix or replace owner binaries to correct this. The separate candidate
+installer in platform/deploy/prepare_native_cli.py uses official pinned Node/
+package integrity, a dedicated directory and no install scripts. Run only in a
+bounded transient service,384MiB/no swap/25% CPU/64 tasks/10min, retaining512MiB
+owner headroom. An incomplete staging directory requires scoped investigation
+before retry; no blind overwrite. Installer fit is not customer task admission.

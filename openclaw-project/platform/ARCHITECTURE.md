@@ -203,3 +203,12 @@ outcomes. Pending intake does not admit paid work. An execution adapter must adm
 budget before any effects and confirm stopped execution plus settled reservations
 before releasing the slot. Account-scoped queue/page/cancellation are implemented;
 native execution remains disabled. See SERIAL_REQUESTS.md for the adapter contract.
+
+## Phase4 host custody continuation — 2026-10-01
+
+HostSupervisor stores independent private enrollment and operation receipts;
+SocketDriver supplies fixed claims through Linux-authenticated Unix transport.
+Running/uncertain intent survives executor crashes and blocks new effects.
+No public route/enrollment/command interface or Docker authority is added to the
+web application. See lifecycle/SUPERVISOR.md for exact checks and missing native
+integrations. The service template and native backend remain inactive.

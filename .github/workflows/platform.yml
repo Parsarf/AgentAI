@@ -24,6 +24,6 @@ jobs:
           export AGENTAI_PUBLIC_ORIGIN=https://localhost
           python manage.py test accounts --verbosity 1
       - name: Queue, lifecycle and budget checks
-        run: python -m unittest tests.test_request_queue tests.test_lifecycle tests.test_budget
+        run: python -m unittest tests.test_request_queue tests.test_lifecycle tests.test_supervisor tests.test_budget
       - name: Vercel routing checks
         run: node deploy/vercel/check.mjs

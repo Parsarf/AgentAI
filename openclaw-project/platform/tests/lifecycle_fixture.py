@@ -28,7 +28,7 @@ class FixtureDriver:
             raise Conflict('fixture target mismatch')
         if self.fail_before:
             return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
-                           state['state'],False,state['state']!='running')
+                           state['state'],False,state['state']!='running',fence=claim.fence)
         kind=claim.kind
         target={'create':'stopped','start':'running','stop':'stopped','backup':'stopped',
                 'restore':'stopped','upgrade':'running','delete':'absent'}[kind]
@@ -45,7 +45,7 @@ class FixtureDriver:
         state_path.write_text(json.dumps(state))
         self.effects+=1
         receipt=Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
-                        target,True,target!='running',claim.operation_id if kind=='backup' else None)
+                        target,True,target!='running',claim.operation_id if kind=='backup' else None,fence=claim.fence)
         receipt_path.write_text(json.dumps(asdict(receipt)))
         if self.fail_after: raise TimeoutError('synthetic lost response')
         return receipt

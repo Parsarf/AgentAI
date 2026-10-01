@@ -136,3 +136,11 @@ Phase4 target clarified to one service-operated VPS/shared domain. Assessment/ca
 Phase 4 assessment evidence: [manifest](../../evidence/product/phase-04/20260930T011410Z/manifest.json). Lifecycle and customer activation remain incomplete.
 
 Current capacity target: [existing-VPS trial](../../../product/EXISTING_VPS_TRIAL.md). Two invited accounts share one global task slot; parallel runtime proof is retained as a capacity-expansion gate. All 121 requirements remain.
+
+## Phase4 continuation — 2026-10-01
+
+TENANT-01/02/03 remain PARTIAL; independent host journal/binding custody and
+Unix controller transport now exist. Native backend, worker isolation, quotas,
+credentials, dispatch admission and usable host profile remain activation gaps.
+No native acceptance pass or phase-order change. All121 requirements retained.
+See [current Phase4 record](phase-04.md) and latest manifest.

@@ -99,3 +99,44 @@ customer execution. Resume native Phase4 and all-route Phase5 integration, not
 claim a complete provisioning build or public beta.
 
 Evidence: `openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json`.
+
+## Host supervisor continuation — 2026-10-01 UTC
+
+Implemented separate host-owned enrollment/custody, a durable operation journal,
+process-wide effect lock, exact account/deployment/profile binding, per-operation
+receipt fences, stale/changed replay denial, global active/uncertain holds and
+reconciliation without dispatch. Added bounded Unix transport with Linux peer
+identity, trusted socket checks, fixed errors and no enrollment/command/secret
+API. Added a hardened service template; no live supervisor is installed.
+The shipped entry point retains DisabledDriver. See
+`platform/agentai_platform/lifecycle/SUPERVISOR.md` for exact boundaries and gaps.
+
+Local checks:51 core checks (49 pass,2 Linux peer/socket cases skipped on macOS),
+40 Django account checks,21 capacity/foundation checks and Vercel configuration/
+build routing checks pass. Foundation socket cases first failed due to sandbox
+bind denial, then passed with loopback access. An initial Django invocation used
+the repository's non-Django environment; rerun in platform/.venv passed. Neither
+failure was a product pass. Linux cases are included in the GitHub gate.
+
+Read-only host measurement at01:35 UTC:885022720 bytes available,16384 bytes free
+swap,2CPU,~88.85GB disk free; runsc absent, /dev/kvm present. SSH/public login
+briefly timed out during probes, then recovered; login returned200 and owner
+Gateway/database reported healthy. No owner service restart or cleanup occurred.
+The host CLI is2026.2.24 with Node22.22.0, unlike the earlier2026.9.6 Fleet
+inventory. Public pinned2026.9.6 requires Node24.16.0+ (or26.1.0+); a separate
+bounded candidate installer preserves owner binaries/configuration. Its first
+attempt denied headroom; the second hit an npm config-file collision before
+CLI installation. Corrected that collision and removed only its unused staging.
+The corrected attempt installed320 packages successfully. Bounded Fleet create
+help and empty separate registry JSON probes passed. A native fs-safe support
+warning blocks candidate promotion; no cell was created. Exact results are in
+this run's manifest.
+
+Phase4 remains PARTIAL. Native backend/drain proof, secret/provider custody,
+stronger worker runtime, persistent disk/network quotas, dispatch-side admission,
+automatic enrollment, quarantined restore/pinned upgrade/rollback/retention and
+a measured usable customer profile remain missing. Customer execution stays off;
+native isolation/full lifecycle acceptance remains NOT_RUN in Phase15. This is
+not a hardware upgrade requirement or a reason to renumber/skip Phase4.
+
+Evidence: `openclaw-project/evidence/product/phase-04/20261001T014000Z/manifest.json`.

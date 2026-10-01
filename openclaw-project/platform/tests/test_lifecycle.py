@@ -97,6 +97,8 @@ class LifecycleChecks(unittest.TestCase):
         op=self.request('create');claim=self.engine.claim('a',op['id'],owner='old',capacity=CAPACITY)
         receipt=self.driver.execute(claim)
         with self.assertRaises(Conflict):self.engine.finish(claim,replace(receipt,account_id='b'))
+        with self.assertRaises(Conflict):self.engine.finish(claim,replace(receipt,fence=claim.fence+1))
+        with self.assertRaises(Conflict):self.engine.finish(claim,replace(receipt,fence=True))
         self.assertTrue(self.engine.finish(claim,receipt))
         with self.assertRaises(Conflict):self.engine.finish(claim,receipt)
     def test_definite_failure_retry_limit_and_same_deployment(self):

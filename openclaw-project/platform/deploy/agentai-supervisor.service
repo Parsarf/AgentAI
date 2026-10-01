@@ -1,0 +1,36 @@
+[Unit]
+Description=AgentAI private lifecycle custody (native effects disabled)
+After=network.target
+
+[Service]
+User=root
+Group=agentai-lifecycle-control
+WorkingDirectory=/opt/agentai-platform/current
+ExecStart=/usr/bin/python3 -m agentai_platform.lifecycle.supervisor_main
+UMask=0077
+RuntimeDirectory=agentai-supervisor
+RuntimeDirectoryMode=0750
+StateDirectory=agentai-supervisor
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_CHOWN
+ReadWritePaths=/var/lib/agentai-supervisor /run/agentai-supervisor
+MemoryMax=128M
+MemorySwapMax=0
+CPUQuota=25%
+TasksMax=16
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1149,3 +1149,23 @@ Deployed a new release with rollback guard, preserving private state and limits.
 Live page checks used GET only to preserve the owner's retry allowance.
 No account activation or password override was performed by the operator.
 Evidence: evidence/product/activation-code/20261001T005457Z/manifest.json.
+
+### 2026-10-01 UTC — Product Phase4 private host supervisor
+
+Implemented independent host enrollment/journal, fixed binding/generation/fence
+checks, serialized effects, durable uncertain holds and read-only reconciliation.
+Added bounded Unix transport with Linux peer identity, private server checks,
+sanitized errors and no command/path/token/enrollment API. Added an inactive
+hardened service template; no app Docker socket or native execution activation.
+49 core local checks pass (2 Linux cases assigned CI),40 account checks and21
+capacity/foundation checks pass; Vercel routing/build checks pass. Initial local
+environment/socket failures were corrected and preserved in evidence.
+
+Host access briefly timed out, then login200 and owner Gateway/database healthy
+were observed. Host CLI2026.2.24/Node22 differs from earlier Fleet2026.9.6 evidence.
+Prepared a separate pinned Node24.16/Fleet CLI candidate with bounded resource
+use and no owner config/binary change. Installer attempts/results are recorded
+in Phase4 evidence. No paid provider call, new invitation, hardware purchase,
+customer cell, live supervisor or account migration. Phase4 remains PARTIAL;
+native isolation, quotas, credentials/admission and recovery integration remain.
+Evidence: evidence/product/phase-04/20261001T014000Z/manifest.json.

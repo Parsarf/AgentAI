@@ -208,3 +208,14 @@ and [ADR006](platform/ARCHITECTURE.md). Account ownership is resolved server-sid
 not shared owner login/UI filters. New app credentials contain only private
 session/mail custody, never owner Gateway/provider/Telegram/SSH keys. Native
 execution/provisioning/billing remain off; owner services unchanged.
+
+## Product Phase4 host custody continuation — 2026-10-01
+
+The private supervisor now has independent host enrollment, durable intent/
+receipt custody, global serialization and bounded Unix control transport.
+Application and host both validate receipt attempt fences. The application does
+not enroll host bindings or receive Docker authority. Service template is not
+installed; native entry point remains disabled. Native worker/runtime, provider,
+quota, admission, restore/upgrade and usable-profile integrations remain Phase4
+work. See `platform/agentai_platform/lifecycle/SUPERVISOR.md` and the latest
+Phase4 record; canonical19-phase order is unchanged.

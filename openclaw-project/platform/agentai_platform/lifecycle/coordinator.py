@@ -213,6 +213,8 @@ class Coordinator:
         # proof no delayed work can still run when a slot is released.
         if (receipt.account_id,receipt.deployment_id,receipt.operation_id,receipt.generation)!=(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation):
             raise Conflict('receipt binding mismatch')
+        if type(receipt.fence) is not int or receipt.fence!=claim.fence:
+            raise Conflict('receipt fence mismatch')
         if receipt.state not in {'absent','stopped','running'} or type(receipt.applied) is not bool or type(receipt.quiesced) is not bool:
             raise Conflict('invalid receipt')
         desired={'create':'stopped','start':'running','stop':'stopped','upgrade':'running','backup':'stopped','restore':'stopped','delete':'absent'}[claim.kind]

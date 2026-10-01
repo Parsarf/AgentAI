@@ -264,11 +264,13 @@
         "openclaw-project/evidence/product/phase-04/20260930T011410Z/manifest.json",
         "product/EXISTING_VPS_TRIAL.md",
         "openclaw-project/platform/agentai_platform/lifecycle/",
-        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json"
+        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json",
+        "openclaw-project/platform/agentai_platform/lifecycle/SUPERVISOR.md",
+        "openclaw-project/evidence/product/phase-04/20261001T014000Z/manifest.json"
       ],
-      "activation_blocker": "Existing-VPS profile unmeasured; native driver/host-owned supervisor/secret custody/worker broker/stronger runtime/network/persistent quotas and Phase5 all-route dispatch enforcement incomplete. No hardware upgrade prerequisite.",
+      "activation_blocker": "Host custody/journal and Unix transport implemented but native backend, automatic enrollment, secret/provider custody, worker broker/stronger runtime, network/persistent quotas, dispatch admission, safe recovery/upgrade and usable existing-VPS profile remain incomplete. No hardware upgrade prerequisite.",
       "acceptance_result": "NOT_RUN",
-      "targeted_check_result": "PASS local coordinator/API/capacity checks; no native runtime isolation proof",
+      "targeted_check_result": "PASS local journal/binding/fence/replay/uncertainty/IPC/core/account/capacity checks; Linux peer/socket cases assigned CI; no native runtime isolation proof",
       "build_result": "PARTIAL",
       "capacity_profile": "two_accounts_one_global_task_existing_vps",
       "parallel_runtime_acceptance_result": "NOT_RUN"
@@ -292,11 +294,13 @@
         "openclaw-project/evidence/product/phase-04/20260930T011410Z/manifest.json",
         "product/EXISTING_VPS_TRIAL.md",
         "openclaw-project/platform/agentai_platform/lifecycle/",
-        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json"
+        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json",
+        "openclaw-project/platform/agentai_platform/lifecycle/SUPERVISOR.md",
+        "openclaw-project/evidence/product/phase-04/20261001T014000Z/manifest.json"
       ],
-      "activation_blocker": "Existing-VPS profile unmeasured; native driver/host-owned supervisor/secret custody/worker broker/stronger runtime/network/persistent quotas and Phase5 all-route dispatch enforcement incomplete. No hardware upgrade prerequisite.",
+      "activation_blocker": "Host custody/journal and Unix transport implemented but native backend, automatic enrollment, secret/provider custody, worker broker/stronger runtime, network/persistent quotas, dispatch admission, safe recovery/upgrade and usable existing-VPS profile remain incomplete. No hardware upgrade prerequisite.",
       "acceptance_result": "NOT_RUN",
-      "targeted_check_result": "PASS local coordinator/API/capacity checks; no native runtime isolation proof",
+      "targeted_check_result": "PASS local journal/binding/fence/replay/uncertainty/IPC/core/account/capacity checks; Linux peer/socket cases assigned CI; no native runtime isolation proof",
       "build_result": "PARTIAL",
       "capacity_profile": "two_accounts_one_global_task_existing_vps",
       "parallel_runtime_acceptance_result": "NOT_RUN"
@@ -320,11 +324,13 @@
         "openclaw-project/evidence/product/phase-04/20260930T011410Z/manifest.json",
         "product/EXISTING_VPS_TRIAL.md",
         "openclaw-project/platform/agentai_platform/lifecycle/",
-        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json"
+        "openclaw-project/evidence/product/phase-04/20260930T195312Z/manifest.json",
+        "openclaw-project/platform/agentai_platform/lifecycle/SUPERVISOR.md",
+        "openclaw-project/evidence/product/phase-04/20261001T014000Z/manifest.json"
       ],
-      "activation_blocker": "Existing-VPS profile unmeasured; native driver/host-owned supervisor/secret custody/worker broker/stronger runtime/network/persistent quotas and Phase5 all-route dispatch enforcement incomplete. No hardware upgrade prerequisite.",
+      "activation_blocker": "Host custody/journal and Unix transport implemented but native backend, automatic enrollment, secret/provider custody, worker broker/stronger runtime, network/persistent quotas, dispatch admission, safe recovery/upgrade and usable existing-VPS profile remain incomplete. No hardware upgrade prerequisite.",
       "acceptance_result": "NOT_RUN",
-      "targeted_check_result": "PASS local coordinator/API/capacity checks; no native runtime isolation proof",
+      "targeted_check_result": "PASS local journal/binding/fence/replay/uncertainty/IPC/core/account/capacity checks; Linux peer/socket cases assigned CI; no native runtime isolation proof",
       "build_result": "PARTIAL",
       "capacity_profile": "two_accounts_one_global_task_existing_vps",
       "parallel_runtime_acceptance_result": "NOT_RUN"
