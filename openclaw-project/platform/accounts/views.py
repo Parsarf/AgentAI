@@ -16,6 +16,20 @@ from .models import Identity, Audit, EmailJob
 from .services import Denied, Limited, audit, rate, token_for, deliver, consume, create_invite, operator_scope, revoke, models_f_epoch
 
 def csrf_failure(request, reason=''):
+    # Record only a fixed category, never raw headers, tokens or request data.
+    category='token_invalid'
+    for prefix,label in [('Origin checking failed','origin_invalid'),
+                         ('Referer checking failed - no Referer','referer_missing'),
+                         ('Referer checking failed','referer_invalid'),
+                         ('CSRF cookie not set','cookie_missing'),
+                         ('CSRF token missing','token_missing')]:
+        if reason.startswith(prefix): category=label;break
+    print(json.dumps({'event':'account_csrf','request_id':str(getattr(request,'request_id','')),
+                      'category':category}),flush=True)
+    if request.content_type=='application/x-www-form-urlencoded':
+        retry={'/auth/activate':'/account/activate/','/auth/reset':'/account/reset/',
+               '/auth/login':'/account/login/','/auth/recovery':'/account/recover/'}.get(request.path,'/account/')
+        return render(request,'accounts/csrf_error.html',{'retry':retry},status=403)
     return JsonResponse({'error':'csrf_denied'},status=403)
 
 def endpoint(methods, fields=(), field_limits=None):

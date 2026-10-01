@@ -1119,3 +1119,18 @@ No trial/identity budget reset. Enabled bounded mail service/timer for queued
 account instructions (96 MiB/no swap/25% CPU; <=10 jobs per invocation).
 Uncertain/crashed jobs are not automatically resent. Native execution remains
 disabled. Evidence: evidence/product/account-mail/20261001T004134Z/manifest.json.
+
+### 2026-10-01 UTC — Browser activation CSRF correction
+
+Owner reported csrf_denied on activation. Reproduced the compatibility defect:
+no-referrer strips Django's HTTPS Referer fallback when Origin is absent. The
+historical user's exact failure category was not logged. Changed policy to
+same-origin, preserving privacy across origins and retaining cookie/token/origin
+checks. Added readable form retry page and fixed-category diagnostics with no
+raw headers/codes/passwords; API csrf_denied contract remains unchanged.
+27 account regression checks pass, including successful synthetic activation
+using Referer without Origin and negative cookie/cross-origin cases.
+New private release deployed with rollback guard; no DB migration. Public form
+checks pass through getlumina.pro, while foreign/missing origin/referrer remain
+403. Existing owner code was still usable; no replacement email sent.
+Evidence: evidence/product/csrf-fix/20261001T004843Z/manifest.json.

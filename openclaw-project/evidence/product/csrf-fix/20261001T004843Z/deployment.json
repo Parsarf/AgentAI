@@ -1,0 +1,17 @@
+{
+  "release": "20261001T004622Z-csrf",
+  "previous_release": "20260930T212713Z",
+  "readiness": {
+    "foundation_ready": true,
+    "identity_ready": true,
+    "customer_ready": false,
+    "execution_enabled": false,
+    "mail_configured": true
+  },
+  "source_sha256": {
+    "accounts/middleware.py": "f667b039e7b291f6f434adc57e024abd9d043c1e15d0e90c9e6d6d0aa22826dd",
+    "accounts/views.py": "de84cd002ce9c5053f0b7011cbd38a426ca78fc81478298cf697b51a22345b0b",
+    "accounts/templates/accounts/csrf_error.html": "4a10363033b401f20fc5c0531a84940f501d5c2c81d4c3243bd24c5a0e3e8e76"
+  },
+  "database_migration_performed": false
+}

@@ -1,0 +1,24 @@
+{
+  "created_at": "2026-10-01T00:48:43.027754+00:00",
+  "result": "PASS",
+  "user_report": "Activation form returned csrf_denied",
+  "reproduced_defect": "no-referrer prevents HTTPS Referer fallback when Origin is absent; a same-origin Referer passes validation",
+  "historical_user_failure_category": "not logged before this fix; no raw user headers collected",
+  "fix": [
+    "same-origin Referrer-Policy",
+    "Readable form recovery on CSRF rejection; API error contract preserved",
+    "Fixed-category diagnostics without tokens, passwords, URLs or headers"
+  ],
+  "local_account_regression_tests": 27,
+  "positive_activation_verified": "Disposable synthetic identity in local tests; not owner production credentials",
+  "public_verification": "Synthetic invalid code reaches application denial with Origin or same-origin Referer; foreign Origin and missing Origin/Referer remain403",
+  "server_deployment": "New release with automatic readiness rollback; no database migration",
+  "existing_owner_invitation": "Still valid at status check; no new email sent",
+  "paid_provider_calls": 0,
+  "native_execution_enabled": false,
+  "evidence_sha256": {
+    "public-checks.json": "3716113622224cbb5fa39605c59e54cf7ed6ce82315d2f5c275dc271b6e910a4",
+    "deployment.json": "ffaa12dc804b0f7d24d84a643c9297a9c8a7137b0f06102f6d01f0fc678f20f8",
+    "account-regression.txt": "2c86d6a58b5e1ec121fad71d046e033cf4e967abda45d711bb558227a53a43c4"
+  }
+}

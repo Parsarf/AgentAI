@@ -87,6 +87,40 @@ class AccountBoundaryTests(TestCase):
         self.assertEqual(c.get('/v1/me',secure=True,HTTP_HOST='evil.invalid').status_code,400)
         self.assertEqual(c.post('/auth/login','x'*9000,content_type='application/json',secure=True).status_code,413)
 
+    def test_activation_form_referer_fallback_without_origin(self):
+        from urllib.parse import urlencode
+        user=self.users['a']; user.is_active=False;user.save(update_fields=['is_active'])
+        identity=user.identity;identity.verified=False;identity.save(update_fields=['verified'])
+        raw=token_for(user,'onboarding');c=self.new_client()
+        page=c.get('/account/activate/',secure=True)
+        self.assertEqual(page['Referrer-Policy'],'same-origin')
+        token=re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"',page.content.decode()).group(1)
+        body=urlencode({'code':raw,'password':PASSWORD,'csrfmiddlewaretoken':token})
+        response=c.post('/auth/activate',body,content_type='application/x-www-form-urlencoded',secure=True,
+                        HTTP_REFERER='https://localhost/account/activate/')
+        self.assertEqual(response.status_code,302);self.assertEqual(response['Location'],'/account/login/')
+        user.refresh_from_db();identity.refresh_from_db()
+        self.assertTrue(user.is_active);self.assertTrue(identity.verified)
+        self.assertNotIn(raw,self.output.getvalue())
+
+    def test_csrf_form_recovery_preserves_cookie_and_origin_checks(self):
+        from urllib.parse import urlencode
+        c=self.new_client();page=c.get('/account/activate/',secure=True)
+        token=re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"',page.content.decode()).group(1)
+        data=urlencode({'code':'CANARY_ACTIVATION_CODE','password':PASSWORD,'csrfmiddlewaretoken':token})
+        bad=c.post('/auth/activate',data,content_type='application/x-www-form-urlencoded',secure=True,
+                   HTTP_REFERER='https://evil.invalid/account/activate/')
+        self.assertEqual(bad.status_code,403);self.assertContains(bad,'Open a fresh form',status_code=403)
+        self.assertContains(bad,'/account/activate/',status_code=403)
+        no_cookie=self.new_client().post('/auth/activate',data,content_type='application/x-www-form-urlencoded',
+                   secure=True,HTTP_ORIGIN='https://localhost')
+        self.assertEqual(no_cookie.status_code,403)
+        api=c.post('/auth/activate','{}',content_type='application/json',secure=True,
+                   HTTP_X_CSRFTOKEN=token,HTTP_ORIGIN='https://evil.invalid')
+        self.assertEqual(api.status_code,403);self.assertEqual(api.json(),{'error':'csrf_denied'})
+        self.assertNotIn('CANARY_ACTIVATION_CODE',self.output.getvalue())
+        self.assertNotIn('evil.invalid',self.output.getvalue())
+
     def test_secure_cookie_rotation_logout_and_expiry(self):
         c=self.signed(); cookie=c.cookies[settings.SESSION_COOKIE_NAME]
         self.assertTrue(cookie['secure']);self.assertTrue(cookie['httponly']);self.assertEqual(cookie['samesite'],'Strict')
