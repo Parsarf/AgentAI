@@ -96,5 +96,15 @@
     "Phase15 native A/B isolation, full lifecycle, restore/failure/load acceptance"
   ],
   "rollback": "Host: chown 501 / reverts the ownership fix; userdel agentai-fleet; no owner config/service/data change; owner stack verified healthy after cleanup. Code: source rollback of fleet_driver.py v2, SUPERVISOR.md, tests and the example manifest.",
+  "github_ci": {
+    "status": "PASS",
+    "url": "https://github.com/Parsarf/AgentAI/actions/runs/37245439892",
+    "observed_counts": {
+      "accounts": 40,
+      "core": 86,
+      "note": "86 = supervisor/lifecycle/queue/budget/capacity/foundation/fleet-driver-v2 modules on Linux, zero skips"
+    },
+    "vercel_routing": "PASS"
+  },
   "implementation_revision": "5f37bb1d3c03595913884726f76748197280be18"
 }
