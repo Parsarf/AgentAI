@@ -96,5 +96,5 @@
     "Phase15 native A/B isolation, full lifecycle, restore/failure/load acceptance"
   ],
   "rollback": "Host: chown 501 / reverts the ownership fix; userdel agentai-fleet; no owner config/service/data change; owner stack verified healthy after cleanup. Code: source rollback of fleet_driver.py v2, SUPERVISOR.md, tests and the example manifest.",
-  "implementation_revision": "PENDING"
+  "implementation_revision": "5f37bb1d3c03595913884726f76748197280be18"
 }
