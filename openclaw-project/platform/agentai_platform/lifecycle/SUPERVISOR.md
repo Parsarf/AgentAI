@@ -50,21 +50,30 @@ boundary tests; don't broadly remove the service restrictions.
 
 `fleet_driver.FleetCliDriver` executes only the fixed `FleetPlanner` plans for a
 host-enrolled binding under a pinned candidate CLI. Custody comes from a
-host-authored manifest (`FleetCustody`): both binaries digest-pinned, an exact
-subprocess environment (never inherited; the executor's own CPython runtime may
-add locale keys, pinned by the boundary test), a bounded working directory,
-output and wall-time bounds, and the observed native output schema per
-operation kind.
-Without a verified schema for a kind the driver refuses exactly like
-`DisabledDriver`; upgrade/restore schemas are rejected at load and remain
-refused by the planner. Receipts are built only from schema-matched native
-JSON (duplicate keys rejected); a non-zero exit, malformed output, schema
-mismatch, timeout or oversized output is an uncertain outcome, never a guess.
-Backup receipts additionally verify the archive as a bounded, regular,
-non-symlink gzip file under the binding's private backup root; delete and
-create reconciliation use only the bounded `fleet list --json` absence probe
-that was already executed against the installed candidate. Executor drain is
-the whole-process-group kill plus a proven reaped group.
+host-authored manifest (`FleetCustody`, example `deploy/fleet-custody.example.json`):
+both binaries digest-pinned, an exact subprocess environment (never inherited;
+the executor's own CPython runtime may add locale keys, pinned by the boundary
+test), a bounded working directory, output and wall-time bounds, the verified
+`fleet list --json` state vocabulary and the operator-verified kinds.
+
+Every receipt is proven from the registry, not the command's own text: after a
+zero exit the driver runs the bounded `fleet list --json` probe (strict schema,
+duplicate keys rejected) and maps `cells[].state` through the custody
+vocabulary — create requires `created`→stopped, start `running`, stop/backup a
+stopped state, delete requires absence. A non-zero exit, missing/mismatched
+state, malformed registry output, timeout or oversized output is an uncertain
+outcome, never a guess. Backup additionally verifies the archive as a bounded,
+regular, non-symlink gzip file under the binding's private root; reconciliation
+uses the same absence probe for create/delete only. Executor drain is the
+whole-process-group kill plus a proven reaped group.
+
+This mapping was verified against the installed 2026.9.6 candidate by an
+owner-authorized disposable cell exercise (create → list `created` → start →
+`running` (245 MiB measured under a 512 MiB cap) → stop → `exited` → backup
+(gzip archive) → rm → registry empty). Two facts are load-bearing: start/stop/
+rm emit text only, so the registry is the only state source; and `fleet create`
+prints the cell Gateway token in plaintext on stdout, so captured stdout stays
+in a private temp file deleted with the process and is never parsed or stored.
 
 `HeadroomAdmission` gives `HostSupervisor` an independent host-side dispatch
 bound: runnable kinds (start/upgrade/restore) require `MemAvailable` to cover
@@ -73,23 +82,26 @@ the binding memory plus a custody reserve, or dispatch is denied
 returns such effect-free denials to `pending` (lease cleared, audit
 `capacity_wait/denied`, attempt count standing) instead of poisoning the
 operation as uncertain. `supervisor_main` still constructs `DisabledDriver`
-and has no flag to change that: enabling the native backend requires the
-verified custody schemas, wiring by the host operator, and its own close-out.
+and has no flag to change that: enabling the native backend means the host
+operator deposits a custody manifest matching the installed candidate and
+wires `FleetCliDriver` with `HeadroomAdmission` in its own reviewed change.
 
 ## Native activation work remaining (Phase 4)
 
-Capture and operator-verify the real effect-output schemas (`deploy/capture_fleet_probe.py`
-records the read-only forms; effect forms need an explicitly authorized
-disposable activation), then wire `FleetCliDriver` plus `HeadroomAdmission`
-into the installed service with the candidate CLI custody. Add credential
-custody, subprocess lifetime/drain proof beyond the executor group, the
-stronger runtime/worker broker, per-tenant effective identities, state/artifact
-disk quotas and network policy. Implement pinned upgrade/rollback and
-quarantined restore/revocation/retention. Integrate all-route provider budget
-admission before any paid or task effect. Measure a usable
-sleeping/wake/task/stage profile on the existing VPS.
+The registry vocabulary and command behaviors are verified and captured in the
+example custody manifest; the remaining work is provisioning the runtime
+identity (home/state dirs it owns, docker-group access, the `/` ownership fix
+already applied), depositing the signed custody manifest, and wiring
+`FleetCliDriver` plus `HeadroomAdmission` into the installed service in a
+reviewed change. Then: credential/token custody for cells (create prints the
+Gateway token to stdout), task-stage wake/drain measurement, the stronger
+runtime/worker broker, per-tenant effective identities, state/artifact disk
+quotas and network policy, pinned upgrade/rollback, quarantined
+restore/revocation/retention, and all-route provider budget admission before
+any paid or task effect.
 
-No native backend has been enabled or proven by these orchestration tests.
+No native backend has been enabled by these tests: the disposable cell lived
+entirely in the isolated candidate registry and was deleted with its artifacts.
 Fixture receipts, container status and socket transport are not OS isolation
 or effect-quiescence proof. Phase 4 remains PARTIAL; Phase 15 acceptance remains
 NOT_RUN. Do not advance the canonical phase order on this component alone.

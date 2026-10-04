@@ -1,15 +1,16 @@
 """Boundary tests for the native Fleet backend. No native cell is ever started.
 
-The stub CLI exercises the driver's fixed-argv execution, custody validation,
-drain kills, receipt schema gating and host headroom admission. These are
-orchestration boundaries, not OS isolation or native acceptance (Phase 15).
+The stub CLI mirrors the behaviors observed on the installed candidate
+(2026-10-04 probe): JSON for create/backup/list, text plus exit code for
+start/stop/rm, and the registry as the state source. These are orchestration
+boundaries, not OS isolation or native acceptance (Phase 15).
 """
 from dataclasses import replace
 import hashlib
 import json
 import os
 from pathlib import Path
-import sqlite3
+import shutil
 import sys
 import tempfile
 import time
@@ -26,19 +27,9 @@ from agentai_platform.security import Principal
 from agentai_platform.store import Store
 from tests.lifecycle_fixture import FixtureDriver
 
-FIELDS={'status':'str','applied':'bool','drained':'bool'}
-def schema(states):
-    return {'fields':FIELDS,'map':{'state':'status','applied':'applied','quiesced':'drained'},
-            'state_values':states}
-FULL_SCHEMAS={
-    'create':schema({'running':[],'stopped':['created'],'absent':['gone']}),
-    'start':schema({'running':['running'],'stopped':[],'absent':[]}),
-    'stop':schema({'running':[],'stopped':['stopped'],'absent':[]}),
-    'backup':schema({'running':[],'stopped':['stopped'],'absent':[]}),
-    'delete':schema({'running':[],'stopped':[],'absent':['gone']}),
-}
+TENANT='aa-'+'1'*32
+LIST_STATES={'running':['running'],'stopped':['created','exited']}
 STUB='''import json,os,subprocess,sys,time
-mode=os.environ.get('AA_MODE','ok')
 args=sys.argv[1:]
 calls=os.environ.get('AA_CALLS')
 if calls:
@@ -47,32 +38,36 @@ def emit(body,code=0):
     sys.stdout.write(body if isinstance(body,str) else json.dumps(body))
     sys.stdout.flush();sys.exit(code)
 if args[:2]==['fleet','list']:
-    if os.environ.get('AA_REGISTRY_MODE')=='present':
-        emit({'cells':[{'id':os.environ['AA_TENANT']}]})
-    emit({'cells':[]})
+    if os.environ.get('AA_LIST_MODE')=='bad': emit('not-json')
+    state=os.environ.get('AA_CELL_STATE','absent')
+    if state=='absent': emit({'cells':[]})
+    emit({'cells':[{'tenant':os.environ['AA_TENANT'],'state':state,'port':19199,
+        'image':'ghcr.io/openclaw/openclaw@sha256:'+'a'*64,'created':'2026-10-04T00:00:00.000Z'}]})
 raw=args[1] if len(args)>1 else ''
 kind={'rm':'delete'}.get(raw,raw)
+mode=os.environ.get('AA_MODE','ok')
+if mode=='envdump':
+    with open(os.environ['AA_DUMP'],'w') as h: json.dump(dict(os.environ),h)
+if mode=='nonzero': emit('native refusal text',3)
+if mode=='big': emit('x'*(2*1024*1024))
 if mode=='sleep':
     child=subprocess.Popen(['sleep','30'])
     with open(os.environ['AA_CHILD'],'w') as h: h.write(str(child.pid))
-    time.sleep(30);emit({'status':'stopped','applied':True,'drained':True})
-if mode=='envdump':
-    with open(os.environ['AA_DUMP'],'w') as h: json.dump(dict(os.environ),h)
-if mode=='bad_json': emit('not-json')
-if mode=='dup_field': emit('{"status":"stopped","status":"stopped","applied":true,"drained":true}')
-if mode=='big': emit('x'*(2*1024*1024))
-if mode=='nonzero': emit({'status':'stopped','applied':True,'drained':True},3)
-status={'create':'created','start':'running','stop':'stopped','backup':'stopped','delete':'gone'}[kind]
-if mode=='reject':
-    if kind=='stop': emit({'status':'running','applied':False,'drained':False})
-    emit({'status':'gone' if kind in ('create','delete') else 'stopped','applied':False,'drained':True})
+    time.sleep(30)
 if kind=='backup' and os.environ.get('AA_ARCHIVE','1')!='0':
     out=args[args.index('--out')+1]
     os.makedirs(os.path.dirname(out),exist_ok=True)
     body=b'\\x1f\\x8b' if os.environ.get('AA_ARCHIVE_HEAD','gzip')=='gzip' else b'ZZ'
     with open(out,'wb') as h:
         h.write(body+b'a'*int(os.environ.get('AA_ARCHIVE_BYTES','64')))
-emit({'status':status,'applied':True,'drained':kind!='start'})
+    emit({'tenant':os.environ['AA_TENANT'],'archivePath':out,'fileCount':1,
+          'skippedSymlinks':0,'skippedSpecial':0,'note':'store like a credential'})
+if kind=='create':
+    emit({'ok':True,'tenant':os.environ['AA_TENANT'],'containerName':'openclaw-cell-'+os.environ['AA_TENANT'],
+          'port':19199,'image':'ghcr.io/openclaw/openclaw@sha256:'+'a'*64,'runtime':'docker',
+          'started':False,'token':'secret-gateway-token','tokenNote':'shown once',
+          'url':'http://127.0.0.1:19199','nextStep':'configure channels'})
+emit('start complete for fleet cell '+os.environ['AA_TENANT']+'.')
 '''
 
 
@@ -80,24 +75,25 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def manifest_dict(root,*,schemas=FULL_SCHEMAS,mode='ok',registry='absent',timeout=5,
-                  output_limit=65536,reserve=0,env_extra=None):
-    import shutil
+def manifest_dict(root,*,verified=('create','start','stop','backup','delete'),mode='ok',
+                  registry='created',list_mode=None,timeout=5,output_limit=65536,reserve=0,
+                  env_extra=None):
     bin_dir=root/'bin';bin_dir.mkdir(mode=0o700,parents=True,exist_ok=True)
     node=bin_dir/'node';shutil.copyfile(sys.executable,node);node.chmod(0o755)
     entry=bin_dir/'entry';entry.write_text(STUB);entry.chmod(0o755)
-    env={'PATH':'/usr/bin:/bin','AA_MODE':mode,'AA_REGISTRY_MODE':registry,
-         'AA_TENANT':'aa-'+'1'*32,'AA_CHILD':str(bin_dir/'child.pid'),
-         'AA_DUMP':str(bin_dir/'env.json'),'AA_CALLS':str(bin_dir/'calls.jsonl')}
+    env={'PATH':'/usr/bin:/bin','AA_MODE':mode,'AA_CELL_STATE':registry,'AA_TENANT':TENANT,
+         'AA_CHILD':str(bin_dir/'child.pid'),'AA_CALLS':str(bin_dir/'calls.jsonl'),
+         'AA_DUMP':str(bin_dir/'env.json')}
+    if list_mode: env['AA_LIST_MODE']=list_mode
     if env_extra: env.update(env_extra)
-    return {'schema_version':1,'cli':{'node':str(node),'entry':str(entry),
+    return {'schema_version':2,'cli':{'node':str(node),'entry':str(entry),
         'node_sha256':sha(node),'entry_sha256':sha(entry)},'env':env,'cwd':str(root),
         'timeout_seconds':timeout,'output_limit_bytes':output_limit,
-        'headroom_reserve_bytes':reserve,'schemas':schemas}
+        'headroom_reserve_bytes':reserve,'list_states':LIST_STATES,'verified':list(verified)}
 
 
 def binding(root,account='a',i=1):
-    return FleetBinding(account,'1'*32,'aa-'+'1'*32,'trial-v1',
+    return FleetBinding(account,'1'*32,TENANT,'trial-v1',
         'ghcr.io/openclaw/openclaw@sha256:'+'a'*64,19100+i,512*1024**2,500,64,
         128*1024**2,root/'backups'/account)
 
@@ -120,39 +116,36 @@ class DriverChecks(unittest.TestCase):
         if not path.exists(): return []
         return [json.loads(l)[1] for l in path.read_text().splitlines()]
 
-    def test_missing_schema_refuses_without_intent_or_effect(self):
-        driver=FleetCliDriver(self.custody(schemas={}))
-        for kind in ('create','start','upgrade'):
+    def test_unverified_kind_refuses_without_intent_or_effect(self):
+        driver=FleetCliDriver(self.custody(verified=('create',)))
+        for kind in ('start','upgrade'):
             with self.assertRaises(CapabilityUnavailable): driver.check(kind)
         supervisor=HostSupervisor(self.root/'custody',driver)
         supervisor.enroll(binding(self.root))
-        with self.assertRaises(CapabilityUnavailable): supervisor.execute(self.claim())
+        with self.assertRaises(CapabilityUnavailable): supervisor.execute(self.claim('start'))
         with supervisor.connect() as con:
             self.assertEqual(con.execute('SELECT count(*) FROM journal').fetchone()[0],0)
         self.assertEqual(self.calls(),[])
 
     def test_manifest_validation(self):
         good=manifest_dict(self.root/'m1')
-        with self.assertRaises(ValueError): FleetCustody({**good,'schema_version':2})
+        with self.assertRaises(ValueError): FleetCustody({**good,'schema_version':1})
         with self.assertRaises(ValueError): FleetCustody({**good,'timeout_seconds':4})
         with self.assertRaises(ValueError): FleetCustody({**good,'output_limit_bytes':1024**3})
-        with self.assertRaises(ValueError): FleetCustody({**good,'schemas':{'upgrade':FULL_SCHEMAS['start']}})
+        with self.assertRaises(ValueError): FleetCustody({**good,'verified':['create','upgrade']})
+        with self.assertRaises(ValueError): FleetCustody({**good,'list_states':{'running':['x'],'stopped':['x']}})
+        with self.assertRaises(ValueError): FleetCustody({**good,'list_states':{'running':[],'stopped':['x']}})
         cli=dict(good['cli']);cli['node_sha256']='0'*64
         with self.assertRaises(ValueError): FleetCustody({**good,'cli':cli})
         env=dict(good['env']);del env['PATH']
         with self.assertRaises(ValueError): FleetCustody({**good,'env':env})
-        with self.assertRaises(ValueError): FleetCustody({**good,'env':{**good['env'],'lower':'x'}})
-        node=Path(good['cli']['node']);link=self.root/'m1'/'bin'/'link'
-        link.symlink_to(node)
+        node=Path(good['cli']['node'])
+        link=self.root/'m1'/'bin'/'link';link.symlink_to(node)
         linked=dict(good);linked['cli']={**cli,'node_sha256':sha(node),'node':str(link)}
         with self.assertRaises(ValueError): FleetCustody(linked)
-        broken=json.loads(json.dumps(good))
-        broken['schemas']={'start':{'fields':{'status':'str'},'map':{'state':'status','applied':'status'},
-                                    'state_values':{'running':[],'stopped':['x'],'absent':[]}}}
-        with self.assertRaises(ValueError): FleetCustody(broken)
 
     def test_create_completion_through_supervisor(self):
-        driver=FleetCliDriver(self.custody())
+        driver=FleetCliDriver(self.custody(registry='created'))
         supervisor=HostSupervisor(self.root/'custody',driver)
         b=binding(self.root);supervisor.enroll(b)
         receipt=supervisor.execute(self.claim(b=b))
@@ -162,7 +155,31 @@ class DriverChecks(unittest.TestCase):
             self.assertEqual(con.execute('SELECT state FROM bindings').fetchone()[0],'stopped')
         self.assertEqual(self.calls()[0],'create')
         replay=HostSupervisor(self.root/'custody',driver).execute(self.claim(b=b))
-        self.assertEqual(replay,receipt);self.assertEqual(len(self.calls()),1)
+        self.assertEqual(replay,receipt);self.assertEqual(self.calls(),['create','list'])
+
+    def test_start_running_and_stop_exited_states(self):
+        driver=FleetCliDriver(FleetCustody(manifest_dict(self.root/'m6',registry='running')))
+        supervisor=HostSupervisor(self.root/'custody',driver)
+        supervisor.enroll(binding(self.root))
+        with supervisor.connect() as con: con.execute("UPDATE bindings SET state='stopped'")
+        receipt=supervisor.execute(self.claim('start',seq='03'))
+        self.assertEqual((receipt.state,receipt.quiesced),('running',False))
+        driver2=FleetCliDriver(FleetCustody(manifest_dict(self.root/'m7',registry='exited')))
+        supervisor2=HostSupervisor(self.root/'m7custody',driver2)
+        supervisor2.enroll(binding(self.root))
+        with supervisor2.connect() as con: con.execute("UPDATE bindings SET state='running'")
+        receipt2=supervisor2.execute(self.claim('stop',seq='04'))
+        self.assertEqual((receipt2.state,receipt2.applied,receipt2.quiesced),('stopped',True,True))
+
+    def test_state_mismatch_stays_uncertain(self):
+        driver=FleetCliDriver(FleetCustody(manifest_dict(self.root/'m8',registry='exited')))
+        supervisor=HostSupervisor(self.root/'m8custody',driver)
+        supervisor.enroll(binding(self.root))
+        with supervisor.connect() as con: con.execute("UPDATE bindings SET state='stopped'")
+        with self.assertRaises(OutcomeUncertain): supervisor.execute(self.claim('start'))
+        with supervisor.connect() as con:
+            self.assertEqual(con.execute('SELECT count(*) FROM journal WHERE status=?',
+                                         ('uncertain',)).fetchone()[0],1)
 
     def test_timeout_kills_whole_group_and_holds_uncertain(self):
         driver=FleetCliDriver(self.custody(mode='sleep',timeout=5))
@@ -176,61 +193,50 @@ class DriverChecks(unittest.TestCase):
             except ProcessLookupError: break
             time.sleep(0.05)
         else: self.fail('stub grandchild survived the group kill')
-        with self.assertRaises(OutcomeUncertain): supervisor.execute(self.claim())
         with supervisor.connect() as con:
-            self.assertEqual(con.execute("SELECT status FROM journal").fetchone()[0],'uncertain')
+            self.assertEqual(con.execute('SELECT status FROM journal').fetchone()[0],'uncertain')
 
     def test_unverifiable_outputs_stay_uncertain(self):
-        for mode in ('bad_json','dup_field','big','nonzero'):
-            with self.subTest(mode=mode):
-                root=Path(self.tmp.name)/f'u-{mode}'
-                driver=FleetCliDriver(FleetCustody(manifest_dict(root/'custody-build',mode=mode)))
+        cases=(('nonzero','created'),('ok','absent'),('badlist','created'),('big','created'))
+        for mode,registry in cases:
+            with self.subTest(mode=mode,registry=registry):
+                root=Path(self.tmp.name)/f'u-{mode}-{registry}'
+                driver=FleetCliDriver(FleetCustody(manifest_dict(root/'cb',mode=mode,registry=registry,
+                                                                list_mode='bad' if mode=='badlist' else None)))
                 supervisor=HostSupervisor(root/'custody',driver)
                 supervisor.enroll(binding(root))
                 with self.assertRaises(OutcomeUncertain): supervisor.execute(self.claim(b=binding(root)))
                 with supervisor.connect() as con:
-                    self.assertEqual(con.execute("SELECT status FROM journal").fetchone()[0],'uncertain')
-
-    def test_definitive_rejection_is_completed_and_not_applied(self):
-        driver=FleetCliDriver(self.custody(mode='reject'))
-        supervisor=HostSupervisor(self.root/'custody',driver)
-        supervisor.enroll(binding(self.root))
-        receipt=supervisor.execute(self.claim())
-        self.assertFalse(receipt.applied);self.assertTrue(receipt.quiesced)
-        with supervisor.connect() as con:
-            row=con.execute('SELECT status,receipt FROM journal').fetchone()
-            self.assertEqual(row['status'],'completed')
-            self.assertEqual(con.execute('SELECT state FROM bindings').fetchone()[0],'absent')
-        retry=supervisor.execute(replace(self.claim(),fence=2,operation_id='f'*32))
-        self.assertFalse(retry.applied);self.assertEqual(len(self.calls()),2)
+                    self.assertEqual(con.execute('SELECT status FROM journal').fetchone()[0],'uncertain')
 
     def test_backup_archive_verification(self):
         b=binding(self.root);(self.root/'backups'/'a').mkdir(mode=0o700,parents=True)
-        receipt=FleetCliDriver(self.custody(mode='backup_file')).execute(b,self.claim('backup',b=b))
+        receipt=FleetCliDriver(self.custody(registry='exited')).execute(b,self.claim('backup',b=b))
         self.assertEqual(receipt.backup_ref,receipt.operation_id)
-        driver=FleetCliDriver(FleetCustody(manifest_dict(self.root/'m2',mode='ok',
+        driver=FleetCliDriver(FleetCustody(manifest_dict(self.root/'m2',registry='exited',
                                                          env_extra={'AA_ARCHIVE':'0'})))
         with self.assertRaises(OutcomeUncertain): driver.execute(b,self.claim('backup',b=b,seq='03'))
         symlink=b.backup_root/('0'*32+'.tgz')
         symlink.symlink_to(self.root/'elsewhere')
         with self.assertRaises(OutcomeUncertain): driver.execute(b,self.claim('backup',b=b,seq='00'))
         symlink.unlink()
-        big=FleetCustody(manifest_dict(self.root/'m3',mode='backup_file',env_extra={'AA_ARCHIVE_BYTES':'2048'}))
+        big=FleetCustody(manifest_dict(self.root/'m3',registry='exited',
+                                       env_extra={'AA_ARCHIVE_BYTES':'2048'}))
         small=replace(b,archive_limit_bytes=1024)
         with self.assertRaises(OutcomeUncertain): FleetCliDriver(big).execute(small,self.claim('backup',b=small,seq='04'))
-        plain=FleetCustody(manifest_dict(self.root/'m4',mode='backup_file',
+        plain=FleetCustody(manifest_dict(self.root/'m4',registry='exited',
                                          env_extra={'AA_ARCHIVE_HEAD':'plain'}))
         with self.assertRaises(OutcomeUncertain): FleetCliDriver(plain).execute(b,self.claim('backup',b=b,seq='05'))
 
     def test_delete_and_reconcile_use_absence_probe_only(self):
-        present=FleetCliDriver(self.custody(mode='ok',registry='present'))
+        present=FleetCliDriver(self.custody(registry='exited'))
         b=binding(self.root)
         with self.assertRaises(OutcomeUncertain): present.execute(b,self.claim('delete',b=b,seq='0a'))
         self.assertIsNone(present.reconcile(b,self.claim('stop',b=b)))
         self.assertIsNone(present.reconcile(b,self.claim('create',b=b)))
-        absent=FleetCliDriver(self.custody(mode='ok',registry='absent'))
+        absent=FleetCliDriver(self.custody(registry='absent'))
         receipt=absent.execute(b,self.claim('delete',b=b,seq='0b'))
-        self.assertEqual((receipt.state,receipt.applied),('absent',True))
+        self.assertEqual((receipt.state,receipt.applied,receipt.quiesced),('absent',True,True))
         retry=absent.reconcile(b,self.claim(b=b))
         self.assertEqual((retry.state,retry.applied,retry.quiesced),('absent',False,True))
 
@@ -248,6 +254,16 @@ class DriverChecks(unittest.TestCase):
         self.assertNotIn('SENTINEL_DO_NOT_INHERIT',dumped)
         self.assertEqual(dumped['AA_SENTINELED'],'from-custody')
 
+    def test_create_token_output_is_never_parsed_or_persisted(self):
+        driver=FleetCliDriver(self.custody(registry='created'))
+        supervisor=HostSupervisor(self.root/'custody',driver)
+        supervisor.enroll(binding(self.root))
+        receipt=supervisor.execute(self.claim())
+        with supervisor.connect() as con:
+            stored=con.execute('SELECT claim,receipt FROM journal').fetchone()
+            self.assertNotIn('secret-gateway-token',stored['claim'])
+            self.assertNotIn('secret-gateway-token',stored['receipt'] or '')
+
     def test_headroom_admission_gates_runnable_kinds_at_dispatch(self):
         calls=[]
         def low():
@@ -264,12 +280,11 @@ class DriverChecks(unittest.TestCase):
         self.assertEqual(rows,[('create','completed')])
         self.assertNotIn('start',self.calls())
         supervisor.admission=HeadroomAdmission(lambda:2*1024**3,64*1024**2)
+        supervisor.backend=FleetCliDriver(FleetCustody(manifest_dict(self.root/'m9',registry='running')))
         supervisor.execute(self.claim('start',b=b,seq='03'))
-        self.assertIn('start',self.calls())
-        with supervisor.connect() as con:
-            rows=[(json.loads(r['claim'])['kind'],r['status'])
-                  for r in con.execute('SELECT claim,status FROM journal').fetchall()]
-        self.assertIn(('start','completed'),rows)
+        m9calls=self.root/'m9'/'bin'/'calls.jsonl'
+        started=[json.loads(l)[1] for l in m9calls.read_text().splitlines()]
+        self.assertEqual(started,['start','list'])
 
     def test_admission_never_runs_for_non_runnable_kinds(self):
         def forbidden():

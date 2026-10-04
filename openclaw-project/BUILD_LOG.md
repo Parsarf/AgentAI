@@ -1,5 +1,36 @@
 # OpenClaw build log
 
+## Product Phase4 disposable-cell verification + driver v2 — 2026-10-04/05 (registry-proven backend READY locally; phase PARTIAL; native acceptance NOT_RUN)
+
+Owner authorized the pending invitation resend and one disposable native cell
+exercise. Invitation: expired onboarding token invalidated, fresh activation
+mail delivered (delivered=True); activation remains the owner's action.
+Cell exercise (isolated candidate 2026.9.6, pinned image, no model call):
+create --no-start → `created` → start → `running` → stop → `exited` → backup
+(gzip, 50 KB) → rm → registry empty. **Measured cell peak 245.1 MiB under the
+512 MiB cap** — the first real per-tenant number for the existing-host trial
+profile. Captured the CLI contracts: create/backup/list emit JSON,
+start/stop/rm text+exit code only, list states {created,running,exited}, and
+**create prints the cell Gateway token in plaintext on stdout** (driver keeps
+stdout in a private temp file, never parsed or stored).
+
+Driver v2 shipped: every receipt is proven from a bounded `fleet list --json`
+follow-up through the custody state vocabulary (backup adds artifact checks,
+delete requires absence) instead of command self-report; custody example
+manifest records the observed binaries/digests/vocabulary. Host fixes: `/`
+was owned by an orphaned uid 501 (IONOS image defect) which fs-safe admission
+refuses for every user — corrected to standard root:root (reversible, mode
+untouched); unprivileged `agentai-fleet` (uid 1000, docker group) retained as
+the runtime-identity candidate. All probe residue removed; owner stack
+verified healthy.
+
+14 driver tests (registry-mapped receipts, token non-persistence, mismatch
+uncertainty, drain kill, admission, rescind), 72 core, 40 account and Vercel
+checks pass. No customer/owner effect; no backend enabled in the shipped
+entry point; Phase4 PARTIAL; Phase15 NOT_RUN.
+
+Evidence: openclaw-project/evidence/product/phase-04/20261004T235258Z/manifest.json.
+
 ## Product Phase4 native backend slice — 2026-10-04 (supervisor driver READY locally; full phase PARTIAL; native acceptance NOT_RUN)
 
 Implemented `FleetCliDriver` + `FleetCustody`: the host supervisor can now

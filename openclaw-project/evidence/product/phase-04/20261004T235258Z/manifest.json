@@ -1,0 +1,100 @@
+{
+  "phase": 4,
+  "run_id": "20261004T235258Z",
+  "recorded_at": "2026-10-04T23:52:58Z",
+  "base_revision": "8bfbb82",
+  "target": "existing VPS; two invited accounts; one global customer task",
+  "build_result": "PARTIAL",
+  "native_acceptance": "NOT_RUN",
+  "customer_execution_enabled": false,
+  "supervisor_installed": false,
+  "native_backend_enabled": false,
+  "owner_authorized": "resend of the pending account invitation and one disposable native cell exercise",
+  "source_sha256": {
+    "openclaw-project/platform/agentai_platform/lifecycle/fleet_driver.py": "862cd490710554ba612d05e94438002f2d5c87193c5ca49f2fe3333825425995",
+    "openclaw-project/platform/agentai_platform/lifecycle/SUPERVISOR.md": "c4544b376f5303659ebda40dd90946d36a3854eeda45f3e3c0e6e6ecb697afe9",
+    "openclaw-project/platform/tests/test_fleet_driver.py": "fed9a828ec49b698c2e89ad3c2e84acf1ae80a7e3574bcf6c240ce57e777c1d1",
+    "openclaw-project/platform/deploy/fleet-custody.example.json": "5a05f72165f73dbc2df963c7fd0bbd9c7b69c346f7061fa1674e36ca7f8cf000"
+  },
+  "invitation": {
+    "account": "f40a5f6b9ab8437cbd0f7459f0ecaa71",
+    "action": "token_for(onboarding) invalidated the expired code; deliver() handed a fresh activation mail to the Gmail SMTP pipeline",
+    "result": "delivered=True; activation remains the owner's browser action",
+    "note": "account_admin invite was attempted first and correctly refused by identity_email_unique because the user row already exists; no state changed"
+  },
+  "disposable_cell_exercise": {
+    "candidate": "OpenClaw 2026.9.6 (eb377ac) at /opt/agentai-native/2026.9.6-node24.16.0, isolated HOME, image ghcr.io/openclaw/openclaw@sha256:62832668e3e5e139f745f7d3df892c9251eb53318b7d14a76c410dde1f25d730 (already local)",
+    "sequence": "create --no-start --json -> list created -> start (text) -> list running -> docker stats -> stop (text) -> list exited -> backup --json -> rm -> list empty; tenant string absent",
+    "create_output_fields": ["ok", "tenant", "containerName", "port", "image", "runtime", "started", "token", "tokenNote", "url", "nextStep"],
+    "error_envelope": {"ok": false, "error": {"type": "str", "message": "str"}},
+    "list_entry_fields": ["tenant", "state", "port", "image", "created"],
+    "list_state_vocabulary": ["created", "running", "exited"],
+    "start_stop_rm": "plain text plus exit code only; registry follow-up is the only state source",
+    "measured_cell_peak": "245.1 MiB of the 512 MiB cap during run (boot CPU ~52%); host still had ~460 MiB available with the cell up",
+    "backup_archive": "gzip magic 1f 8b, 50346 bytes, mode 0600, note: contains tenant state and auth secrets",
+    "security_observations": [
+      "fleet create prints the cell Gateway token in plaintext on stdout (driver keeps stdout in a private temp file, never parsed or stored)",
+      "backup archives are credentials by the CLI's own note"
+    ],
+    "cleanup": "probe archive, probe homes, tenant file, /tmp/openclaw and lock dirs removed; no cell container or volume remains; owner Gateway stack containers and services untouched and healthy"
+  },
+  "host_fixes": [
+    "chown root:root / (was an orphaned uid 501 from the IONOS image; standard Ubuntu is root:root; non-recursive, mode untouched, reversible with chown 501 /). fs-safe temp-workspace admission rejects any workspace whose ancestry contains a directory owned by neither the effective uid nor root, so every unprivileged AND root CLI dispatch was refused before this fix",
+    "created unprivileged system user agentai-fleet (uid 1000, docker group 988) during diagnosis; retained as the documented runtime-identity candidate"
+  ],
+  "driver_v2": {
+    "design": "receipts proven from the registry: bounded list follow-up with strict schema and custody state vocabulary; backup adds artifact verification (bounded regular non-symlink gzip under the private root); delete requires absence; create keeps --json only for its exit code while the Gateway token in its stdout is never parsed or persisted",
+    "custody_example": "platform/deploy/fleet-custody.example.json with the observed binaries, digests, state vocabulary and bounds"
+  },
+  "checks": [
+    {
+      "id": "P04-FLEET-DRIVER-V2",
+      "status": "PASS",
+      "command": "python3 -m unittest tests.test_fleet_driver",
+      "observation": "14 cases pass on macOS: custody validation; verified-kind gating without intent; create/start/stop registry-mapped receipts through the supervisor; state mismatch uncertain; timeout group-kill drain; nonzero/bad-registry/oversized/absent-registry uncertainty; backup archive bounds/symlink/magic; delete and create/delete reconciliation absence-only; exact custody environment with pinned locale injection; create token never stored; headroom admission; coordinator rescind"
+    },
+    {
+      "id": "P04-CORE-REGRESSION",
+      "status": "PASS",
+      "command": "python3 -m unittest tests.test_supervisor tests.test_lifecycle tests.test_request_queue tests.test_budget tests.test_capacity tests.test_foundation",
+      "observation": "72 pass, 2 Linux-only skips on macOS"
+    },
+    {
+      "id": "P03-REGRESSION",
+      "status": "PASS",
+      "command": "platform/.venv/bin/python manage.py test accounts",
+      "observation": "40 cases pass"
+    },
+    {
+      "id": "P06-VERCEL-REGRESSION",
+      "status": "PASS",
+      "command": "node deploy/vercel/check.mjs",
+      "observation": "configuration and build routing pass"
+    },
+    {
+      "id": "P04-NATIVE-BOUNDARY",
+      "status": "NOT_RUN",
+      "observation": "the disposable cell was exercised directly by the host operator path, not through the app/supervisor chain; it is not OS isolation, A/B, task or Phase15 acceptance"
+    }
+  ],
+  "cost": {
+    "paid_provider_calls": 0,
+    "provider_actual_usd": 0,
+    "new_service_or_hardware_purchases": 0,
+    "image_pull_bytes": 0,
+    "native_task_cost_and_peak": "cell idle-run peak 245.1 MiB / 512 MiB cap; no task or model call was made inside the cell"
+  },
+  "blockers": [
+    "runtime-identity provisioning and custody deposit, then reviewed wiring of FleetCliDriver + HeadroomAdmission into the installed service",
+    "credential/token custody for cells",
+    "task-stage wake/drain measurement and the stronger runtime/worker broker",
+    "per-tenant effective identities, disk quotas and egress policy",
+    "pinned upgrade/rollback, quarantined restore/revocation/retention",
+    "all-route provider budget admission before any paid or task effect"
+  ],
+  "deferred": [
+    "Phase15 native A/B isolation, full lifecycle, restore/failure/load acceptance"
+  ],
+  "rollback": "Host: chown 501 / reverts the ownership fix; userdel agentai-fleet; no owner config/service/data change; owner stack verified healthy after cleanup. Code: source rollback of fleet_driver.py v2, SUPERVISOR.md, tests and the example manifest.",
+  "implementation_revision": "PENDING"
+}

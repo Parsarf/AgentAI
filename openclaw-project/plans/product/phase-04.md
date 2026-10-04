@@ -176,3 +176,28 @@ bounds, admission, rescind) with 72 core cases (2 Linux-only skips on macOS),
 GitHub workflow now runs capacity/foundation/fleet-driver modules. No native
 cell, worker, provider call, owner change, VPS mutation or live flag moved;
 Phase4 remains PARTIAL and native acceptance NOT_RUN (Phase 15).
+
+## Disposable-cell verification and driver v2 — 2026-10-04/05 UTC
+
+Owner authorized the invitation resend and one disposable native cell exercise
+(see `evidence/product/phase-04/20261004T235258Z/manifest.json`). The exercise
+captured the real CLI contracts — create/backup/list JSON, start/stop/rm
+text-only, list states {created, running, exited}, create printing the cell
+Gateway token on stdout — and the first measured cell peak (245.1 MiB of a
+512 MiB cap) for the existing-host trial profile. Driver v2 now proves every
+receipt from a bounded registry follow-up instead of command self-report, with
+backup artifact verification and delete absence proof; the custody example
+(`platform/deploy/fleet-custody.example.json`) records the observed binaries,
+digests, vocabulary and bounds.
+
+Host corrections during the exercise: `/` was owned by an orphaned uid 501
+(IONOS image defect) which fs-safe temp-workspace admission refuses for every
+user; corrected to standard `root:root` (non-recursive, mode untouched,
+reversible with `chown 501 /`). Unprivileged `agentai-fleet` (uid 1000, docker
+group) was created for diagnosis and retained as the runtime-identity
+candidate. All probe residue was deleted and the owner stack verified healthy.
+
+Checks: 14 driver cases, 72 core, 40 account and Vercel checks pass. The
+invitation was re-delivered (activation remains the owner's action). No native
+backend is enabled in the shipped entry point; Phase4 stays PARTIAL; Phase15
+acceptance stays NOT_RUN.

@@ -1,14 +1,17 @@
-"""Verified native Fleet CLI backend; refuses until output schemas are custody-proven.
+"""Verified native Fleet CLI backend; refuses until custody records the installed CLI's behavior.
 
-Executes only the fixed plans prepared by FleetPlanner for a host-enrolled
-binding. Pinned binary digests, the exact invocation environment and the
-observed native output schema per operation kind come from a host-authored
-custody manifest; without a verified schema the driver refuses exactly like
-DisabledDriver, which is why supervisor_main still ships DisabledDriver.
-Executor drain means the whole process group is killed and proven reaped plus,
-where the manifest proves it, a mapped native state field or the bounded
-absence probe over the already-probed `fleet list --json` form. This backend
-and its boundary tests are not OS isolation acceptance; Phase 15 stays NOT_RUN.
+Observed installed-candidate reality (2026-10-04 probe): `fleet create` and
+`fleet backup` emit JSON, `fleet start`/`stop`/`rm` emit plain text with an
+exit code, and `fleet list --json` is the registry state source with
+`cells[].state` in {created, running, exited}; a deleted tenant is absent.
+This driver therefore proves every receipt through a bounded list follow-up
+plus, for backup, the archive artifact itself, and for delete, registry
+absence — never the command's own text. The create output carries the cell
+Gateway token in plaintext on stdout: captured stdout stays in a private temp
+file deleted with the process and nothing from it is parsed or persisted.
+Missing or unverified custody refuses exactly like DisabledDriver, which is
+why supervisor_main still ships DisabledDriver. These boundaries are not OS
+isolation acceptance; Phase 15 stays NOT_RUN.
 """
 import hashlib
 import json
@@ -27,20 +30,21 @@ from .supervisor import OutcomeUncertain, SupervisorBusy
 from .types import KINDS, RUNNABLE, Claim, Conflict, Receipt
 
 # The registry read form was executed successfully against the installed
-# candidate (empty registry). Effect-output schemas remain operator-verified.
+# candidate; cells[].state values and command behaviors were observed directly.
 LIST_PROBE=('fleet','list','--json')
+LIST_ENTRY={'tenant','state','port','image','created'}
 ENV_KEY=re.compile(r'[A-Z_][A-Z0-9_]{0,63}')
-FIELD=re.compile(r'[A-Za-z_][A-Za-z0-9_]{0,63}')
 SHA256=re.compile(r'[a-f0-9]{64}')
+DESIRED={'create':'stopped','start':'running','stop':'stopped','backup':'stopped','delete':'absent'}
 
 
 class FleetCustody:
-    """Host-authored manifest: pinned binaries, exact env and verified output schemas."""
+    """Host-authored manifest: pinned binaries, exact env and the verified registry vocabulary."""
 
     def __init__(self,manifest):
-        if type(manifest) is not dict or manifest.get('schema_version')!=1 or set(manifest)!={
+        if type(manifest) is not dict or manifest.get('schema_version')!=2 or set(manifest)!={
                 'schema_version','cli','env','cwd','timeout_seconds','output_limit_bytes',
-                'headroom_reserve_bytes','schemas'}:
+                'headroom_reserve_bytes','list_states','verified'}:
             raise ValueError('unsupported custody manifest')
         cli=manifest['cli']
         if type(cli) is not dict or set(cli)!={'node','entry','node_sha256','entry_sha256'}:
@@ -56,10 +60,22 @@ class FleetCustody:
                 raise ValueError(f'invalid custody bound: {name}')
         self.timeout,self.output_limit,self.reserve=(manifest[n] for n in
             ('timeout_seconds','output_limit_bytes','headroom_reserve_bytes'))
-        schemas=manifest['schemas']
-        if type(schemas) is not dict or set(schemas)-{'create','start','stop','backup','delete'}:
-            raise ValueError('unsupported native schema')
-        self.schemas={kind:self._schema(kind,spec) for kind,spec in schemas.items()}
+        states=manifest['list_states']
+        if type(states) is not dict or set(states)!={'running','stopped'}:
+            raise ValueError('invalid registry vocabulary')
+        for names in states.values():
+            if type(names) is not list or not names or len(names)>32:
+                raise ValueError('invalid registry vocabulary')
+            for name in names:
+                if type(name) is not str or not 1<=len(name)<=64:
+                    raise ValueError('invalid registry vocabulary')
+        if set(states['running'])&set(states['stopped']):
+            raise ValueError('ambiguous registry vocabulary')
+        self.list_states=states
+        verified=manifest['verified']
+        if type(verified) is not list or not set(verified)<=set(KINDS) or 'upgrade' in verified or 'restore' in verified:
+            raise ValueError('unsupported verified kind')
+        self.verified=frozenset(verified)
 
     def _binary(self,path,digest):
         if type(path) is not str or type(digest) is not str or not SHA256.fullmatch(digest):
@@ -98,57 +114,16 @@ class FleetCustody:
             raise ValueError('unsafe custody working directory')
         return Path(path)
 
-    def _schema(self,kind,spec):
-        if type(spec) is not dict or set(spec)!={'fields','map','state_values'}:
-            raise ValueError(f'invalid {kind} schema')
-        fields=spec['fields']
-        if type(fields) is not dict or not fields:
-            raise ValueError(f'invalid {kind} fields')
-        for name,kind_of in fields.items():
-            if type(name) is not str or not FIELD.fullmatch(name) or kind_of not in {'str','int','bool'}:
-                raise ValueError(f'invalid {kind} fields')
-        mapping=spec['map']
-        if type(mapping) is not dict or not {'state','applied'}<=set(mapping) \
-                or set(mapping)-{'state','applied','quiesced'}:
-            raise ValueError(f'invalid {kind} map')
-        for role,name in mapping.items():
-            if role=='quiesced' and name is True: continue
-            if type(name) is not str or name not in fields:
-                raise ValueError(f'invalid {kind} map')
-            if role in {'applied','quiesced'} and fields[name]!='bool':
-                raise ValueError(f'invalid {kind} map')
-        values=spec['state_values']
-        if type(values) is not dict or set(values)!={'running','stopped','absent'}:
-            raise ValueError(f'invalid {kind} states')
-        for names in values.values():
-            if type(names) is not list or len(names)>32:
-                raise ValueError(f'invalid {kind} states')
-            for name in names:
-                if type(name) is not str or not 1<=len(name)<=64:
-                    raise ValueError(f'invalid {kind} states')
-        return {'fields':fields,'map':mapping,'state_values':values}
+    def state_of(self,raw):
+        """Map an observed registry state string to the canonical receipt state."""
+        if raw in self.list_states['running']: return 'running'
+        if raw in self.list_states['stopped']: return 'stopped'
+        return None
 
-    def receipt_fields(self,kind,payload):
-        """Map a native output object through the verified schema, or stay uncertain."""
-        schema=self.schemas.get(kind)
-        if schema is None:
-            raise CapabilityUnavailable(f'native output schema for {kind} is not verified')
-        uncertain=OutcomeUncertain(f'native output does not match the verified {kind} schema')
-        if type(payload) is not dict or set(payload)!=set(schema['fields']):
-            raise uncertain
-        for name,kind_of in schema['fields'].items():
-            value=payload[name]
-            if kind_of=='str' and (type(value) is not str or len(value)>256): raise uncertain
-            if kind_of=='int' and (type(value) is not int or type(value) is bool
-                                   or not -(2**63)<=value<2**63): raise uncertain
-            if kind_of=='bool' and type(value) is not bool: raise uncertain
-        mapping=schema['map']
-        state=payload[mapping['state']]
-        canonical=[target for target,names in schema['state_values'].items() if state in names]
-        if not canonical: raise uncertain
-        applied=payload[mapping['applied']]
-        quiesced=True if mapping.get('quiesced') is True else payload[mapping['quiesced']]
-        return canonical[0],applied,quiesced
+    def verified_kind(self,kind):
+        if type(kind) is not str or kind not in KINDS: raise Conflict('unsupported operation')
+        if kind not in self.verified:
+            raise CapabilityUnavailable(f'installed behavior for {kind} is not custody-verified')
 
 
 class FleetCliDriver:
@@ -158,9 +133,7 @@ class FleetCliDriver:
         self.custody=custody
 
     def check(self,kind):
-        if type(kind) is not str or kind not in KINDS: raise Conflict('unsupported operation')
-        if kind not in self.custody.schemas:
-            raise CapabilityUnavailable(f'native output schema for {kind} is not verified')
+        self.custody.verified_kind(kind)
 
     def _argv(self,binding,claim):
         # The planner owns every argument; the argv[0] bin name becomes the pinned pair.
@@ -171,29 +144,59 @@ class FleetCliDriver:
         if type(claim) is not Claim: raise Conflict('invalid claim')
         code,stdout=self._run(self._argv(binding,claim))
         if code!=0: raise OutcomeUncertain('native executor rejected')
-        state,applied,quiesced=self.custody.receipt_fields(claim.kind,self._decode(stdout))
+        state=self._observed_state(binding)
         backup_ref=None
+        if claim.kind=='delete':
+            if state is not None:
+                raise OutcomeUncertain('tenant still present after delete')
+            return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
+                           'absent',True,True,fence=claim.fence)
+        if state is None or state!=DESIRED[claim.kind]:
+            raise OutcomeUncertain('registry state does not prove the operation')
         if claim.kind=='backup':
             self._verify_archive(binding,claim.operation_id)
             backup_ref=claim.operation_id
-        if claim.kind=='delete' and applied: self._require_absent(binding)
         return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
-                       state,applied,quiesced,backup_ref,fence=claim.fence)
+                       state,True,state!='running',backup_ref,fence=claim.fence)
 
     def reconcile(self,binding,claim):
         # Registry absence proves a non-effect only where absence is the claimed
         # terminal state; presence and other kinds stay uncertain instead of guessed.
         if claim.kind not in {'create','delete'}: return None
         try:
-            self._require_absent(binding)
+            state=self._observed_state(binding)
         except OutcomeUncertain:
             return None
+        if state is not None: return None
         return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
                        'absent',claim.kind=='delete',True,fence=claim.fence)
 
+    def _observed_state(self,binding):
+        """Registry state for the binding tenant, or None once it is absent."""
+        code,stdout=self._run([str(self.custody.node),str(self.custody.entry),*LIST_PROBE])
+        if code!=0: raise OutcomeUncertain('native registry probe rejected')
+        payload=self._decode(stdout)
+        uncertain=OutcomeUncertain('native registry output does not match the verified schema')
+        if type(payload) is not dict or set(payload)!={'cells'} or type(payload['cells']) is not list:
+            raise uncertain
+        for entry in payload['cells']:
+            if type(entry) is not dict or set(entry)!=LIST_ENTRY:
+                raise uncertain
+            if type(entry['tenant']) is not str or type(entry['state']) is not str \
+                    or len(entry['tenant'])>96 or len(entry['state'])>64 \
+                    or type(entry['port']) is not int or type(entry['port']) is bool \
+                    or type(entry['image']) is not str or len(entry['image'])>256 \
+                    or type(entry['created']) is not str or len(entry['created'])>64:
+                raise uncertain
+            if entry['tenant']==binding.tenant_ref:
+                state=self.custody.state_of(entry['state'])
+                if state is None: raise uncertain
+                return state
+        return None
+
     def _run(self,argv):
         with tempfile.TemporaryDirectory(prefix='aa-fleet-') as scratch:
-            out=Path(scratch)/'stdout.json';err=Path(scratch)/'stderr.txt'
+            out=Path(scratch)/'stdout.bin';err=Path(scratch)/'stderr.txt'
             with out.open('wb') as stdout,err.open('wb') as stderr:
                 process=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=stdout,stderr=stderr,
                     env=dict(self.custody.env),cwd=str(self.custody.cwd),start_new_session=True)
@@ -252,12 +255,6 @@ class FleetCliDriver:
         except OSError:
             raise uncertain from None
         if magic!=b'\x1f\x8b': raise uncertain
-
-    def _require_absent(self,binding):
-        code,stdout=self._run([str(self.custody.node),str(self.custody.entry),*LIST_PROBE])
-        if code!=0: raise OutcomeUncertain('native registry probe rejected')
-        if binding.tenant_ref.encode() in stdout:
-            raise OutcomeUncertain('tenant still present in the native registry')
 
 
 class HeadroomAdmission:
