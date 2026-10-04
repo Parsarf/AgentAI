@@ -239,9 +239,10 @@ class DriverChecks(unittest.TestCase):
         custody=FleetCustody(manifest_dict(self.root/'m5',mode='envdump',env_extra=env))
         FleetCliDriver(custody).execute(binding(self.root),self.claim())
         dumped=json.loads((self.root/'m5'/'bin'/'env.json').read_text())
-        # macOS injects locale/CF keys into every exec; Linux CI must match exactly.
-        if sys.platform=='linux':
-            self.assertEqual(set(dumped),set(custody.env))
+        # Nothing from the operator environment may leak in; the executor's own
+        # CPython runtime injects locale/CF keys at startup on both platforms.
+        injected={'LC_CTYPE','__CF_USER_TEXT_ENCODING'}
+        self.assertTrue(set(dumped)-set(custody.env)<=injected, sorted(set(dumped)-set(custody.env)))
         for key,value in custody.env.items():
             self.assertEqual(dumped.get(key),value)
         self.assertNotIn('SENTINEL_DO_NOT_INHERIT',dumped)

@@ -51,8 +51,10 @@ boundary tests; don't broadly remove the service restrictions.
 `fleet_driver.FleetCliDriver` executes only the fixed `FleetPlanner` plans for a
 host-enrolled binding under a pinned candidate CLI. Custody comes from a
 host-authored manifest (`FleetCustody`): both binaries digest-pinned, an exact
-subprocess environment (never inherited), a bounded working directory, output
-and wall-time bounds, and the observed native output schema per operation kind.
+subprocess environment (never inherited; the executor's own CPython runtime may
+add locale keys, pinned by the boundary test), a bounded working directory,
+output and wall-time bounds, and the observed native output schema per
+operation kind.
 Without a verified schema for a kind the driver refuses exactly like
 `DisabledDriver`; upgrade/restore schemas are rejected at load and remain
 refused by the planner. Receipts are built only from schema-matched native
