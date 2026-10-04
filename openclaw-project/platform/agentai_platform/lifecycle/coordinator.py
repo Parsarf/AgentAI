@@ -14,6 +14,7 @@ import uuid
 from agentai_platform.security import NotFound, Principal
 from agentai_platform.store import Store
 from agentai_platform.capacity import CapacityResult
+from .supervisor import SupervisorBusy
 from .types import KINDS, Claim, Receipt, Conflict
 
 IDENTIFIER = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
@@ -202,6 +203,24 @@ class Coordinator:
             self._fence(row,claim)
             self._uncertain(con,row,'runtime_outcome_unknown')
 
+    def rescind(self, claim, *, code='host_headroom'):
+        """Return a leased operation to pending after a definitive effect-free rejection.
+
+        Used when the supervisor denies dispatch before any intent or runtime
+        effect (e.g. host headroom). The account's slot reservation is kept, the
+        lease is cleared and the attempt count stands, so sustained shortage
+        still exhausts the retry limit honestly.
+        """
+        with self.transaction() as con:
+            row=self._row(con,claim.account_id,claim.operation_id)
+            self._fence(row,claim)
+            if row['state']!='running': raise Conflict('operation not leased')
+            con.execute("UPDATE operations SET state='pending' WHERE account_id=? AND id=?",
+                (claim.account_id,claim.operation_id))
+            con.execute('''UPDATE lifecycle_details SET lease_owner=NULL,lease_until=NULL,error_code=?,updated_at=?
+                WHERE account_id=? AND operation_id=?''',(code,int(self.clock()),claim.account_id,claim.operation_id))
+            self._audit(con,claim.account_id,'supervisor',claim.operation_id,'capacity_wait','denied')
+
     def _fence(self, row, claim):
         if (row['deployment_id'],row['generation'],row['kind'],row['target_profile'],row['backup_ref'])!=(claim.deployment_id,claim.generation,claim.kind,claim.target_profile,claim.backup_ref):
             raise Conflict('claim binding changed')
@@ -272,6 +291,9 @@ class Coordinator:
         try:
             receipt=driver.execute(claim)
             return self.finish(claim,receipt)
+        except SupervisorBusy:
+            # Definitive effect-free dispatch denial: retryable, not an unknown outcome.
+            self.rescind(claim);raise
         except Exception:
             self.uncertain(claim)
             raise

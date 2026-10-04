@@ -1,5 +1,29 @@
 # OpenClaw build log
 
+## Product Phase4 native backend slice — 2026-10-04 (supervisor driver READY locally; full phase PARTIAL; native acceptance NOT_RUN)
+
+Implemented `FleetCliDriver` + `FleetCustody`: the host supervisor can now
+execute fixed FleetPlanner plans under a digest-pinned candidate CLI with an
+exact non-inherited environment, custody-verified native output schemas,
+whole-process-group drain kills, strict receipt mapping, bounded/symlink-free
+backup archive verification and `fleet list --json` absence-proof reconciliation.
+Missing or unverified schemas refuse exactly like DisabledDriver, so nothing
+native can execute until the operator captures real effect schemas
+(`deploy/capture_fleet_probe.py`, read-only forms) and deposits custody.
+`HeadroomAdmission` independently denies runnable dispatch without host RAM
+headroom before any intent, and `Coordinator.rescind` returns those effect-free
+denials to pending instead of uncertain. supervisor_main still ships
+DisabledDriver with no enabling flag.
+
+12 new boundary tests pass (stub CLI; group-kill drain proof; custody
+digest/symlink/env/schema validation; archive bounds; admission; rescind), with
+72 core checks (2 Linux-only skips), 40 account regressions (platform venv) and
+Vercel routing checks. CI now also runs capacity/foundation/fleet-driver
+modules. No native cell/worker/provider call, VPS mutation, owner change or
+live flag; Phase4 remains PARTIAL; Phase15 native acceptance NOT_RUN.
+
+Evidence: openclaw-project/evidence/product/phase-04/20261004T014939Z/manifest.json.
+
 ## Product Phase4/5 continuation — 2026-09-30 (local components READY; full phases PARTIAL)
 
 Built account-bound lifecycle coordinator/queue API, scoped MFA/action grants,

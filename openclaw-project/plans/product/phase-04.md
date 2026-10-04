@@ -143,3 +143,36 @@ native isolation/full lifecycle acceptance remains NOT_RUN in Phase15. This is
 not a hardware upgrade requirement or a reason to renumber/skip Phase4.
 
 Evidence: `openclaw-project/evidence/product/phase-04/20261001T014000Z/manifest.json`.
+
+## Native backend slice — 2026-10-04 UTC
+
+Implemented the verified native Fleet backend behind the existing supervisor
+boundaries. `FleetCustody` holds host-authored custody: digest-pinned node and
+CLI entry binaries, an exact subprocess environment (nothing inherited), bounded
+working directory, output/time bounds and the operator-verified native output
+schema per operation kind. `FleetCliDriver` executes only fixed `FleetPlanner`
+argv, kills and proves the whole executor process group drained on timeout,
+maps receipts strictly through the verified schema (duplicate JSON keys
+rejected), verifies backup archives as bounded regular non-symlink gzip files
+under the private backup root, and uses only the previously probed
+`fleet list --json` absence form for delete proof and create/delete
+reconciliation. Missing/unknown schemas refuse exactly like `DisabledDriver`;
+non-zero exit, malformed or mismatched output stays uncertain. Upgrade/restore
+remain refused pending backup/quarantine/token/rollback orchestration.
+
+Dispatch-side admission is now independently enforced: `HeadroomAdmission`
+denies runnable kinds before any intent unless host `MemAvailable` covers the
+binding memory plus a custody reserve, and `Coordinator.rescind` returns such
+effect-free denials to pending (audit `capacity_wait`/denied, attempt standing)
+rather than marking uncertain. `supervisor_main` still ships `DisabledDriver`
+with no enabling flag; wiring the backend is a host activation step that
+requires first capturing and operator-verifying real effect-output schemas via
+the new `deploy/capture_fleet_probe.py` (read-only forms only).
+
+Checks: 12 new driver/orchestration cases pass locally (stub CLI, drain-kill
+group proof, custody digest/symlink/env validation, schema gating, archive
+bounds, admission, rescind) with 72 core cases (2 Linux-only skips on macOS),
+40 account regressions in the platform venv, and Vercel routing checks. The
+GitHub workflow now runs capacity/foundation/fleet-driver modules. No native
+cell, worker, provider call, owner change, VPS mutation or live flag moved;
+Phase4 remains PARTIAL and native acceptance NOT_RUN (Phase 15).

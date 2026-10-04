@@ -17,7 +17,7 @@ import sqlite3
 import stat
 
 from .fleet_plan import FleetBinding
-from .types import Claim, Conflict, KINDS, Receipt
+from .types import KINDS, RUNNABLE, Claim, Conflict, Receipt
 
 
 class SupervisorBusy(Exception): pass
@@ -70,10 +70,13 @@ def validate_receipt(claim, receipt):
 
 
 class HostSupervisor:
-    def __init__(self, root, backend, *, owner_uid=None):
+    def __init__(self, root, backend, *, owner_uid=None, admission=None):
         self.root=Path(root)
         self.owner_uid=os.geteuid() if owner_uid is None else owner_uid
         self.backend=backend
+        # Independent host-side dispatch bound (e.g. HeadroomAdmission); None only
+        # in disposable environments. Rejections are SupervisorBusy, never intents.
+        self.admission=admission
         self.root.mkdir(mode=0o700,parents=False,exist_ok=True)
         self._private(self.root,directory=True)
         self.db=self.root/'custody.sqlite3'
@@ -184,6 +187,8 @@ class HostSupervisor:
                     raise OutcomeUncertain('global unresolved effect')
                 if con.execute("SELECT 1 FROM bindings WHERE state='running' AND account!=?",(claim.account_id,)).fetchone():
                     raise SupervisorBusy('global active cell')
+                if self.admission is not None and claim.kind in RUNNABLE:
+                    self.admission(binding,claim.kind)
                 allowed={'create':{'absent'},'start':{'stopped'},'stop':{'running','stopped'},
                          'backup':{'stopped'},'restore':{'stopped'},'upgrade':{'running','stopped'},
                          'delete':{'absent','stopped'}}[claim.kind]

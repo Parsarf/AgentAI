@@ -1,0 +1,93 @@
+{
+  "phase": 4,
+  "run_id": "20261004T014939Z",
+  "recorded_at": "2026-10-04T01:49:39Z",
+  "base_revision": "9bebe77c0dd812652e07113f8225cf74a9f2f602",
+  "target": "existing VPS; two invited accounts; one global customer task",
+  "build_result": "PARTIAL",
+  "native_acceptance": "NOT_RUN",
+  "customer_execution_enabled": false,
+  "supervisor_installed": false,
+  "native_backend_enabled": false,
+  "source_sha256": {
+    "openclaw-project/platform/agentai_platform/lifecycle/fleet_driver.py": "c712de9be5c08a5d62a63a520332c55ace885e69dc3aa6b3f9553241370483a8",
+    "openclaw-project/platform/agentai_platform/lifecycle/coordinator.py": "98587195f391ba05fee8d7dc96a137980aa009d6899a1ee25931daef6a375f62",
+    "openclaw-project/platform/agentai_platform/lifecycle/supervisor.py": "05f7dcba452c7efe32d0b1820d24e943258228f7f6108419611c76aaf0c22895",
+    "openclaw-project/platform/agentai_platform/lifecycle/types.py": "65a2075efdab505ae5543349a69b326c2c176ed6559b6e5661b96caa0d54c507",
+    "openclaw-project/platform/tests/test_fleet_driver.py": "647146aba8cf9500b73e59632e9857d8fedd22a3a72390fce022e062615882b8",
+    "openclaw-project/platform/deploy/capture_fleet_probe.py": "e5c99ce382e44ccc235ee885b7ec3b50d92de2359dfd752fc48b5130fc680efc",
+    ".github/workflows/platform.yml": "3f14d0a0006da75f9329cdd0bf50533fd56d3497ce182eb544ff6f99ff801c45"
+  },
+  "checks": [
+    {
+      "id": "P04-FLEET-DRIVER",
+      "status": "PASS",
+      "command": "python3 -m unittest tests.test_fleet_driver",
+      "observation": "12 cases pass on macOS: custody digest/symlink/env/schema validation; schema-gated refusal without intent; create completion and replay; timeout whole-group kill with proven-drained grandchild; malformed/duplicate/oversized/non-zero outputs uncertain; definitive non-effect completed and retry-safe; backup archive bounds/symlink/magic; delete and create/delete reconcile via registry absence probe only; exact custody environment; dispatch-side headroom admission for runnable kinds only; coordinator rescind to pending without uncertainty"
+    },
+    {
+      "id": "P04-CORE-REGRESSION",
+      "status": "PASS",
+      "command": "python3 -m unittest tests.test_supervisor tests.test_lifecycle tests.test_request_queue tests.test_budget tests.test_capacity tests.test_foundation",
+      "observation": "72 pass, 2 Linux-only peer/socket skips on macOS; the two new supervisor/coordinator branches are covered by the new module"
+    },
+    {
+      "id": "P03-REGRESSION",
+      "status": "PASS",
+      "command": "platform/.venv/bin/python manage.py test accounts --verbosity 1",
+      "observation": "40 cases pass with session secret/state dir/public origin environment as in CI"
+    },
+    {
+      "id": "P06-VERCEL-REGRESSION",
+      "status": "PASS",
+      "command": "node deploy/vercel/check.mjs",
+      "observation": "configuration and build routing checks pass"
+    },
+    {
+      "id": "STATIC-CHECKS",
+      "status": "PASS",
+      "command": "python3 -m py_compile <changed files> && git diff --check",
+      "observation": "compile and whitespace checks clean"
+    },
+    {
+      "id": "P04-NATIVE-BOUNDARY",
+      "status": "NOT_RUN",
+      "observation": "no native cell, worker or effect attempted; stub-CLI orchestration tests are not OS isolation"
+    },
+    {
+      "id": "P04-SCHEMA-CAPTURE",
+      "status": "NOT_RUN",
+      "observation": "capture_fleet_probe.py prepared but not executed; it runs only version/help/list forms and still requires an authorized host operator session"
+    }
+  ],
+  "implemented": {
+    "native_backend": "FleetCliDriver executes fixed FleetPlanner argv under digest-pinned node+entry from FleetCustody; exact non-inherited environment; bounded cwd/output/time; strict schema-mapped receipts; whole-process-group drain kill with reaped-group proof; backup archive verified as bounded regular non-symlink gzip under private backup root; delete/create reconciliation only via the previously probed fleet list --json absence form; missing or unverified schemas refuse like DisabledDriver; non-zero/malformed/mismatched output stays uncertain; upgrade/restore remain refused",
+    "dispatch_admission": "HeadroomAdmission denies runnable kinds (start/upgrade/restore) before any journal intent unless host MemAvailable covers binding memory plus custody reserve; supervisor_main wiring remains a host activation step",
+    "coordinator": "Coordinator.rescind returns effect-free supervisor denials to pending (lease cleared, audit capacity_wait/denied, attempt standing) instead of uncertain; slot reservation retained for the same account",
+    "entry_point": "supervisor_main still constructs DisabledDriver; no flag enables native effects"
+  },
+  "primary_sources": [
+    "https://docs.openclaw.ai/cli/fleet",
+    "openclaw-project/evidence/product/phase-04/20261001T014000Z/manifest.json (installed candidate facts and probed fleet list --json form)"
+  ],
+  "cost": {
+    "paid_provider_calls": 0,
+    "provider_actual_usd": 0,
+    "new_service_or_hardware_purchases": 0,
+    "native_task_cost_and_peak": "unknown"
+  },
+  "blockers": [
+    "capture and operator-verify real effect-output schemas, then wire FleetCliDriver + HeadroomAdmission into the installed service",
+    "credential/token custody for cells",
+    "stronger runtime and coding/browser/reviewer worker broker",
+    "persistent disk quotas and egress policy",
+    "provider/budget admission at dispatch beyond host RAM",
+    "quarantined restore/pinned upgrade/rollback/retention",
+    "usable measured existing-host profile"
+  ],
+  "deferred": [
+    "Phase15 native A/B isolation, full lifecycle, restore/failure/load acceptance"
+  ],
+  "rollback": "Source-only rollback; no app release/schema, owner config/service, VPS or custody change. DisabledDriver remains the shipped entry point; removing fleet_driver.py and the admission hook restores the previous behavior.",
+  "implementation_revision": "PENDING"
+}

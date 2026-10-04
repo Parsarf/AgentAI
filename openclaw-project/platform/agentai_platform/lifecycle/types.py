@@ -3,6 +3,8 @@ from typing import Protocol
 from agentai_platform.adapters import CapabilityUnavailable
 
 KINDS = frozenset({'create', 'start', 'stop', 'upgrade', 'backup', 'restore', 'delete'})
+# Kinds whose desired end state is a running cell; host dispatch admission applies.
+RUNNABLE = frozenset({'start', 'upgrade', 'restore'})
 
 class Conflict(Exception): pass
 class CapacityWait(Exception): pass

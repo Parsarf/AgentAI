@@ -55,11 +55,16 @@ customer task access remain false even after a successful 202 queue response.
 A separate host-owned supervisor must independently validate its tenant/port/
 image/profile registry rather than granting root authority to app DB rows. It
 must serialize native mutations and prove an old executor is no longer able to
-effect a target before producing a retry-safe receipt. Prepare supported Fleet
-JSON/schema probes and private token handling; complete aggregate cgroup/volume/
-network policy and the coding/browser/reviewer worker broker. Use verified stage
-peaks and Phase 5 route admission before wake or dispatch. Safe idle sleep/wake,
-restore quarantine, credential rotation/revocation and scoped rollback must be
-wired to real native mechanisms. Current host measurement is insufficient for a
+effect a target before producing a retry-safe receipt. `FleetCliDriver` now
+implements the pinned-CLI execution backend with custody-verified output
+schemas, executor-group drain kills and the registry absence probe, plus
+`HeadroomAdmission` dispatch gating and `Coordinator.rescind` for effect-free
+denials; the shipped entry point still uses `DisabledDriver` until the host
+operator verifies the real native output schemas and wires the backend.
+Still missing: private token/credential custody, aggregate cgroup/volume/
+network policy and the coding/browser/reviewer worker broker, verified stage
+peaks and Phase 5 route admission before wake or dispatch, safe idle sleep/wake,
+restore quarantine, credential rotation/revocation and scoped rollback wired to
+real native mechanisms. Current host measurement is insufficient for a
 complete trial task; keep developing against the existing VPS target without
 assuming an upgrade or an empty Gateway estimate fixes these missing pieces.
