@@ -89,5 +89,15 @@
     "Phase15 native A/B isolation, full lifecycle, restore/failure/load acceptance"
   ],
   "rollback": "Source-only rollback; no app release/schema, owner config/service, VPS or custody change. DisabledDriver remains the shipped entry point; removing fleet_driver.py and the admission hook restores the previous behavior.",
+  "github_ci": {
+    "status": "PASS",
+    "url": "https://github.com/Parsarf/AgentAI/actions/runs/37169471046",
+    "observed_counts": {
+      "accounts": 40,
+      "core": 84,
+      "note": "84 = supervisor/lifecycle/queue/budget/capacity/foundation/fleet-driver modules on Linux with zero skips; first run 37169348334 failed on the exact-environment expectation because the executor's CPython injects LC_CTYPE at startup — boundary corrected and re-run"
+    },
+    "vercel_routing": "PASS"
+  },
   "implementation_revision": "72c5544c61fc40ac796da2a69a2151c21155308b"
 }

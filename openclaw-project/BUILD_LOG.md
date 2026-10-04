@@ -19,8 +19,11 @@ DisabledDriver with no enabling flag.
 digest/symlink/env/schema validation; archive bounds; admission; rescind), with
 72 core checks (2 Linux-only skips), 40 account regressions (platform venv) and
 Vercel routing checks. CI now also runs capacity/foundation/fleet-driver
-modules. No native cell/worker/provider call, VPS mutation, owner change or
-live flag; Phase4 remains PARTIAL; Phase15 native acceptance NOT_RUN.
+modules; the Linux gate passes 84 core + 40 account cases (run 37169471046)
+after one real boundary fix: the executor's CPython injects LC_CTYPE at
+startup, now pinned by the custody environment test. No native cell/worker/
+provider call, VPS mutation, owner change or live flag; Phase4 remains
+PARTIAL; Phase15 native acceptance NOT_RUN.
 
 Evidence: openclaw-project/evidence/product/phase-04/20261004T014939Z/manifest.json.
 

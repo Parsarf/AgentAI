@@ -17,9 +17,11 @@ the coordinator rescinds such denials to pending rather than uncertain.
 
 Checks actually run: 12 new driver/orchestration cases (macOS), 72 core cases
 (2 Linux-only skips), 40 account regressions in the platform venv, Vercel
-routing checks, py_compile and git diff --check. GitHub workflow extended to
-run capacity/foundation/fleet-driver modules; Linux CI result recorded in the
-manifest when observed.
+routing checks, py_compile and git diff --check. Linux CI gate passes with 84
+core plus 40 account cases and Vercel routing (run 37169471046) after one real
+boundary fix: the executor's CPython injects LC_CTYPE at startup, now pinned by
+the environment test. GitHub workflow extended to run
+capacity/foundation/fleet-driver modules.
 
 Remaining Phase4 blockers: effect-schema capture/verification plus service
 wiring, credential custody, stronger runtime/worker broker, disk quotas and
