@@ -212,3 +212,23 @@ Running/uncertain intent survives executor crashes and blocks new effects.
 No public route/enrollment/command interface or Docker authority is added to the
 web application. See lifecycle/SUPERVISOR.md for exact checks and missing native
 integrations. The service template and native backend remain inactive.
+
+## Phase 10 product services
+
+`memory.py`, `skills.py`, `watchers.py`, `durable.py` and `schedules.py` hold
+tenant-scoped product records (SQL 0009/0010) beside the OpenClaw runtime; they
+do not replace the native agent loop, approvals or scheduler. Native wiring per
+customer cell (memory plugin, skill directories, goal tools, scheduler) is
+unprobed and gated by Phase 4 cell activation. `policy_check.py` validates the
+recorded tool ceilings. Autonomous restart execution is a recorded launch gap;
+only explicit resume exists.
+
+## Phase 11 connectors
+
+`connectors.py` owns link state (state + PKCE S256, exact redirect match, single use,
+actor-bound), scope enforcement (granted must be a non-empty subset of the read-only
+set), account-bound custody references, read gating with mandatory selection, bounded
+retries, an idempotent operation ledger with receipt reconciliation, local drafts and
+browser profiles; `ssrf.py` is the destination guard. Provider tokens exist only in a
+custody backend (`DisabledCustody` by default). Raw provider content goes only to the
+`researcher` and returns as attributed untrusted data. Writes are structurally absent.

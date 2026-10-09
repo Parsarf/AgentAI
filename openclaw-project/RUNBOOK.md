@@ -725,3 +725,75 @@ Installed exact fs-safe Linux0.18.1 package after the omitted-optional warning;
 native require mode and synthetic read/traversal/symlink/no-clobber-move checks
 pass, fixtures cleaned. This is not native customer OS/worker isolation. GitHub
 Linux gate for3f0cc73 passes40 account+51 core cases and Vercel routing.
+
+## Telegram customer ingress activation (Hermes) — runbook
+
+Prerequisite: a dedicated customer bot from @BotFather (never reuse the
+owner's personal bot). Then:
+
+1. Add to the private local `.env` (mode 0600):
+   `OPENCLAW_TELEGRAM_BOT_TOKEN=<BotFather token>`
+2. Run `./bin/activate-telegram.py` from the repository root. It fetches the
+   bot username via getMe, generates the webhook secret server-side, writes
+   the three AGENTAI_TELEGRAM_* settings into
+   `/etc/agentai-platform/accounts.env` (replacing any previous values),
+   restarts the app unit, registers
+   `https://getlumina.pro/v1/telegram/webhook` with the secret and verifies.
+3. Verify: sign in on getlumina.pro → Overview shows the Telegram section →
+   "Create link code" → open the deep link within 10 minutes → send
+   /projects, then a message. Secrets are never printed by the helper.
+
+Rotate: replace the token in BotFather, update `.env`, re-run the helper
+(new secret issued automatically). Deactivate: remove the three
+AGENTAI_TELEGRAM_* lines from accounts.env, restart the app, and delete the
+webhook via deleteWebhook.
+
+## Phase 10 — customer memory, objectives, schedules (build; not activated)
+
+- **Memory** (`agentai_platform/memory.py`): per customer+project entries with
+  source/date/confidence/last-confirmed. Correct = supersede; forget = content
+  blanked and index terms deleted in the same transaction. Large tool output
+  is stored as an artifact and only referenced. Outside-sourced text is stored
+  as data (`instruction: false`) and cannot become a preference/correction.
+- **Backup/history retention for deleted memory:** live database holds no
+  deleted text. Existing database backups taken before a deletion still contain
+  it until they age out under the backup retention schedule; restoring one
+  re-introduces the entry, so after any restore re-run pending deletions and
+  record that in the operation notes. Do not hand-edit backups.
+- **Objectives** (`durable.py`): restart pauses every active objective
+  (`ObjectiveService.restart_recovery`); nothing resumes autonomously. Resume
+  is explicit and refused while a checkpoint effect is `uncertain`; reconcile
+  by reading observed state, never by resending. Cancellation is sticky and
+  returns the children (jobs/subagents/schedules) the caller must stop.
+- **Schedules** (`schedules.py`): creation raises `ScheduleDisabled` unless the
+  service is constructed with `enforcement_proven=True`; this stays false until
+  Phase 15 proves enforcement and the installed scheduler capacity is verified.
+- **Policy check:** `python3 -m agentai_platform.policy_check` (exit 1 on any
+  `fail`). `customer-blocker` findings must be cleared before activating a
+  customer cell.
+
+## Phase 11 — customer connectors and credentialed browsing (build; disconnected)
+
+- Service: `agentai_platform/connectors.py` (SQL 0011), routes under
+  `/v1/account/connections*`, page `/account/connections/`. **No provider is
+  configured and no custody backend exists**, so linking returns 503 and nothing
+  is created. Listing and disconnect work today.
+- Permission matrix and tool inventory: `plans/product/phase-11-permission-matrix.json`.
+  Read-only everywhere; the production catalog has no writable kind. Drafts are
+  local rows, never sent by AgentAI.
+- **Disconnect** revokes access first, cancels queued operations and deletes the
+  custody reference. If custody deletion fails the connection is still revoked,
+  the audit row is `uncertain`, and the host job
+  `ConnectorService.purge_revoked()` retries deletion; run it after any custody outage.
+- **Failure handling:** 429/5xx retry at most twice (Retry-After honoured, capped at 60s);
+  401 marks `reconnect_required`; uncertain operations are reconciled from the provider
+  receipt, never resent. Errors reaching users are generic.
+- **Credentialed browser** (`BrowserProfiles`): credentials and cookie jars live in
+  custody only; navigation is HTTPS-443 to the profile allowlist with private,
+  loopback, link-local, metadata and IPv4-mapped addresses blocked and redirects
+  rechecked per hop. Profile backups are credential-bearing: encrypt them with keys
+  held separately from the backup (recovery needs those keys).
+- **Secret-custody obligation (Brave):** the owner's Brave API key appeared once in a
+  tool transcript (Phase 6 BUILD_LOG). It remains operational until the owner rotates it
+  with `integrations/brave/rotate-key.py`. Track as open; do not reproduce the key.
+  The owner key is never shared with customer cells.

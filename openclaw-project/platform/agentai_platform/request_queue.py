@@ -17,6 +17,7 @@ class RequestClaim:
     message: str
     fence: int
     owner: str
+    conversation_id: str | None = None
 
 @dataclass(frozen=True)
 class RequestReceipt:
@@ -35,7 +36,7 @@ class DisabledRequestDriver:
 class RequestQueue:
     def __init__(self,store,clock=time.time):
         self.store=store;self.clock=clock;self.coordinator=Coordinator(store,clock=clock)
-    def submit(self,principal,*,message,key):
+    def submit(self,principal,*,message,key,conversation_id=None):
         identifier(key)
         if not isinstance(message,str) or not message.strip() or len(message)>16000 or '\x00' in message:raise ValueError('invalid message')
         digest=hashlib.sha256(message.encode()).hexdigest()
@@ -48,9 +49,11 @@ class RequestQueue:
             if c.execute("SELECT count(*) FROM customer_requests WHERE account_id=? AND state='waiting'",(principal.account_id,)).fetchone()[0]>=3:raise Conflict('queue full')
             project=c.execute('SELECT id FROM projects WHERE account_id=? ORDER BY created_at,id LIMIT 1',(principal.account_id,)).fetchone()
             if not project:raise Conflict('account setup incomplete')
+            if conversation_id is not None and not c.execute('SELECT 1 FROM conversations WHERE account_id=? AND id=?',(principal.account_id,conversation_id)).fetchone():
+                raise NotFound('unavailable')
             request=uuid.uuid4().hex
-            c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch)
-                VALUES (?,?,?,?,?,?,?,'waiting',?)''',(principal.account_id,request,principal.actor_id,project[0],key,digest,message,int(self.clock())))
+            c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)
+                VALUES (?,?,?,?,?,?,?,?,'waiting',?)''',(principal.account_id,request,principal.actor_id,project[0],conversation_id,key,digest,message,int(self.clock())))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_submit','completed')
             return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
     def _public(self,row):
@@ -95,7 +98,7 @@ class RequestQueue:
             fence=row['fence']+1
             c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=? WHERE account_id=? AND id=?",(fence,owner,int(self.clock())+lease_seconds,row['account_id'],row['id']))
             self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_claim','pending')
-            return RequestClaim(row['account_id'],row['id'],row['project_id'],row['actor_id'],row['message'],fence,owner)
+            return RequestClaim(row['account_id'],row['id'],row['project_id'],row['actor_id'],row['message'],fence,owner,row['conversation_id'])
     def _fenced(self,c,claim):
         row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(claim.account_id,claim.request_id)).fetchone()
         if not row:raise NotFound()

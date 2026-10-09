@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AgentAI private account API",
-    "version": "0.3.0",
-    "description": "Invite-only identity plus lifecycle metadata queue and offline usage reads. Native customer execution/provisioning, mail and live billing are not activated."
+    "version": "0.4.0",
+    "description": "Invite-only identity plus lifecycle metadata queue, offline usage reads and the Phase 6 customer chat surface (projects/conversations/transcript/sends/task controls). Native customer execution/provisioning, mail and live billing are not activated."
   },
   "servers": [
     {
@@ -72,6 +72,44 @@
             "sessionCookie": []
           }
         ]
+      },
+      "post": {
+        "summary": "Create a project (plan quota 10)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created project"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Unavailable"
+          },
+          "409": {
+            "description": "Project limit reached"
+          }
+        }
       }
     },
     "/v1/projects/{id}": {
@@ -940,43 +978,28 @@
     },
     "/v1/tasks/{id}": {
       "get": {
-        "summary": "Scoped ownership asserted before disabled tasks capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
+        "summary": "Read own request/task state",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "maxLength": 96
+              "type": "string"
             }
           }
-        ]
+        ],
+        "responses": {
+          "200": {
+            "description": "Task/request/reservation state; execution_enabled false"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        }
       }
     },
     "/v1/streams": {
@@ -1123,73 +1146,81 @@
     },
     "/v1/conversations": {
       "get": {
-        "summary": "Disabled conversations capability; authenticated customer required",
+        "summary": "List own conversations (optionally by project)",
         "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
+          "200": {
+            "description": "Conversation list"
           },
           "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
+            "description": "Identity required"
           },
           "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
+            "description": "Unavailable"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a conversation in an own project (10 per project)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project_id"
+                ]
+              }
+            }
           }
         },
-        "security": [
-          {
-            "sessionCookie": []
+        "responses": {
+          "201": {
+            "description": "Created conversation"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Unavailable"
+          },
+          "409": {
+            "description": "Conversation limit reached"
           }
-        ]
+        }
       }
     },
     "/v1/conversations/{id}": {
       "get": {
-        "summary": "Scoped ownership asserted before disabled conversations capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
+        "summary": "Read an own conversation",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "maxLength": 96
+              "type": "string"
             }
           }
-        ]
+        ],
+        "responses": {
+          "200": {
+            "description": "Conversation"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        }
       }
     },
     "/v1/operations": {
@@ -1941,6 +1972,200 @@
           },
           "404": {
             "description": "Unavailable or not owned"
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/messages": {
+      "get": {
+        "summary": "Bounded transcript with id cursor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Messages and conversation task states; execution_enabled false"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "400": {
+            "description": "Invalid pagination"
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/send": {
+      "post": {
+        "summary": "Submit one actionable chat request (Phase 5 admission; idempotent by key)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "maxLength": 16000
+                  },
+                  "key": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message",
+                  "key"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Queued send; execution_enabled/admission flags honest"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "402": {
+            "description": "budget_denied with category; no native call"
+          },
+          "404": {
+            "description": "Not found or not owned"
+          },
+          "409": {
+            "description": "Request conflict"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/cancel": {
+      "post": {
+        "summary": "Cancel own task (waiting immediate; running records intent until confirmed abort)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Cancellation recorded"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        }
+      }
+    },
+    "/v1/account/connections": {
+      "get": {
+        "summary": "List connector status (read-only; provider writes are never enabled)",
+        "responses": {
+          "200": {
+            "description": "Connections"
+          },
+          "401": {
+            "description": "Identity required"
+          }
+        }
+      }
+    },
+    "/v1/account/connections/link": {
+      "post": {
+        "summary": "Begin provider link (503 connector_not_configured until provider registration and custody exist)",
+        "responses": {
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "429": {
+            "description": "Rate limited"
+          },
+          "503": {
+            "description": "Not configured"
+          }
+        }
+      }
+    },
+    "/v1/account/connections/callback": {
+      "get": {
+        "summary": "Provider callback (503 until an exchange adapter is installed; consumes nothing)",
+        "responses": {
+          "401": {
+            "description": "Identity required"
+          },
+          "503": {
+            "description": "Not configured"
+          }
+        }
+      }
+    },
+    "/v1/account/connections/disconnect": {
+      "post": {
+        "summary": "Revoke own connection and cancel its queued operations",
+        "responses": {
+          "200": {
+            "description": "Disconnected"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        }
+      }
+    },
+    "/v1/account/drafts": {
+      "get": {
+        "summary": "Local draft proposals (never sent by AgentAI)",
+        "responses": {
+          "200": {
+            "description": "Drafts"
+          },
+          "401": {
+            "description": "Identity required"
           }
         }
       }

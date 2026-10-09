@@ -61,7 +61,10 @@ project access and backend HTTPS were subsequently configured for getlumina.pro.
 Live login/cookie/CSRF/routing checks pass through that origin. Gmail SMTP and the bounded delivery timer are now configured; the first owner
 invitation was accepted by SMTP. Activation requires the emailed code. No temporary unclaimed deployment or live identity was created.
 
-New migration: SQL0004 + Django0008. Explicit private bootstrap before code cutover;
+New migration: SQL0005 + Django0009 add the chat transcript/delivery tables and
+the request conversation binding; see [chat design](CHAT.md) for the Phase 6
+customer chat surface that reuses this queue. SQL0004 + Django0008 added the
+serial request tables themselves. Explicit private bootstrap before code cutover;
 back up existing metadata using SQLite backup, preserve reservations/queued work,
 and refuse older binaries on the extended schema. The fresh VPS metadata database was initialized and the private account app
 installed on loopback18800 under a separate identity with a 128 MiB cap. No

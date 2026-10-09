@@ -1,0 +1,85 @@
+{
+ "created_at": "2026-10-08T12:00:00Z",
+ "phase": 9,
+ "run_id": "20261008T120000Z",
+ "status": "READY_BUILD_FAIL_CLOSED",
+ "target": "existing VPS, release 20261008T115500Z-events",
+ "native_execution_enabled": false,
+ "real_task_events": 0,
+ "browser_sse_consumption": false,
+ "paid_provider_calls": 0,
+ "customer_accounts_touched": 0,
+ "changes": [
+  "EventService: typed allowlisted payloads, recursive redaction, 32KiB bound, per-task sequence",
+  "Authenticated SSE stream: cap 3/account, heartbeats, revocation recheck, bounded window + reopen cursor",
+  "Cursor polling endpoint (gap-free replay); chat page per-task timeline rendering",
+  "ChatDriver emits durable task_started/progress/result/cancel events (best-effort)",
+  "30-day event retention in the host retention command; CI extended with test_events"
+ ],
+ "checks": [
+  {
+   "id": "P09-SERVICE",
+   "command": "python -m unittest tests.test_events",
+   "observation": "10 tests OK (redaction, replay, cap, expiry, prune, restart survival)",
+   "status": "PASS"
+  },
+  {
+   "id": "P09-CORE",
+   "command": "full core selection",
+   "observation": "143 tests OK (2 pre-existing Linux skips)",
+   "status": "PASS"
+  },
+  {
+   "id": "P09-ACCOUNTS",
+   "command": "python manage.py test accounts",
+   "observation": "62 tests OK incl. SSE auth/cap + timeline rendering",
+   "status": "PASS"
+  },
+  {
+   "id": "P09-SCRIPTS",
+   "command": "concurrency + loopback HTTP + vercel routing checks",
+   "observation": "PASS",
+   "status": "PASS"
+  },
+  {
+   "id": "P09-DEPLOY",
+   "command": "pre-migrate backup + hash verify + migrate + restart + origin checks",
+   "observation": "SQL0008 applied; events/stream 401 anon via origin; readiness honest",
+   "status": "PASS"
+  }
+ ],
+ "deferred_cases": [
+  "P15-LIVE-EVENTS live events from a real running task",
+  "P15-APPROVAL native approval bridging (absent by design)",
+  "Browser SSE consumption (CSP/JS decision)",
+  "T10-DASH2 legacy assertions (Phase 15)"
+ ],
+ "cost": {
+  "paid_routes": [],
+  "unknown": []
+ },
+ "blockers": [
+  "Phase 4/5 execution gates for real events",
+  "CSP allows no scripts: browser SSE consumption needs a product decision"
+ ],
+ "process_note": "Pre-migration backup TAKEN before the stop step this time (checklist correction applied); integrity ok.",
+ "rollback": "No schema-compatible prior release; restore pre-migrate backup 20261008T115800Z into a fresh state root per runbook if required.",
+ "source_sha256": {
+  "openclaw-project/platform/migrations/0008_event_streams.sql": "18e382f7acf03d92416e609d72639f133d6875514192bbc66f45876a3b0139b0",
+  "openclaw-project/platform/accounts/migrations/0012_event_streams.py": "0ce1941af231cba98baf1a81dbb7e71439bda4c4c249b99f6b737c4509fb6213",
+  "openclaw-project/platform/agentai_platform/events.py": "25330b6ae81bcb0d743f64f6960d1be86044116b7b4650f1a8b6d258ff21abb1",
+  "openclaw-project/platform/agentai_platform/chat.py": "32d6cc2a676439af8b3b5bc662cd6eefdf93db2b5233899b4c324f2de83c30a4",
+  "openclaw-project/platform/accounts/streams.py": "46ecb97511b8af033b220d5c01805ee451d6563dfbbbdde80c611360ae277e28",
+  "openclaw-project/platform/accounts/urls.py": "5d830b375314d7ec3c7b34982b5703da0d70742919c6a1acc5f2ccee6a00787c",
+  "openclaw-project/platform/accounts/chat.py": "28b895fba0815f4fda6689140270249731ed83f452e5cfa112cb03eda078b373",
+  "openclaw-project/platform/accounts/templates/accounts/chat.html": "9e00dc953400974c5212be4c1bbc19aa8c65388b8fa014a887d78ca6b125dc27",
+  "openclaw-project/platform/accounts/static/ui.css": "6b676aba7f32df6990e32cf30511871bae26ec5df656037b8baf4dce80ba524f",
+  "openclaw-project/platform/accounts/management/commands/retention_accounts.py": "b6a20d596600610f3bb6b2d5c0c51e8a0f3805659117146b12258e64037e060a",
+  "openclaw-project/platform/accounts/test_streams.py": "e3ee0eb7718e6b25c3bd42da56927ad79b49b88127a8be890df78fdba405e9b6",
+  "openclaw-project/platform/tests/test_events.py": "8b3b01fa6f876ba901015491f2f53e5b64d2c2c5048c0304a42f0a45ae7482a0",
+  "openclaw-project/plans/product/phase-09.md": "3031abefdc9f452a530503bd107e783927daf6b31dab722ef2ccf4cff8337fa6",
+  "openclaw-project/plans/product/requirements.json": "2b790de2e0ce27c9f7d01efa39de9f35384e3b6bfc26fa460f83cdee79f46bf6",
+  "openclaw-project/plans/product/requirements.md": "92e1ae3b26ba9a2e14602f525e530c645f3ed6acb4855db65a5b6e4d5802cd38",
+  ".github/workflows/platform.yml": "7994f38d1a452be88cab66a6dbe296f6d6e8b04242c860d2f4609aa5c1b4a045"
+ }
+}

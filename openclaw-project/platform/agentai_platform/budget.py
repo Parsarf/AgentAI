@@ -138,6 +138,7 @@ class BudgetLedger:
             eligible=entitlement['status'] in {'trial','active','grace'} and con.execute("SELECT julianday(?)>julianday(?,'unixepoch')",(entitlement['valid_until'],self.clock())).fetchone()[0]
             spent=self._spend(con,principal.account_id,limits['period_start_epoch']);held=self._holds(con,principal.account_id)
             return {'reported_microusd':spent,'held_microusd':held,'period_remaining_microusd':max(0,limits['period_microusd']-spent-held) if eligible else 0,
+                    'period_limit_microusd':limits['period_microusd'],
                     'admission_eligible':bool(eligible),
                     'usage_pending':bool(con.execute("SELECT 1 FROM task_reservations WHERE account_id=? AND state='uncertain'",(principal.account_id,)).fetchone()),
                     'currency':'USD','live_provider_accounting_verified':False}

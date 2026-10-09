@@ -1,7 +1,25 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your requests — AgentAI</title></head><body><main>
-<h1>Your requests</h1><p>Customer requests run one at a time. Your requests are saved while waiting.</p>
-<p>Agent execution is not connected yet. Requests submitted now remain waiting until execution is available.</p>
-<form action="/v1/requests" method="post">{% csrf_token %}<input type="hidden" name="key" value="{{ key }}"><label for="message">What would you like done?</label><br><textarea id="message" name="message" maxlength="16000" rows="6" required></textarea><br><button>Submit request</button></form>
-<p><a href="/account/requests/">Refresh status</a> · <a href="/account/">Back to account</a></p>
-{% for request in requests %}<section><h2>{{ request.state|capfirst }}</h2><p>{{ request.message }}</p>{% if request.result %}<p>{{ request.result }}</p>{% endif %}{% if request.cancel_requested %}<p>Cancellation requested.</p>{% endif %}{% if request.state == 'waiting' or request.state == 'starting' or request.state == 'running' %}<form action="/v1/requests/{{ request.id }}/cancel" method="post">{% csrf_token %}<button>Cancel request</button></form>{% endif %}</section>{% empty %}<p>No requests yet.</p>{% endfor %}
-</main></body></html>
+{% extends 'accounts/base.html' %}{% block title %}Requests — AgentAI{% endblock %}{% block body %}
+<div class="pagehead"><h1>Requests</h1><p>Durable work queue. Requests run one at a time, in order, and wait safely while execution is offline.</p></div>
+<section class="card">
+<h3>New request</h3>
+<form class="stack" method="post" action="/v1/requests">{% csrf_token %}
+<input type="hidden" name="key" value="{{ key }}">
+<label class="field">What would you like done?<textarea name="message" maxlength="16000" rows="5" required></textarea></label>
+<div class="actions"><button>Submit request</button><span class="hint">Submitting twice never duplicates a request.</span></div>
+</form>
+</section>
+<h2>Saved requests</h2>
+<div class="itemlist">
+{% for request in requests %}
+<section class="card">
+<div class="rowhead"><span class="state {{ request.state }}">{{ request.state|capfirst }}</span>{% if request.state == 'waiting' or request.state == 'starting' or request.state == 'running' or request.state == 'uncertain' %}<form method="post" action="/v1/requests/{{ request.id }}/cancel">{% csrf_token %}<button class="danger small">Cancel</button></form>{% endif %}</div>
+<p>{{ request.message }}</p>
+{% if request.result %}<blockquote>{{ request.result }}</blockquote>{% endif %}
+{% if request.cancel_requested %}<p class="hint">Cancellation requested.</p>{% endif %}
+</section>
+{% empty %}
+<div class="empty">No requests yet.</div>
+{% endfor %}
+</div>
+<p class="actions"><a class="btn ghost small" href="/account/chat/">Chat</a><a class="btn ghost small" href="/account/usage/">Usage</a></p>
+{% endblock %}

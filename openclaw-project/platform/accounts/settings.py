@@ -76,6 +76,28 @@ if os.environ.get('AGENTAI_MAIL_ENABLED') == '1':
     validate_email(DEFAULT_FROM_EMAIL)
     if not EMAIL_HOST or DEFAULT_FROM_EMAIL.endswith('@localhost'):
         raise ImproperlyConfigured('Configured SMTP host and sender domain are required before mail activation')
+TELEGRAM_BOT_TOKEN = os.environ.get('AGENTAI_TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_WEBHOOK_SECRET = os.environ.get('AGENTAI_TELEGRAM_WEBHOOK_SECRET', '')
+TELEGRAM_BOT_USERNAME = os.environ.get('AGENTAI_TELEGRAM_BOT_USERNAME', '').lstrip('@')
+if TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_USERNAME:
+    # Partial configuration must fail loudly; the ingress stays fail-closed.
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_WEBHOOK_SECRET or not TELEGRAM_BOT_USERNAME:
+        raise ImproperlyConfigured('Telegram ingress requires bot token, webhook secret (>=32 chars) and bot username together')
+    if len(TELEGRAM_WEBHOOK_SECRET) < 32:
+        raise ImproperlyConfigured('Telegram webhook secret must be at least 32 characters')
+    TELEGRAM_ENABLED = True
+else:
+    TELEGRAM_ENABLED = False
+# Phase 8 storage: artifact/file content lives outside the metadata database.
+STORAGE_DIR = os.environ.get('AGENTAI_STORAGE_DIR', '')
+ARTIFACT_SIGNING_KEY = os.environ.get('AGENTAI_ARTIFACT_SIGNING_KEY', '')
+STORAGE_READY = bool(STORAGE_DIR) and len(ARTIFACT_SIGNING_KEY) >= 32
+if STORAGE_DIR and not STORAGE_READY:
+    raise ImproperlyConfigured('Artifact storage requires AGENTAI_ARTIFACT_SIGNING_KEY (>=32 chars)')
+# Documented scan capability (signature/UTF-8/JSON/binary validation). Without it,
+# uploads stay disabled per the launch contract.
+UPLOADS_ENABLED = os.environ.get('AGENTAI_UPLOADS_ENABLED') == '1'
+DATA_UPLOAD_MAX_MEMORY_SIZE = 31457280  # 25MiB batch cap plus multipart overhead
 LOGGING = {'version': 1, 'disable_existing_loggers': False,
  'handlers': {'null': {'class': 'logging.NullHandler'}},
  'loggers': {'django': {'handlers': ['null'], 'propagate': False}}}

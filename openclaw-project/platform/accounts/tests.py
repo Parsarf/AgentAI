@@ -67,9 +67,15 @@ class AccountBoundaryTests(TestCase):
 
     def test_all_sensitive_routes_gate_identity_and_execution(self):
         c=self.new_client(); a=self.signed()
-        for route in ['exports','memory','schedules','integrations','controls','artifacts','tasks','streams','conversations']:
+        for route in ['exports','memory','schedules','integrations','controls','tasks','streams']:
             self.assertEqual(c.get('/v1/'+route,secure=True).status_code,401)
             self.assertEqual(a.get('/v1/'+route,secure=True).status_code,503)
+        # Phase 8: artifact list moved under project file routes.
+        self.assertEqual(a.get('/v1/artifacts',secure=True).status_code,404)
+        # Phase 6: conversation listing is enabled; creation/reads stay account-scoped.
+        self.assertEqual(c.get('/v1/conversations',secure=True).status_code,401)
+        listed=a.get('/v1/conversations',secure=True).json()['conversations']
+        self.assertEqual([item['id'] for item in listed],['conversation-a'])
         self.assertEqual(self.post(a,'/v1/tasks',{'account_id':'b'}).status_code,400)
 
     def test_client_routing_overrides_rejected(self):
@@ -77,6 +83,16 @@ class AccountBoundaryTests(TestCase):
         self.assertEqual(c.get('/v1/projects?account_id=b',secure=True).status_code,400)
         self.assertEqual(c.get('/v1/projects',secure=True,HTTP_X_TENANT_ID='b').status_code,400)
         self.assertEqual(self.new_client().get('/v1/me',secure=True,HTTP_X_CUSTOMER_ID='a').status_code,401)
+
+    def test_stylesheet_asset_served_once_and_only(self):
+        # Exact fixed asset names; no user input reaches the filesystem.
+        # The canonical link is slashed: the edge forwards slashed account paths.
+        r=self.new_client().get('/account/ui/',secure=True)
+        self.assertEqual(r.status_code,200)
+        self.assertEqual(r['Content-Type'],'text/css; charset=utf-8')
+        self.assertIn('max-age=86400',r['Cache-Control'])
+        self.assertEqual(self.new_client().get('/account/ui',secure=True).status_code,200)
+        self.assertEqual(self.new_client().get('/account/ui.css/',secure=True).status_code,404)
 
     def test_csrf_origin_method_host_body(self):
         c=self.signed()
@@ -181,6 +197,10 @@ class AccountBoundaryTests(TestCase):
         self.assertEqual(c.get('/v1/projects',secure=True).status_code,404)
         self.assertEqual(c.get('/internal/accounts/a/export',secure=True).status_code,403)
         self.assertEqual(c.get('/internal/accounts/a/impersonate',secure=True).status_code,403)
+        # Anonymous callers deny before any identity query (regression: TypeError 503).
+        anon=self.new_client()
+        self.assertEqual(anon.get('/internal/accounts/a/audit',secure=True).status_code,404)
+        self.assertEqual(self.post(anon,'/internal/accounts/a/suspend').status_code,404)
         code=str(totp(dev.bin_key,dev.step,dev.t0,dev.digits,dev.drift)).zfill(dev.digits)
         self.assertEqual(self.post(c,'/auth/mfa',{'code':code}).status_code,200)
         self.assertEqual(self.post(c,'/auth/mfa',{'code':code}).status_code,401)

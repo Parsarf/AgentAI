@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "note": "Prepared assertions; none executed in the Phase 11 build. Live account demonstrations happen only for selected connected services in authorized Phase 15/17.",
+  "cases": [
+    {
+      "id": "P11-FX-IDENTITY-SCOPE",
+      "acceptance_case": "P15-GMAIL",
+      "assertions": [
+        "provider-verified identity recorded, not the config email",
+        "granted scopes subset of the read-only set",
+        "compose/send grant rejected and tokens revoked"
+      ],
+      "mock_covered_by": "platform/tests/test_connectors.py"
+    },
+    {
+      "id": "P11-FX-READ-WINDOWS",
+      "acceptance_case": "P15-CALENDAR",
+      "assertions": [
+        "today's events computed in the customer timezone",
+        "default 10 mail results",
+        "one selected Drive item / one repo only"
+      ],
+      "live_only": true
+    },
+    {
+      "id": "P11-FX-DISABLED-REVOKED",
+      "acceptance_case": "P15-DRIVE",
+      "assertions": [
+        "disabled connector denies with no content read or token use",
+        "revoked/expired grant yields reconnect_required, not a silent switch of account",
+        "disconnect cancels queued operations"
+      ],
+      "mock_covered_by": "platform/tests/test_connectors.py"
+    },
+    {
+      "id": "P11-FX-UNAUTHORIZED-TARGET",
+      "acceptance_case": "P15-GITHUB",
+      "assertions": [
+        "repository outside the selection is denied as not found",
+        "other tenant's connection id is denied identically"
+      ],
+      "mock_covered_by": "platform/tests/test_connectors.py"
+    },
+    {
+      "id": "P11-FX-INJECTION",
+      "acceptance_case": "P15-GMAIL",
+      "fixtures": [
+        "config/phase11-fixtures/hostile-email.txt",
+        "config/phase11-fixtures/hostile-calendar-event.txt",
+        "config/phase11-fixtures/hostile-doc.txt",
+        "config/phase11-fixtures/hostile-issue.txt"
+      ],
+      "assertions": [
+        "content reaches only the researcher",
+        "summary is attributed untrusted data with instruction=false",
+        "no standing order, memory rule, tool install, credential request, schedule or send results"
+      ],
+      "live_only": true
+    },
+    {
+      "id": "P11-FX-DRAFT-ONLY",
+      "acceptance_case": "P15-GMAIL",
+      "assertions": [
+        "draft stored locally",
+        "no provider send tool exposed",
+        "exec approval is not connector write approval"
+      ],
+      "mock_covered_by": "platform/tests/test_connectors.py"
+    },
+    {
+      "id": "P11-FX-REPLAY-UNCERTAIN",
+      "acceptance_case": "P15-GITHUB",
+      "assertions": [
+        "same idempotency key with different payload is a conflict",
+        "uncertain operation blocks retry until reconciled from a provider receipt"
+      ],
+      "mock_covered_by": "platform/tests/test_connectors.py"
+    },
+    {
+      "id": "P11-FX-BROWSER",
+      "acceptance_case": "P15-AUTH-BROWSER",
+      "assertions": [
+        "private, loopback, link-local, metadata and IPv4-mapped destinations blocked",
+        "redirect to a non-allowlisted or private host blocked at the hop",
+        "swapped-secret canary: another tenant's reference never resolves",
+        "revoke deletes credential and session references",
+        "no tool returns a secret value to the model"
+      ],
+      "mock_covered_by": "platform/tests/test_connectors.py",
+      "live_only_parts": [
+        "real login, cookie persistence across restarts, profile backup encryption"
+      ]
+    }
+  ]
+}

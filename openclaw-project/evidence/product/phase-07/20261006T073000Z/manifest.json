@@ -1,0 +1,90 @@
+{
+ "created_at": "2026-10-06T07:30:00Z",
+ "phase": 7,
+ "run_id": "20261006T073000Z",
+ "status": "READY_BUILD_FAIL_CLOSED",
+ "target": "existing VPS, release 20261006T073000Z-telegram",
+ "native_execution_enabled": false,
+ "telegram_bot_configured": false,
+ "real_bot_links_created": 0,
+ "paid_provider_calls": 0,
+ "customer_accounts_touched": 0,
+ "changes": [
+  "SQL0006/Django0010 telegram tables + telegram provenance (chat_messages rebuilt, 0 rows copied)",
+  "webhook ingress with secret verification and durable dedup",
+  "hashed single-use link codes, unique chat-account binding, unlink/re-link",
+  "DM routing into Phase 5 admission + serial queue with telegram provenance",
+  "outbox replies with receipts + telegram_worker drain; overview Telegram section"
+ ],
+ "checks": [
+  {
+   "id": "P07-SERVICE",
+   "command": "python -m unittest tests.test_telegram",
+   "observation": "14 tests OK",
+   "status": "PASS"
+  },
+  {
+   "id": "P07-CORE",
+   "command": "full core selection incl. test_chat/test_gateway/test_telegram",
+   "observation": "124 tests OK (2 pre-existing Linux skips)",
+   "status": "PASS"
+  },
+  {
+   "id": "P07-ACCOUNTS",
+   "command": "python manage.py test accounts",
+   "observation": "53 tests OK incl. webhook secret + routing isolation",
+   "status": "PASS"
+  },
+  {
+   "id": "P07-SCRIPTS",
+   "command": "check_account_concurrency + check_account_http + vercel check",
+   "observation": "PASS",
+   "status": "PASS"
+  },
+  {
+   "id": "P07-DEPLOY",
+   "command": "release hash verify + migrate + restart + origin checks",
+   "observation": "SQL0006 applied; webhook 405 GET, link 401 anon, readiness honest",
+   "status": "PASS"
+  }
+ ],
+ "deferred_cases": [
+  "P15-TELEGRAM real bot link/reply proof",
+  "P15-CROSS-SURFACE live cross-surface history",
+  "Phase 8 attachment wiring"
+ ],
+ "cost": {
+  "paid_routes": [],
+  "unknown": [
+   "no provider route exists; nothing measurable"
+  ]
+ },
+ "blockers": [
+  "customer bot token/secret/username not provisioned (owner)",
+  "setWebhook registration pending",
+  "Phase 4/5 execution gates"
+ ],
+ "process_note": "Pre-migration private backup was skipped for this deploy; post-migrate backup 20261006T073500Z (integrity ok) taken immediately and the deploy checklist corrected.",
+ "rollback": "No schema-compatible prior release; restore verified backup into a fresh state root per runbook. Code-only rollback refuses the newer schema.",
+ "source_sha256": {
+  "openclaw-project/platform/migrations/0006_telegram_ingress.sql": "2fb8bbbab4779727dcc5a1a70edf322e3141c3fdbc2931ef8eff773d7cc9a6af",
+  "openclaw-project/platform/accounts/migrations/0010_telegram_ingress.py": "b7b10fde352ad02ecc27cd466648913d954deb9db2f07bede28f81f99802954b",
+  "openclaw-project/platform/agentai_platform/telegram.py": "3b8233cd881062237259237c443fd04e67c131ad935e195a2a96bdd3187178af",
+  "openclaw-project/platform/agentai_platform/chat.py": "be05758c12064719edc7b130e0df3925b4a5702ee1c47071b3ae154769692431",
+  "openclaw-project/platform/accounts/telegram.py": "118558145af133a6d368f6a07fccb0208231ea2384ffefd91747d3fd545371e9",
+  "openclaw-project/platform/accounts/urls.py": "8855a8eff6ed2bc78433b328572d177dcfdc049eaff37d146ab28ccbb39d3251",
+  "openclaw-project/platform/accounts/views.py": "4e6a8d2ff23971bdeb6ada4a1511ba33e93b5891433c578c3428e2c8e4a6efe5",
+  "openclaw-project/platform/accounts/settings.py": "1def44a6fe58fb3456f92c9e249c19f08f035f9d6271884f7344114cc10c1f48",
+  "openclaw-project/platform/accounts/management/commands/telegram_worker.py": "1013fc072bac02b69e80bac8e5b3f943599f50ee8a39a5704300ef3fd8fbcad1",
+  "openclaw-project/platform/accounts/templates/accounts/base.html": "0377a4dc46cd0c612666f9cf3ebb79d44bf767e797f54affa1d9872117d9d6de",
+  "openclaw-project/platform/accounts/templates/accounts/home.html": "11da0864a0846d30366bc8f9cbb830d83febdcdba8a92f74b79acb161f873478",
+  "openclaw-project/platform/accounts/templates/accounts/chat.html": "f696b17b43261a7271014063fe4360fd9ed3b19facc35ac866744cc7c1ead0e7",
+  "openclaw-project/platform/accounts/templates/accounts/telegram_link.html": "b36a85e8e87576e03d76079142fb3499808def7b8fc7e103681b29de597d2c6a",
+  "openclaw-project/platform/accounts/test_telegram.py": "455c5f2217668494d7778b95f0956878e3f45846416b13ca81bf9bf038d85790",
+  "openclaw-project/platform/tests/test_telegram.py": "3223a7a63e2c678d559e59cdf54aacc8a33cf4fdec27aa6482b0279b475196cf",
+  "openclaw-project/plans/product/phase-07.md": "31a1bb51e22cc29011ee0b51d3a964ba885e5f648ef2f013e2bcea38db2e511a",
+  "openclaw-project/plans/product/requirements.json": "bb1879519cf3a5488a6fa43c9bfe6a6578b843bd399a9d7735e89fcc0e041430",
+  "openclaw-project/plans/product/requirements.md": "860f9317961701dc8ca7635d12ec2bc34b9ebc69411b8a3efbfe36429cd372d9",
+  ".github/workflows/platform.yml": "5c2c60068ab1e3f17d27c1b836f0c78deb4799e55ef434be77d70a4b9b3338b1"
+ }
+}

@@ -1,0 +1,15 @@
+{% extends 'accounts/base.html' %}{% block title %}Telegram linking — AgentAI{% endblock %}{% block body %}
+<div class="pagehead"><h1>Link Telegram</h1></div>
+{% if not enabled %}
+<div class="notice warn"><span><strong>Telegram linking is not enabled yet.</strong> Nothing was created. You will see it here when the ingress is connected.</span></div>
+{% else %}
+<section class="card">
+<p>This one-time code is the only way to link this chat. Open the link below within <strong>{{ expires_in }} seconds</strong> — it expires after a single use.</p>
+{% if link %}<p class="actions"><a class="btn" href="{{ link }}" rel="noopener">Open Telegram to link</a></p>
+<p class="hint mono">{{ link }}</p>
+{% else %}<p class="hint">The bot address is not configured yet.</p>{% endif %}
+<p class="hint">Treat the code like a password: anyone holding it can link their chat to your account until it expires or is used.</p>
+</section>
+{% endif %}
+<p class="actions"><a class="btn ghost" href="/account/">Back to overview</a></p>
+{% endblock %}

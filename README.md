@@ -20,9 +20,12 @@ To connect customer login, configure the VPS HTTPS backend and Vercel's
 
 The private customer account backend is installed on the existing VPS. Verified
 accounts, trial onboarding, scoped request intake and a persistent global serial
-queue are implemented. The native agent adapter is still disabled: saved requests
-wait. Website publication does not enable agents or paid signup. Full chat,
-Telegram linking, artifacts, live events and billing remain later phase work.
+queue are implemented, and the Phase 6 customer chat surface (projects,
+conversations, durable transcript, admission-gated sends and task controls) is
+built with the local contract flow verified. The native agent adapter is still
+disabled: saved requests and chat sends wait. Website publication does not
+enable agents or paid signup. Full chat execution, Telegram linking, artifacts,
+live events and billing remain later phase work.
 
 The [offer and screen designs](product/CONTRACT.md),
 [platform implementation](openclaw-project/platform/README.md) and

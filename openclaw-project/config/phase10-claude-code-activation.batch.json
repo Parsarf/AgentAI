@@ -1,0 +1,244 @@
+[
+  {
+    "path": "agents.defaults.modelPolicy.allow",
+    "value": [
+      "litellm/claude-sonnet-4-6",
+      "litellm/claude-haiku-4-5",
+      "litellm/claude-sonnet-5-5"
+    ]
+  },
+  {
+    "path": "agents.entries.claude-builder",
+    "value": {
+      "name": "claude-builder",
+      "workspace": "/home/node/.openclaw/work/phase10/builder",
+      "agentDir": "/home/node/.openclaw/agents/claude-builder/agent",
+      "model": {
+        "primary": "litellm/claude-sonnet-5-5",
+        "fallbacks": []
+      },
+      "modelPolicy": {
+        "allow": [
+          "litellm/claude-sonnet-5-5"
+        ]
+      },
+      "models": {
+        "litellm/claude-sonnet-5-5": {
+          "agentRuntime": {
+            "id": "claude-cli"
+          }
+        }
+      },
+      "tools": {
+        "profile": "coding",
+        "allow": [
+          "session_status",
+          "read",
+          "ls",
+          "write",
+          "edit",
+          "apply_patch",
+          "exec",
+          "process"
+        ],
+        "deny": [
+          "browser",
+          "canvas",
+          "view_image",
+          "nodes",
+          "automations",
+          "cron",
+          "gateway",
+          "web_search",
+          "web_fetch",
+          "sessions_spawn",
+          "sessions_send",
+          "sessions_yield",
+          "subagents",
+          "message",
+          "portal",
+          "sessions",
+          "plugins",
+          "openclaw",
+          "memory_search",
+          "memory_get",
+          "get_goal",
+          "create_goal",
+          "update_goal"
+        ],
+        "elevated": {
+          "enabled": false
+        },
+        "exec": {
+          "host": "sandbox",
+          "timeoutSeconds": 120
+        }
+      },
+      "skills": [
+        "software-project"
+      ],
+      "subagents": {
+        "allowAgents": []
+      }
+    }
+  },
+  {
+    "path": "agents.entries.claude-debugger",
+    "value": {
+      "name": "claude-debugger",
+      "workspace": "/home/node/.openclaw/work/phase10/debug-repo",
+      "agentDir": "/home/node/.openclaw/agents/claude-debugger/agent",
+      "model": {
+        "primary": "litellm/claude-sonnet-5-5",
+        "fallbacks": []
+      },
+      "modelPolicy": {
+        "allow": [
+          "litellm/claude-sonnet-5-5"
+        ]
+      },
+      "models": {
+        "litellm/claude-sonnet-5-5": {
+          "agentRuntime": {
+            "id": "claude-cli"
+          }
+        }
+      },
+      "tools": {
+        "profile": "coding",
+        "allow": [
+          "session_status",
+          "read",
+          "ls",
+          "write",
+          "edit",
+          "apply_patch",
+          "exec",
+          "process"
+        ],
+        "deny": [
+          "browser",
+          "canvas",
+          "view_image",
+          "nodes",
+          "automations",
+          "cron",
+          "gateway",
+          "web_search",
+          "web_fetch",
+          "sessions_spawn",
+          "sessions_send",
+          "sessions_yield",
+          "subagents",
+          "message",
+          "portal",
+          "sessions",
+          "plugins",
+          "openclaw",
+          "memory_search",
+          "memory_get",
+          "get_goal",
+          "create_goal",
+          "update_goal"
+        ],
+        "elevated": {
+          "enabled": false
+        },
+        "exec": {
+          "host": "sandbox",
+          "timeoutSeconds": 120
+        }
+      },
+      "skills": [
+        "debugging"
+      ],
+      "subagents": {
+        "allowAgents": []
+      }
+    }
+  },
+  {
+    "path": "agents.entries.claude-reviewer",
+    "value": {
+      "name": "claude-reviewer",
+      "workspace": "/home/node/.openclaw/work/phase10/review-scratch",
+      "runtime": {
+        "type": "acp",
+        "acp": {
+          "agent": "claude",
+          "mode": "oneshot",
+          "cwd": "/home/node/.openclaw/work/phase10/review-snapshot"
+        }
+      },
+      "tools": {
+        "allow": [
+          "session_status",
+          "read",
+          "ls"
+        ],
+        "deny": [
+          "browser",
+          "canvas",
+          "view_image",
+          "nodes",
+          "automations",
+          "cron",
+          "gateway",
+          "web_search",
+          "web_fetch",
+          "sessions_spawn",
+          "sessions_send",
+          "sessions_yield",
+          "subagents",
+          "message",
+          "portal",
+          "sessions",
+          "plugins",
+          "openclaw",
+          "memory_search",
+          "memory_get",
+          "get_goal",
+          "create_goal",
+          "update_goal",
+          "write",
+          "edit",
+          "apply_patch",
+          "exec",
+          "process"
+        ],
+        "elevated": {
+          "enabled": false
+        }
+      },
+      "subagents": {
+        "allowAgents": []
+      }
+    }
+  },
+  {
+    "path": "agents.entries.main.subagents.allowAgents",
+    "value": [
+      "researcher",
+      "browser-worker",
+      "critic",
+      "claude-builder",
+      "claude-debugger",
+      "claude-reviewer"
+    ]
+  },
+  {
+    "path": "plugins.entries.acpx.enabled",
+    "value": true
+  },
+  {
+    "path": "acp",
+    "value": {
+      "enabled": true,
+      "backend": "acpx",
+      "defaultAgent": "claude",
+      "allowedAgents": [
+        "claude"
+      ]
+    }
+  }
+]

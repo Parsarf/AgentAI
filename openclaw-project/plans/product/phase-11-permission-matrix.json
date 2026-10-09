@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "recorded": "2026-10-09",
+  "basis": "Read-only server probe of mcp.servers config (values only, credentials absent), repo Dockerfile.google/github-readonly.json, BUILD_LOG Phase 6 entries, and the Phase 11 product catalog in agentai_platform/connectors.py. No account was connected or read.",
+  "decision": "All four account connectors and credentialed browsing are 'later' release scope per the requirement ledger (INT-01..05): OPTIONAL for private-beta launch, so their absence does not block launch; whatever is enabled must pass its gate. Brave search is live for the owner runtime only.",
+  "inventory": {
+    "google-readonly": {
+      "transport": "stdio via docker",
+      "image": "sha256:17620499dba778fa67572e0ac5f93ae59c570734901b5671ddfbb1197fc0fc4c",
+      "package": "workspace-mcp==1.29.0 (config/phase6/Dockerfile.google)",
+      "enabled": false,
+      "tools_exposed": [
+        "search_gmail_messages",
+        "get_gmail_message_content",
+        "get_gmail_messages_content_batch",
+        "list_calendars",
+        "get_events",
+        "search_drive_files",
+        "get_drive_file_content",
+        "list_drive_items"
+      ],
+      "agents": [
+        "researcher"
+      ],
+      "hardening": "read-only rootfs, cap-drop ALL, no-new-privileges, 128 pids, 384m, user 1000, local files disabled, 5MiB file cap",
+      "caveat": "One server serves Gmail, Calendar and Drive, so service separation depends on the OAuth scopes granted, not on process isolation. Its target email is an owner-provided config value, not verified identity."
+    },
+    "github-readonly": {
+      "transport": "streamable-http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "enabled": false,
+      "tools_exposed": [
+        "get_me",
+        "get_file_contents",
+        "list_commits",
+        "get_commit",
+        "list_branches",
+        "list_issues",
+        "issue_read",
+        "list_pull_requests",
+        "pull_request_read"
+      ],
+      "agents": [
+        "researcher"
+      ],
+      "caveat": "Repository scoping comes from the credential's repository selection, which is unverified for this endpoint; per-customer GitHub App installation scoped to selected repos is the intended model and is unprobed."
+    },
+    "brave-search": {
+      "transport": "stdio via docker",
+      "image": "docker.io/mcp/brave-search@sha256:f58a5c22c1196ec7bd1ca586ce216f2334fc298550ddcf652c0e8adb6d256d78",
+      "enabled": true,
+      "tools_exposed": [
+        "brave_web_search"
+      ],
+      "agents": [
+        "researcher"
+      ],
+      "scope": "OWNER RUNTIME ONLY. The single owner API key must never be shared into a customer cell; customer search needs a per-account metered route and call-fee attribution (Phase 5 gap), so it is off for customers."
+    }
+  },
+  "services": {
+    "gmail": {
+      "worker": "researcher",
+      "scopes_allowed": [
+        "gmail.readonly",
+        "openid",
+        "email"
+      ],
+      "scopes_forbidden": [
+        "gmail.send",
+        "gmail.compose",
+        "gmail.modify",
+        "gmail.insert",
+        "mail.google.com"
+      ],
+      "read": "selected inbox window (default 10 results)",
+      "draft": "local proposals only (connector_drafts)",
+      "send": false,
+      "share": false,
+      "write": false,
+      "delete": false,
+      "token_storage": "custody reference only (account-bound); never in DB/model/memory",
+      "refresh": "host-side adapter via custody; 401 => reconnect_required",
+      "revocation": "disconnect deletes custody, cancels queued ops; provider-side revoke on rejected grants",
+      "billing": "provider API quota only; no per-call fee known",
+      "gate": "P15-GMAIL",
+      "status": "built, disconnected"
+    },
+    "calendar": {
+      "worker": "researcher",
+      "scopes_allowed": [
+        "calendar.readonly",
+        "calendar.events.readonly",
+        "openid",
+        "email"
+      ],
+      "scopes_forbidden": [
+        "calendar",
+        "calendar.events"
+      ],
+      "read": "today's events in the customer's timezone",
+      "draft": "local event proposals",
+      "send": false,
+      "share": false,
+      "write": false,
+      "delete": false,
+      "token_storage": "as gmail",
+      "refresh": "as gmail",
+      "revocation": "as gmail",
+      "billing": "provider quota",
+      "gate": "P15-CALENDAR",
+      "status": "built, disconnected"
+    },
+    "drive": {
+      "worker": "researcher",
+      "scopes_allowed": [
+        "drive.file",
+        "drive.readonly",
+        "openid",
+        "email"
+      ],
+      "scopes_forbidden": [
+        "drive",
+        "drive.appdata",
+        "drive.metadata (write variants)"
+      ],
+      "read": "one selected item",
+      "draft": false,
+      "send": false,
+      "share": false,
+      "write": false,
+      "delete": false,
+      "disclosure": "drive.readonly can read every Drive file; prefer drive.file (items picked by the customer). A selection is mandatory either way and enforced server-side.",
+      "token_storage": "as gmail",
+      "refresh": "as gmail",
+      "revocation": "as gmail",
+      "billing": "provider quota",
+      "gate": "P15-DRIVE",
+      "status": "built, disconnected"
+    },
+    "github": {
+      "worker": "researcher",
+      "scopes_allowed": [
+        "metadata:read",
+        "contents:read",
+        "issues:read",
+        "pull_requests:read"
+      ],
+      "scopes_forbidden": [
+        "any :write permission"
+      ],
+      "read": "chosen repository / issue / diff",
+      "draft": "local change proposals",
+      "send": false,
+      "share": false,
+      "write": false,
+      "delete": false,
+      "token_storage": "as gmail (GitHub App installation token)",
+      "refresh": "installation tokens re-minted host-side",
+      "revocation": "disconnect + uninstall",
+      "billing": "API rate limits only",
+      "gate": "P15-GITHUB",
+      "status": "built, disconnected"
+    },
+    "credentialed_browser": {
+      "worker": "browser-worker",
+      "model": "per-account profile (allowed hosts, credential_ref, session_ref in custody)",
+      "read": "navigation only inside allowlisted HTTPS hosts; SSRF guard rechecked at every redirect",
+      "send": false,
+      "write": false,
+      "token_storage": "encrypted custody; cookie jars are credential-bearing, so profile backups are encrypted with separately held keys",
+      "revocation": "profile revoke deletes credential and session references",
+      "billing": "model/browser time via task budget",
+      "gate": "P15-AUTH-BROWSER",
+      "status": "built, no login flow or custody backend, disconnected"
+    }
+  },
+  "provider_writes": "Absent. The production catalog lists no writable kind for any service; a scope name is never approval. Enabling any write requires exact payload/target/expiry authorization (machinery built and tested with a synthetic service) AND native enforcement proof, which does not exist.",
+  "owner_deferred": [
+    "Google sign-in (Gmail/Calendar/Drive)",
+    "GitHub sign-in",
+    "Brave key rotation",
+    "any customer account connection"
+  ]
+}

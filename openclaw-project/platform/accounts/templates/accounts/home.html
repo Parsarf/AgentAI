@@ -1,1 +1,44 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentAI account</title><main><h1>Your AgentAI account</h1><p>{{ email }}</p><dl><dt>Email verification</dt><dd>Verified</dd><dt>Agent deployment</dt><dd>{{ deployment_state }}</dd><dt>Task access</dt><dd>Requests can be saved while waiting. Agent execution remains unavailable until provisioning and budget admission are connected.</dd><dt>Plan</dt><dd>Proposed $79/month with $25 provider usage, $5 per-task limit, one running task. Billing is not active.</dd></dl><p><a href="/account/requests/">Your requests</a> · <a href="/account/usage/">Usage</a></p><form action="/auth/logout" method="post">{% csrf_token %}<button>Sign out</button></form><form action="/auth/revoke-sessions" method="post">{% csrf_token %}<button>Sign out all devices</button></form></main></html>
+{% extends 'accounts/base.html' %}{% block title %}Overview — AgentAI{% endblock %}{% block body %}
+<div class="pagehead"><h1>Overview</h1><p>Your private AgentAI environment. Work is scoped to your account and isolated from everyone else's.</p></div>
+<div class="grid-2">
+<section class="card">
+<h3>Account</h3>
+<dl class="facts">
+<dt>Email</dt><dd>{{ email }}</dd>
+<dt>Verification</dt><dd><span class="state completed">Verified</span></dd>
+<dt>Agent deployment</dt><dd><span class="state {{ deployment_state|cut:' ' }}">{{ deployment_state|capfirst }}</span></dd>
+</dl>
+<form method="post" action="/auth/revoke-sessions">{% csrf_token %}<button class="ghost small">Sign out all devices</button></form>
+</section>
+<section class="card">
+<h3>Plan</h3>
+<dl class="facts">
+<dt>Builder</dt><dd class="amounts">$79/month · $25 included provider usage</dd>
+<dt>Task budget</dt><dd class="amounts">$5 per task · $5 per rolling 24 hours</dd>
+<dt>Concurrency</dt><dd>One running task, three queued</dd>
+<dt>Billing</dt><dd>Not active during the private beta</dd>
+</dl>
+</section>
+</div>
+<section class="card">
+<h3>Work</h3>
+<p>Start a conversation, follow its progress, and cancel queued work at any time. Completed results appear in the conversation transcript.</p>
+<p class="actions"><a class="btn" href="/account/chat/">Open Chat</a><a class="btn ghost" href="/account/requests/">Requests</a><a class="btn ghost" href="/account/usage/">Usage</a></p>
+<p class="hint">Agent execution remains unavailable until provisioning and budget admission are connected. Queued work waits safely and nothing is charged.</p>
+</section>
+<section class="card">
+<h3>Telegram</h3>
+{% if telegram_enabled %}
+{% if telegram_bindings %}
+<dl class="facts">{% for binding in telegram_bindings %}
+<dt>Chat</dt><dd class="mono">••{{ binding.chat_id|slice:"-4:" }} — linked <span class="mono">{{ binding.created_epoch }}</span></dd>
+{% endfor %}</dl>
+{% for binding in telegram_bindings %}<form method="post" action="/v1/account/telegram/unlink">{% csrf_token %}<input type="hidden" name="chat_id" value="{{ binding.chat_id }}"><button class="ghost small">Unlink this chat</button></form>{% endfor %}
+{% else %}<p>No Telegram chat is linked to this account yet.</p>{% endif %}
+<form method="post" action="/v1/account/telegram/link">{% csrf_token %}<button class="ghost small">Create link code</button></form>
+<p class="hint">A one-time link code is valid for 10 minutes and works once.</p>
+{% else %}
+<p>Telegram linking is not enabled yet.</p>
+{% endif %}
+</section>
+{% endblock %}

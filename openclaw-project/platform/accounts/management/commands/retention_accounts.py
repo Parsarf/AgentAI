@@ -30,6 +30,8 @@ class Command(BaseCommand):
                 for account,obj in c.fetchall():
                     Tombstone.objects.get_or_create(account_id=account,object_id=obj,kind='conversation')
                     c.execute('DELETE FROM events WHERE account_id=%s AND task_id IN (SELECT id FROM tasks WHERE account_id=%s AND conversation_id=%s)',[account,account,obj])
+                # Detailed timeline retention: 30 days (product/CONTRACT.md).
+                c.execute('DELETE FROM events WHERE created_at < %s',[(now-timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')])
                     # Preserve the private routing reference until native erasure can reconcile it in Phase 6.
             audit('host-maintenance',None,'retention','retention.run','completed',request,op)
         self.stdout.write('Retention maintenance completed; native runtime deletion awaits Phase 6 adapter')

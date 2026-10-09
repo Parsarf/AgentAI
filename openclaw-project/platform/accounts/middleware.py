@@ -19,7 +19,7 @@ class BoundaryMiddleware:
             except ValueError: return JsonResponse({'error':'invalid_proxy_identity'},status=400)
         try:
             request.get_host()
-            if len(request.get_full_path()) > 2048 or int(request.META.get('CONTENT_LENGTH') or 0) > (200000 if request.path=='/v1/requests' else 8192):
+            if len(request.get_full_path()) > 2048 or int(request.META.get('CONTENT_LENGTH') or 0) > (31457280 if request.path=='/v1/requests' or request.path.endswith('/send') or request.path.endswith('/files') else 8192):
                 response=JsonResponse({'error':'request_too_large'},status=413)
             elif any(x in request.GET for x in ['account','account_id','tenant','tenant_id','session','session_id','native_session_ref','deployment_id']) or any(x in request.META for x in ['HTTP_X_ACCOUNT_ID','HTTP_X_TENANT_ID','HTTP_X_SESSION_ID','HTTP_X_AGENT_ID']):
                 response=JsonResponse({'error':'routing_override_denied'},status=400)
@@ -28,7 +28,7 @@ class BoundaryMiddleware:
             response=JsonResponse({'error':'invalid_request'},status=400)
         except DatabaseError:
             response=JsonResponse({'error':'temporarily_unavailable'},status=503)
-        response['Cache-Control']='no-store'
+        response.setdefault('Cache-Control', 'no-store')
         response['X-Content-Type-Options']='nosniff'
         response['X-Frame-Options']='DENY'
         response['Content-Security-Policy']="default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"

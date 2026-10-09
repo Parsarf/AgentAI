@@ -1,0 +1,14 @@
+{
+ "probe": "read-only, 2026-10-09, via bin/ssh-server; no config/state change, no inference, no paid call",
+ "host": "claude binary not on host PATH",
+ "gateway_container": "openclaw-production-openclaw-gateway-1 (openclaw-gateway:2026.9.6-sdk-peer, uid 1000)",
+ "gateway_has_claude_binary": false,
+ "acpx_on_path": false,
+ "home_dot_claude_exists": false,
+ "model_catalog_claude_rows": [
+  "litellm/claude-sonnet-4-6"
+ ],
+ "claude-sonnet-5-5_in_catalog": false,
+ "plugins.entries.acpx": "unset",
+ "acp": "unset"
+}

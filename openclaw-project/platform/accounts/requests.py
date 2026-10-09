@@ -36,4 +36,5 @@ def cancel(request,request_id):
 def page(request):
     denied=customer(request)
     if denied:return HttpResponseRedirect('/account/login/')
-    return render(request,'accounts/requests.html',{'requests':queue().get(principal(request)),'key':uuid.uuid4().hex})
+    return render(request,'accounts/requests.html',{'requests':queue().get(principal(request)),'key':uuid.uuid4().hex,
+        'nav':True,'nav_here':'requests','email':request.user.email})

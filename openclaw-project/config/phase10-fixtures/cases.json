@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "note": "Prepared assertions for heavy/paid workflows. None were executed in the Phase 10 build; each is owned by the Phase 15 case shown.",
+  "cases": [
+    {"id": "P10-FX-BOARD", "acceptance_case": "P15-NATIVE-BUILD", "fixtures": ["config/phase4-fixtures/board-SPEC.md", "config/phase4-fixtures/orchestrated-board-build.md", "config/phase4-fixtures/review-request.md"],
+     "assertions": ["builder defines objective/revision/allowed changes/budget/tests/artifacts", "browser verification of the built app", "reviewer receives snapshot+spec+evidence only, not builder conversation", "every review finding dispositioned fixed/disproved/deferred"]},
+    {"id": "P10-FX-DEBUG", "acceptance_case": "P15-DEBUG", "fixtures": ["config/phase4-fixtures/native-debug-task.md"],
+     "assertions": ["seeded ID-zero defect reproduced before fix", "regression fails on original and passes after", "neighbor tests preserved, source hashes recorded"]},
+    {"id": "P10-FX-MEMORY", "acceptance_case": "P15-MEMORY", "fixtures": ["config/phase10-fixtures/memory-12-facts.json"],
+     "assertions": ["preference recalled among 12 unrelated facts", "irrelevant facts not injected", "correction supersedes", "deletion removes text and index and does not reappear", "worker agents see no customer memory"]},
+    {"id": "P10-FX-DURABLE", "acceptance_case": "P15-DURABLE", "fixtures": ["config/phase10-fixtures/durable-three-step.md"],
+     "assertions": ["restart pauses and never auto-resumes", "ambiguous checkpoint blocks resume until reconciled", "cancel is sticky across children and restart", "persisted goal record is not called autonomous restart execution"]},
+    {"id": "P10-FX-SCHEDULE", "acceptance_case": "P15-SCHEDULE", "fixtures": ["config/phase10-fixtures/schedule-nochange.md"],
+     "assertions": ["no-change tick makes zero model calls", "timezone local time respected", "unattended approval unavailable/expired is denied", "capacity of eight verified, not assumed; existing jobs keep firing"]},
+    {"id": "P10-FX-SKILLS-WATCHERS", "acceptance_case": "P15-SKILLS", "fixtures": ["platform/tests/test_native.py"],
+     "assertions": ["skill reuse within tenant", "cross-tenant skill and notification access denied", "revisions only proposed", "unchanged watcher zero model calls", "changed watcher deduplicated and budget-gated", "watcher survives restart without duplicate jobs"]},
+    {"id": "P10-FX-RESEARCH", "acceptance_case": "P15-RESEARCH", "fixtures": ["config/skills/deep-research/SKILL.md", "config/skills/untrusted-content/SKILL.md"],
+     "assertions": ["at least two primary sources per material claim", "attributed uncertainty", "injected page text produces no effect", "effective tool denial observed at runtime"]}
+  ]
+}

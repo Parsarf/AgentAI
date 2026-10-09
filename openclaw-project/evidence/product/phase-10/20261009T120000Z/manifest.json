@@ -1,0 +1,32 @@
+{
+  "run": "20261009T120000Z",
+  "phase": 10,
+  "kind": "build (offline, no paid call, no deployment)",
+  "checks": {
+    "platform_suite": "173 tests OK (2 skipped)",
+    "policy_check": "policy-check.json: 0 fail, 4 customer-blocker findings"
+  },
+  "records": [
+    "plans/product/phase-10.md",
+    "plans/product/phase-10-harness-inventory.json",
+    "plans/product/phase-10-harness-inventory.json",
+    "config/phase10-fixtures/cases.json",
+    "config/skills/browser-task/SKILL.md",
+    "config/skills/skill-improvement/SKILL.md",
+    "evidence/product/phase-10/20261009T120000Z/live-probe.json",
+    "plans/product/phase-10-claude-code-activation.md",
+    "config/phase10-claude-code-preflight.batch.json",
+    "config/phase10-claude-code-activation.batch.json",
+    "deploy/Dockerfile.claude-code"
+  ],
+  "not_run": [
+    "Django suite (not installed locally)",
+    "effective-denial probes",
+    "native wiring",
+    "Phase 15 cases",
+    "Claude Code launch/inference (nothing installed)"
+  ],
+  "readiness": "build complete offline; activation blocked (reviewer route, cell boundary)",
+  "live_probe": "read-only server probe done (see live-probe.json)",
+  "config_dry_run": "preflight then activation validated on a scratch profile; server untouched"
+}

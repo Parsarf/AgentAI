@@ -385,7 +385,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 6,
-      "implementation_state": "PARTIAL",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-CHAT-RECONNECT",
       "observable_assertion": "Same conversation after refresh/restart; duplicate send cannot start duplicate task",
@@ -393,11 +393,15 @@
         5
       ],
       "evidence": [
-        "openclaw-project/platform/SERIAL_REQUESTS.md",
-        "openclaw-project/evidence/product/phase-06/20260930T213538Z/manifest.json"
+        "openclaw-project/platform/CHAT.md",
+        "openclaw-project/platform/agentai_platform/gateway.py",
+        "openclaw-project/platform/agentai_platform/chat.py",
+        "openclaw-project/platform/tests/test_chat.py",
+        "openclaw-project/platform/tests/test_gateway.py",
+        "openclaw-project/evidence/product/phase-06/20261005T170833Z/manifest.json"
       ],
-      "activation_blocker": "Scoped persistent request intake and serial queue implemented; native send/history/events/abort adapter and Vercel/SMTP deployment still pending",
-      "acceptance_result": "NOT_READY"
+      "activation_blocker": "Local contract flow READY (synthetic transport, refresh/reconnect/duplicate-send prevention). Live installed-Gateway probe, isolated cell dispatch and a measured provider route remain gated for Phase 15/17; no live paid chat proof claimed.",
+      "acceptance_result": "NOT_RUN"
     },
     {
       "id": "TG-01",
@@ -405,15 +409,21 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 7,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-TELEGRAM",
       "observable_assertion": "Single-use code/expiry/conflict/update dedup; unlinked identity no task",
       "dependencies": [
         6
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/telegram.py",
+        "openclaw-project/platform/accounts/telegram.py",
+        "openclaw-project/platform/tests/test_telegram.py",
+        "openclaw-project/plans/product/phase-07.md",
+        "openclaw-project/evidence/product/phase-07/20261006T073000Z/manifest.json"
+      ],
+      "activation_blocker": "Requires a dedicated customer bot (token, webhook secret, username), setWebhook registration by the host operator, and Phase 4/5 execution gates; fails closed until configured",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -422,15 +432,19 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 7,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-CROSS-SURFACE",
       "observable_assertion": "Scoped project selection records Telegram/dashboard provenance in correct conversation",
       "dependencies": [
         6
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/telegram.py",
+        "openclaw-project/platform/tests/test_telegram.py",
+        "openclaw-project/evidence/product/phase-07/20261006T073000Z/manifest.json"
+      ],
+      "activation_blocker": "Same as TG-01; provenance lands in the shared transcript and is visible on the dashboard once linked",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -439,15 +453,23 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 8,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-UPLOAD",
       "observable_assertion": "Content mismatches/scan failure/overquota denied; no input archive/executable",
       "dependencies": [
         7
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/storage.py",
+        "openclaw-project/platform/agentai_platform/files.py",
+        "openclaw-project/platform/agentai_platform/artifacts.py",
+        "openclaw-project/platform/tests/test_files.py",
+        "openclaw-project/platform/accounts/test_files.py",
+        "openclaw-project/plans/product/phase-08.md",
+        "openclaw-project/evidence/product/phase-08/20261008T091500Z/manifest.json"
+      ],
+      "activation_blocker": "Storage dir/signing key not provisioned on production (routes fail closed); uploads additionally require the documented scan-capability flag; live end-to-end proof is Phase 15/17",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -456,15 +478,23 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 8,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-ARTIFACT",
       "observable_assertion": "Exact version/hash/tested snapshot ZIP; other/revoked account cannot download",
       "dependencies": [
         7
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/storage.py",
+        "openclaw-project/platform/agentai_platform/files.py",
+        "openclaw-project/platform/agentai_platform/artifacts.py",
+        "openclaw-project/platform/tests/test_files.py",
+        "openclaw-project/platform/accounts/test_files.py",
+        "openclaw-project/plans/product/phase-08.md",
+        "openclaw-project/evidence/product/phase-08/20261008T091500Z/manifest.json"
+      ],
+      "activation_blocker": "Storage dir/signing key not provisioned on production (routes fail closed); uploads additionally require the documented scan-capability flag; live end-to-end proof is Phase 15/17",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -473,15 +503,23 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 8,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-FILE-BOUNDARY",
       "observable_assertion": "Traversal/intermediate symlink race/host auth/log/private-root access denied",
       "dependencies": [
         7
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/storage.py",
+        "openclaw-project/platform/agentai_platform/files.py",
+        "openclaw-project/platform/agentai_platform/artifacts.py",
+        "openclaw-project/platform/tests/test_files.py",
+        "openclaw-project/platform/accounts/test_files.py",
+        "openclaw-project/plans/product/phase-08.md",
+        "openclaw-project/evidence/product/phase-08/20261008T091500Z/manifest.json"
+      ],
+      "activation_blocker": "Storage dir/signing key not provisioned on production (routes fail closed); uploads additionally require the documented scan-capability flag; live end-to-end proof is Phase 15/17",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -490,15 +528,23 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 9,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-LIVE-EVENTS",
       "observable_assertion": "Cursor reconnect/replay/revocation; sources/files/tests/errors/result, no private reasoning",
       "dependencies": [
         8
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/events.py",
+        "openclaw-project/platform/agentai_platform/chat.py",
+        "openclaw-project/platform/accounts/streams.py",
+        "openclaw-project/platform/tests/test_events.py",
+        "openclaw-project/platform/accounts/test_streams.py",
+        "openclaw-project/plans/product/phase-09.md",
+        "openclaw-project/evidence/product/phase-09/20261008T120000Z/manifest.json"
+      ],
+      "activation_blocker": "No real task events until Phase 4/5 execution connects; browser SSE consumption awaits the CSP/JS UI decision; approval bridging intentionally absent (unverified native mechanism)",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -507,15 +553,23 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 9,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-APPROVAL",
       "observable_assertion": "Timeline pause distinct; exact supported cancel/expiry/change/replay no effects",
       "dependencies": [
         8
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/events.py",
+        "openclaw-project/platform/agentai_platform/chat.py",
+        "openclaw-project/platform/accounts/streams.py",
+        "openclaw-project/platform/tests/test_events.py",
+        "openclaw-project/platform/accounts/test_streams.py",
+        "openclaw-project/plans/product/phase-09.md",
+        "openclaw-project/evidence/product/phase-09/20261008T120000Z/manifest.json"
+      ],
+      "activation_blocker": "Native pause unverified (not rendered); cancel is live from Phase 6; approval bridging intentionally absent \u2014 renders read-only gap",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -532,9 +586,11 @@
         9
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "platform/agentai_platform/policy_check.py",
+        "plans/product/phase-10.md"
       ],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "activation_blocker": "Phase 10 policy_check: 0 fail; customer cell must remove owner integration tools, sandbox main, disable elevated; effective-denial runtime proof is P15",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -551,9 +607,13 @@
         9
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-10-harness-inventory.json",
+        "plans/product/phase-10.md",
+        "plans/product/phase-10-claude-code-activation.md",
+        "config/phase10-claude-code-activation.batch.json"
       ],
-      "activation_blocker": "Metered commercial coding/reviewer access + actual host-side confinement required",
+      "activation_blocker": "Claude Code runs host-side outside OpenClaw sandbox (claude-cli or ACP/acpx): needs verified customer cell boundary, per-account metered Anthropic API-key profile (not subscription login), acpx/reviewer config, and a live probe incl. model catalog check; see phase-10-harness-inventory.json; Claude Code spend may bypass proxy caps (metering unproven)",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -570,9 +630,11 @@
         9
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "config/phase10-fixtures/cases.json",
+        "plans/product/phase-10.md"
       ],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "activation_blocker": "Customer cell boundary + metered Claude Code access required before activation; fixtures prepared in config/phase10-fixtures",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -589,9 +651,12 @@
         9
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "openclaw-project/plans/product/phase-10.md",
+        "platform/agentai_platform/memory.py",
+        "plans/product/phase-10.md"
       ],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "activation_blocker": "Product memory service built and tested; native memory plugin per-cell mapping unverified; runtime recall proof is P15-MEMORY",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -608,9 +673,11 @@
         9
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "platform/agentai_platform/durable.py",
+        "plans/product/phase-10.md"
       ],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
+      "activation_blocker": "Objective/checkpoint/sticky-cancel service built; autonomous post-restart execution is a recorded LAUNCH GAP (explicit resume only); native goal state mapping unprobed",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -627,9 +694,13 @@
         9
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "openclaw-project/plans/product/phase-10.md",
+        "platform/agentai_platform/schedules.py",
+        "platform/agentai_platform/watchers.py",
+        "plans/product/phase-10.md"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Schedules disabled until enforcement proof (enforcement_proven=False); native scheduler capacity of eight unverified; watcher/no-change logic built",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -646,9 +717,13 @@
         9
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "openclaw-project/plans/product/phase-10.md",
+        "platform/agentai_platform/skills.py",
+        "config/skills/skill-improvement/SKILL.md",
+        "plans/product/phase-10.md"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Tenant skills service + skill-improvement/browser-task procedures built; native skill directory mapping per cell unverified",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -665,9 +740,12 @@
         10
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-11.md",
+        "plans/product/phase-11-permission-matrix.json",
+        "platform/agentai_platform/connectors.py"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Disconnected: needs owner Google sign-in, provider client registration and a custody backend; live proof is P15-GMAIL",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -684,9 +762,12 @@
         10
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-11.md",
+        "plans/product/phase-11-permission-matrix.json",
+        "platform/agentai_platform/connectors.py"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Disconnected: as INT-01; timezone-day read proof is P15-CALENDAR",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -703,9 +784,12 @@
         10
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-11.md",
+        "plans/product/phase-11-permission-matrix.json",
+        "platform/agentai_platform/connectors.py"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Disconnected: as INT-01; prefer drive.file, drive.readonly disclosed; P15-DRIVE",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -722,9 +806,12 @@
         10
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-11.md",
+        "plans/product/phase-11-permission-matrix.json",
+        "platform/agentai_platform/connectors.py"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Disconnected: needs per-customer GitHub App installation scoped to selected repos (unprobed); P15-GITHUB",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -741,9 +828,12 @@
         10
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-11.md",
+        "plans/product/phase-11-permission-matrix.json",
+        "platform/agentai_platform/connectors.py"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "No login flow or custody backend; mock SSRF/revocation/swapped-secret proofs built; real login, cookie persistence and encrypted-backup proof are P15-AUTH-BROWSER",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -2299,7 +2389,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 10,
-      "implementation_state": "MISSING",
+      "implementation_state": "PARTIAL",
       "acceptance_phase": 15,
       "acceptance_case": "P15-RETENTION-MEMORY",
       "observable_assertion": "Scoped export/delete/expiry meets until corrected/deleted, retrieval index removal; retained exceptions disclosed; restore respects tombstones",
@@ -2307,9 +2397,12 @@
         9
       ],
       "evidence": [
-        "product/CONTRACT.md"
+        "product/CONTRACT.md",
+        "openclaw-project/plans/product/phase-10.md",
+        "platform/agentai_platform/memory.py",
+        "plans/product/phase-10.md"
       ],
-      "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "activation_blocker": "Deletion/index invalidation built; backup history retention documented in RUNBOOK; P15-RETENTION-MEMORY proof pending",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -2337,7 +2430,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 9,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-RETENTION-EVENTS",
       "observable_assertion": "Scoped export/delete/expiry meets 30days/cursor resync; retained exceptions disclosed; restore respects tombstones",
@@ -2345,9 +2438,11 @@
         8
       ],
       "evidence": [
-        "product/CONTRACT.md"
+        "openclaw-project/platform/accounts/management/commands/retention_accounts.py",
+        "openclaw-project/platform/agentai_platform/events.py",
+        "openclaw-project/evidence/product/phase-09/20261008T120000Z/manifest.json"
       ],
-      "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "activation_blocker": "30-day prune implemented in the host retention command; expiry-at-read covers cursor resync",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -2411,6 +2506,88 @@
         "product/CONTRACT.md"
       ],
       "activation_blocker": "Retention/route term implementation must pass before affected activation",
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "CHAT-02",
+      "requirement": "Project/conversation creation with quota and ownership",
+      "source": "phase-prompts/openclaw/phase-06-dashboard-chat.md",
+      "release_scope": "launch",
+      "implementation_phase": 6,
+      "implementation_state": "READY",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CHAT-RECONNECT",
+      "observable_assertion": "POST /v1/projects caps at 10 with validated names; conversations bound to own project+deployment, 10/project, cross-account 404",
+      "dependencies": [
+        2
+      ],
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/chat.py",
+        "openclaw-project/platform/accounts/test_chat.py"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "CHAT-03",
+      "requirement": "Idempotent delivery, recorded attempts and reconcile-before-retry",
+      "source": "phase-prompts/openclaw/phase-06-dashboard-chat.md",
+      "release_scope": "launch",
+      "implementation_phase": 6,
+      "implementation_state": "READY",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CHAT-RECONNECT",
+      "observable_assertion": "Same key never starts a second task; unknown outcomes reconcile by receipts without resend; chat_deliveries records each attempt",
+      "dependencies": [
+        5
+      ],
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/chat.py",
+        "openclaw-project/platform/tests/test_chat.py"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "CHAT-04",
+      "requirement": "Customer chat page with honest states, budget denial and cancel",
+      "source": "phase-prompts/openclaw/phase-06-dashboard-chat.md",
+      "release_scope": "launch",
+      "implementation_phase": 6,
+      "implementation_state": "READY",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-CHAT-RECONNECT",
+      "observable_assertion": "Script-free page: project/conversation selectors, escaped transcript, execution-disabled banner, budget denial banner, cancel only while cancellable",
+      "dependencies": [
+        6
+      ],
+      "evidence": [
+        "openclaw-project/platform/accounts/templates/accounts/chat.html",
+        "openclaw-project/platform/accounts/chat.py",
+        "openclaw-project/platform/accounts/test_chat.py"
+      ],
+      "activation_blocker": null,
+      "acceptance_result": "NOT_RUN"
+    },
+    {
+      "id": "CHAT-05",
+      "requirement": "Recorded Gateway session-control contract with fail-safe negotiation",
+      "source": "phase-prompts/openclaw/phase-06-dashboard-chat.md",
+      "release_scope": "launch",
+      "implementation_phase": 6,
+      "implementation_state": "READY",
+      "acceptance_phase": 15,
+      "acceptance_case": "P15-NATIVE-CONTRACT",
+      "observable_assertion": "chat.send/history/abort semantics recorded; wrong protocol version or unprobed adapter fails closed; binding never from request data",
+      "dependencies": [
+        2
+      ],
+      "evidence": [
+        "openclaw-project/platform/agentai_platform/gateway.py",
+        "openclaw-project/platform/CHAT.md",
+        "openclaw-project/platform/tests/test_gateway.py"
+      ],
+      "activation_blocker": "Live probe against the installed Gateway version pending; exact framing (transport/envelope) must be reconfirmed at activation",
       "acceptance_result": "NOT_RUN"
     }
   ]

@@ -1,1 +1,6 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reload this form — AgentAI</title></head><body><main><h1>Please reload this form</h1><p>We couldn’t verify this page. Your account was not changed by this submission.</p><p><a href="{{ retry }}">Open a fresh form and try again</a></p><p>Allow cookies for this site and submit the fresh form in the same browser tab. If an activation code has expired, request a new invitation.</p></main></body></html>
+{% extends 'accounts/base.html' %}{% block title %}Reload this form — AgentAI{% endblock %}{% block body %}
+<div class="pagehead"><h1>Please reload this form</h1></div>
+<div class="notice warn"><span>We couldn’t verify this page. Your account was not changed by this submission.</span></div>
+<p class="actions"><a class="btn" href="{{ retry }}">Open a fresh form and try again</a></p>
+<p class="hint">Allow cookies for this site and submit the fresh form in the same browser tab. If an activation code has expired, request a new invitation.</p>
+{% endblock %}

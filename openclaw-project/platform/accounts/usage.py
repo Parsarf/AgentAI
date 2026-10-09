@@ -21,10 +21,16 @@ def usage(request, page=False):
                 whole,fraction=divmod(value,1000000)
                 digits=f'{fraction:06d}'.rstrip('0')
                 return f'{whole}.{digits.ljust(2,"0")}'
+            limit=result.get('period_limit_microusd') or 0
+            used=max(0,limit-result['period_remaining_microusd'])
+            used_percent=min(100,round(100*used/limit)) if limit else 0
             return render(request,'accounts/usage.html',{'usage':result,
                 'reported_usd':dollars(result['reported_microusd']),
                 'held_usd':dollars(result['held_microusd']),
-                'remaining_usd':dollars(result['period_remaining_microusd'])})
+                'remaining_usd':dollars(result['period_remaining_microusd']),
+                'limit_usd':dollars(limit),'used_usd':dollars(used),
+                'used_percent':used_percent,'meter_step':min(100,int(round(used_percent/10.0))*10),
+                'nav':True,'nav_here':'usage','email':request.user.email})
         return JsonResponse(result)
     except BudgetDenied:
         if page:return render(request,'accounts/usage.html',{'unconfigured':True})
