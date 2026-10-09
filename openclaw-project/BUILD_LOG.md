@@ -1505,3 +1505,15 @@ read; no provider key touched.
 **Secret-custody obligation carried forward:** Brave key exposed once in a Phase 6 tool
 transcript (see Phase 6 entry); owner rotation still pending; key never reproduced here.
 Evidence: plans/product/phase-11.md, evidence/product/phase-11/20261009T180000Z/.
+
+### 2026-10-09 — Phase 12 optional optimization build (local; adapters stay disabled)
+
+Audited both tracks. Findings: (1) the research middleware IS registered by the installed loader (lazy owner
+loading); the real defect was a non-fail-open handler (log could throw; hard-coded state path) — fixed and proven
+with a real-loader diagnostic, but the fix is not deployed; (2) the Phase 9 browser adapter used the wrong TypeSafe
+request/response schema — corrected against docs.typesafe.ai; (3) added fresh-target checks, sensitive-control
+routing, a controlled route loop and a Phase 5-billed optimization gate; separate frozen research rubric and
+hash-locked held-out fixtures. **Live readback: server jev-research config.json reads enabled=true and the
+disposable Jev key file is present in the owner gateway, contrary to the Sept 28 'left off' note; registry is empty
+so nothing is eligible; no change made — owner decision pending.** No TypeSafe call, no deployment.
+Evidence: plans/product/phase-12.md, evidence/product/phase-12/20261009T200000Z/.

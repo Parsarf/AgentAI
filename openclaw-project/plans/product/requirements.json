@@ -850,9 +850,12 @@
         11
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-12.md",
+        "plans/product/phase-12-typesafe-pin.json",
+        "plans/product/phase-12-transport-boundary.md"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Disabled by design. Needs TypeSafe account, data-handling approval and reviewed transport (phase-12-transport-boundary.md); route uses schema-corrected adapter; paired comparison is Phase 16",
       "acceptance_result": "NOT_RUN"
     },
     {
@@ -869,9 +872,12 @@
         11
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "plans/product/phase-12.md",
+        "plans/product/phase-12-typesafe-pin.json",
+        "plans/product/phase-12-transport-boundary.md"
       ],
-      "activation_blocker": null,
+      "activation_blocker": "Disabled by design. Server toggle currently reads enabled=true (set to false); fixed plugin not yet deployed; question/provenance registry writer missing; frozen rubric ready for Phase 16",
       "acceptance_result": "NOT_RUN"
     },
     {

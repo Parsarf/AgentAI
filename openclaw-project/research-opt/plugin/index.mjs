@@ -141,9 +141,18 @@ export async function transform(event, ctx, deps) {
   }
 }
 
-const STATE = "/home/node/.openclaw/jev-research";
+const STATE = process.env.JEV_RESEARCH_STATE_DIR || "/home/node/.openclaw/jev-research";
 function readJson(path, fallback) { try { return JSON.parse(fs.readFileSync(path, "utf8")); } catch { return fallback; } }
-function appendLog(row) { fs.appendFileSync(`${STATE}/decisions.jsonl`, JSON.stringify(row) + "\n", { mode: 0o600 }); }
+// Logging is best effort: the runner replaces a throwing middleware's output with an error
+// string, so nothing here may ever throw into the tool-result path.
+function appendLog(row) {
+  try { fs.appendFileSync(`${STATE}/decisions.jsonl`, JSON.stringify(row) + "\n", { mode: 0o600 }); } catch { /* observable via diagnostics, never fatal */ }
+}
+function writeRegistration() {
+  try {
+    fs.writeFileSync(`${STATE}/registration.json`, JSON.stringify({ id: "jev-research", version: "0.1.0", runtimes: ["openclaw"], matcher: ["web_fetch"], registered_at: new Date().toISOString() }) + "\n", { mode: 0o600 });
+  } catch { /* directory may not exist; diagnostics report registration separately */ }
+}
 async function evaluate(request, timeoutMs) {
   const key = fs.readFileSync("/run/secrets/phase4a-jev-eval.key", "utf8").trim();
   const r = await fetch("http://litellm:4000/typesafe/v1/systemone", {
@@ -159,7 +168,9 @@ async function evaluate(request, timeoutMs) {
 export default {
   id: "jev-research",
   register(api) {
+    writeRegistration();
     api.registerAgentToolResultMiddleware(async (event, ctx) => {
+      try {
       const result = await transform(event, ctx, {
         enabled: () => readJson(`${STATE}/config.json`, { enabled: false }).enabled === true,
         registry: () => readJson(`${STATE}/public-tasks.json`, {}),
@@ -168,6 +179,7 @@ export default {
         log: appendLog,
       });
       return result === event.result ? undefined : { result };
+      } catch { return undefined; } // fail open: any defect leaves the original fetch result untouched
     }, { runtimes: ["openclaw"], matcher: ["web_fetch"] });
   },
 };

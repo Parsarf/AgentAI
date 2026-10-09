@@ -797,3 +797,16 @@ webhook via deleteWebhook.
   tool transcript (Phase 6 BUILD_LOG). It remains operational until the owner rotates it
   with `integrations/brave/rotate-key.py`. Track as open; do not reproduce the key.
   The owner key is never shared with customer cells.
+
+## Phase 12 — optional Jev/browser and research adapters (build; DISABLED)
+
+- Kill switches: browser `browser-opt/config.json` `enabled`; research `jev-research/config.json` `enabled`
+  (read on every call; unreadable = off). **Check the server file reads `{"enabled": false}`** — on 2026-10-09 it read true.
+- Registration diagnostic (harmless, no network): `OPENCLAW_STATE_DIR=<scratch> OPENCLAW_CONFIG_PATH=<scratch>/openclaw.json
+  JEV_RESEARCH_STATE_DIR=<scratch dir> node research-opt/diagnostics/registration_diagnostic.mjs --root <openclaw package dir>`;
+  it is pinned to OpenClaw 2026.9.6 and refuses other versions. Install a plugin with
+  `openclaw plugins install npm-pack:<tgz> --force --accept-capabilities`; copying into `extensions/` leaves it untrusted.
+- Billing: TypeSafe calls reserve against the Phase 5 task allocation first (`OptimizationGate.reserve_call`) and become
+  `typesafe` provider receipts afterwards; an uncertain call keeps its hold until reconciled. Price pin:
+  `plans/product/phase-12-typesafe-pin.json`. The owner `phase4a-jev-eval` key is never used for customers.
+- Rollback: disable/uninstall `jev-research`, delete `browser-opt/`; migration 0012 is additive.

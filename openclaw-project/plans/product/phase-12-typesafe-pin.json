@@ -1,0 +1,19 @@
+{
+  "verified": "2026-10-09",
+  "sources": ["https://docs.typesafe.ai/models", "https://docs.typesafe.ai/primitives/choice", "https://docs.typesafe.ai/primitives/noul"],
+  "model": "jev-1.13.0",
+  "price_version": "typesafe-jev-1-13-0-2026-10-09",
+  "aliases_not_used": ["jev-latest", "jev-preview"],
+  "alias_note": "Both aliases currently resolve to jev-1.13.0 and move on release; the pinned versioned id is used and a response whose `model` differs is rejected.",
+  "endpoint": {"method": "POST", "url": "https://api.typesafe.ai/v1/systemone", "auth": "Authorization: Bearer <key>", "models_list": "GET /v1/models"},
+  "input_microusd_per_1000_tokens": 42,
+  "price_note": "$0.042 per million input tokens (documented as $42 per billion); output tokens free; unchanged since the 2026-09-27 pin.",
+  "limits": {"request_tokens": 64000, "state_plus_longest_question_tokens": 32000, "rate": "100K tokens/s and 80 requests/s, 429 on excess, limits adjust dynamically"},
+  "modalities": "text only; English best, other languages not equally well",
+  "request_schema": "questions is an OBJECT keyed by question id; choice: {type:'choice', instructions, criteria:{option: description|null}}; noul: {type:'noul', instructions, criteria?}; score: {type:'score', instructions, criteria}",
+  "response_schema": "answers keyed by the same ids; choice: {type,choice,confidence,probabilities}; noul: {type,noul} with NO confidence; usage:{input_tokens,output_tokens}; top-level `model` reports the versioned id",
+  "defect_corrected": "The Phase 9 browser adapter sent questions as an array with `options`/`id` fields and parsed a `value`/`sufficient` answer; neither matches the documented schema. Corrected 2026-10-09 (browser-opt/jev_adapter.py).",
+  "privacy": "Documented: not trained on customer requests or responses. DPA, privacy policy and zero data retention (enterprise only) are on the Legal page and were NOT reviewed here; a recorded data-handling approval is required before any live use.",
+  "cap_note": "Anthropic and ChatGPT caps and the LiteLLM proxy do not cover TypeSafe unless a pass-through is verified; the product gate reserves each call against the Phase 5 task allocation.",
+  "unconfirmed": ["output-length limit", "retention terms for the account tier in use", "whether the LiteLLM pass-through used in Phase 4A enforces budget for this provider"]
+}

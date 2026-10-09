@@ -232,3 +232,10 @@ retries, an idempotent operation ledger with receipt reconciliation, local draft
 browser profiles; `ssrf.py` is the destination guard. Provider tokens exist only in a
 custody backend (`DisabledCustody` by default). Raw provider content goes only to the
 `researcher` and returns as attributed untrusted data. Writes are structurally absent.
+
+## Phase 12 optional optimization
+
+Browser: `jev_adapter.py` (typed candidates, schema-correct requests, strict validation, fresh-target check,
+sensitive-control routing) inside `route.py` (deadline, caps, loop/cancel handling, receipts, reconcile-before-fallback).
+Research: the `jev-research` fail-open tool-result middleware. `optimization.py` is the product gate and Phase 5
+billing bridge. Both tracks are disabled at every layer; acceptance belongs to Phase 16.

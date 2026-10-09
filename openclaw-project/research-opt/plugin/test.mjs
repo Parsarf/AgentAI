@@ -77,3 +77,47 @@ test("high-confidence irrelevant page drops, injection stays visible", () => {
   const ia = answer(injected.request); ia.answers.relevant.noul = 0.01;
   assert.match(applyAnswer(injected, ia, url).content, /IMPORTANT INSTRUCTION/);
 });
+
+test("registered middleware fails open even when the state directory is unusable", async () => {
+  process.env.JEV_RESEARCH_STATE_DIR = "/nonexistent-dir-for-jev-test";
+  const { default: plugin } = await import("./index.mjs?failopen");
+  let handler, options;
+  plugin.register({ registerAgentToolResultMiddleware: (h, o) => { handler = h; options = o; } });
+  assert.deepEqual(options, { runtimes: ["openclaw"], matcher: ["web_fetch"] });
+  const e = event("page body");
+  assert.equal(await handler(e, ctx), undefined);          // toggle off + log failure => untouched
+  assert.equal(await handler({ ...e, result: null }, ctx), undefined); // malformed event => untouched, no throw
+  delete process.env.JEV_RESEARCH_STATE_DIR;
+});
+
+test("manifest declares the openclaw runtime the registration targets", async () => {
+  const { readFileSync } = await import("node:fs");
+  const manifest = JSON.parse(readFileSync(new URL("./openclaw.plugin.json", import.meta.url), "utf8"));
+  assert.deepEqual(manifest.contracts.agentToolResultMiddleware, ["openclaw"]);
+  assert.equal(manifest.id, "jev-research");
+});
+
+test("kill switch is read back from disk on every call (flip takes effect immediately)", async () => {
+  const { mkdtempSync, writeFileSync, readFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(`${tmpdir()}/jev-ks-`);
+  process.env.JEV_RESEARCH_STATE_DIR = dir;
+  try {
+    writeFileSync(`${dir}/public-tasks.json`, JSON.stringify(registry));
+    const { default: plugin } = await import("./index.mjs?killswitch");
+    let handler;
+    plugin.register({ registerAgentToolResultMiddleware: h => { handler = h; } });
+    assert.equal(JSON.parse(readFileSync(`${dir}/registration.json`, "utf8")).id, "jev-research");
+    const reasons = () => readFileSync(`${dir}/decisions.jsonl`, "utf8").trim().split("\n").map(l => JSON.parse(l).reason);
+    writeFileSync(`${dir}/config.json`, JSON.stringify({ enabled: false }));
+    assert.equal(await handler(event("page"), ctx), undefined);
+    writeFileSync(`${dir}/config.json`, JSON.stringify({ enabled: true }));   // on, but no key/gate => still baseline
+    assert.equal(await handler(event("page"), ctx), undefined);
+    writeFileSync(`${dir}/config.json`, "not json");                           // unreadable => off
+    assert.equal(await handler(event("page"), ctx), undefined);
+    assert.deepEqual(reasons(), ["toggle_off", "budget", "toggle_off"]);
+  } finally {
+    delete process.env.JEV_RESEARCH_STATE_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

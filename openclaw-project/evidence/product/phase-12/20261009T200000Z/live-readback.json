@@ -1,0 +1,27 @@
+{
+  "probe": "read-only, 2026-10-09, via bin/ssh-server; no write, no inference, no TypeSafe call",
+  "plugin": {
+    "status": "loaded",
+    "enabled": true,
+    "explicitlyEnabled": true,
+    "origin": "global",
+    "trust": "record-missing (copied into extensions/, not installed via `plugins install`)",
+    "diagnostic_warning": "OpenClaw can't verify where this plugin came from"
+  },
+  "deployed_plugin_index_sha256": "aa7066bbbb3a652b6156d779d526308e10b4534aee4f8c386388ab17d7015469",
+  "matches_repo_HEAD_before_fix": true,
+  "repo_fixed_index_sha256": "db4443003785edd31149f2d821a4e6431bdfc9fc26d19d5669bcefc1d7bc84b0",
+  "state_dir": {
+    "config.json": {
+      "enabled": true
+    },
+    "public-tasks.json": {},
+    "decisions.jsonl": "absent",
+    "registration.json": "absent (old plugin)"
+  },
+  "secrets": {
+    "phase4a-jev-eval.key": "present in /run/secrets (value not read)"
+  },
+  "contradiction": "BUILD_LOG (2026-09-28) records the toggle as left OFF; the server config.json currently reads enabled=true. Eligibility still fails (empty public-tasks registry) so every fetch falls back, but the layer is not 'disabled server-side' as Phase 12 requires.",
+  "mcp_note": "No change was made."
+}
