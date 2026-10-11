@@ -1526,3 +1526,16 @@ locked items stay locked; read-back and audit on every change; drift warning wit
 toggle endpoints through it, and made customer connector linking honor the owner switch. One-command installer
 `bin/update-ops-dashboard.py` (dry run by default). Tests: dashboard 35 (incl. real-handler login/CSRF/POST flow), switches 10,
 Django 67. Nothing installed on the server; the server's research toggle still reads enabled=true until this is applied.
+
+### 2026-10-11 — Owner action list: dashboard installed, research toggle off, fresh host measurement
+
+- Installed the Feature switches dashboard update on the VPS with `bin/update-ops-dashboard.py --apply`
+  (backup `/opt/openclaw-production/dashboard.bak-20261011T200441Z`; sign-in page 200, service active).
+- Set `jev-research/config.json` to `{"enabled": false}` (was true) with readback; audit line written. The
+  disposable `phase4a-jev-eval.key` file is still present (owner decision whether to remove).
+- Re-measured the host read-only (evidence/product/phase-04/20261011T200600Z/host-measurement.json): 2 vCPU,
+  3.78 GiB RAM, 0.51 GiB available, swap 99.6% used, 81 GiB disk free, load ~0. Eight idle sandbox containers
+  hold ~1.25 GiB. Capacity assessment: 0 admitted customer slots (memory_exhausted). Even if every idle sandbox were
+  stopped, one default 2 GiB cell plus reserves would still be short by ~1.0 GiB. Conclusion: the current server cannot
+  host a customer cell; the 16 GiB / 4 vCPU proposal (or equivalent) is required for Phase 4 execution.
+- `git push` of branch product-phases-6-11 was refused by the permission classifier; nothing pushed.
