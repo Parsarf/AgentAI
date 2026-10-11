@@ -22,14 +22,15 @@ env_file = repo / "openclaw-project/.env"
 if stat.S_IMODE(env_file.stat().st_mode) & 0o077:
     raise SystemExit("openclaw-project/.env must be private (mode 0600)")
 values = dotenv_values(env_file)
-ssh_user = values.get("OPENCLAW_SSH_USER", "")
-if not ssh_user or not values.get("OPENCLAW_SSH_PASSWORD"):
+pfx = "OPENCLAW_NEW_SSH_" if os.environ.get("OPENCLAW_SERVER", "new") == "new" else "OPENCLAW_SSH_"
+ssh_user = values.get(pfx + "USER", "")
+if not ssh_user or not values.get(pfx + "PASSWORD"):
     raise SystemExit("Set OPENCLAW_SSH_USER and OPENCLAW_SSH_PASSWORD in openclaw-project/.env")
 token = values.get("OPENCLAW_TELEGRAM_BOT_TOKEN", "")
 if not token or any(c.isspace() for c in token):
     raise SystemExit("Set OPENCLAW_TELEGRAM_BOT_TOKEN in openclaw-project/.env (from BotFather, no spaces)")
 explicit_username = values.get("OPENCLAW_TELEGRAM_BOT_USERNAME", "").lstrip("@")
-target = ssh_user + "@69.48.206.62"
+target = ssh_user + "@" + (values.get(pfx + "HOST") or "69.48.206.62")
 
 remote_script = """
 set -e
@@ -80,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix="openclaw-tg-") as directory:
     askpass.write_text(
         "#!" + sys.executable + "\n"
         "from dotenv import dotenv_values\n"
-        "print(dotenv_values(" + repr(str(env_file)) + ")[\"OPENCLAW_SSH_PASSWORD\"])\n"
+        "print(dotenv_values(" + repr(str(env_file)) + ")[" + repr(pfx + "PASSWORD") + "])\n"
     )
     askpass.chmod(0o700)
     env = os.environ.copy()

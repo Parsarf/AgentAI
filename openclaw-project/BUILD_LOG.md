@@ -1539,3 +1539,21 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   stopped, one default 2 GiB cell plus reserves would still be short by ~1.0 GiB. Conclusion: the current server cannot
   host a customer cell; the 16 GiB / 4 vCPU proposal (or equivalent) is required for Phase 4 execution.
 - `git push` of branch product-phases-6-11 was refused by the permission classifier; nothing pushed.
+
+## 2026-10-11 — Server migration to 179.236.71.203 (4 vCPU / 15 GiB / 193 GB, Ubuntu 26.04)
+
+- Full verified backup of the old server (69.48.206.62) taken first and kept outside the repo
+  (`~/openclaw-migration-backup-20261011/`; contains secrets, never commit).
+- Restored: /opt/openclaw-production (state, workspace, secrets, dashboard, feature switches),
+  /opt/agentai-*, LiteLLM Postgres (pg_dumpall), customer account SQLite, Caddy + systemd units.
+  Venv rebuilt from the hash-pinned `requirements.lock` (Python 3.14); gateway image rebuilt from
+  `phase4-sdk-image`; sandbox images copied with `docker save/load`. compose `group_add` set to the
+  new docker gid (986). Service users re-created (agentai-fleet 1000:1000, agentai-platform).
+- Cutover: old gateway/LiteLLM/Caddy/app/dashboard/timers stopped, final DB snapshots + changed
+  files copied, new stack started. Gateway healthy, Telegram polling, LiteLLM 200, app 302, TLS
+  certificate issued for backend.getlumina.pro. Research toggle remains OFF.
+- Firewall: ufw 22/80/443 only; fail2ban + unattended-upgrades enabled.
+- Helpers `bin/ssh-server`, `scp-server`, `open-*`, `activate-telegram.py` now default to the new
+  server (`OPENCLAW_NEW_SSH_*` in .env); `OPENCLAW_SERVER=old` selects the old one.
+- Open: change the new root password (it was printed once in a tool transcript); move to SSH keys;
+  old server still exists but is stopped (do not delete until the owner is satisfied).
