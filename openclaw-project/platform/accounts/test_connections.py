@@ -40,6 +40,31 @@ class ConnectionHTTPChecks(TestCase):
         self.assertEqual(a.get('/v1/account/connections/callback?code=x&state=y', secure=True).status_code, 503)
         self.assertEqual(a.get('/v1/account/drafts', secure=True).json(), {'drafts': [], 'sent': False})
 
+    def test_link_requires_the_owner_switch_and_reports_it(self):
+        import json as _json, os, tempfile
+        from django.test import override_settings
+        a = self.signed()
+        self.assertFalse(a.get('/v1/account/connections', secure=True).json()['linking_available'])
+        self.assertEqual(self.post(a, '/v1/account/connections/link', {'service': 'gmail'}).json()['error'], 'feature_off')
+        with tempfile.TemporaryDirectory() as d:
+            switches, facts = os.path.join(d, 's.json'), os.path.join(d, 'f.json')
+            _json.dump({'a': True}, open(facts, 'w'))
+            with override_settings(SWITCHES_FILE=switches, SWITCH_FACTS_FILE=facts):
+                from agentai_platform.switches import SwitchStore
+                store = SwitchStore(switches, facts_path=facts)
+                store.confirm('connectors_linking', 'privacy_notice', 'owner')
+                with self.assertRaises(Exception):                 # facts missing: the owner cannot turn it on
+                    store.set('connectors_linking', True, 'owner')
+                self.assertFalse(a.get('/v1/account/connections', secure=True).json()['linking_available'])
+                _json.dump({'provider_registered': True, 'custody_backend': True}, open(facts, 'w'))
+                store.set('connectors_linking', True, 'owner')
+                self.assertTrue(a.get('/v1/account/connections', secure=True).json()['linking_available'])
+                # switched on, but nothing is registered in the app yet: still fails closed
+                self.assertEqual(self.post(a, '/v1/account/connections/link', {'service': 'gmail'}).json()['error'],
+                                 'connector_not_configured')
+                store.set('connectors_linking', False, 'owner')
+                self.assertEqual(self.post(a, '/v1/account/connections/link', {'service': 'gmail'}).json()['error'], 'feature_off')
+
     def test_page_renders_honestly(self):
         a = self.signed()
         page = a.get('/account/connections/', secure=True)

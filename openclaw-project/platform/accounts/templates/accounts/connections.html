@@ -1,6 +1,7 @@
 {% extends 'accounts/base.html' %}{% block title %}Connections — AgentAI{% endblock %}{% block body %}
 <div class="pagehead"><h1>Connections</h1><p>Read-only access to your own accounts. Nothing is connected until you link it, and AgentAI never sends, shares, edits or deletes through a connection.</p></div>
-<div class="notice warn"><span><strong>Linking is not available yet.</strong> Provider sign-in is being prepared; no account has been read or connected.</span></div>
+{% if available %}<div class="notice"><span><strong>Linking is switched on.</strong> Sign-in appears here once each provider is ready; nothing has been read or connected yet.</span></div>
+{% else %}<div class="notice warn"><span><strong>Linking is not available yet.</strong> Provider sign-in is being prepared; no account has been read or connected.</span></div>{% endif %}
 {% for item in items %}
 <section class="card">
 <h3>{{ item.label }}</h3>

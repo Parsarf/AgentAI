@@ -810,3 +810,10 @@ webhook via deleteWebhook.
   `typesafe` provider receipts afterwards; an uncertain call keeps its hold until reconciled. Price pin:
   `plans/product/phase-12-typesafe-pin.json`. The owner `phase4a-jev-eval` key is never used for customers.
 - Rollback: disable/uninstall `jev-research`, delete `browser-opt/`; migration 0012 is additive.
+
+## Feature switches (owner UI)
+
+Optional features are turned on and off from the private ops dashboard, **Feature switches** page — no file edits.
+See `plans/product/FEATURE_SWITCHES.md`. Install the update with `bin/update-ops-dashboard.py` (dry run first, `--apply` to run).
+OFF always works; ON needs recorded confirmations and finished setup; locked items cannot be unlocked from the UI.
+The old Jev toggle endpoints now use the same checks. If the research plugin file and its switch disagree the page flags it.

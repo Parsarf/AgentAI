@@ -1517,3 +1517,12 @@ hash-locked held-out fixtures. **Live readback: server jev-research config.json 
 disposable Jev key file is present in the owner gateway, contrary to the Sept 28 'left off' note; registry is empty
 so nothing is eligible; no change made — owner decision pending.** No TypeSafe call, no deployment.
 Evidence: plans/product/phase-12.md, evidence/product/phase-12/20261009T200000Z/.
+
+### 2026-10-09 — Feature switches page in the owner dashboard (local; not installed)
+
+Added a stdlib-only switch store (`switches.py`) with plain-language catalog, confirmations and prerequisite facts,
+a Feature switches page in the private dashboard (turn on needs confirmations + finished setup; off always works;
+locked items stay locked; read-back and audit on every change; drift warning with one-click fix), routed the old Jev
+toggle endpoints through it, and made customer connector linking honor the owner switch. One-command installer
+`bin/update-ops-dashboard.py` (dry run by default). Tests: dashboard 35 (incl. real-handler login/CSRF/POST flow), switches 10,
+Django 67. Nothing installed on the server; the server's research toggle still reads enabled=true until this is applied.

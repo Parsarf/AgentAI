@@ -10,7 +10,9 @@ A read-only readback of the owner Gateway shows `jev-research/config.json` = `{"
 disposable `phase4a-jev-eval.key` present in `/run/secrets`. BUILD_LOG (2026-09-28) says the toggle was left
 off, and this phase requires adapters to stay disabled server-side. It is not currently spending: the
 public-task registry is `{}`, so no fetch is eligible and every one falls back to the baseline. To restore the
-documented state set that file to `{"enabled": false}` (one line, reversible). I did not change it.
+documented state use the new **Feature switches** page (see `FEATURE_SWITCHES.md`; it flags this exact mismatch with a
+one-click "Turn it off everywhere"), or set that file to `{"enabled": false}`. I did not change it; the page is built but not
+yet installed on the server.
 
 ## Item 1 — audit and the "middleware did not load" defect
 

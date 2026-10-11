@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
@@ -26,6 +27,22 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from http import cookies as http_cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+def _load_switches():
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "switches.py"),
+                      os.path.join(here, "..", "platform", "agentai_platform", "switches.py")):
+        if os.path.exists(candidate):
+            spec = importlib.util.spec_from_file_location("owner_switches", candidate)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["owner_switches"] = module  # dataclasses look the module up by name
+            spec.loader.exec_module(module)
+            return module
+    raise RuntimeError("switches.py not found next to the dashboard")
+
+
+switches = _load_switches()
 
 BASE = "/opt/openclaw-production"
 DIR = os.path.join(BASE, "dashboard")
@@ -39,6 +56,9 @@ POSTGRES = "openclaw-production-postgres-1"
 LITELLM = "openclaw-production-litellm-1"
 HOST_STATE = os.path.join(BASE, "openclaw-state")  # = container /home/node/.openclaw
 JEV_DIR = os.path.join(HOST_STATE, "jev-research")
+SWITCH_DIR = os.path.join(BASE, "feature-switches")
+SWITCH_FILE = os.path.join(SWITCH_DIR, "switches.json")
+SWITCH_FACTS = os.path.join(SWITCH_DIR, "facts.json")
 PORT, BIND = 18795, "127.0.0.1"
 SESSION_TTL_IDLE, SESSION_TTL_ABS = 2 * 3600, 24 * 3600
 DOWNLOAD_TTL, MAX_FILE_BYTES = 300, 2_000_000
@@ -520,6 +540,7 @@ def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
                "<a href=/sessions>Sessions</a><a href=/files>Files</a>"
                "<a href=/approvals>Approvals</a><a href=/schedules>Schedules</a>"
                "<a href=/memory>Memory</a><a href=/integrations>Integrations</a>"
+               "<a href=/switches>Feature switches</a>"
                "<a href=/costs>Costs</a><a href=/audit>Audit</a></nav>")
         logout = (f"<form method=post action=/logout class=inline>"
                   f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
@@ -708,15 +729,15 @@ class Handler(BaseHTTPRequestHandler):
             sb = sandbox_browser_enabled()
             jev_on = jev_research_enabled()
             controls = ("<h2>Controls</h2><div class=grid>" +
-                        toggle_row("jev_research", "Jev research layer", jev_on, True,
-                                   "fail-open fetch decisions for the researcher") +
+                        toggle_row("jev_research", "Jev research layer", jev_on, False,
+                                   "managed on the Feature switches page") +
                         toggle_row("sandbox_browser", "Sandbox browser",
                                    sb, True, "per-session browser containers for "
                                    "browser-worker (pinned image)") +
                         toggle_row("web_search", "Native web search", False, False,
                                    "off — no supported provider credential; Brave MCP "
                                    "search stays available to the researcher") +
-                        "</div>")
+                        "</div><p><a href=/switches>All feature switches →</a></p>")
             gates = ("<h2>Fixed boundaries</h2>" +
                      gate("session cancel: no owner-scoped native abort verified on "
                           "this build — use the Control UI") +
@@ -732,6 +753,10 @@ class Handler(BaseHTTPRequestHandler):
                      "<p class=ok>no pending approvals</p>") +
                     controls + gates)
             return self._send(200, page("overview", body, rec))
+
+        if path == "/switches":
+            flash = q.get("msg", [""])[0][:200]
+            return self._send(200, page("feature switches", switches_page(rec), rec, flash))
 
         if path == "/sessions":
             s = sessions_data()
@@ -997,21 +1022,30 @@ class Handler(BaseHTTPRequestHandler):
             if not audit("revoke-all-sessions", "all", f"revoked={n}"):
                 return self._deny(500, "audit write failed — action refused")
             return self._redirect("/login", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
+        if path == "/switch":
+            name, value = form.get("name", ""), form.get("value", "")
+            if value not in ("on", "off"):
+                return self._deny(400, "bad value")
+            ok, message = apply_switch(name, value == "on")
+            return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+        if path == "/switch-confirm":
+            name, cid = form.get("name", ""), form.get("id", "")
+            try:
+                switch_store().confirm(name, cid, "owner")
+            except switches.SwitchError as e:
+                return self._deny(400, "; ".join(e.reasons))
+            if not audit("switch-confirm", f"{name}:{cid}", "recorded"):
+                return self._deny(500, "audit write failed — confirmation not trusted")
+            return self._redirect("/switches?msg=" + urllib.parse.quote("Confirmation recorded"))
         if path == "/toggle":
             name = form.get("name", "")
             value = form.get("value", "")
             if value not in ("on", "off"):
                 return self._deny(400, "bad value")
             if name == "jev_research":
-                try:
-                    os.makedirs(JEV_DIR, exist_ok=True)
-                    with open(os.path.join(JEV_DIR, "config.json"), "w") as f:
-                        json.dump({"enabled": value == "on"}, f)
-                    os.chmod(os.path.join(JEV_DIR, "config.json"), 0o600)
-                except OSError as e:
-                    return self._deny(500, f"toggle failed: {type(e).__name__}")
-                state = jev_research_enabled()
-            elif name == "sandbox_browser":
+                ok, message = apply_switch("research_optimization", value == "on")
+                return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+            if name == "sandbox_browser":
                 rc, out = run(["docker", "exec", GATEWAY, "node", "dist/index.js",
                                "config", "set",
                                "agents.defaults.sandbox.browser.enabled",
@@ -1033,23 +1067,8 @@ class Handler(BaseHTTPRequestHandler):
             value = form.get("value", "")
             if layer != "research" or value not in ("on", "off"):
                 return self._deny(400, "unsupported layer or value")
-            target = os.path.join(JEV_DIR, "config.json")
-            try:
-                os.makedirs(JEV_DIR, exist_ok=True)
-                with open(target, "w") as f:
-                    json.dump({"enabled": value == "on"}, f)
-                os.chmod(target, 0o600)
-                with open(target) as f:
-                    readback = json.load(f)
-            except OSError as e:
-                return self._deny(500, f"toggle failed: {type(e).__name__}")
-            if not audit("jev-toggle", layer, f"{value}; readback={readback}"):
-                return self._deny(500, "audit write failed — change refused")
-            body = (f"<h2>Jev research layer</h2>"
-                    f"<p>Requested <b>{esc(value)}</b>; read back "
-                    f"<b>{esc(json.dumps(readback))}</b>.</p>"
-                    f"<p><a href=/live>back to live viewer</a></p>")
-            return self._send(200, page("jev toggle", body, rec))
+            ok, message = apply_switch("research_optimization", value == "on")
+            return self._redirect("/switches?msg=" + urllib.parse.quote(message))
         self._deny(404, "not found")
 
     def _static(self, name: str, ctype: str) -> None:
@@ -1058,6 +1077,119 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), ctype)
         except OSError:
             self._deny(404, "missing asset")
+
+
+
+def switch_store():
+    return switches.SwitchStore(SWITCH_FILE, facts_path=SWITCH_FACTS)
+
+
+def live_facts() -> dict:
+    """Facts written by deployment tooling, plus the few the dashboard can verify itself."""
+    facts = switches.load_facts(SWITCH_FACTS)
+    rc, _ = run(["docker", "exec", GATEWAY, "test", "-e", "/run/secrets/phase4a-jev-eval.key"], timeout=15)
+    facts["typesafe_key_present"] = rc == 0
+    return facts
+
+
+def write_jev_plugin_file(on: bool) -> bool | None:
+    """Mirror the research switch into the plugin's documented config file, with readback."""
+    target = os.path.join(JEV_DIR, "config.json")
+    try:
+        os.makedirs(JEV_DIR, exist_ok=True)
+        with open(target, "w") as f:
+            json.dump({"enabled": bool(on)}, f)
+        os.chmod(target, 0o600)
+    except OSError:
+        return None
+    return jev_research_enabled()
+
+
+def apply_switch(key: str, on: bool) -> tuple[bool, str]:
+    """One code path for every feature switch: checks, save, mirror, readback, audit.
+    Turning OFF always works; turning ON needs every confirmation and fact."""
+    store = switch_store()
+    if key not in store.catalog:
+        return False, "unknown switch"
+    store.facts = lambda f=live_facts(): f  # one consistent fact snapshot for this change
+    try:
+        result = store.set(key, on, "owner")
+    except switches.SwitchError as e:
+        audit("switch", key, f"refused {'on' if on else 'off'}: {'; '.join(e.reasons)[:200]}")
+        return False, "; ".join(e.reasons)
+    if key == "research_optimization":
+        actual = write_jev_plugin_file(on)
+        if actual is None or actual != bool(on):
+            try:
+                store.set(key, False, "owner")      # never leave the switch on if the plugin file disagrees
+                write_jev_plugin_file(False)
+            except switches.SwitchError:
+                pass
+            audit("switch", key, "plugin file readback mismatch; forced off")
+            return False, "the research plugin file did not confirm the change, so it was switched off"
+    if not audit("switch", key, "on" if on else "off"):
+        return False, "audit write failed — change not recorded as confirmed"
+    return True, f"{result['title']} is now {'ON' if on else 'OFF'}"
+
+
+def switches_page(rec: dict, flash: str = "") -> str:
+    store = switch_store()
+    facts = live_facts()
+    store.facts = lambda f=facts: f
+    plugin = jev_research_enabled()
+    cards = []
+    drift = ""
+    research = store.describe("research_optimization")
+    if plugin is True and not research["effective_on"]:
+        drift = ("<div class='card'><span class='pill warn'>needs attention</span> "
+                 "<b>The research plugin file on the server says ON, but its switch here is OFF or blocked.</b>"
+                 "<div class='small mut'>Nothing is eligible right now so it is not spending, but it should match. "
+                 "Press the button to switch it off everywhere.</div>"
+                 f"<form method=post action=/switch class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                 "<input type=hidden name=name value=research_optimization><input type=hidden name=value value=off>"
+                 "<button type=submit class=small>Turn it off everywhere</button></form></div>")
+    for d in store.all():
+        status = {"on": ("ok", "ON"), "off": ("warn", "OFF"), "locked": ("unknown", "LOCKED"),
+                  "on_but_blocked": ("down", "ON but blocked")}[d["status"]]
+        key = esc(d["key"])
+        blockers = "".join(f"<li>{esc(b)}</li>" for b in d["blockers"] if not b.startswith("Confirm:"))
+        confirms = ""
+        for c in d["confirmations"]:
+            if c["at"]:
+                confirms += f"<div class='small'>✓ {esc(c['text'])} <span class=mut>(recorded)</span></div>"
+            elif not d["locked"]:
+                confirms += (f"<form method=post action=/switch-confirm class=inline>"
+                             f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                             f"<input type=hidden name=name value='{key}'><input type=hidden name=id value='{esc(c['id'])}'>"
+                             f"<label class=small><input type=checkbox required> {esc(c['text'])}</label> "
+                             f"<button type=submit class=small>Record</button></form>")
+        if d["locked"]:
+            action = f"<span class=muted>{esc(d['locked'])}</span>"
+        elif d["recorded_on"]:
+            action = (f"<form method=post action=/switch class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                      f"<input type=hidden name=name value='{key}'><input type=hidden name=value value=off>"
+                      f"<button type=submit>Turn OFF</button></form>")
+        elif d["can_turn_on"]:
+            action = (f"<form method=post action=/switch class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                      f"<input type=hidden name=name value='{key}'><input type=hidden name=value value=on>"
+                      f"<button type=submit>Turn ON</button></form>")
+        else:
+            action = "<span class=muted>Can't be turned on yet — see below</span>"
+        todo = (f"<div class='small'><b>Before it can be turned on:</b><ul>{blockers}</ul></div>" if blockers and not d["locked"] else "")
+        cards.append(
+            f"<div class=card><div style='display:flex;justify-content:space-between;gap:1rem;align-items:center'>"
+            f"<div><b>{esc(d['title'])}</b> {pill(status[0]).replace(esc(status[0]) + '</span>', esc(status[1]) + '</span>')}</div>"
+            f"<div>{action}</div></div>"
+            f"<p class=small>{esc(d['plain'])}</p>"
+            f"<div class='small mut'><b>When on:</b> {esc(d['when_on'])}</div>"
+            f"<div class='small mut'><b>Cost:</b> {esc(d['cost_note'])}</div>"
+            f"{confirms}{todo}"
+            + (f"<div class='small mut'>last changed by {esc(d['changed_by'])}</div>" if d["changed_by"] else "")
+            + "</div>")
+    note = ("<p class=muted>These are the only on/off controls for optional features. A switch never overrides a safety check: "
+            "turning one ON only works when its confirmations are ticked and its setup is really finished, and turning one "
+            "OFF always works immediately. Every change is read back and written to the audit log.</p>")
+    return "<h2>Feature switches</h2>" + note + drift + "<div class=grid style='grid-template-columns:1fr'>" + "".join(cards) + "</div>"
 
 
 def jev_research_enabled() -> bool | None:

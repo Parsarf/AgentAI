@@ -101,3 +101,6 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 31457280  # 25MiB batch cap plus multipart overhea
 LOGGING = {'version': 1, 'disable_existing_loggers': False,
  'handlers': {'null': {'class': 'logging.NullHandler'}},
  'loggers': {'django': {'handlers': ['null'], 'propagate': False}}}
+# Owner feature switches (written by the private ops dashboard, read-only here). Missing = everything off.
+SWITCHES_FILE = os.environ.get('AGENTAI_SWITCHES_FILE', '')
+SWITCH_FACTS_FILE = os.environ.get('AGENTAI_SWITCH_FACTS_FILE', '')
