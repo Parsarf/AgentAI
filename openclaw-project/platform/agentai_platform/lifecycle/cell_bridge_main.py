@@ -2,9 +2,11 @@
 import argparse
 import grp
 import json
+import os
 from pathlib import Path
 import pwd
 import sqlite3
+import subprocess
 import stat
 
 from .cell_bridge import CellBridge, DockerRelay, serve
@@ -39,6 +41,19 @@ def main():
             con.close()
         return (row[0], secrets.gateway_token(row[0])) if row else None
 
+    def binding(account):
+        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
+        try:
+            row = con.execute('SELECT tenant FROM bindings WHERE account=?', (account,)).fetchone()
+        finally:
+            con.close()
+        return row[0] if row else None
+
+    def probe(tenant):
+        done = subprocess.run(['docker', 'inspect', '-f', '{{.State.Running}}', f'openclaw-cell-{tenant}'], capture_output=True, text=True,
+                              env={**os.environ, 'DOCKER_HOST': docker_host}, timeout=20)
+        return done.returncode == 0 and done.stdout.strip() == 'true'
+
     def spend(tenant):
         key = secrets.provider_key(tenant)
         if key is None:
@@ -47,7 +62,7 @@ def main():
 
     app = pwd.getpwnam(args.app_user)
     bridge = CellBridge(lookup, lambda tenant, token: DockerRelay(tenant, token, docker_host=docker_host), spend,
-                        ready_timeout=100)
+                        binding=binding, probe=probe, ready_timeout=100)
     server = serve(bridge, str(args.socket), allowed_uids={app.pw_uid}, group_gid=grp.getgrnam(args.app_user).gr_gid)
     try:
         server.serve_forever()

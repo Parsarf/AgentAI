@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.capacity import CapacityResult
 from agentai_platform.chat import ChatDriver, ChatService, FixedRoute, synthetic_gateway_factory
@@ -71,3 +72,52 @@ class RequestWorkerChecks(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RecoveryChecks(RequestWorkerChecks):
+    def test_request_that_never_reached_a_session_fails_cleanly_and_frees_the_slot(self):
+        self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1'); self.hold_cell()
+        claim = self.queue.claim(owner='w', capacity=OK)
+        self.queue.uncertain(claim)                                     # e.g. the worker crashed before any send
+        self.assertEqual(self.worker.tick(), {'reconciled': True})
+        self.assertEqual(self.chat.task(self.a, claim.request_id)['state'], 'failed')
+        self.assertEqual(self.rows("SELECT amount_microusd FROM provider_receipts"), [])        # nothing was spent
+        self.assertEqual(self.rows("SELECT state FROM task_reservations")[0][0], 'settled')
+
+    def test_unreachable_runtime_is_abandoned_after_the_grace_period_with_the_reserved_charge(self):
+        class Down(SyntheticGateway):
+            def history(self, session, cursor): raise CapabilityUnavailable('down')
+        self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1'); self.hold_cell()
+        good = self.worker
+        self.gateway.fail_after_ack = True
+        with self.assertRaises(RuntimeError): good.tick()
+        down = Down(); down.sessions = self.gateway.sessions
+        driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(down), clock=lambda: self.now)
+        worker = RequestWorker(self.queue, driver, lambda: OK, clock=lambda: self.now, abandon_after=600)
+        self.assertEqual(worker.tick()['reconciled'], False)
+        self.now += 601
+        self.assertEqual(worker.tick(), {'reconciled': True, 'abandoned': True})
+        self.assertEqual([tuple(r) for r in self.rows("SELECT amount_microusd,price_version FROM provider_receipts")], [(1000000, 'reservation-upper-bound-v1')])
+
+    def rows(self, sql):
+        with self.store.connect() as con:
+            return con.execute(sql).fetchall()
+
+
+class RecoveredUsageChecks(RequestWorkerChecks):
+    def test_recovered_request_reconciles_exact_spend_from_the_stored_baseline(self):
+        class Metered(SyntheticGateway):
+            spend = [1000, 1700, 1700, 1700, 1700]
+            def usage_snapshot(self): return self.spend.pop(0) if len(self.spend) > 1 else self.spend[0]
+        gateway = Metered(fail_after_ack=True)
+        driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(gateway), clock=lambda: self.now)
+        worker = RequestWorker(self.queue, driver, lambda: OK, clock=lambda: self.now)
+        self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1')
+        with self.store.connect() as con:
+            con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES ('a','op1','d-a','start','completed','k','h',1)")
+            con.execute("INSERT INTO lifecycle_slot VALUES (1,'a','d-a','op1','active')")
+        with self.assertRaises(RuntimeError): worker.tick()
+        gateway.fail_after_ack = False
+        self.assertEqual(worker.tick(), {'reconciled': True})
+        with self.store.connect() as con:
+            self.assertEqual([tuple(r) for r in con.execute('SELECT amount_microusd,price_version FROM provider_receipts')], [(700, 'litellm-reported-v1')])

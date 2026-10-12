@@ -150,3 +150,8 @@ Rollback: `systemctl disable --now agentai-lifecycle-worker agentai-supervisor-n
 agentai-cells-firewall agentai-cells-docker`; restore `/etc/docker/daemon.json` from
 `daemon.json.before-runsc` if the owner engine's extra runtime must go. Residual risk: the
 controller identity is the app user.
+
+
+## Customer execution units (2026-10-12)
+
+`agentai-model-proxy.service` (deploy/model-proxy/), `agentai-cell-bridge.service`, `agentai-request-worker.service`, plus the changed `agentai-supervisor-native.service` (no mount-namespace sandboxing), `agentai-lifecycle-worker.service` (switch file environment) and `cells-docker/` (`iptables:false`, public `dns`, firewall + routes units). `native-wiring.json` gains an optional `litellm_env` path (the LiteLLM env file holding the master key) which turns on per-cell model keys. The LiteLLM service publishes `127.0.0.1:4000` only. See `OPERATIONS.md` section 12.

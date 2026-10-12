@@ -119,6 +119,37 @@ class Coordinator:
             self._audit(con,account,principal.actor_id,operation,kind,'pending')
             return self._public(con,account,operation)
 
+    def host_create(self, account, *, key, target_profile):
+        """Host-operator provisioning of an account's cell record (called only by the host CLI, never by HTTP or a worker).
+
+        Same bounds as an operator `create` (active account, one cell per account, trial capacity) but without
+        an operator session: the caller is a root-run command on the host, audited as `host-operator`.
+        """
+        identifier(account);identifier(key)
+        if target_profile not in self.profiles: raise ValueError('unsupported request')
+        body=json.dumps({'kind':'create','generation':None,'profile':target_profile,'backup':None,'host':True},sort_keys=True,separators=(',',':'))
+        digest=hashlib.sha256(body.encode()).hexdigest()
+        with self.transaction() as con:
+            self._account(con,account,'create')
+            existing=con.execute('SELECT * FROM operations WHERE account_id=? AND idempotency_key=?',(account,key)).fetchone()
+            if existing:
+                if existing['request_hash']!=digest: raise Conflict('idempotency payload changed')
+                return self._public(con,account,existing['id'])
+            if con.execute('SELECT 1 FROM lifecycle_cells WHERE account_id=?',(account,)).fetchone(): raise Conflict('account already bound')
+            if con.execute("SELECT count(*) FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE d.state!='deleted'").fetchone()[0]>=2:
+                raise Conflict('trial account capacity reached')
+            deployment=uuid.uuid4().hex
+            con.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES (?,?,1,'pending')",(account,deployment))
+            con.execute('INSERT INTO lifecycle_cells(account_id,deployment_id,tenant_ref,profile_revision) VALUES (?,?,?,?)',
+                        (account,deployment,'aa-'+uuid.uuid4().hex,target_profile))
+            operation=uuid.uuid4().hex
+            con.execute('''INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation)
+                VALUES (?,?,?,'create','pending',?,?,1)''',(account,operation,deployment,key,digest))
+            con.execute('''INSERT INTO lifecycle_details(account_id,operation_id,target_profile,backup_ref,updated_at)
+                VALUES (?,?,?,?,?)''',(account,operation,target_profile,None,int(self.clock())))
+            self._audit(con,account,'host-operator',operation,'create','pending')
+            return self._public(con,account,operation)
+
     def request_system(self, account, *, key, generation, kind='stop'):
         """System-originated host maintenance: `stop` (idle drain, running cell), `backup` (nightly, stopped cell) or `start` (wake a stopped cell that has a waiting customer request).
 

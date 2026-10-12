@@ -7,6 +7,8 @@ Requires=agentai-supervisor-native.service
 User=agentai-platform
 Group=agentai-platform
 WorkingDirectory=/opt/agentai-supervisor/current
+Environment=AGENTAI_SWITCHES_FILE=/opt/openclaw-production/feature-switches/switches.json
+Environment=AGENTAI_SWITCH_FACTS_FILE=/opt/openclaw-production/feature-switches/facts.json
 ExecStart=/usr/bin/python3 -m agentai_platform.lifecycle.worker_main
 UMask=0077
 Restart=on-failure

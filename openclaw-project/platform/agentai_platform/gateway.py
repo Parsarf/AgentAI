@@ -323,7 +323,9 @@ class NativeGateway:
             if role and isinstance(native_id, str) and text:
                 rows.append({'id': native_id, 'role': role, 'content': text, 'seq': meta.get('seq')})
         info = result.get('sessionInfo') or {}
-        active = bool(info.get('hasActiveRun')) or bool(result.get('pendingInputs'))
+        pending = result.get('pendingInputs')
+        queued = pending.get('total') if isinstance(pending, dict) else (len(pending) if isinstance(pending, list) else 0)
+        active = bool(info.get('hasActiveRun')) or (type(queued) is int and queued > 0)
         return {'kind': kind, 'messages': rows, 'cursor': None, 'active_run': active}
 
     def usage_snapshot(self):

@@ -56,7 +56,7 @@ def build_native_backend(wiring_path):
         # Optional: with it, every created cell gets its own capped model key and the Gateway model route.
         if type(wiring['litellm_env']) is not str or not Path(wiring['litellm_env']).is_absolute():
             raise ValueError('wiring paths must be absolute')
-        provisioner = CellProvisioner(ProviderKeys(LiteLLMAdmin(wiring['litellm_env']).http, secrets), secrets, wiring['cell_state_root'])
+        provisioner = CellProvisioner(ProviderKeys(LiteLLMAdmin(wiring['litellm_env']).http, secrets), secrets, wiring['cell_state_root'], run=isolation_run)
     driver = FleetCliDriver(
         custody,
         secrets=secrets,

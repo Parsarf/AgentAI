@@ -27,12 +27,32 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL)
     return config
 
 
-class CellProvisioner:
-    """prepare(binding)->extra create argv (issues the key); finish(binding) patches the config."""
+RESOLVERS = ('1.1.1.1', '9.9.9.9')
 
-    def __init__(self, keys, secrets, cell_state_root, *, max_budget_usd=25, duration_days=35, chown=os.chown):
+
+class CellProvisioner:
+    """prepare(binding)->extra create argv (issues the key); finish(binding) patches the config;
+    after_start(binding) gives the running cell working DNS."""
+
+    def __init__(self, keys, secrets, cell_state_root, *, max_budget_usd=25, duration_days=35, chown=os.chown, run=None):
         self.keys, self.secrets, self.root = keys, secrets, Path(cell_state_root)
-        self.max_budget_usd, self.duration_days, self.chown = max_budget_usd, duration_days, chown
+        self.max_budget_usd, self.duration_days, self.chown, self.run = max_budget_usd, duration_days, chown, run
+
+    def after_start(self, binding):
+        """Docker's embedded resolver (127.0.0.11) does not answer inside a gVisor sandbox, so every name lookup in
+        a cell fails. Write public resolvers into the container's resolv.conf in place (the sandbox sees the same
+        inode); the file is regenerated at each container start, so this runs after every start. Cell egress to
+        private ranges stays dropped by the host firewall, so public resolvers do not widen what a cell can reach."""
+        if self.run is None:
+            return
+        code, out = self.run(['docker', 'inspect', '-f', '{{.ResolvConfPath}}', f'openclaw-cell-{binding.tenant_ref}'])
+        path = out.strip()
+        if code != 0 or not path.startswith('/var/lib/agentai-cells/docker/containers/') or not path.endswith('/resolv.conf'):
+            raise RuntimeError('cell resolver file not found')
+        with open(path, 'r+') as handle:         # in place: a replaced file would not reach the running sandbox
+            handle.seek(0)
+            handle.write(''.join(f'nameserver {ip}\n' for ip in RESOLVERS) + 'options ndots:0\n')
+            handle.truncate()
 
     def prepare(self, binding):
         self.keys.issue(binding.tenant_ref, binding.account_id, max_budget_usd=self.max_budget_usd,

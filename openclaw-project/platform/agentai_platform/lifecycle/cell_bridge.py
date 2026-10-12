@@ -22,7 +22,7 @@ import time
 PROTOCOL = 4
 SESSION_KEY = re.compile(r'^agent:main:[A-Za-z0-9_.:-]{1,120}$')
 TOKEN_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
-ALLOWED = ('hello', 'sessions.create', 'chat.send', 'chat.history', 'chat.abort', 'usage.snapshot')
+ALLOWED = ('hello', 'sessions.create', 'chat.send', 'chat.history', 'chat.abort', 'usage.snapshot', 'cell.status')
 MAX_MESSAGE = 20000
 
 RELAY_JS = r"""
@@ -109,9 +109,10 @@ class DockerRelay:
 
 
 class CellBridge:
-    def __init__(self, lookup, spawn, spend, *, ready_timeout=120, call_timeout=60, idle_seconds=300, clock=time.monotonic):
+    def __init__(self, lookup, spawn, spend, *, binding=None, probe=None, ready_timeout=120, call_timeout=60, idle_seconds=300, clock=time.monotonic):
         """lookup(account)->(tenant, token) or None; spawn(tenant, token)->relay; spend(tenant)->microusd."""
         self.lookup, self.spawn, self.spend = lookup, spawn, spend
+        self.binding, self.probe = binding, probe   # binding(account)->tenant regardless of state; probe(tenant)->container running
         self.ready_timeout, self.call_timeout, self.idle_seconds, self.clock = ready_timeout, call_timeout, idle_seconds, clock
         self._conns = {}
         self._locks = {}
@@ -121,7 +122,7 @@ class CellBridge:
     def validate(method, params):
         if method not in ALLOWED or not isinstance(params, dict):
             raise BridgeError('method not allowed')
-        if method in ('hello', 'usage.snapshot'):
+        if method in ('hello', 'usage.snapshot', 'cell.status'):
             return {}
         if method == 'sessions.create':
             label = params.get('label')
@@ -181,6 +182,11 @@ class CellBridge:
 
     def call(self, account, method, params):
         clean = self.validate(method, params)
+        if method == 'cell.status':
+            tenant = self.binding(account) if self.binding else None
+            if tenant is None or self.probe is None:
+                raise BridgeError('no cell')
+            return {'running': bool(self.probe(tenant))}
         if method == 'usage.snapshot':
             found = self.lookup(account)
             if not found:

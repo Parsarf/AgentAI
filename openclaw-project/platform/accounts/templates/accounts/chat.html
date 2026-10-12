@@ -1,5 +1,6 @@
-{% extends 'accounts/base.html' %}{% block title %}Chat — AgentAI{% endblock %}{% block body %}
-<div class="notice"><span><strong>Agent execution is not connected yet.</strong> Messages are saved and queued; nothing runs, and nothing is charged, until execution is available.</span></div>
+{% extends 'accounts/base.html' %}{% block title %}Chat — AgentAI{% endblock %}{% block head %}{% if working %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}{% block body %}
+{% if execution_enabled %}<div class="notice"><span><strong>Your assistant is live.</strong> Replies usually take under a minute; the first message after a pause takes a little longer while your assistant wakes up. This page refreshes by itself while it works.</span></div>
+{% else %}<div class="notice"><span><strong>Agent execution is not connected yet.</strong> Messages are saved and queued; nothing runs, and nothing is charged, until execution is available.</span></div>{% endif %}
 {% if error %}<div class="notice danger"><span><strong>{{ error|capfirst }}.</strong> {{ error_text }}{% if category %} <span class="mono">({{ category }})</span>{% endif %}</span></div>{% endif %}
 <div class="chat">
 <aside class="sidebar">

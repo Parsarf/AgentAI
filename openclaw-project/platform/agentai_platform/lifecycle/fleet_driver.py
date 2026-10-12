@@ -154,6 +154,9 @@ class FleetCliDriver:
         if claim.kind=='upgrade': return self._upgrade(binding,claim)
         if claim.kind=='restore': return self._restore(binding,claim)
         argv=self._argv(binding,claim)
+        if claim.kind in {'start','backup'} and self.volumes is not None and binding.volume_bytes:
+            # Idempotent: remounts the capped volume after a host reboot or an unmount; a no-op when already mounted.
+            self.volumes.prepare(VolumeSpec(binding.tenant_ref,binding.volume_bytes))
         if claim.kind=='create':
             if self.volumes is not None and binding.volume_bytes:
                 self.volumes.prepare(VolumeSpec(binding.tenant_ref,binding.volume_bytes))
@@ -176,6 +179,9 @@ class FleetCliDriver:
                            'absent',True,True,fence=claim.fence)
         if state is None or state!=DESIRED[claim.kind]:
             raise OutcomeUncertain('registry state does not prove the operation')
+        if claim.kind=='start' and self.provisioner is not None:
+            try: self.provisioner.after_start(binding)
+            except Exception: pass   # name lookups may fail until fixed; the cell itself is proven running, so the start stands
         if claim.kind=='backup':
             self._verify_archive(binding,claim.operation_id)
             backup_ref=claim.operation_id

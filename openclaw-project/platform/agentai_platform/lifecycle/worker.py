@@ -21,10 +21,11 @@ from .types import Conflict
 
 class LifecycleWorker:
     def __init__(self, store, driver, capacity, *, coordinator=None, clock=time.time,
-                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None, wake=False, handover_idle=60):
+                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None, wake=False, handover_idle=60, observe=None):
         self.store, self.driver, self.capacity = store, driver, capacity
         self.coordinator = coordinator or Coordinator(store, clock=clock)
         self.clock, self.owner, self.idle_after, self.batch = clock, owner, idle_after, batch
+        self.observe = observe   # observe(account)->True/False/None: is the cell's container really running?
         self.wake, self.handover_idle = wake, handover_idle   # wake: start cells for waiting customer requests
         self.backup_max_age = backup_max_age   # seconds; None leaves backup scheduling to the operator
 
@@ -75,6 +76,24 @@ class LifecycleWorker:
                 pass
         return queued
 
+    def _wake(self):
+        return bool(self.wake() if callable(self.wake) else self.wake)   # callable: re-read the owner switch every tick
+
+    def realign(self, now):
+        """A cell recorded as running whose container is really gone (engine or host restart) gets a stop, so the record is true again."""
+        if self.observe is None:
+            return 0
+        done = 0
+        for facts, generation in self.facts():
+            if facts.maintenance or self.observe(facts.account_id) is not False:
+                continue
+            try:
+                self.coordinator.request_system(facts.account_id, key=f'realign-{generation}-{int(now) // 60}', generation=generation)
+                done += 1
+            except (Conflict, NotFound):
+                pass
+        return done
+
     def enqueue_wakes(self):
         """A stopped cell with a waiting customer request gets a system start (the request worker then claims it)."""
         queued = 0
@@ -96,7 +115,7 @@ class LifecycleWorker:
             return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting'")}
 
     def tick(self):
-        report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0, 'woken': 0}
+        report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0, 'woken': 0, 'realigned': 0}
         for account, operation in self._rows('uncertain'):
             try:
                 if self.coordinator.reconcile(self.driver, account, operation):
@@ -116,7 +135,8 @@ class LifecycleWorker:
             except Exception:
                 report['uncertain'] += 1
         now = self.clock()
-        waiting = self.waiting_accounts() if self.wake else set()
+        report['realigned'] = self.realign(now)
+        waiting = self.waiting_accounts() if self._wake() else set()
         for facts, generation in self.facts():
             # Another account's request is waiting for the one cell slot: hand over after a short idle.
             idle = self.handover_idle if waiting - {facts.account_id} else self.idle_after
@@ -127,6 +147,6 @@ class LifecycleWorker:
                     report['drained'] += 1
                 except (Conflict, NotFound):
                     pass
-        if self.wake: report['woken'] = self.enqueue_wakes()
+        if self._wake(): report['woken'] = self.enqueue_wakes()
         if self.backup_max_age: report['backups_queued'] = self.enqueue_due_backups(self.backup_max_age)
         return report

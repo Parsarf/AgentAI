@@ -147,3 +147,33 @@ class ChatHTTPChecks(TestCase):
         self.assertTrue(response['Location'].startswith('/account/chat/?conversation=' + conversation))
         follow = a.get(response['Location'], secure=True)
         self.assertContains(follow, 'from the form')
+
+
+class ExecutionSwitchChecks(ChatHTTPChecks):
+    """With the owner's customer_execution switch on, sends are priced and the page reports a live assistant."""
+
+    def switch_on(self):
+        import tempfile, os
+        from django.test import override_settings
+        d = tempfile.mkdtemp()
+        switches, facts = os.path.join(d, 'switches.json'), os.path.join(d, 'facts.json')
+        json.dump({'execution_ready': True}, open(facts, 'w'))
+        from agentai_platform.switches import SwitchStore
+        store = SwitchStore(switches, facts_path=facts)
+        store.confirm('customer_execution', 'execution_cost', 'test'); store.set('customer_execution', True, 'test')
+        context = override_settings(SWITCHES_FILE=switches, SWITCH_FACTS_FILE=facts, SERVICE_ALLOCATION_MICROUSD=50_000_000)
+        context.__enter__(); self.addCleanup(context.__exit__, None, None, None)
+
+    def test_page_and_send_reflect_the_switch(self):
+        conversation = self.conversation()
+        a = self.clients[0]
+        page = a.get('/account/chat/?conversation=' + conversation, secure=True)
+        self.assertContains(page, 'Agent execution is not connected yet')
+        self.switch_on()
+        page = a.get('/account/chat/?conversation=' + conversation, secure=True)
+        self.assertContains(page, 'Your assistant is live'); self.assertNotContains(page, 'http-equiv="refresh"')
+        sent = self.post(a, '/v1/conversations/' + conversation + '/send', {'message': 'hello', 'key': 'live-1'})
+        self.assertEqual(sent.status_code, 202, sent.content)
+        self.assertEqual(sent.json()['request']['admission'], 'reserved')
+        page = a.get('/account/chat/?conversation=' + conversation, secure=True)
+        self.assertContains(page, 'http-equiv="refresh"')                     # refreshes itself while a task is waiting

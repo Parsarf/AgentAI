@@ -1,0 +1,61 @@
+{
+  "phase": "execution activation (between Phase 14 and Phase 15 acceptance)",
+  "date": "2026-10-12/13",
+  "live_checks": {
+    "isolation_lifecycle": {
+      "passed": 26,
+      "total": 26
+    },
+    "broker_stages": {
+      "passed": 16,
+      "total": 16
+    }
+  },
+  "end_to_end_on_production_server": [
+    {
+      "prompt_kind": "one-word reply",
+      "result": "agent replied \"pong\"",
+      "spend_microusd": 14972,
+      "ledger": "litellm-reported-v1 receipt, reservation settled"
+    },
+    {
+      "prompt_kind": "arithmetic",
+      "result": "agent replied \"51\"",
+      "wall_seconds": 35,
+      "note": "includes waking the stopped cell"
+    },
+    {
+      "prompt_kind": "web page fetch",
+      "result": "agent returned the page title and first sentence of example.com",
+      "note": "after cell DNS fix"
+    }
+  ],
+  "recovery_exercised": [
+    "request left uncertain by a crash completed from the cell transcript (reconcile)",
+    "request that never reached a runtime failed cleanly and released its reservation without charge",
+    "cell recorded running with a stopped container realigned by a system stop"
+  ],
+  "defects_found_and_fixed": [
+    "cell engine and owner Docker shared iptables chains and clobbered each other (cell engine now iptables:false)",
+    "supervisor unit directive ProtectKernelModules/ProtectKernelLogs created a private mount namespace: loop-mounted volumes were invisible to the cell engine",
+    "volume was only mounted at create: start now remounts idempotently",
+    "cell 1 GiB cap OOM-killed during a real turn: now 2 GiB",
+    "Gateway protocol is 4 (adapter hard-coded 3)",
+    "pendingInputs is an object ({items,total}) and was read as always-active",
+    "embedded DNS does not answer inside gVisor: resolv.conf written in place after every start",
+    "bridge client rejected pathlib.Path socket paths",
+    "chat budget ledger had no service allocation configured (every send denied)"
+  ],
+  "tests": {
+    "platform": "451 pass, 2 skipped",
+    "django": "88 pass",
+    "dashboard": "35 pass"
+  },
+  "paid_calls": "4 short Haiku turns, about $0.05 in total, on the owner account key",
+  "open": [
+    "customer_execution switch currently ON (turn off from the dashboard if not wanted)",
+    "new accounts need the host provisioning step (OPERATIONS.md section 12) before they get a cell",
+    "the agent in a cell can run shell and web tools inside its own sandbox; browser and coding broker stages are not yet connected to the chat path",
+    "idle sleep not yet observed on the live server at time of writing"
+  ]
+}

@@ -18,10 +18,9 @@ StateDirectoryMode=0700
 Restart=on-failure
 RestartSec=5
 # Loop mounts, nft reloads and docker calls must happen in the host namespaces, so
-# no mount-namespace sandboxing (ProtectSystem/PrivateTmp/PrivateDevices) here.
+# no mount-namespace sandboxing here: ProtectSystem, PrivateTmp, PrivateDevices, ProtectKernelModules or ProtectKernelLogs
+# (it silently creates a private mount namespace, so loop mounts became invisible to the cell engine, 2026-10-12).
 NoNewPrivileges=yes
-ProtectKernelModules=yes
-ProtectKernelLogs=yes
 ProtectControlGroups=no
 RestrictSUIDSGID=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_NETLINK

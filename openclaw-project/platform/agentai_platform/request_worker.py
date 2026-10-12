@@ -13,9 +13,9 @@ from .request_queue import RequestClaim
 
 
 class RequestWorker:
-    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time):
+    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time, abandon_after=1800):
         self.queue, self.driver, self.capacity, self.owner = queue, driver, capacity, owner
-        self.lease_seconds, self.clock = lease_seconds, clock
+        self.lease_seconds, self.clock, self.abandon_after = lease_seconds, clock, abandon_after
 
     def _uncertain_claim(self):
         with self.queue.store.connect() as con:
@@ -31,9 +31,17 @@ class RequestWorker:
         stuck = self._uncertain_claim()
         if stuck is not None:
             try:
-                return {'reconciled': bool(self.queue.reconcile(self.driver, stuck))}
+                if self.queue.reconcile(self.driver, stuck):
+                    return {'reconciled': True}
             except (CapabilityUnavailable, Conflict):
-                return {'reconciled': False, 'blocked': 'uncertain request awaiting reconciliation'}
+                pass
+            with self.queue.store.connect() as con:
+                started = con.execute('SELECT created_epoch FROM customer_requests WHERE account_id=? AND id=?',
+                                      (stuck.account_id, stuck.request_id)).fetchone()[0]
+            if self.clock() - started > self.abandon_after:
+                # The runtime has been unreachable too long: stop the request so the shared slot is not held forever.
+                return {'reconciled': bool(self.queue.finish(stuck, self.driver.abandon(stuck), reconciled=True)), 'abandoned': True}
+            return {'reconciled': False, 'blocked': 'uncertain request awaiting reconciliation'}
         claim = self.queue.claim(owner=self.owner, capacity=self.capacity(), lease_seconds=self.lease_seconds)
         if claim is None:
             return {'ran': 0}

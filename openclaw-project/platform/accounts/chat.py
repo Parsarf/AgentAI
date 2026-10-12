@@ -40,7 +40,8 @@ def service():
     live = execution_on()
     # Without the owner switch no route is priced, so a send waits unfunded exactly as before.
     kwargs = {'pricer': FixedRoute(settings.CUSTOMER_RESERVATION_MICROUSD, 'plan-reservation-v1')} if live else {}
-    return ChatService(store, queue=RequestQueue(store, require_cell=live), ledger=BudgetLedger(store), execution=live, **kwargs)
+    return ChatService(store, queue=RequestQueue(store, require_cell=live), ledger=BudgetLedger(store, service_limit_microusd=settings.SERVICE_ALLOCATION_MICROUSD if live else None),
+                       execution=live, **kwargs)
 
 
 def principal(request):
@@ -200,6 +201,7 @@ def chat_page(request):
         'error': error, 'error_text': ERROR_CATEGORIES.get(error or ''),
         'category': request.GET.get('category', ''),
         'execution_enabled': execution_on(),
+        'working': execution_on() and any(t.get('state') in ('waiting', 'starting', 'running', 'uncertain') for t in (transcript or {}).get('tasks', [])),
         'artifacts': artifacts, 'project_files': project_files,
         'live_streaming': False,
         'storage_ready': storage_ready, 'uploads_enabled': uploads_enabled,

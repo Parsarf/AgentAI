@@ -370,6 +370,10 @@ class ChatDriver:
             return self._close(claim, 'cancelled', 'Cancelled before execution')
         self._emit(claim, 'task_started', {'summary': 'Dispatched to the isolated runtime.'})
         before = self._usage_before(gateway)
+        if before is not None:
+            with self.coordinator.transaction() as con:
+                con.execute('UPDATE chat_deliveries SET usage_before_microusd=? WHERE account_id=? AND request_id=? AND attempt=?',
+                            (before, claim.account_id, claim.request_id, attempt))
         try:
             if session is None:
                 session, _run_started, _run_error = gateway.open_session(operation_id, 'chat-' + claim.request_id[:16])
@@ -441,16 +445,34 @@ class ChatDriver:
         self._emit(claim, 'result', {'summary': public[:500]})
         return self._close(claim, 'completed', public, gateway, before)
 
+    def abandon(self, claim: RequestClaim):
+        """Last resort for a request whose runtime cannot be reached for a long time: fail it and charge the reserved upper bound."""
+        with self.store.connect() as con:
+            row = con.execute('SELECT attempt FROM chat_deliveries WHERE account_id=? AND request_id=? ORDER BY attempt DESC LIMIT 1',
+                              (claim.account_id, claim.request_id)).fetchone()
+        if row is not None:
+            with self.coordinator.transaction() as con:
+                self._set_delivery(con, claim, row['attempt'], 'aborted')
+        self._emit(claim, 'progress', {'summary': 'The runtime could not be reached; the request was stopped.'}, 'reconciler')
+
+        class _Blind:
+            def usage_snapshot(self): raise RuntimeError('runtime unreachable')
+        return self._close(claim, 'failed', 'The assistant could not be reached for this request, so it was stopped. Please try again.', _Blind(), None)
+
     def reconcile(self, claim: RequestClaim):
         if claim.conversation_id is None:
             raise ValueError('chat driver requires a conversation binding')
         with self.store.connect() as con:
-            row = con.execute('''SELECT attempt,state,native_run_id FROM chat_deliveries WHERE account_id=? AND request_id=?
+            row = con.execute('''SELECT attempt,state,native_run_id,usage_before_microusd FROM chat_deliveries WHERE account_id=? AND request_id=?
                 ORDER BY attempt DESC LIMIT 1''', (claim.account_id, claim.request_id)).fetchone()
             session_row = con.execute('SELECT native_session_ref FROM conversations WHERE account_id=? AND id=?',
                                       (claim.account_id, claim.conversation_id)).fetchone()
         if row is None or not session_row or not session_row[0]:
-            return None
+            # No message was ever handed to a runtime session: nothing ran, nothing was spent.
+            if row is not None:
+                with self.coordinator.transaction() as con:
+                    self._set_delivery(con, claim, row['attempt'], 'aborted')
+            return self._close(claim, 'failed', 'Your request could not be started. Nothing was charged. Please send it again.')
         attempt, state, run_id = row['attempt'], row['state'], row['native_run_id']
         if state not in ('acknowledged', 'uncertain'):
             return None
@@ -468,7 +490,7 @@ class ChatDriver:
             last = self._last_agent_message(con, claim.account_id, claim.conversation_id)
         public = last if last else 'Reconciled without an agent transcript row.'
         self._emit(claim, 'result', {'summary': public[:500]}, 'reconciler')
-        return self._close(claim, 'completed', public, gateway, None)
+        return self._close(claim, 'completed', public, gateway, row['usage_before_microusd'])
 
 
 def synthetic_gateway_factory(gateway: SyntheticGateway):

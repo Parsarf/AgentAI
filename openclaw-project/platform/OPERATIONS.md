@@ -121,3 +121,36 @@ Open items from this review are listed in `plans/product/phase-14.md`.
 
 ## 11. Drills (run in isolated targets; check capacity first, never delete live data)
 Scheduled-backup observation (check `last_success_set` advances nightly) · corruption rejection (flip a byte, `fetch` must refuse) · release canary and rollback in a sandbox · cell quarantine restore (`p4_live_check.py`). Measured RPO/RTO and a restore with the real timer firing are Phase 15.
+
+
+## 12. Customer execution (the live assistant path)
+
+**How a message runs:** the customer sends in the chat page → the app queues it and reserves budget → the lifecycle worker wakes the account's cell if it is stopped (`customer_execution` on) → the request worker claims it → the cell bridge (root, allowlisted methods only) relays it into the cell's own Gateway → the reply is copied into the transcript → real model spend is read from the cell's LiteLLM key and settled in the ledger → the cell sleeps after 15 minutes idle (60 s if another account is waiting for the one cell slot).
+
+| Unit | Runs as | Role |
+|---|---|---|
+| `agentai-model-proxy` | root | relays 10.77.0.1:4000 (cells) to 127.0.0.1:4000 (LiteLLM). Cells reach nothing else on the host. |
+| `agentai-cell-bridge` | root | the only path from the app to a cell; holds the cell tokens; `/run/agentai-cell-bridge/bridge.sock` (app user only) |
+| `agentai-request-worker` | app user | runs waiting requests; does nothing while the switch is off |
+| `agentai-lifecycle-worker` | app user | creates, starts (wake), stops (idle) and realigns cells |
+
+**Turn it on or off:** dashboard → Feature switches → *Let customer messages run on the live assistant*. Off stops new work immediately (running requests finish or are reconciled); nothing else needs touching.
+
+**Give an account its own assistant (one-time, per account, host side):**
+```
+ACC=<account id>
+cd /opt/agentai-supervisor/current
+setpriv --reuid agentai-platform --regid agentai-platform --clear-groups env PYTHONPATH=. python3 -m agentai_platform.lifecycle.provision_cli --account $ACC
+PYTHONPATH=. python3 -m agentai_platform.lifecycle.enroll_cli --app-db /var/lib/agentai-platform/platform.sqlite3 --account $ACC --image <pinned image digest>
+```
+The lifecycle worker then creates the cell (capped volume, gateway token, its own LiteLLM key capped at $25 / 35 days, model route). Trial capacity is two cells. An account without a cell can send, but its request waits.
+
+**Money:** per message the app reserves `AGENTAI_CUSTOMER_RESERVATION_MICROUSD` (default $1); after the run the spend delta of the cell's key is written as a ledger receipt (`litellm-reported-v1`). If provider spend cannot be read the reserved amount is charged (`reservation-upper-bound-v1`). `AGENTAI_SERVICE_ALLOCATION_MICROUSD` (default $50 = 2 accounts x $25) bounds the whole service.
+
+**When something looks wrong**
+- *Request stuck "uncertain"*: the request worker reconciles it from the cell transcript; a request that never reached a session is failed with nothing charged; one whose cell cannot be reached for 30 minutes is stopped and charged the reserved amount.
+- *Cell recorded running but gone* (engine or host restart): the lifecycle worker issues a stop to make the record true; the next message wakes it.
+- *Replies say names cannot be resolved*: DNS inside a cell is written by the supervisor after every start (`CellProvisioner.after_start`); restart the cell to rewrite it.
+- *Cell killed under load*: cells are capped at 2 GiB (a 1 GiB cap was OOM-killed in a real turn).
+- Two services must **not** gain mount-namespace sandboxing (`ProtectKernelModules`, `ProtectKernelLogs`, `PrivateTmp`, ...): `agentai-supervisor-native` mounts loop volumes that the cell engine has to see.
+- The cell engine does not manage iptables (two engines on one host clobbered each other's chains on 2026-10-12). Cell egress is the nft table `agentai_cells` plus the `ufw route`/`ufw allow` rules written by `agentai-cells-routes`.

@@ -165,3 +165,29 @@ class WakeChecks(unittest.TestCase):
         self.now += 120                                                            # idle for 2 minutes only
         self.submit('b')
         self.assertEqual(self.worker(wake=True, idle_after=10**12).tick()['drained'], 1)
+
+
+class HostCreateChecks(unittest.TestCase):
+    setUp, worker, state = WorkerChecks.setUp, WorkerChecks.worker, WorkerChecks.state
+
+    def test_host_create_queues_one_idempotent_create_and_respects_bounds(self):
+        first = self.engine.host_create('a', key='host-create-a', target_profile='trial-unmeasured-v1')
+        self.assertEqual((first['kind'], first['state']), ('create', 'pending'))
+        self.assertEqual(self.engine.host_create('a', key='host-create-a', target_profile='trial-unmeasured-v1')['id'], first['id'])
+        with self.assertRaises(Conflict): self.engine.host_create('a', key='another', target_profile='trial-unmeasured-v1')
+        self.assertEqual(self.worker().tick()['ran'], 1); self.assertEqual(self.state(), 'stopped')
+        with self.assertRaises(ValueError): self.engine.host_create('b', key='k', target_profile='unknown-profile')
+        with self.assertRaises(NotFound): self.engine.host_create('missing', key='k', target_profile='trial-unmeasured-v1')
+
+
+class RealignChecks(unittest.TestCase):
+    setUp, worker, request, state, op_state = (WorkerChecks.setUp, WorkerChecks.worker, WorkerChecks.request, WorkerChecks.state, WorkerChecks.op_state)
+
+    def test_running_record_with_a_dead_container_is_stopped_and_unknown_is_left_alone(self):
+        self.request('create'); self.worker(idle_after=10**12).tick(); self.request('start'); self.worker(idle_after=10**12).tick()
+        self.assertEqual(self.state(), 'running')
+        self.assertEqual(self.worker(idle_after=10**12, observe=lambda a: None).tick()['realigned'], 0)
+        self.assertEqual(self.worker(idle_after=10**12, observe=lambda a: True).tick()['realigned'], 0)
+        self.assertEqual(self.worker(idle_after=10**12, observe=lambda a: False).tick()['realigned'], 1)
+        self.worker(idle_after=10**12, observe=lambda a: False).tick()
+        self.assertEqual(self.state(), 'stopped')

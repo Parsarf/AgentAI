@@ -62,3 +62,28 @@ class CellConfigChecks(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ResolverChecks(unittest.TestCase):
+    def test_after_start_rewrites_resolv_conf_in_place(self):
+        import os
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        d = Path(tmp.name) / 'var/lib/agentai-cells/docker/containers/abc'; d.mkdir(parents=True)
+        conf = d / 'resolv.conf'; conf.write_text('nameserver 127.0.0.11\n# long generated comment line to be fully replaced ' * 3)
+        inode = conf.stat().st_ino
+        import agentai_platform.lifecycle.cell_config as cc
+        prov = CellProvisioner(None, None, tmp.name, run=lambda argv: (0, '/var/lib/agentai-cells/docker/containers/abc/resolv.conf\n'))
+        real_open = open
+        import builtins
+        builtins_open = builtins.open
+        def redirect(path, *a, **k):
+            return builtins_open(str(Path(tmp.name)) + str(path), *a, **k) if str(path).startswith('/var/lib/agentai-cells') else builtins_open(path, *a, **k)
+        builtins.open = redirect
+        try:
+            prov.after_start(SimpleNamespace(tenant_ref=TENANT))
+        finally:
+            builtins.open = builtins_open
+        self.assertEqual(conf.read_text(), 'nameserver 1.1.1.1\nnameserver 9.9.9.9\noptions ndots:0\n')
+        self.assertEqual(conf.stat().st_ino, inode)
+        with self.assertRaises(RuntimeError):
+            CellProvisioner(None, None, tmp.name, run=lambda argv: (0, '/etc/passwd\n')).after_start(SimpleNamespace(tenant_ref=TENANT))

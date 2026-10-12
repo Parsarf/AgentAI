@@ -80,7 +80,8 @@ class Kit(unittest.TestCase):
         def vrun(argv):
             self.vol_calls.append(argv)
             if argv[0]=='findmnt': return (0,argv[-1]+'\n') if any(c[0]=='mount' and c[-1]==argv[-1] for c in self.vol_calls) and not any(c[0]=='umount' and c[-1]==argv[-1] for c in self.vol_calls) else (1,'')
-            if argv[0]=='truncate': Path(argv[3]).write_bytes(b'')
+            if argv[0]=='truncate':
+                with open(argv[3],'wb') as f: f.truncate(int(argv[2]))
             return 0,''
         self.volumes=VolumeManager(self.root/'img',self.root/'cells',run=vrun)
         self.iso=Iso()
@@ -121,6 +122,12 @@ class MaintenanceChecks(Kit):
         with sup.connect() as con:
             spec=json.loads(con.execute('SELECT spec FROM bindings').fetchone()[0])
         self.assertEqual(spec['image'],NEW);self.assertIsNone(spec['upgrade_image'])
+    def test_start_remounts_a_volume_that_is_no_longer_mounted(self):
+        d=self.driver();b=self.binding();d.execute(b,self.claim('create','01'));d.execute(b,self.claim('stop','02'))
+        self.volumes.release(T)                                   # e.g. after a host reboot
+        before=len([c for c in self.vol_calls if c[0]=='mount'])
+        d.execute(b,self.claim('start','03'))
+        self.assertEqual(len([c for c in self.vol_calls if c[0]=='mount']),before+1)
     def test_unhealthy_upgrade_rolls_back_and_reports_no_effect(self):
         d=self.driver();b=self.binding();d.execute(b,self.claim('create','01'))
         self.healthy=[False,True]

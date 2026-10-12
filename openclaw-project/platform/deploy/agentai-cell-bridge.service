@@ -15,8 +15,6 @@ Restart=on-failure
 RestartSec=5
 # docker exec needs the host namespaces; everything else is closed.
 NoNewPrivileges=yes
-ProtectKernelModules=yes
-ProtectKernelLogs=yes
 RestrictSUIDSGID=yes
 RestrictAddressFamilies=AF_UNIX AF_INET
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER

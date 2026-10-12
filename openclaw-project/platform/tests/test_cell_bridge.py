@@ -20,7 +20,7 @@ class FakeRelay:
                    'chat.abort': {'ok': True, 'aborted': True},
                    'chat.history': {'messages': [{'role': 'user', 'content': 'hi', '__openclaw': {'id': 'u1', 'seq': 1}},
                                                  {'role': 'assistant', 'content': [{'type': 'text', 'text': 'pong'}], '__openclaw': {'id': 'a1', 'seq': 2}}],
-                                    'sessionInfo': {'hasActiveRun': False}}}[m]
+                                    'sessionInfo': {'hasActiveRun': False}, 'pendingInputs': {'items': [], 'total': 0}}}[m]
         return {'id': last['id'], 'ok': True, 'payload': payload}
     def alive(self): return not self.closed
     def close(self): self.closed = True
@@ -55,6 +55,12 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(relays[0].sent[0]['params']['agentId'], 'main')
         self.assertEqual(b.call('acct', 'usage.snapshot', {}), {'spend_microusd': 12345})
 
+    def test_pending_input_counts_only_when_nonempty(self):
+        gw = NativeGateway(lambda m, p: {'messages': [], 'sessionInfo': {}, 'pendingInputs': {'items': [1], 'total': 1}})
+        gw._caps = gw.capabilities.__self__._caps = None
+        gw.capabilities = lambda: type('C', (), {'send': True, 'history': True, 'abort': True})()
+        self.assertTrue(gw.history('agent:main:x', None)['active_run'])
+
     def test_idle_sweep_and_dead_relay_respawn(self):
         relays = []; t = [0]
         b = bridge(relays); b.clock = lambda: t[0]; b.idle_seconds = 10
@@ -67,6 +73,8 @@ class BridgeTests(unittest.TestCase):
         server = serve(b, path, allowed_uids={os.getuid()}, peer_uid=lambda sock: os.getuid())
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
+            from pathlib import Path
+            self.assertEqual(BridgeRpc('acct', Path(path))('hello', {})['protocol'], 4)     # Path objects are accepted
             rpc = BridgeRpc('acct', path)
             self.assertEqual(rpc('hello', {})['protocol'], 4)
             with self.assertRaises(CapabilityUnavailable): BridgeRpc('acct', path)('exec', {})
@@ -77,3 +85,11 @@ class BridgeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class StatusChecks(unittest.TestCase):
+    def test_cell_status_uses_the_probe_not_the_running_lookup(self):
+        b = CellBridge(lambda a: None, lambda t, k: None, lambda t: 0, binding=lambda a: 'aa-' + 'a' * 32 if a == 'acct' else None,
+                       probe=lambda tenant: False)
+        self.assertEqual(b.call('acct', 'cell.status', {}), {'running': False})
+        with self.assertRaises(BridgeError): b.call('nobody', 'cell.status', {})

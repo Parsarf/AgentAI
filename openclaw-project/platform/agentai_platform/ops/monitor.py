@@ -17,12 +17,13 @@ from .inventory import gaps
 OK, WARN, CRIT, UNKNOWN = 'ok', 'warn', 'crit', 'unknown'
 RANK = {OK: 0, UNKNOWN: 1, WARN: 2, CRIT: 3}
 REQUIRED_UNITS = ('agentai-platform-app', 'openclaw-dashboard', 'caddy', 'agentai-cells-docker', 'agentai-cells-firewall',
-                  'agentai-supervisor-native', 'agentai-lifecycle-worker', 'fail2ban', 'docker')
+                  'agentai-supervisor-native', 'agentai-lifecycle-worker', 'agentai-cell-bridge', 'agentai-request-worker', 'agentai-model-proxy',
+                  'fail2ban', 'docker')
 REQUIRED_CONTAINERS = ('openclaw-production-openclaw-gateway-1', 'openclaw-production-litellm-1', 'openclaw-production-postgres-1')
 TIMERS = {'agentai-billing-worker.timer': 300, 'agentai-platform-mail.timer': 600, 'openclaw-ops-backup.timer': 2 * 86400,
           'agentai-ops-backup.timer': 2 * 86400, 'agentai-ops-monitor.timer': 1800}
 PUBLIC_PORTS = {22, 80, 443}
-LOOPBACK_PORTS = {53, 2019, 3978, 18789, 18790, 18795, 18800, 18801}
+LOOPBACK_PORTS = {53, 2019, 3978, 4000, 18789, 18790, 18795, 18800, 18801} | set(range(19101, 19141))   # 19101-19140: customer cell Gateways (loopback only)
 
 DEFAULTS = {'backup_max_age_h': 26, 'tenant_backup_max_age_h': 36, 'disk_warn_pct': 85, 'disk_crit_pct': 93, 'mem_warn_mb': 800, 'mem_crit_mb': 300,
             'queue_pending_warn_s': 900, 'inbox_lag_warn_s': 900, 'cert_warn_days': 14, 'cert_crit_days': 7, 'monitor_stale_s': 1800,

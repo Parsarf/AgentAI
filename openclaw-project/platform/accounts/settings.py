@@ -106,6 +106,8 @@ SWITCHES_FILE = os.environ.get('AGENTAI_SWITCHES_FILE', '')
 SWITCH_FACTS_FILE = os.environ.get('AGENTAI_SWITCH_FACTS_FILE', '')
 # Host cell bridge socket and the per-message spend reserved before a customer request may run.
 CELL_BRIDGE_SOCKET = os.environ.get('AGENTAI_CELL_BRIDGE_SOCKET', '/run/agentai-cell-bridge/bridge.sock')
+# Total provider spend the service will fund across all customers: 2 trial accounts x $25 included usage.
+SERVICE_ALLOCATION_MICROUSD = int(os.environ.get('AGENTAI_SERVICE_ALLOCATION_MICROUSD', '50000000'))
 CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
 
 # Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.
