@@ -1,0 +1,85 @@
+{
+  "results": [
+    {
+      "check": "coder: non-root unique uid, no capabilities, no-new-privileges",
+      "pass": true,
+      "detail": "{'id': '21001:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'yes', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': 'canary-A-5e7f63', 'mounts': 'job,out,project,', 'net_internet': 'closed', 'net_host': 'closed'}"
+    },
+    {
+      "check": "coder: no secrets in env, no docker socket",
+      "pass": true,
+      "detail": "{'id': '21001:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'yes', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': 'canary-A-5e7f63', 'mounts': 'job,out,project,', 'net_internet': 'closed', 'net_host': 'closed'}"
+    },
+    {
+      "check": "coder: project and out writable, job and rootfs read-only",
+      "pass": true,
+      "detail": "{'id': '21001:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'yes', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': 'canary-A-5e7f63', 'mounts': 'job,out,project,', 'net_internet': 'closed', 'net_host': 'closed'}"
+    },
+    {
+      "check": "coder: sees only its own tenant canary and exactly three mounts",
+      "pass": true,
+      "detail": "{'id': '21001:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'yes', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': 'canary-A-5e7f63', 'mounts': 'job,out,project,', 'net_internet': 'closed', 'net_host': 'closed'}"
+    },
+    {
+      "check": "coder: no network at all",
+      "pass": true,
+      "detail": "{'id': '21001:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'yes', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': 'canary-A-5e7f63', 'mounts': 'job,out,project,', 'net_internet': 'closed', 'net_host': 'closed'}"
+    },
+    {
+      "check": "tenant B stage sees only B canary",
+      "pass": true,
+      "detail": "{'id': '21002:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'yes', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': 'canary-B-a220f8', 'mounts': 'job,out,project,', 'net_internet': 'closed', 'net_host': 'closed'}"
+    },
+    {
+      "check": "reviewer: project is read-only",
+      "pass": true,
+      "detail": "{'id': '21001:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'no', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': 'canary-A-5e7f63', 'mounts': 'job,out,project,', 'net_internet': 'closed', 'net_host': 'closed'}"
+    },
+    {
+      "check": "egress stage: internet yes, host services no, no project mount",
+      "pass": true,
+      "detail": "{'id': '21001:1000', 'capeff': '0000000000000000', 'nonewprivs': '1', 'env_secrets': '0', 'docker_sock': 'no', 'project_write': 'no', 'out_write': 'yes', 'job_write': 'no', 'rootfs_write': 'no', 'canary': '', 'mounts': 'job,out,', 'net_internet': 'open', 'net_host': 'closed'}"
+    },
+    {
+      "check": "timeout kills and drains the stage",
+      "pass": true,
+      "detail": "{'exit_code': -9, 'output': 'timeout', 'replayed': False}"
+    },
+    {
+      "check": "memory limit kills an over-allocating stage without harming the host",
+      "pass": true,
+      "detail": "137"
+    },
+    {
+      "check": "pid limit contains a fork bomb and the stage is drained",
+      "pass": true,
+      "detail": "2"
+    },
+    {
+      "check": "replay of a finished run does not re-execute",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "same run id replays the stored result",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "host openclaw stack unaffected",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "browser stage (Chromium, gVisor) loaded a page",
+      "pass": true,
+      "detail": "exit=0 logs=<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><link rel=\"icon\" href=\"data:,\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Example Domain</title><style>html{c"
+    },
+    {
+      "check": "browser stage peak memory measured",
+      "pass": true,
+      "detail": "container_peak_mib=134 host_available_drop_mib=126 samples=1"
+    }
+  ],
+  "all_pass": true
+}

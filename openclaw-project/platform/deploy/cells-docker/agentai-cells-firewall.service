@@ -1,0 +1,15 @@
+[Unit]
+Description=AgentAI customer-cell firewall (drop-only nftables table)
+After=agentai-cells-docker.service
+PartOf=agentai-cells-docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Replace atomically: delete a stale table if present, then load the generated file.
+ExecStartPre=-/usr/sbin/nft delete table inet agentai_cells
+ExecStart=/usr/sbin/nft -f /etc/agentai-cells/agentai_cells.nft
+ExecStop=-/usr/sbin/nft delete table inet agentai_cells
+
+[Install]
+WantedBy=multi-user.target

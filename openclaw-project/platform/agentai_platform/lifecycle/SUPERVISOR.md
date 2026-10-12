@@ -1,5 +1,8 @@
 # Private lifecycle supervisor
 
+> **Update 2026-10-12:** the native backend is now wired (`native_wiring.py`, `--native-wiring`), with token/volume/firewall/health custody, pinned upgrade+rollback, quarantined restore and retention purge, and the supervisor and lifecycle worker run on the new host with **no enrolled bindings**. Statements below that say the entry point ships `DisabledDriver` describe the default without a wiring file. See `plans/product/phase-04.md` for the completion record.
+
+
 ## Implemented boundary
 
 `HostSupervisor` keeps a private database separate from Django's customer

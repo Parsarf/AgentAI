@@ -1,0 +1,36 @@
+{
+  "bridge": "agentai0",
+  "data-root": "/var/lib/agentai-cells/docker",
+  "exec-root": "/run/agentai-cells/exec",
+  "pidfile": "/run/agentai-cells/docker.pid",
+  "hosts": [
+    "unix:///run/agentai-cells/docker.sock"
+  ],
+  "containerd-namespace": "agentai-cells",
+  "containerd-plugins-namespace": "agentai-cells-plugins",
+  "default-address-pools": [
+    {
+      "base": "10.78.0.0/16",
+      "size": 24
+    }
+  ],
+  "icc": false,
+  "iptables": true,
+  "ip-masq": true,
+  "userland-proxy": false,
+  "no-new-privileges": true,
+  "default-runtime": "runsc",
+  "runtimes": {
+    "runsc": {
+      "path": "/usr/local/bin/runsc",
+      "runtimeArgs": [
+        "--platform=systrap"
+      ]
+    }
+  },
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}

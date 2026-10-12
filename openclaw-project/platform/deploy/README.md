@@ -120,3 +120,33 @@ Disable outgoing mail with systemctl disable --now agentai-platform-mail.timer,
 then set AGENTAI_MAIL_ENABLED=0 in the private server settings and restart only
 agentai-platform-app. Preserve email job/token/audit history. Never reset trial
 entitlements to reissue an invitation.
+
+## Cell engine, firewall, supervisor and worker (new host, 2026-10-12)
+
+Install order on the 16 GiB host (all reversible; none touches the owner stack):
+
+1. **gVisor**: download `gvisor.tar.bz2` for the pinned release from storage.googleapis.com,
+   verify its `.sha512`, extract `runsc`, `containerd-shim-runsc-v1` and `gvisor-bin/` to
+   `/usr/local/bin`. Test `docker run --runtime=runsc`.
+2. **Cell engine**: `cells-docker/daemon.json` -> `/etc/agentai-cells/daemon.json`, the unit ->
+   `/etc/systemd/system/`, `cells-docker/agentai-cells-bridge` -> `/usr/local/sbin/`. The bridge
+   **must not be named `docker0`** (the owner engine's); the script creates `agentai0` first.
+3. **Firewall**: generate the ruleset with `NetPolicy('10.78.0.0/16','10.77.0.1').ruleset()` into
+   `/etc/agentai-cells/agentai_cells.nft`, validate with `nft -c -f`, install the firewall unit.
+4. **Images**: pull the pinned gateway image and `docker save | docker load` the sandbox and
+   sandbox-browser images into the **cell engine** (it has its own image store).
+5. **Custody**: `/etc/agentai-supervisor/fleet-custody.json` (CLI digests, `DOCKER_HOST` env,
+   verified kinds) and `native-wiring.json` (see `native-wiring.example.json`), root-owned.
+6. **Services**: `agentai-supervisor-native` (root, narrow caps; deliberately without
+   mount-namespace sandboxing so loop mounts and nft reloads reach the host) then
+   `agentai-lifecycle-worker` (app user, no caps).
+7. **Enroll** an account only after its `create` is queued: `python3 -m
+   agentai_platform.lifecycle.enroll_cli --app-db ... --account ... --image <digest>`.
+
+Verification scripts (disposable, host-run, scratch state, clean up after themselves):
+`p4_live_check.py`, `p4_broker_check.py`, `p4_pipeline_check.py`.
+
+Rollback: `systemctl disable --now agentai-lifecycle-worker agentai-supervisor-native
+agentai-cells-firewall agentai-cells-docker`; restore `/etc/docker/daemon.json` from
+`daemon.json.before-runsc` if the owner engine's extra runtime must go. Residual risk: the
+controller identity is the app user.

@@ -1,0 +1,35 @@
+{
+  "host": {
+    "os": "Ubuntu 26.04.1 LTS",
+    "kernel": "7.0.0-34-generic",
+    "cpus": 4,
+    "memory_bytes": {
+      "MemTotal": 16763621376,
+      "MemAvailable": 13853519872,
+      "SwapTotal": 0,
+      "SwapFree": 0
+    },
+    "disk_free_bytes": 177151713280,
+    "disk_total_bytes": 207071854592
+  },
+  "owner_containers_memory": [
+    "openclaw-production-openclaw-gateway-1 1.143GiB / 15.61GiB",
+    "openclaw-production-litellm-1 499.4MiB / 15.61GiB",
+    "openclaw-production-postgres-1 51.03MiB / 15.61GiB"
+  ],
+  "profile": {
+    "id": "trial-measured-v1",
+    "cell_memory": 1073741824,
+    "worker_memory": 1610612736,
+    "volume_bytes": 10737418240,
+    "reserve_memory": 2684354560
+  },
+  "capacity": {
+    "memory_slots": 4,
+    "cpu_slots": 1,
+    "disk_slots": 14,
+    "pid_slots": 63,
+    "admitted_slots": 1,
+    "blockers": []
+  }
+}

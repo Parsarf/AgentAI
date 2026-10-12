@@ -1,5 +1,8 @@
 # Lifecycle coordination — Phase 4 continuation
 
+> **Update 2026-10-12:** Phase 4 is built and live-tested on the new host: see `plans/product/phase-04.md` ("completion on the new server"). Lists of "still missing" items below that cover the native backend, token custody, volumes, network policy, worker broker, sleep/wake, upgrade/restore and the worker are now implemented; the model route, Gateway-to-broker integration, a separate controller identity and Phase 15 acceptance remain.
+
+
 Host custody/journal and Unix transport are now implemented separately from
 the app coordinator. See [supervisor contract](SUPERVISOR.md). Native backend,
 worker isolation, credentials, quotas and measured admission remain incomplete;

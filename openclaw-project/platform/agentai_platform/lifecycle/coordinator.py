@@ -119,6 +119,38 @@ class Coordinator:
             self._audit(con,account,principal.actor_id,operation,kind,'pending')
             return self._public(con,account,operation)
 
+    def request_system(self, account, *, key, generation):
+        """System-originated idle drain: only `stop`, only for an active running cell.
+
+        Used by the lifecycle worker's sleep policy. It has no operator grant (none
+        exists for a machine decision) so it is limited to the one operation that
+        only releases resources, never to anything that creates, restores or deletes.
+        """
+        identifier(account);identifier(key)
+        if type(generation) is not int or generation<1: raise ValueError('invalid generation')
+        body=json.dumps({'kind':'stop','generation':generation,'profile':None,'backup':None,'system':True},sort_keys=True,separators=(',',':'))
+        digest=hashlib.sha256(body.encode()).hexdigest()
+        with self.transaction() as con:
+            existing=con.execute('SELECT * FROM operations WHERE account_id=? AND idempotency_key=?',(account,key)).fetchone()
+            if existing:
+                if existing['request_hash']!=digest: raise Conflict('idempotency payload changed')
+                return self._public(con,account,existing['id'])
+            self._account(con,account,'stop')
+            cell=con.execute('''SELECT c.*,d.generation FROM lifecycle_cells c JOIN deployments d
+                ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.account_id=?''',(account,)).fetchone()
+            if not cell: raise NotFound()
+            if cell['generation']!=generation: raise Conflict('stale generation')
+            if cell['observed_state']!='running': raise Conflict('cell is not running')
+            if con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')",(account,)).fetchone():
+                raise Conflict('account operation unresolved')
+            operation=uuid.uuid4().hex
+            con.execute('''INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation)
+                VALUES (?,?,?,?,'pending',?,?,?)''',(account,operation,cell['deployment_id'],'stop',key,digest,generation))
+            con.execute('''INSERT INTO lifecycle_details(account_id,operation_id,target_profile,backup_ref,updated_at)
+                VALUES (?,?,?,?,?)''',(account,operation,cell['profile_revision'],None,int(self.clock())))
+            self._audit(con,account,'lifecycle-worker',operation,'stop','pending')
+            return self._public(con,account,operation)
+
     def _public(self, con, account, operation):
         row=con.execute('''SELECT o.id,o.kind,o.state,o.generation,d.attempts,d.error_code
             FROM operations o JOIN lifecycle_details d ON d.account_id=o.account_id AND d.operation_id=o.id

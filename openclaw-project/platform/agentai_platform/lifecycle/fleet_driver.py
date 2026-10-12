@@ -18,6 +18,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -25,7 +26,10 @@ import tempfile
 import time
 
 from agentai_platform.adapters import CapabilityUnavailable
+from dataclasses import replace
 from .fleet_plan import FleetPlanner
+from .maintenance import extract_archive, quarantine_ref
+from .volumes import VolumeSpec
 from .supervisor import OutcomeUncertain, SupervisorBusy
 from .types import KINDS, RUNNABLE, Claim, Conflict, Receipt
 
@@ -35,7 +39,8 @@ LIST_PROBE=('fleet','list','--json')
 LIST_ENTRY={'tenant','state','port','image','created'}
 ENV_KEY=re.compile(r'[A-Z_][A-Z0-9_]{0,63}')
 SHA256=re.compile(r'[a-f0-9]{64}')
-DESIRED={'create':'stopped','start':'running','stop':'stopped','backup':'stopped','delete':'absent'}
+DESIRED={'create':'stopped','start':'running','stop':'stopped','backup':'stopped','delete':'absent',
+         'upgrade':'running','restore':'stopped'}
 
 
 class FleetCustody:
@@ -73,7 +78,7 @@ class FleetCustody:
             raise ValueError('ambiguous registry vocabulary')
         self.list_states=states
         verified=manifest['verified']
-        if type(verified) is not list or not set(verified)<=set(KINDS) or 'upgrade' in verified or 'restore' in verified:
+        if type(verified) is not list or not set(verified)<=set(KINDS):
             raise ValueError('unsupported verified kind')
         self.verified=frozenset(verified)
 
@@ -129,8 +134,11 @@ class FleetCustody:
 class FleetCliDriver:
     """Executes fixed Fleet plans under the pinned candidate CLI. Never receives secrets."""
 
-    def __init__(self,custody):
+    def __init__(self,custody,*,secrets=None,volumes=None,isolation=None,health=None):
         self.custody=custody
+        # Optional host services. Absent in unit fixtures; the production wiring
+        # supplies all four so a cell never starts without token/volume/firewall.
+        self.secrets,self.volumes,self.isolation,self.health=secrets,volumes,isolation,health
 
     def check(self,kind):
         self.custody.verified_kind(kind)
@@ -142,13 +150,23 @@ class FleetCliDriver:
 
     def execute(self,binding,claim):
         if type(claim) is not Claim: raise Conflict('invalid claim')
-        code,stdout=self._run(self._argv(binding,claim))
+        if claim.kind=='upgrade': return self._upgrade(binding,claim)
+        if claim.kind=='restore': return self._restore(binding,claim)
+        argv=self._argv(binding,claim)
+        if claim.kind=='create':
+            if self.volumes is not None and binding.volume_bytes:
+                self.volumes.prepare(VolumeSpec(binding.tenant_ref,binding.volume_bytes))
+            if self.secrets is not None:
+                argv=argv+['--gateway-token',self.secrets.gateway_token(binding.tenant_ref)]
+        code,stdout=self._run(argv)
         if code!=0: raise OutcomeUncertain('native executor rejected')
         state=self._observed_state(binding)
         backup_ref=None
         if claim.kind=='delete':
             if state is not None:
                 raise OutcomeUncertain('tenant still present after delete')
+            # Data stays on its capped volume until the retention purge.
+            if self.volumes is not None: self.volumes.release(binding.tenant_ref)
             return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
                            'absent',True,True,fence=claim.fence)
         if state is None or state!=DESIRED[claim.kind]:
@@ -158,6 +176,85 @@ class FleetCliDriver:
             backup_ref=claim.operation_id
         return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
                        state,True,state!='running',backup_ref,fence=claim.fence)
+
+
+    # -- upgrade: pinned image, canary health, scoped rollback -----------------
+    def _upgrade(self,binding,claim):
+        argv=self._argv(binding,claim)
+        code,_=self._run(argv)
+        healthy=code==0 and self._observed_state(binding)=='running' and self._healthy(binding.port)
+        if healthy:
+            return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
+                           'running',True,False,fence=claim.fence)
+        # Roll back to the recorded image; the capped state volume is untouched.
+        rollback=replace(binding,upgrade_image=binding.image)
+        code,_=self._run(self._argv(rollback,claim))
+        if code!=0 or self._observed_state(binding)!='running' or not self._healthy(binding.port):
+            raise OutcomeUncertain('upgrade failed and rollback is not proven')
+        # Definite no-effect: the prior image runs healthy; retry may use a higher fence.
+        return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
+                       'running',False,False,fence=claim.fence)
+
+    def _healthy(self,port):
+        if self.health is None: raise OutcomeUncertain('no health probe in custody')
+        return bool(self.health(port))
+
+    # -- quarantined restore: separate slug, volume, network; egress dropped ----
+    def _restore(self,binding,claim):
+        if None in (self.secrets,self.volumes,self.isolation) or self.health is None:
+            raise CapabilityUnavailable('quarantined restore needs token, volume, firewall and health custody')
+        planner=FleetPlanner({binding.account_id:binding})
+        q=quarantine_ref(binding.tenant_ref)
+        archive=Path(binding.backup_root)/f'{claim.backup_ref}.tgz'
+        self._verify_archive(binding,claim.backup_ref)
+        qbinding=replace(binding,tenant_ref=q,port=binding.quarantine_port or binding.port,quarantine_port=None,upgrade_image=None)
+        if self._observed_state(qbinding) is not None:
+            raise OutcomeUncertain('a quarantined cell already exists; discard it first')
+        if binding.volume_bytes:
+            self.volumes.prepare(VolumeSpec(q,binding.volume_bytes))
+        argv=list(planner.quarantine_create(binding,q))
+        argv=[str(self.custody.node),str(self.custody.entry),*argv[1:],'--gateway-token',self.secrets.gateway_token(q)]
+        code,_=self._run(argv)
+        if code!=0 or self._observed_state(qbinding)!='stopped':
+            raise OutcomeUncertain('quarantined cell was not created')
+        self.isolation.quarantine(q)  # egress dropped before any restored code can run
+        data=self.volumes.mountpoint(q);auth=self.volumes.auth_dir(q)
+        auth.mkdir(mode=0o700,parents=True,exist_ok=True)
+        try:
+            extract_archive(archive,data,auth,binding.tenant_ref,max_bytes=binding.archive_limit_bytes,uid=1000,gid=1000,replace_skeleton=True)
+        except Exception:
+            raise OutcomeUncertain('restore extraction rejected') from None
+        code,_=self._run([str(self.custody.node),str(self.custody.entry),'fleet','start',q])
+        if code!=0 or self._observed_state(qbinding)!='running' or not self._healthy(qbinding.port):
+            raise OutcomeUncertain('restored cell did not become healthy')
+        code,_=self._run([str(self.custody.node),str(self.custody.entry),'fleet','stop',q])
+        if code!=0 or self._observed_state(qbinding)!='stopped':
+            raise OutcomeUncertain('restored cell did not stop')
+        return Receipt(claim.account_id,claim.deployment_id,claim.operation_id,claim.generation,
+                       'stopped',True,True,fence=claim.fence)
+
+    def discard_quarantine(self,binding):
+        """Host operator action: remove only this tenant's quarantined restore."""
+        q=quarantine_ref(binding.tenant_ref);qbinding=replace(binding,tenant_ref=q)
+        if self._observed_state(qbinding) is not None:
+            self._run([str(self.custody.node),str(self.custody.entry),'fleet','rm',q])
+            if self._observed_state(qbinding) is not None: raise OutcomeUncertain('quarantined cell still present')
+        if self.isolation is not None:
+            try: self.isolation.release(q)
+            except RuntimeError: pass  # network already gone with the cell
+        if self.volumes is not None:
+            self.volumes.release(q);self.volumes.purge(q)
+            shutil.rmtree(self.volumes.auth_dir(q),ignore_errors=True)
+        if self.secrets is not None: self.secrets.destroy(q)
+
+    def purge(self,binding,*,provider_keys=None):
+        """Retention purge of one deleted tenant: revoke keys, then remove its data and secrets."""
+        if self._observed_state(binding) is not None: raise OutcomeUncertain('tenant still registered')
+        if provider_keys is not None: provider_keys.revoke(binding.tenant_ref)
+        if self.volumes is not None:
+            self.volumes.release(binding.tenant_ref);self.volumes.purge(binding.tenant_ref)
+            shutil.rmtree(self.volumes.auth_dir(binding.tenant_ref),ignore_errors=True)
+        if self.secrets is not None: self.secrets.destroy(binding.tenant_ref)
 
     def reconcile(self,binding,claim):
         # Registry absence proves a non-effect only where absence is the claimed

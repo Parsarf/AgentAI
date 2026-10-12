@@ -132,7 +132,9 @@ class DriverChecks(unittest.TestCase):
         with self.assertRaises(ValueError): FleetCustody({**good,'schema_version':1})
         with self.assertRaises(ValueError): FleetCustody({**good,'timeout_seconds':4})
         with self.assertRaises(ValueError): FleetCustody({**good,'output_limit_bytes':1024**3})
-        with self.assertRaises(ValueError): FleetCustody({**good,'verified':['create','upgrade']})
+        with self.assertRaises(ValueError): FleetCustody({**good,'verified':['create','teleport']})
+        # upgrade/restore may be marked verified only after the live capture (2026-10-11).
+        FleetCustody({**good,'verified':['create','upgrade','restore']})
         with self.assertRaises(ValueError): FleetCustody({**good,'list_states':{'running':['x'],'stopped':['x']}})
         with self.assertRaises(ValueError): FleetCustody({**good,'list_states':{'running':[],'stopped':['x']}})
         cli=dict(good['cli']);cli['node_sha256']='0'*64

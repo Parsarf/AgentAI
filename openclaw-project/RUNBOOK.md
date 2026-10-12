@@ -817,3 +817,21 @@ Optional features are turned on and off from the private ops dashboard, **Featur
 See `plans/product/FEATURE_SWITCHES.md`. Install the update with `bin/update-ops-dashboard.py` (dry run first, `--apply` to run).
 OFF always works; ON needs recorded confirmations and finished setup; locked items cannot be unlocked from the UI.
 The old Jev toggle endpoints now use the same checks. If the research plugin file and its switch disagree the page flags it.
+
+## Customer cells on the new host (Phase 4, built 2026-10-12; customer execution OFF)
+
+State: cell engine (`agentai-cells-docker`), firewall (`agentai-cells-firewall`), `agentai-supervisor-native`
+and `agentai-lifecycle-worker` run with **no enrolled bindings**, so nothing can start. Check:
+`systemctl is-active agentai-cells-docker agentai-cells-firewall agentai-supervisor-native agentai-lifecycle-worker`
+and `journalctl -u agentai-lifecycle-worker -n 5` (counts only, all zero when idle).
+
+- **Enroll one account** (root, only after its `create` is queued by an operator): `python3 -m
+  agentai_platform.lifecycle.enroll_cli --app-db /var/lib/agentai-platform/platform.sqlite3 --account <id>
+  --image ghcr.io/openclaw/openclaw@sha256:<digest>` with `PYTHONPATH=/opt/agentai-supervisor/current`.
+  Never enroll the owner's test account.
+- **Quarantine / purge** are host-operator actions on `FleetCliDriver` (`discard_quarantine`, `purge`);
+  they remove exactly one tenant's cell, volume, secrets and provider key. Retention rules decide when.
+- **Disposable verification**: `deploy/p4_live_check.py`, `p4_broker_check.py`, `p4_pipeline_check.py` run
+  with scratch state and clean up; rerun after any host change (kernel, Docker, gVisor, nftables).
+- **Never** name a bridge `docker0` for the cell engine; never give a cell or worker the owner socket.
+- **Stop everything customer-side**: `systemctl disable --now agentai-lifecycle-worker agentai-supervisor-native`.

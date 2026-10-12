@@ -1,0 +1,11 @@
+#!/bin/sh
+# Create the dedicated customer-cell bridge before the cell engine starts.
+# Never touches docker0 or any owner-engine network.
+set -eu
+[ "${1:-}" = up ] || { echo "usage: $0 up" >&2; exit 2; }
+BR=agentai0
+if ! ip link show "$BR" >/dev/null 2>&1; then
+  ip link add name "$BR" type bridge
+  ip addr add 10.77.0.1/16 brd 10.77.255.255 dev "$BR"
+fi
+ip link set "$BR" up

@@ -79,7 +79,7 @@ def handle_connection(conn,supervisor,*,controller_uid):
 class SocketDriver:
     def __init__(self,path,*,server_uid=0,timeout_seconds=5):
         self.path=Path(path);self.server_uid=server_uid
-        if not 0<timeout_seconds<=120: raise ValueError('invalid timeout')
+        if not 0<timeout_seconds<=900: raise ValueError('invalid timeout')
         self.timeout=timeout_seconds
 
     def _call(self,payload):

@@ -1557,3 +1557,15 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   server (`OPENCLAW_NEW_SSH_*` in .env); `OPENCLAW_SERVER=old` selects the old one.
 - Open: change the new root password (it was printed once in a tool transcript); move to SSH keys;
   old server still exists but is stopped (do not delete until the owner is satisfied).
+
+## 2026-10-12 — Phase 4 built and live-tested on the new host
+
+- Added gVisor, a separate cell Docker engine (own socket/bridge), a drop-only nftables policy,
+  per-tenant capped volumes, secret custody, a worker broker, pinned upgrade+rollback, quarantined
+  restore, retention purge, idle sleep/wake, a lifecycle worker and host enrollment. Supervisor and
+  worker installed with **zero enrolled bindings**; customer execution still off.
+- Live: 26 lifecycle/isolation + 16 broker + 10 pipeline checks pass; 299 local platform tests pass.
+  Capacity 1 admitted slot (CPU-bound). See `plans/product/phase-04.md` and
+  `evidence/product/phase-04/20261012T002000Z/manifest.json`.
+- Incident: starting the cell engine first reused/deleted the owner `docker0`; recreated and verified.
+- Open: per-account model route, Gateway-to-broker integration, separate controller identity, Phase 15.
