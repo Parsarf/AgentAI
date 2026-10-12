@@ -9,7 +9,7 @@ import time
 
 from .adapters import CapabilityUnavailable
 from .lifecycle.types import Conflict
-from .request_queue import RequestClaim
+from .request_queue import RequestClaim, RequestReceipt
 
 
 class RequestWorker:
@@ -46,6 +46,14 @@ class RequestWorker:
         claim = self.queue.claim(owner=self.owner, capacity=self.capacity(), lease_seconds=self.lease_seconds)
         if claim is None:
             return {'ran': 0}
+        with self.queue.store.connect() as con:
+            funded = con.execute("SELECT 1 FROM task_reservations WHERE account_id=? AND task_id=? AND state='active'",
+                                 (claim.account_id, claim.request_id)).fetchone()
+        if not funded:
+            # Never admitted (no reservation): fail it now instead of letting it hold the single running slot.
+            done = self.queue.finish(claim, RequestReceipt(claim.account_id, claim.request_id, claim.fence, 'failed',
+                                                           'This request could not be funded or started. Nothing ran and nothing was charged. Please send it again.', True))
+            return {'ran': 0, 'failed_unfunded': bool(done)}
         if self.shadow is not None:
             self.shadow.before(claim)
         try:

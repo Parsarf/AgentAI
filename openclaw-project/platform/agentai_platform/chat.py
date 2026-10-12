@@ -173,8 +173,9 @@ class ChatService:
         try:
             self.ledger.admit(principal, task=result['id'], project=project_id, conversation=conversation_id,
                               key=key, amount_microusd=amount, upper_bound_verified=True)
-        except BudgetDenied:
-            # An unfundable request must not occupy the queue or the serial slot.
+        except Exception:
+            # Whatever stopped admission (budget, mismatch, storage), the request must not stay queued without a reservation:
+            # it would be claimed and wedge the serial slot.
             self.queue.cancel(principal, result['id'])
             raise
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,
@@ -332,10 +333,13 @@ class ChatDriver:
 
     def _close(self, claim, state, public_result, gateway=None, before=None):
         # Usage must reconcile before the global slot hands over (queue.finish rechecks).
-        if gateway is not None:
-            self._reconcile_usage(gateway, claim, before)
-        self.ledger.settle(account=claim.account_id, task=claim.request_id,
-                           effects_quiesced=True, all_routes_reconciled=True)
+        with self.store.connect() as con:
+            funded = con.execute('SELECT 1 FROM task_reservations WHERE account_id=? AND task_id=?', (claim.account_id, claim.request_id)).fetchone()
+        if funded:   # a request that never got a reservation has nothing to reconcile or settle
+            if gateway is not None:
+                self._reconcile_usage(gateway, claim, before)
+            self.ledger.settle(account=claim.account_id, task=claim.request_id,
+                               effects_quiesced=True, all_routes_reconciled=True)
         with self.coordinator.transaction() as con:
             con.execute('UPDATE tasks SET state=? WHERE account_id=? AND id=?', (state, claim.account_id, claim.request_id))
             self.coordinator._audit(con, claim.account_id, 'worker', claim.request_id, 'chat.' + state, 'completed')

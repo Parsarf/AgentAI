@@ -49,10 +49,13 @@ class RequestQueue:
                 if old['payload_hash']!=digest:raise Conflict('request payload changed')
                 return self._public(old)
             if c.execute("SELECT count(*) FROM customer_requests WHERE account_id=? AND state='waiting'",(principal.account_id,)).fetchone()[0]>=3:raise Conflict('queue full')
-            project=c.execute('SELECT id FROM projects WHERE account_id=? ORDER BY created_at,id LIMIT 1',(principal.account_id,)).fetchone()
-            if not project:raise Conflict('account setup incomplete')
-            if conversation_id is not None and not c.execute('SELECT 1 FROM conversations WHERE account_id=? AND id=?',(principal.account_id,conversation_id)).fetchone():
-                raise NotFound('unavailable')
+            if conversation_id is not None:
+                # The request belongs to the project its conversation lives in (budget admission checks that pairing).
+                project=c.execute('SELECT project_id FROM conversations WHERE account_id=? AND id=?',(principal.account_id,conversation_id)).fetchone()
+                if not project:raise NotFound('unavailable')
+            else:
+                project=c.execute('SELECT id FROM projects WHERE account_id=? ORDER BY created_at,id LIMIT 1',(principal.account_id,)).fetchone()
+                if not project:raise Conflict('account setup incomplete')
             request=uuid.uuid4().hex
             c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)
                 VALUES (?,?,?,?,?,?,?,?,'waiting',?)''',(principal.account_id,request,principal.actor_id,project[0],conversation_id,key,digest,message,int(self.clock())))
