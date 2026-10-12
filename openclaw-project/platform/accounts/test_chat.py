@@ -301,3 +301,34 @@ class ChatListChecks(ChatHTTPChecks):
         self.assertEqual(self.post(self.clients[1], '/v1/conversations/' + cid + '/archive', {}).status_code, 404)
         for n in range(15):                                                                                       # more than the old limit of 10
             self.assertEqual(self.post(a, '/v1/conversations', {}).status_code, 201)
+
+
+class PlanRunHttpChecks(ChatHTTPChecks):
+    def test_launch_starts_phase_one_and_actions_are_scoped(self):
+        a, b = self.clients
+        conversation = self.conversation()
+        from .chat import service
+        s = service()
+        plan = {'schemaVersion': '1.0', 'type': 'task_plan', 'title': 'T', 'phases': [
+            {'id': 'a', 'title': 'A', 'description': '', 'enabled': True, 'optional': False, 'requiresApproval': False, 'dependsOn': []},
+            {'id': 'b', 'title': 'B', 'description': '', 'enabled': True, 'optional': False, 'requiresApproval': True, 'dependsOn': ['a']}]}
+        block = s.blocks.create_plan(self.account_ids[0], conversation, plan, key='http-plan-1')
+        self.assertEqual(self.post(b, '/v1/blocks/' + block['id'] + '/live', {'version': 1, 'plan': plan}).status_code, 404)
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/stop', {}).status_code, 409)               # not launched yet
+        listed = a.get('/v1/conversations/' + conversation + '/blocks', secure=True).json()['blocks'][0]
+        self.assertEqual(listed['status'], 'draft'); self.assertNotIn('run', listed)
+        r = self.post(a, '/v1/blocks/' + block['id'] + '/launch', {'version': 1})
+        self.assertEqual(r.status_code, 202, r.content)
+        run = a.get('/v1/conversations/' + conversation + '/blocks', secure=True).json()['blocks'][0]
+        self.assertEqual((run['status'], run['run']['a']['state'], run['run']['b']['state']), ('launched', 'running', 'pending'))
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/phase', {'phase_id': 'b', 'action': 'approve'}).status_code, 200)  # approval can be given ahead of time
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/phase', {'phase_id': 'b', 'action': 'explode'}).status_code, 400)
+        self.assertEqual(self.post(b, '/v1/blocks/' + block['id'] + '/phase', {'phase_id': 'b', 'action': 'skip'}).status_code, 404)
+        stopped = self.post(a, '/v1/blocks/' + block['id'] + '/stop', {})
+        self.assertEqual(stopped.status_code, 200); self.assertEqual(stopped.json()['block']['run']['b']['state'], 'cancelled')
+        renamed = self.post(a, '/v1/conversations/' + conversation + '/rename', {'title': 'Store build'})
+        self.assertEqual(renamed.status_code, 200)
+        titles = [c['title'] for c in a.get('/v1/conversations', secure=True).json()['conversations'] if c['id'] == conversation]
+        self.assertEqual(titles, ['Store build'])
+        self.assertEqual(self.post(a, '/v1/conversations/' + conversation + '/rename', {'title': ''}).status_code, 400)
+        self.assertEqual(self.post(b, '/v1/conversations/' + conversation + '/rename', {'title': 'x'}).status_code, 404)

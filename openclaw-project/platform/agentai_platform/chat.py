@@ -19,6 +19,7 @@ from .gateway import SyntheticGateway
 from .genui import intent as gen_intent, prompts as gen_prompts, schema as gen_schema
 from .genui.runtime import GenUiRuntime
 from .genui.store import BlockStore
+from .genui.runner import PlanRunner
 from .lifecycle.coordinator import Coordinator, identifier
 from .lifecycle.types import Conflict
 from .request_queue import RequestQueue, RequestClaim, RequestReceipt
@@ -77,6 +78,7 @@ class ChatService:
         self.clock = clock
         self.coordinator = Coordinator(store, clock=clock)
         self.blocks = BlockStore(store, clock=clock)
+        self.runner = PlanRunner(self, clock=clock)
         self.max_conversations_per_project = max_conversations_per_project
 
     def create_conversation(self, principal: Principal, project_id: str):
@@ -103,8 +105,8 @@ class ChatService:
         with self.store.connect() as con:
             self.store._authorize(con, principal)
             sql = '''SELECT c.id,c.project_id,c.created_at,
-                (SELECT substr(m.content,1,90) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id
-                    AND m.provenance IN ('customer','telegram') ORDER BY m.id LIMIT 1) AS title,
+                coalesce(c.title,(SELECT substr(m.content,1,90) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id
+                    AND m.provenance IN ('customer','telegram') ORDER BY m.id LIMIT 1)) AS title,
                 (SELECT max(m.created_at) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id) AS last_activity,
                 (SELECT count(*) FROM customer_requests r WHERE r.account_id=c.account_id AND r.conversation_id=c.id
                     AND r.state IN ('waiting','starting','running','uncertain')) AS active
@@ -280,24 +282,39 @@ class ChatService:
         if block['version'] != version:
             raise Conflict('version conflict')
         if block['status'] == 'launched':
-            return {'request': self.queue.get(principal, block['launched_request_id']), 'block': block}
+            return {'request': self.queue.get(principal, block['launched_request_id']) if block['launched_request_id'] else None, 'block': block}
         if block['status'] != 'draft':
             raise Conflict('this plan can no longer be launched')
         plan = gen_schema.validate_plan(block['state']['plan'], launch=True)
         revision = block['state']['revision'] + 1
         with self.blocks.coordinator.transaction() as con:
             self.store._authorize(con, principal)
+            fresh = con.execute('SELECT status,version FROM ui_blocks WHERE account_id=? AND id=?', (principal.account_id, block_id)).fetchone()
+            if fresh['status'] != 'draft':
+                raise Conflict('this plan can no longer be launched')
             con.execute('INSERT OR IGNORE INTO plan_revisions VALUES (?,?,?,?,?,?)',
                         (principal.account_id, block_id, revision, 'approved', __import__('json').dumps(plan), int(self.clock())))
-        result = self._spawn(principal, block['conversation_id'], message='Launch plan: ' + plan['title'], key=f'launch-{block_id}-{revision}', intent='execute',
-                             context={'block': block_id, 'revision': revision},
-                             shown='Launched the plan "' + plan['title'] + '" with ' + str(sum(1 for p in plan['phases'] if p['enabled'])) + ' phases.')
-        with self.blocks.coordinator.transaction() as con:
-            con.execute('INSERT OR IGNORE INTO plan_launches VALUES (?,?,?,?,?)', (principal.account_id, block_id, revision, result['id'], int(self.clock())))
             state = dict(block['state']); state['revision'] = revision
-            con.execute('UPDATE ui_blocks SET state_json=? WHERE account_id=? AND id=?', (__import__('json').dumps(state), principal.account_id, block_id))
-            self.blocks.set_status(con, principal.account_id, block_id, 'launched', request_id=result['id'])
-        return {'request': result, 'block': self.blocks.get(principal, block_id)}
+            con.execute('UPDATE ui_blocks SET state_json=?,actor_id=? WHERE account_id=? AND id=?', (__import__('json').dumps(state), principal.actor_id, principal.account_id, block_id))
+            self.runner.start(con, principal.account_id, block_id, plan)
+            self.blocks.set_status(con, principal.account_id, block_id, 'launched')
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, block_id, 'chat.plan_launch', 'completed')
+        with self.coordinator.transaction() as con:
+            con.execute('INSERT OR IGNORE INTO chat_messages(account_id,conversation_id,request_id,provenance,content) VALUES (?,?,NULL,\'customer\',?)',
+                        (principal.account_id, block['conversation_id'],
+                         'Launched the plan "' + plan['title'] + '" with ' + str(sum(1 for p in plan['phases'] if p['enabled'])) + ' phases. Approval-gated phases will ask first.'))
+        first = self.runner.advance(principal.account_id, block_id)
+        return {'request': self.queue.get(principal, first) if first else None, 'block': self.blocks.get(principal, block_id)}
+
+    def rename_conversation(self, principal: Principal, conversation_id: str, title: str):
+        identifier(conversation_id)
+        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 90 or '\x00' in title:
+            raise ValueError('invalid title')
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            if not con.execute('UPDATE conversations SET title=? WHERE account_id=? AND id=?', (title.strip(), principal.account_id, conversation_id)).rowcount:
+                raise NotFound('unavailable')
+        return {'id': conversation_id, 'title': title.strip()}
 
     def messages(self, principal: Principal, conversation_id: str, *, after: int = 0, limit: int = 100):
         if type(after) is not int or after < 0 or type(limit) is not int or not 1 <= limit <= 100:

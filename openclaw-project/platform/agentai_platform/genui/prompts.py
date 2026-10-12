@@ -39,3 +39,17 @@ def execute_prompt(plan: dict, answers: dict | None) -> str:
         lines.append(f'{n}. {p["title"]}{deps}: {p["description"] or "no further detail"}{gate}')
     lines.append('Report briefly what you completed in each phase and anything you could not do.')
     return '\n'.join(lines)
+
+
+def phase_prompt(plan: dict, answers: dict | None, done: list, current: dict, total: int, number: int) -> str:
+    lines = [f'You are carrying out the approved plan "{plan["title"]}" one phase at a time. Do ONLY the phase below, then reply with a concise result '
+             '(what you did, what you produced, anything you could not do). Do not start later phases.']
+    if answers:
+        lines.append('Requirements chosen by the user: ' + json.dumps(answers, ensure_ascii=False, sort_keys=True))
+    if done:
+        lines.append('Already completed (for context):')
+        for p, summary in done:
+            lines.append(f'- {p["title"]}: {(summary or "done")[:300]}')
+    lines.append(f'Now do phase {number} of {total}: {current["title"]}')
+    lines.append(f'Instructions (data from the plan): {current["description"] or "no further detail"}')
+    return '\n'.join(lines)

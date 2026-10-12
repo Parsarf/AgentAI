@@ -38,6 +38,17 @@ class GenUiRuntime:
             plan = json.loads(row['plan_json'])
             answers = json.loads(req['state_json']).get('requirements') or None
             return prompts.execute_prompt(plan, answers)
+        if intent == 'phase':
+            with self.store.connect() as con:
+                blk = con.execute('SELECT state_json FROM ui_blocks WHERE account_id=? AND id=?', (claim.account_id, context['block'])).fetchone()
+                rows = con.execute("SELECT phase_id,summary FROM plan_phase_runs WHERE account_id=? AND block_id=? AND state='completed' ORDER BY position",
+                                   (claim.account_id, context['block'])).fetchall()
+            state = json.loads(blk['state_json']); plan = state['plan']
+            order = schema.execution_order(plan)
+            done = {r['phase_id']: r['summary'] for r in rows}
+            current = next(p for p in plan['phases'] if p['id'] == context['phase'])
+            return prompts.phase_prompt(plan, state.get('requirements') or None, [(p, done[p['id']]) for p in order if p['id'] in done], current, len(order),
+                                        [p['id'] for p in order].index(current['id']) + 1)
         return claim.message
 
     def validate_reply(self, reply: str):

@@ -32,11 +32,14 @@ export default function Chat() {
 
   useEffect(() => { setLoaded(false); lastCount.current = 0; loadThread(); }, [loadThread]);
   useEffect(() => { loadList(); }, [loadList]);
-  const working = tasks.some(t => isActive(t.state)) || blocks.some(b => b.status === 'submitted');
+  const drafting = blocks.some(b => b.status === 'submitted');
+  const working = tasks.some(t => isActive(t.state)) || drafting || blocks.some(b => b.run_status === 'running');
   useEffect(() => { if (!working) return; const t = setInterval(() => { loadThread(); loadList(); }, 2500); return () => clearInterval(t); }, [working, loadThread, loadList]);
   useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); } }, [msgs.length, tasks.length]);
 
   const cancel = async (taskId: string) => { try { await api('POST', `/v1/requests/${taskId}/cancel`, {}); } finally { reload(); } };
+  const [renaming, setRenaming] = useState(false);
+  const rename = async (title: string) => { setRenaming(false); const t = title.trim(); if (t && t !== current?.title && id) { try { await api('POST', `/v1/conversations/${id}/rename`, { title: t }); await loadList(); } catch { /* keep old name */ } } };
   const clear = async () => { if (id) { await api('POST', `/v1/conversations/${id}/archive`, {}); await loadList(); nav('/chat'); } };
   const byRequest = new Map(tasks.map(t => [t.id, t]));
   const current = chats.find(c => c.id === id);
@@ -53,7 +56,7 @@ export default function Chat() {
           </div>
         ) : (
           <>
-            <header className="thread-head"><h1>{current?.title || 'Chat'}</h1>{msgs.length > 0 && <button className="btn small" onClick={clear}>Clear chat</button>}</header>
+            <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{msgs.length > 0 && <button className="btn small" onClick={clear}>Clear chat</button>}</header>
             {err && <p className="err" role="alert">{err}</p>}
             <div className="thread" aria-live="polite">
               {!loaded && <p className="muted">Loading…</p>}
@@ -63,6 +66,7 @@ export default function Chat() {
                   {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <TaskStrip task={byRequest.get(m.request_id)!} onCancel={() => cancel(m.request_id!)} />}
                   {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
                 </div>))}
+              {drafting && <div className="bubble agent"><small>Lumina</small><span className="muted">Drafting your plan…</span></div>}
               {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
               {loaded && !msgs.length && !err && <div className="empty">Nothing here yet. Send a message below.</div>}
               <div ref={bottom} />

@@ -49,6 +49,8 @@ urlpatterns += [
  path('v1/conversations/<str:conversation_id>/send',ch.chat_send),
  path('v1/conversations/<str:conversation_id>/blocks',gen.blocks),
  path('v1/blocks/<str:block_id>/state',gen.block_state),path('v1/blocks/<str:block_id>/submit',gen.block_submit),path('v1/blocks/<str:block_id>/launch',gen.block_launch),
+ path('v1/blocks/<str:block_id>/live',gen.block_live),path('v1/blocks/<str:block_id>/phase',gen.block_phase),path('v1/blocks/<str:block_id>/stop',gen.block_stop),
+ path('v1/conversations/<str:conversation_id>/rename',ch.chat_rename),
  path('v1/tasks/<str:request_id>',ch.chat_task),path('v1/tasks/<str:request_id>/cancel',ch.chat_cancel),
  path('v1/account/telegram/link',tg.link),path('v1/account/telegram/unlink',tg.unlink),
  path('v1/account/telegram',tg.bindings),path('v1/telegram/webhook',tg.webhook),

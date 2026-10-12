@@ -11,7 +11,34 @@ from agentai_platform.security import NotFound, Principal
 from . import schema
 
 
-def _public(row) -> dict:
+def _public(row, con=None) -> dict:
+    out = _public_base(row)
+    if con is not None and row['kind'] == 'task_plan' and row['status'] == 'launched':
+        out['run'], out['run_status'] = _run(con, row['account_id'], row['id'])
+    return out
+
+
+def _run(con, account, block):
+    rows = con.execute('SELECT * FROM plan_phase_runs WHERE account_id=? AND block_id=? ORDER BY position', (account, block)).fetchall()
+    run = {r['phase_id']: {'state': r['state'], 'attempts': r['attempts'], 'request_id': r['request_id'], 'summary': r['summary'],
+                           'approved': r['approved_epoch'] is not None, 'started_epoch': r['started_epoch'], 'finished_epoch': r['finished_epoch']} for r in rows}
+    states = [r['state'] for r in rows]
+    if 'running' in states:
+        status = 'running'
+    elif 'awaiting_approval' in states:
+        status = 'awaiting_approval'
+    elif 'failed' in states:
+        status = 'failed'
+    elif 'pending' in states:
+        status = 'running'
+    elif 'cancelled' in states:
+        status = 'stopped'
+    else:
+        status = 'completed'
+    return run, status
+
+
+def _public_base(row) -> dict:
     return {'id': row['id'], 'conversation_id': row['conversation_id'], 'anchor_message_id': row['anchor_message_id'], 'kind': row['kind'],
             'schema_version': row['schema_version'], 'spec': json.loads(row['spec_json']), 'state': json.loads(row['state_json']),
             'version': row['version'], 'status': row['status'], 'launched_request_id': row['launched_request_id'],
@@ -51,7 +78,7 @@ class BlockStore:
                     (account, block, conversation, anchor, kind, schema.SCHEMA_VERSION, json.dumps(spec), json.dumps(state), source, key, now, now))
         if revision:
             con.execute('INSERT INTO plan_revisions VALUES (?,?,1,?,?,?)', (account, block, revision[0], json.dumps(revision[1]), now))
-        return _public(con.execute('SELECT * FROM ui_blocks WHERE account_id=? AND id=?', (account, block)).fetchone())
+        return _public(con.execute('SELECT * FROM ui_blocks WHERE account_id=? AND id=?', (account, block)).fetchone(), con)
 
     # -- reads ---------------------------------------------------------------------------------------------------
     def list(self, principal: Principal, conversation_id: str) -> list[dict]:
@@ -62,7 +89,7 @@ class BlockStore:
                 raise NotFound('unavailable')
             rows = con.execute('SELECT * FROM ui_blocks WHERE account_id=? AND conversation_id=? ORDER BY created_epoch,rowid LIMIT 100',
                                (principal.account_id, conversation_id)).fetchall()
-            return [_public(r) for r in rows]
+            return [_public(r, con) for r in rows]
 
     def get(self, principal: Principal, block_id: str, con=None) -> dict:
         identifier(block_id)
@@ -73,7 +100,7 @@ class BlockStore:
         row = con.execute('SELECT * FROM ui_blocks WHERE account_id=? AND id=?', (principal.account_id, block_id)).fetchone()
         if not row:
             raise NotFound('unavailable')
-        return _public(row)
+        return _public(row, con)
 
     # -- registered operation 1: save the user's edits (autosave) ---------------------------------------------------
     def save_state(self, principal: Principal, block_id: str, version: int, state) -> dict:

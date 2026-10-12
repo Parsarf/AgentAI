@@ -42,7 +42,7 @@ class RequestQueue:
     def submit(self,principal,*,message,key,conversation_id=None,intent='chat',context=None):
         identifier(key)
         if not isinstance(message,str) or not message.strip() or len(message)>16000 or '\x00' in message:raise ValueError('invalid message')
-        if intent not in ('chat','plan','execute'):raise ValueError('invalid intent')
+        if intent not in ('chat','plan','execute','phase'):raise ValueError('invalid intent')
         context_json=json.dumps(context,sort_keys=True,separators=(',',':')) if context else None
         digest=hashlib.sha256(message.encode()).hexdigest() if intent=='chat' and not context_json else hashlib.sha256((message+'|'+intent+'|'+(context_json or '')).encode()).hexdigest()
         with self.coordinator.transaction() as c:

@@ -59,6 +59,17 @@ def _error_redirect(request, conversation_id, error, category=None):
     request.form_redirect = target
 
 
+@endpoint(['POST'], ['title'], field_limits={'title': 90})
+def chat_rename(request, conversation_id):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        return JsonResponse({'conversation': service().rename_conversation(principal(request), conversation_id, request.input.get('title', ''))})
+    except NotFound:
+        raise Denied()
+
+
 @endpoint(['POST'], [])
 def chat_archive(request, conversation_id):
     denied = customer(request)

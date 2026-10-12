@@ -13,9 +13,10 @@ from .request_queue import RequestClaim, RequestReceipt
 
 
 class RequestWorker:
-    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time, abandon_after=1800, shadow=None):
+    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time, abandon_after=1800, shadow=None, runner=None):
         self.queue, self.driver, self.capacity, self.owner = queue, driver, capacity, owner
         self.lease_seconds, self.clock, self.abandon_after = lease_seconds, clock, abandon_after
+        self.runner = runner   # callable -> PlanRunner (or a PlanRunner): advances launched plans after every tick
         self.shadow = shadow   # optional observer; can never alter or block execution
 
     def _uncertain_claim(self):
@@ -29,6 +30,18 @@ class RequestWorker:
                             row['fence'], row['lease_owner'], row['conversation_id'])
 
     def tick(self):
+        report = self._tick()
+        if self.runner is not None:
+            try:
+                runner = self.runner() if callable(self.runner) else self.runner
+                started = runner.tick()
+                if started:
+                    report = {**report, 'phases_started': started}
+            except Exception:
+                pass   # plan progress is retried on the next tick; it must never break request handling
+        return report
+
+    def _tick(self):
         stuck = self._uncertain_claim()
         if stuck is not None:
             try:

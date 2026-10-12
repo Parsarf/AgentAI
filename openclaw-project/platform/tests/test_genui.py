@@ -188,22 +188,103 @@ class FlowChecks(unittest.TestCase):
     def make_plan_block(self, p=GOOD):
         return self.chat.blocks.create_plan('a', 'c-a', p, key='manual-' + str(len(self.rows('SELECT 1 FROM ui_blocks'))))
 
-    def test_editing_launch_approval_and_execution_use_the_approved_revision(self):
+    def drive(self, replies, limit=40, runs=None):
+        """Run the worker (which also advances the plan) until nothing is left to do, or until `runs` requests have been executed."""
+        self.gw.replies = list(replies)
+        runtime = GenUiRuntime(self.store, self.chat.blocks)
+        driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(self.gw), clock=lambda: self.now, genui=runtime)
+        worker = RequestWorker(self.queue, driver, lambda: OK, clock=lambda: self.now, runner=self.chat.runner)
+        done = 0
+        for _ in range(limit):
+            report = worker.tick()
+            done += report.get('ran', 0)
+            if runs is not None and done >= runs:
+                break
+            if report.get('ran') == 0 and not report.get('phases_started'):
+                break
+        return worker
+
+    def phases(self, block_id):
+        return {r['phase_id']: r['state'] for r in self.rows('SELECT phase_id,state FROM plan_phase_runs WHERE block_id=?', (block_id,))}
+
+    def test_editing_then_launch_runs_the_approved_revision_one_phase_at_a_time(self):
         block = self.make_plan_block()
         edited = copy.deepcopy(GOOD); edited['phases'][3]['enabled'] = False; edited['phases'].insert(1, phase('security', 'Security review', deps=['analyze']))
         edited['phases'][2]['dependsOn'] = ['analyze', 'security']
         saved = self.chat.blocks.save_state(self.a, block['id'], 1, {'plan': edited})
-        self.assertEqual(saved['state']['revision'], 2)
         self.assertEqual([r['source'] for r in self.rows('SELECT source FROM plan_revisions ORDER BY revision')], ['ai', 'user'])
         out = self.chat.launch_plan(self.a, block['id'], saved['version'])
-        self.assertEqual((out['block']['status'], out['request']['admission']), ('launched', 'reserved'))
+        self.assertEqual((out['block']['status'], out['request']['state']), ('launched', 'waiting'))
         self.assertEqual([r['source'] for r in self.rows('SELECT source FROM plan_revisions ORDER BY revision')], ['ai', 'user', 'approved'])
-        again = self.chat.launch_plan(self.a, block['id'], saved['version'] + 1)                                     # double click: same task
-        self.assertEqual(again['request']['id'], out['request']['id']); self.assertEqual(len(self.rows("SELECT 1 FROM customer_requests WHERE intent='execute'")), 1)
-        gw = self.gw; gw.replies = ['all phases done']
-        self.worker(gw).tick()
-        self.assertIn('Carry out this approved plan', gw.sent[0]); self.assertIn('Security review', gw.sent[0]); self.assertNotIn('Deploy', gw.sent[0])   # disabled phase is not sent
-        with self.assertRaises(Conflict): self.chat.blocks.save_state(self.a, block['id'], again['block']['version'], {'plan': edited})   # launched plans are frozen
+        self.assertEqual(self.chat.launch_plan(self.a, block['id'], saved['version'] + 1)['request']['id'], out['request']['id'])   # double click: same run
+        self.drive(['analysis done', 'security done', 'built it', 'tests pass'])
+        sent = self.gw.sent
+        self.assertEqual(len(sent), 4)
+        self.assertIn('phase 1 of 4: Analyze', sent[0]); self.assertIn('phase 2 of 4: Security review', sent[1]); self.assertIn('Do ONLY the phase below', sent[2])
+        self.assertIn('analysis done', sent[2])                                                                  # earlier results are passed along
+        self.assertNotIn('Deploy', ''.join(sent))                                                                # the switched-off phase never runs
+        self.assertEqual(self.phases(block['id']), {'analyze': 'completed', 'security': 'completed', 'build': 'completed', 'test': 'completed'})
+        done = self.chat.blocks.get(self.a, block['id'])
+        self.assertEqual(done['run_status'], 'completed'); self.assertEqual(done['run']['build']['summary'], 'built it')
+        self.assertTrue(any(m['content'].startswith('Plan finished') for m in self.chat.messages(self.a, 'c-a')['messages']))
+        with self.assertRaises(Conflict): self.chat.blocks.save_state(self.a, block['id'], done['version'], {'plan': edited})   # drafts are frozen
+
+    def test_approval_gate_waits_for_the_user_and_approval_is_per_phase(self):
+        block = self.make_plan_block(plan(phase('a'), phase('b', deps=['a'], requiresApproval=True, title='Spend money'), phase('c', deps=['b'])))
+        self.chat.launch_plan(self.a, block['id'], 1)
+        self.drive(['a done'], runs=1)
+        self.assertEqual(self.phases(block['id']), {'a': 'completed', 'b': 'awaiting_approval', 'c': 'pending'})
+        self.assertEqual(len(self.gw.sent), 1)                                                                    # nothing past the gate ran
+        self.assertEqual(self.chat.blocks.get(self.a, block['id'])['run_status'], 'awaiting_approval')
+        with self.assertRaises(NotFound): self.chat.runner.act(self.b, block['id'], 'b', 'approve')                # another tenant cannot approve
+        with self.assertRaises(Conflict): self.chat.runner.act(self.a, block['id'], 'a', 'approve')                # not waiting for approval
+        self.chat.runner.act(self.a, block['id'], 'b', 'approve')
+        self.drive(['b done', 'c done'])
+        self.assertEqual(self.phases(block['id']), {'a': 'completed', 'b': 'completed', 'c': 'completed'})
+
+    def test_future_phases_can_be_edited_while_running_but_finished_ones_cannot(self):
+        block = self.make_plan_block(plan(phase('a'), phase('b', deps=['a'], requiresApproval=True), phase('c', deps=['b'])))
+        out = self.chat.launch_plan(self.a, block['id'], 1)
+        self.drive(['a done'], runs=1)
+        cur = self.chat.blocks.get(self.a, block['id'])
+        live = copy.deepcopy(cur['state']['plan'])
+        live['phases'][2]['title'] = 'Final check'; live['phases'].append(phase('d', 'Extra polish', deps=['c']))
+        updated = self.chat.runner.edit(self.a, block['id'], cur['version'], live)
+        self.assertEqual({p['id']: p['title'] for p in updated['state']['plan']['phases']}['c'], 'Final check')
+        self.assertEqual(self.phases(block['id'])['d'], 'pending')
+        self.assertEqual([r['source'] for r in self.rows('SELECT source FROM plan_revisions ORDER BY revision')][-1], 'user')
+        bad = copy.deepcopy(updated['state']['plan']); bad['phases'][0]['title'] = 'Rewritten history'
+        with self.assertRaises(Conflict): self.chat.runner.edit(self.a, block['id'], updated['version'], bad)         # completed phase is locked
+        with self.assertRaises(Conflict): self.chat.runner.edit(self.a, block['id'], cur['version'], live)            # stale version
+        gated = copy.deepcopy(updated['state']['plan']); gated['phases'][1]['description'] = 'Now spend more money'
+        with self.store.connect() as con:                                   # an approval granted while an earlier phase was still running
+            con.execute("UPDATE plan_phase_runs SET approved_epoch=1 WHERE phase_id='b'")
+        edited = self.chat.runner.edit(self.a, block['id'], updated['version'], gated)                              # editing a gated phase voids its approval
+        self.assertFalse(edited['run']['b']['approved'])
+        cyc = copy.deepcopy(edited['state']['plan']); cyc['phases'][1]['dependsOn'] = ['c']
+        with self.assertRaises(schema.SpecError): self.chat.runner.edit(self.a, block['id'], edited['version'], cyc)
+        self.chat.runner.act(self.a, block['id'], 'b', 'approve'); self.drive(['b', 'c', 'd'])
+        self.assertEqual(set(self.phases(block['id']).values()), {'completed'})
+        self.assertIn('Extra polish', ''.join(self.gw.sent))
+
+    def test_failed_phase_stops_the_run_until_retry_or_skip_and_stop_cancels_the_rest(self):
+        block = self.make_plan_block(plan(phase('a'), phase('b', deps=['a']), phase('c', deps=['b'])))
+        self.chat.launch_plan(self.a, block['id'], 1)
+        self.drive(['a done'], runs=1)
+        rid = self.rows("SELECT request_id FROM plan_phase_runs WHERE phase_id='b'")[0]['request_id']
+        with self.store.connect() as con:                                   # the runtime failed this phase
+            con.execute("UPDATE customer_requests SET state='failed',result='boom' WHERE id=?", (rid,))
+            con.execute('DELETE FROM request_slot')
+        self.chat.runner.tick()
+        self.assertEqual(self.phases(block['id']), {'a': 'completed', 'b': 'failed', 'c': 'pending'})
+        self.assertEqual(self.chat.blocks.get(self.a, block['id'])['run_status'], 'failed')
+        self.chat.runner.act(self.a, block['id'], 'b', 'retry')
+        self.assertEqual(self.phases(block['id'])['b'], 'running')                                                   # retried with a new attempt key
+        self.assertEqual(self.rows("SELECT attempts FROM plan_phase_runs WHERE phase_id='b'")[0]['attempts'], 2)
+        stopped = self.chat.runner.stop(self.a, block['id'])
+        self.assertEqual(self.phases(block['id'])['c'], 'cancelled')
+        self.chat.runner.tick(); self.assertEqual(stopped['id'], block['id'])
+        self.assertEqual(self.chat.blocks.get(self.a, block['id'])['run_status'], 'stopped')
 
     def test_invalid_plans_cannot_launch_and_nothing_is_created(self):
         cyc = plan(phase('a', deps=['b']), phase('b', deps=['a']))

@@ -28,7 +28,8 @@ def build_worker(store):
     switches = SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None)
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))
-    return RequestWorker(queue, driver, host_capacity, shadow=shadow)
+    from accounts.chat import service
+    return RequestWorker(queue, driver, host_capacity, shadow=shadow, runner=lambda: service().runner)
 
 
 class Command(BaseCommand):

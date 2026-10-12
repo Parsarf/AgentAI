@@ -66,3 +66,29 @@ def block_launch(request, block_id):
     if denied:
         return denied
     return _run(lambda: JsonResponse(service().launch_plan(principal(request), block_id, _version(request)), status=202))
+
+
+@endpoint(['POST'], ['version', 'plan'], structured=True)
+def block_live(request, block_id):
+    """Edit phases of a running plan that have not started."""
+    denied = _guard(request, 'block.write')
+    if denied:
+        return denied
+    return _run(lambda: JsonResponse({'block': service().runner.edit(principal(request), block_id, _version(request), request.input.get('plan'))}))
+
+
+@endpoint(['POST'], ['phase_id', 'action'])
+def block_phase(request, block_id):
+    """Approve, skip or retry one phase of a running plan."""
+    denied = _guard(request, 'block.action')
+    if denied:
+        return denied
+    return _run(lambda: JsonResponse({'block': service().runner.act(principal(request), block_id, request.input.get('phase_id', ''), request.input.get('action', ''))}))
+
+
+@endpoint(['POST'], [])
+def block_stop(request, block_id):
+    denied = _guard(request, 'block.action')
+    if denied:
+        return denied
+    return _run(lambda: JsonResponse({'block': service().runner.stop(principal(request), block_id)}))

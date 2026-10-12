@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "AgentAI private account API",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Invite-only account API. Everything a replacement front end needs: /v1/csrf, /auth/*, /v1/app, then the resource endpoints. See UI_CONTRACT.md. Customer execution is live when features.execution is true."
  },
  "servers": [
@@ -2903,6 +2903,223 @@
         },
         "required": [
          "version"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/live": {
+   "post": {
+    "summary": "Edit phases of a running plan that have not started (started or finished phases are locked)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer"
+         },
+         "plan": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "plan"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/phase": {
+   "post": {
+    "summary": "Approve, skip or retry one phase of a running plan",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "phase_id": {
+          "type": "string"
+         },
+         "action": {
+          "type": "string",
+          "enum": [
+           "approve",
+           "skip",
+           "retry"
+          ]
+         }
+        },
+        "required": [
+         "phase_id",
+         "action"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/stop": {
+   "post": {
+    "summary": "Stop a running plan: pending phases are cancelled and the running phase is cancelled",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/rename": {
+   "post": {
+    "summary": "Rename a chat",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string",
+          "maxLength": 90
+         }
+        },
+        "required": [
+         "title"
         ]
        }
       }

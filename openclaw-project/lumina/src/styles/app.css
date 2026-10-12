@@ -191,3 +191,12 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .ts-head { display: flex; align-items: center; gap: 8px; } .ts-head .btn { margin-left: auto; }
 .ts-steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; color: var(--ink-2); font-size: 13px; }
 @media (max-width: 960px) { .chatpage { grid-template-columns: minmax(0, 1fr); } .chatlist { position: static; max-height: 180px; } .taskstrip { margin: 0; } }
+.badge.run-running { border-color: rgba(104,101,255,.6); color: #cfcdff; background: rgba(104,101,255,.18); }
+.badge.run-completed { border-color: rgba(45,212,191,.45); color: var(--ok); background: rgba(45,212,191,.08); }
+.badge.run-awaiting_approval { border-color: rgba(245,185,66,.5); color: var(--warn); background: rgba(245,185,66,.08); }
+.badge.run-failed, .badge.run-cancelled { border-color: rgba(239,96,96,.5); color: var(--bad); background: rgba(239,96,96,.07); }
+.badge.run-skipped, .badge.run-pending { border-color: var(--line-2); color: var(--ink-2); background: transparent; }
+.approval { margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(245,185,66,.4); background: rgba(245,185,66,.06); display: grid; gap: 8px; }
+.approval.bad { border-color: rgba(239,96,96,.45); background: rgba(239,96,96,.06); } .phase-sum { margin-top: 6px; }
+
+.thread-head h1 { cursor: text; } .rename { flex: 1; font: inherit; font-size: 20px; font-weight: 600; background: rgba(255,255,255,.05); border: 1px solid var(--neon); border-radius: 10px; padding: 4px 10px; color: inherit; outline: 0; }

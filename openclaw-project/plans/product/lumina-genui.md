@@ -1,6 +1,6 @@
 # Lumina generative UI — audit, what is built, what is not
 
-**Status (2026-10-13):** the engine's foundation, interactive requirements forms, and the editable plan diagram with approval and launch are built, deployed and verified end to end with the real runtime. Advanced interfaces and live editing during execution are **not** built.
+**Status (2026-10-13, updated):** foundation, requirements forms, the editable plan diagram, **phase-by-phase execution with real per-phase progress, approval gates, and editing of phases that have not started** are built, deployed and verified end to end with the real runtime. Advanced interfaces (comparison, workflow, file tree, result screens) are **not** built.
 
 ## 1. Audit (verified in code and on the server)
 | Question | Finding |
@@ -17,7 +17,9 @@
 - Blocks are **data**: strictly validated specifications (Python `genui/schema.py` is authoritative, Zod mirror in `lumina/src/lib/genui/schema.ts`). Unknown keys, field types, actions, oversized or invalid values are rejected; the UI shows a read-only note for anything it cannot render.
 - A block can do exactly four things, each a registered endpoint that re-authorizes and re-validates: list (`GET /v1/conversations/{id}/blocks`), save edits (`POST /v1/blocks/{id}/state`), submit a form (`…/submit`), launch a plan (`…/launch`). Blocks are created only by server code, never from a request body.
 - Plan generation reuses the customer's own runtime and billing (no new model path): a prompt asks for one JSON object, the reply is validated, **one repair attempt** is made in the same session, then it falls back to plain text. The raw JSON is never shown; the chat shows "I drafted a plan…".
-- Launch stores the approved revision (`plan_revisions` source `approved`), creates a real request (`intent=execute`) through normal admission, and the runtime is given only the enabled phases in dependency order, with "STOP and ask me" for approval-gated phases. Double clicks and retries return the same task.
+- Launch stores the approved revision (`plan_revisions` source `approved`) and creates one row per enabled phase (`plan_phase_runs`). **Each phase is its own request** (same chat, same runtime session) started by `genui/runner.py` through normal admission, one at a time in dependency order; the runtime is told to do only that phase and is given earlier phase results as context. The request worker advances plans after every tick; double clicks and retries return the same run.
+- **Approval gates are real:** a phase marked "ask me first" is not started; its row waits in `awaiting_approval` until the user approves it (`POST /v1/blocks/{id}/phase`). Editing a gated phase voids an earlier approval.
+- **Live edits:** phases that are pending or awaiting approval can be renamed, rewritten, reordered, toggled, added or removed (`POST /v1/blocks/{id}/live`); the server rejects any change to a phase that is running, done or failed. A failed phase stops the run until the user retries or skips it; "Stop plan" cancels the rest.
 - Three kinds of change: local (toggles, sliders, conditional questions, rename/add/remove/reorder/undo — no network), server (debounced autosave, submit, launch — no model), reasoning (plan drafting and one repair — the only model calls).
 
 ## 3. Delivered features
@@ -38,8 +40,8 @@
 | 1 | Simple question stays text | built, unit-tested (`What is React?` → text) |
 | 2 | Requirements interface, conditional, persisted | built for **websites only**; other build requests go straight to a plan or text |
 | 3 | Editable plan (add/delete/rename/reorder/disable/dependencies) | built and tested |
-| 4 | Launch creates a real task from the approved version | built, verified live; the diagram shows whole-run status, not per-phase |
-| 5 | Modify future phases during execution | **not built** (launched plans are frozen) |
+| 4 | Launch creates real tasks from the approved version | built, verified live; **per-phase** status, results, approval gates and stop/retry/skip |
+| 5 | Modify future phases during execution | built: future phases editable, started/finished phases locked, approvals voided by edits, tested at API, component and live levels |
 | 6 | Comparison with local sort/filter | **not built** |
 | 7 | Invalid AI output → validate, bounded repair, safe fallback | built for plans (one repair, then text). Forms are templates, not AI-generated |
 | 8 | Refresh keeps the draft, no duplicate launch | built, tested |
@@ -47,10 +49,14 @@
 | 10 | Model failure → fallback, no fabrication | partly: a failed or unreachable run is handled by the existing recovery; the reply degrades to text. JEV is not in this path |
 
 ## 6. Not built (and what each needs)
-Live edits during execution and per-phase progress (the runtime reports none; needs phase markers from the agent or a phase-aware executor) · comparison, workflow builder, file-tree preview, in-chat approval cards, cost estimator and result interfaces (each a new component set plus a server action) · AI-generated form specifications and template selection by JEV (needs the routing work to leave shadow mode) · template/specification caching and the full metrics set (model calls per task, validation failure rate, abandonment) · accessibility audit and phone-width test of the blocks · more requirement templates beyond websites.
+Percentage progress inside a phase (the runtime reports none; phases show Running with elapsed time) · parallel phase execution (the queue is serial, so independent phases run one after another) · comparison, workflow builder, file-tree preview, in-chat approval cards, cost estimator and result interfaces (each a new component set plus a server action) · AI-generated form specifications and template selection by JEV (needs the routing work to leave shadow mode) · template/specification caching and the full metrics set (model calls per task, validation failure rate, abandonment) · accessibility audit and phone-width test of the blocks · more requirement templates beyond websites.
 
 ## 7. Known limitations
 - A first plan can take about a minute when the assistant has to wake up. The page shows "Working…".
 - Reordering changes order within a row; dependencies decide what must finish first (stated in the UI).
-- Estimated cost per phase is not available; the plan states the $5 task cap.
+- Estimated cost per phase is not available; each phase is its own request under the $5 task cap and the plan allowance. A plan of N phases makes N model turns (plus one for drafting), each a few cents on the default model.
+- Phases share the chat's runtime session, so later phases see earlier ones; they run strictly one after another.
 - Plan quality depends on the model; the user is expected to edit before launching.
+
+## 8. Live run check (2026-10-13)
+A three-phase plan with an approval gate on phase 2 ran on the server with the real model: phase 1 ran (about 2 minutes including the assistant waking up), the run paused with `awaiting_approval`, approving started phase 2, phase 3 followed, and the chat received a "Plan finished" message. Each phase's own result was stored and shown in the diagram.
