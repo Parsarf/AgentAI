@@ -27,6 +27,7 @@ const body = req => new Promise(r => { let d = ''; req.on('data', c => d += c); 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x'); const p = url.pathname;
   if (p === '/_m') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<body style="margin:0;background:#222"><iframe src="/app/" style="width:390px;height:844px;border:0;background:#000"></iframe></body>'); }
+  if (p === '/') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(await readFile(join(DIST, 'index.html'))); }   // mimics the edge showing the app at the site root
   if (p === '/v1/csrf') return json(res, 200, { csrf_token: 'mock', api_version: 'mock' });
   if (p === '/readyz') return json(res, 200, { foundation_ready: true });
   if (p === '/auth/login') { signedIn = true; return json(res, 200, { ok: true }); }
