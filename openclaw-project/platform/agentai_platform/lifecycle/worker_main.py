@@ -29,7 +29,7 @@ def main():
     # Native operations (volume + create, restore + health) take minutes; a timeout is
     # an uncertain outcome that the reconcile pass resolves from the supervisor journal.
     worker = LifecycleWorker(Store(args.db), SocketDriver(args.socket, timeout_seconds=600), host_capacity,
-                             idle_after=args.idle_after)
+                             idle_after=args.idle_after, backup_max_age=20 * 3600)
     while True:
         # Counts only: no account, tenant, token or path ever reaches the journal.
         print(json.dumps(worker.tick(), sort_keys=True), flush=True)

@@ -21,10 +21,11 @@ from .types import Conflict
 
 class LifecycleWorker:
     def __init__(self, store, driver, capacity, *, coordinator=None, clock=time.time,
-                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10):
+                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None):
         self.store, self.driver, self.capacity = store, driver, capacity
         self.coordinator = coordinator or Coordinator(store, clock=clock)
         self.clock, self.owner, self.idle_after, self.batch = clock, owner, idle_after, batch
+        self.backup_max_age = backup_max_age   # seconds; None leaves backup scheduling to the operator
 
     def _rows(self, state):
         with self.store.connect() as con:
@@ -50,8 +51,31 @@ class LifecycleWorker:
                                       count('waiting_for_approval') + count('paused'), bool(busy_op)), cell['generation']))
         return out
 
+    def enqueue_due_backups(self, max_age=20 * 3600):
+        """A stopped cell with no completed backup in the last `max_age` seconds gets a backup request.
+
+        Running cells cannot be archived consistently; the idle-sleep policy stops them, and the
+        monitor flags any tenant whose newest backup is stale.
+        """
+        queued, now = 0, self.clock()
+        with self.store.connect() as con:
+            due = []
+            for cell in con.execute("SELECT c.account_id,d.generation FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id "
+                                    "WHERE c.observed_state='stopped'").fetchall():
+                if con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')", (cell['account_id'],)).fetchone():
+                    continue   # something is already in flight for this account
+                last = con.execute("SELECT max(d.updated_at) FROM operations o JOIN lifecycle_details d ON d.account_id=o.account_id AND d.operation_id=o.id "
+                                   "WHERE o.account_id=? AND o.kind='backup' AND o.state='completed'", (cell['account_id'],)).fetchone()[0]
+                if not last or now - float(last) > max_age: due.append((cell['account_id'], cell['generation']))
+        for account, generation in due:
+            try:
+                self.coordinator.request_system(account, key=f'backup-{generation}-{int(now) // 3600}', generation=generation, kind='backup'); queued += 1
+            except (Conflict, NotFound):
+                pass
+        return queued
+
     def tick(self):
-        report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0}
+        report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0}
         for account, operation in self._rows('uncertain'):
             try:
                 if self.coordinator.reconcile(self.driver, account, operation):
@@ -79,4 +103,5 @@ class LifecycleWorker:
                     report['drained'] += 1
                 except (Conflict, NotFound):
                     pass
+        if self.backup_max_age: report['backups_queued'] = self.enqueue_due_backups(self.backup_max_age)
         return report

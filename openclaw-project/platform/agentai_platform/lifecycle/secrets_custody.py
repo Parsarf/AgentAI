@@ -90,6 +90,15 @@ class SecretStore:
             raise CustodyError('provider key already issued')
         self._create(tenant, 'provider-key', key)
 
+    def replace_provider_key(self, tenant, key):
+        """Atomic swap used by rotation: the new key is durable before the old one is revoked."""
+        if not TOKEN.fullmatch(key): raise CustodyError('invalid secret value')
+        directory = self._dir(tenant, create=True)
+        tmp = directory / 'provider-key.new'
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as handle: handle.write(key + '\n')
+        os.replace(tmp, directory / 'provider-key')
+
     def destroy(self, tenant):
         """Remove exactly this tenant's secrets (delete and retention purge)."""
         path = self._dir(tenant)

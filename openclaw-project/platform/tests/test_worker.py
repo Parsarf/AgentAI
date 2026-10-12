@@ -105,3 +105,26 @@ class CapacityChecks(unittest.TestCase):
         self.assertEqual(self.cap(13.2,cpus=2).admitted_slots,0)
         self.assertEqual(self.cap(13.2,disk_gib=25).admitted_slots,0)
 if __name__=='__main__': unittest.main()
+
+
+class BackupSchedulingChecks(unittest.TestCase):
+    setUp, worker, request, state, op_state, start_cell = (WorkerChecks.setUp, WorkerChecks.worker, WorkerChecks.request, WorkerChecks.state,
+                                                           WorkerChecks.op_state, WorkerChecks.start_cell)
+    def quiet(self): return self.worker(idle_after=10**12)
+    def test_stopped_cells_get_one_backup_request_and_running_cells_none(self):
+        self.request('create'); self.quiet().tick()
+        self.assertEqual(self.quiet().enqueue_due_backups(), 1)
+        self.assertEqual(self.quiet().enqueue_due_backups(), 0)                               # pending request already counts
+        self.quiet().tick()
+        with self.store.connect() as con: self.assertEqual(con.execute("SELECT state FROM operations WHERE kind='backup'").fetchone()[0], 'completed')
+        self.assertEqual(self.quiet().enqueue_due_backups(), 0)                               # fresh backup exists
+        self.now += 21 * 3600; self.assertEqual(self.quiet().enqueue_due_backups(), 1)        # stale again
+    def test_scheduling_is_off_unless_configured_and_running_cells_are_never_backed_up(self):
+        self.request('create'); self.quiet().tick()
+        self.assertEqual(self.quiet().tick()['backups_queued'], 0)                            # default: no automatic backups
+        with self.store.connect() as con: self.assertEqual(con.execute("SELECT count(*) FROM operations WHERE kind='backup'").fetchone()[0], 0)
+        scheduled = self.worker(idle_after=10**12, backup_max_age=20 * 3600); self.assertEqual(scheduled.tick()['backups_queued'], 1)
+        scheduled.tick(); self.request('start'); self.quiet().tick()
+        self.assertEqual(self.quiet().enqueue_due_backups(), 0)
+        with self.assertRaises(ValueError): self.engine.request_system('a', key='k9', generation=1, kind='delete')
+        with self.assertRaises(Conflict): self.engine.request_system('a', key='k8', generation=1, kind='backup')   # running: refused
