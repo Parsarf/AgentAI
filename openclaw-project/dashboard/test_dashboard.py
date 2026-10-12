@@ -285,6 +285,50 @@ class FeatureSwitches(unittest.TestCase):
         self.assertEqual(source.count('json.dump({"enabled"'), 1)             # only write_jev_plugin_file
 
 
+class RoutingControls(FeatureSwitches):
+    """Routing settings: validated, audited, and always switch-offable."""
+
+    def setUp(self):
+        super().setUp()
+        self.saved.update({k: getattr(app, k) for k in ("ROUTING_DIR", "ROUTING_FILE", "ROUTING_KEY")})
+        d = self.tmp.name
+        app.ROUTING_DIR = os.path.join(d, "routing"); app.ROUTING_FILE = os.path.join(app.ROUTING_DIR, "routing.json")
+        app.ROUTING_KEY = os.path.join(app.ROUTING_DIR, "typesafe.key")
+
+    def test_save_validates_audits_and_never_enables_canary(self):
+        ok, msg = app.routing_save({"enabled": "on", "automatic": "0.9", "review": "0.7", "route_claude": "on", "route_deterministic": "on"})
+        self.assertTrue(ok, msg)
+        cfg = json.load(open(app.ROUTING_FILE))
+        self.assertEqual((cfg["enabled"], cfg["mode"], cfg["canary_percent"], cfg["confidence"]["automatic"]), (True, "shadow", 0, 0.9))
+        self.assertEqual(oct(os.stat(app.ROUTING_FILE).st_mode & 0o777), "0o600")
+        self.assertEqual(self.audit_lines()[-1]["action"], "routing-save")
+
+    def test_bad_values_are_refused_and_leave_the_file_alone(self):
+        app.routing_save({"enabled": "on", "route_claude": "on"})
+        before = open(app.ROUTING_FILE).read()
+        for bad in ({"automatic": "0.5", "review": "0.9"}, {"max_task_cost_usd": "50"}, {"automatic": "abc"}, {"max_escalations": "-1"}):
+            ok, _ = app.routing_save({"enabled": "on", "route_claude": "on", **bad})
+            self.assertFalse(ok)
+        self.assertEqual(open(app.ROUTING_FILE).read(), before)
+
+    def test_rollback_turns_config_and_switch_off_and_page_renders(self):
+        self.facts(routing_key_present=True)
+        open(app.ROUTING_KEY, "w").close() if os.path.isdir(app.ROUTING_DIR) else None
+        app.routing_save({"enabled": "on", "route_claude": "on"})
+        sw = app.switch_store(); sw.facts = lambda: {"routing_key_present": True}
+        sw.confirm("jev_routing", "data_handling", "owner"); sw.set("jev_routing", True, "owner")
+        ok, _ = app.routing_rollback()
+        self.assertTrue(ok)
+        self.assertFalse(json.load(open(app.ROUTING_FILE))["enabled"])
+        self.assertFalse(app.switch_store().describe("jev_routing")["recorded_on"])
+        app.routing_report = lambda: {"total_routed": 0, "classified": 0, "unavailable_or_rejected": 0, "jev_selected_percent": None,
+            "claude_escalation_percent": None, "would_change_route_percent": None, "success_percent": None, "failed_count": 0,
+            "avg_task_cost_usd": None, "avg_task_seconds": None, "avg_classifier_latency_ms": None,
+            "confidence_distribution": {"<0.65": 0}, "by_recommended_route": {}, "classifier_cost_usd_estimated": 0, "estimated_monthly_savings_usd": None}
+        html = app.routing_page(self.rec)
+        self.assertIn("Emergency rollback", html); self.assertIn("not measured yet", html); self.assertNotIn("typesafe.key", html)
+
+
 class FeatureSwitchesOverHttp(FeatureSwitches):
     """Drives the real request handler: login, page, CSRF, refused turn-on, turn-off."""
 

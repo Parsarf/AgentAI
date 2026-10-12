@@ -13,9 +13,10 @@ from .request_queue import RequestClaim
 
 
 class RequestWorker:
-    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time, abandon_after=1800):
+    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time, abandon_after=1800, shadow=None):
         self.queue, self.driver, self.capacity, self.owner = queue, driver, capacity, owner
         self.lease_seconds, self.clock, self.abandon_after = lease_seconds, clock, abandon_after
+        self.shadow = shadow   # optional observer; can never alter or block execution
 
     def _uncertain_claim(self):
         with self.queue.store.connect() as con:
@@ -45,8 +46,13 @@ class RequestWorker:
         claim = self.queue.claim(owner=self.owner, capacity=self.capacity(), lease_seconds=self.lease_seconds)
         if claim is None:
             return {'ran': 0}
+        if self.shadow is not None:
+            self.shadow.before(claim)
         try:
-            finished = self.queue.finish(claim, self.driver.execute(claim))
+            receipt = self.driver.execute(claim)
+            finished = self.queue.finish(claim, receipt)
+            if self.shadow is not None:
+                self.shadow.after(claim, receipt)
         except Exception:
             self.queue.uncertain(claim)
             raise

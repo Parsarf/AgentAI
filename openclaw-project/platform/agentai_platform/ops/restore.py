@@ -22,7 +22,7 @@ RESTORE = ['projects', 'conversations', 'project_files', 'artifacts', 'memory_en
 # Live wins; only rows missing live are added (then neutralized).
 MERGE = ['tasks', 'customer_requests', 'chat_messages', 'chat_deliveries', 'events', 'browser_profiles']
 # Append-only history: add what is missing, never change or remove anything.
-LEDGER = ['usage_entries', 'provider_receipts', 'task_reservations', 'audit_events', 'optimization_calls', 'optimization_activations',
+LEDGER = ['usage_entries', 'provider_receipts', 'task_reservations', 'audit_events', 'optimization_calls', 'optimization_activations', 'route_decisions',
           'accounts_audit', 'accounts_tombstone']
 # Never restored: identity, billing and entitlements (current provider state wins), host-bound lifecycle, channels,
 # tickets, streams, connector grants and every global (non-account) table.

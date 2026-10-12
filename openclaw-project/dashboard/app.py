@@ -44,6 +44,26 @@ def _load_switches():
 
 switches = _load_switches()
 
+
+def _load_routing_config():
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "routing_config.py"),
+                      os.path.join(here, "..", "platform", "agentai_platform", "routing", "config.py")):
+        if os.path.exists(candidate):
+            spec = importlib.util.spec_from_file_location("owner_routing_config", candidate)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["owner_routing_config"] = module
+            spec.loader.exec_module(module)
+            return module
+    return None
+
+
+routing_config = _load_routing_config()
+ROUTING_DIR = "/var/lib/agentai-platform/routing"
+ROUTING_FILE = os.path.join(ROUTING_DIR, "routing.json")
+ROUTING_KEY = os.path.join(ROUTING_DIR, "typesafe.key")
+
 BASE = "/opt/openclaw-production"
 DIR = os.path.join(BASE, "dashboard")
 AUDIT_DIR = os.path.join(DIR, "audit")
@@ -540,7 +560,7 @@ def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
                "<a href=/sessions>Sessions</a><a href=/files>Files</a>"
                "<a href=/approvals>Approvals</a><a href=/schedules>Schedules</a>"
                "<a href=/memory>Memory</a><a href=/integrations>Integrations</a>"
-               "<a href=/switches>Feature switches</a>"
+               "<a href=/switches>Feature switches</a><a href=/routing>Routing</a>"
                "<a href=/costs>Costs</a><a href=/audit>Audit</a></nav>")
         logout = (f"<form method=post action=/logout class=inline>"
                   f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
@@ -757,6 +777,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/switches":
             flash = q.get("msg", [""])[0][:200]
             return self._send(200, page("feature switches", switches_page(rec), rec, flash))
+
+        if path == "/routing":
+            flash = q.get("msg", [""])[0][:200]
+            return self._send(200, page("routing", routing_page(rec), rec, flash))
 
         if path == "/sessions":
             s = sessions_data()
@@ -1069,6 +1093,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(400, "unsupported layer or value")
             ok, message = apply_switch("research_optimization", value == "on")
             return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+        if path == "/routing-save":
+            ok, message = routing_save(form)
+            return self._redirect("/routing?msg=" + urllib.parse.quote(message))
+        if path == "/routing-rollback":
+            ok, message = routing_rollback()
+            return self._redirect("/routing?msg=" + urllib.parse.quote(message))
         self._deny(404, "not found")
 
     def _static(self, name: str, ctype: str) -> None:
@@ -1089,6 +1119,7 @@ def live_facts() -> dict:
     facts = switches.load_facts(SWITCH_FACTS)
     rc, _ = run(["docker", "exec", GATEWAY, "test", "-e", "/run/secrets/phase4a-jev-eval.key"], timeout=15)
     facts["typesafe_key_present"] = rc == 0
+    facts["routing_key_present"] = os.path.isfile(ROUTING_KEY)
     return facts
 
 
@@ -1190,6 +1221,130 @@ def switches_page(rec: dict, flash: str = "") -> str:
             "turning one ON only works when its confirmations are ticked and its setup is really finished, and turning one "
             "OFF always works immediately. Every change is read back and written to the audit log.</p>")
     return "<h2>Feature switches</h2>" + note + drift + "<div class=grid style='grid-template-columns:1fr'>" + "".join(cards) + "</div>"
+
+
+def routing_load() -> dict:
+    try:
+        return routing_config.load(ROUTING_FILE)
+    except Exception:
+        return routing_config.validate(routing_config._merge(routing_config.DEFAULTS, {}))
+
+
+def routing_write(cfg: dict) -> bool:
+    """Atomic write, readable by the app user only; returns whether the readback matches."""
+    import pwd
+    try:
+        os.makedirs(ROUTING_DIR, exist_ok=True)
+        try:
+            app = pwd.getpwnam("agentai-platform") if os.geteuid() == 0 else None
+        except KeyError:
+            app = None
+        if app:
+            os.chown(ROUTING_DIR, app.pw_uid, app.pw_gid)
+        os.chmod(ROUTING_DIR, 0o700)
+        tmp = ROUTING_FILE + ".new"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f, indent=1, sort_keys=True)
+        if app:
+            os.chown(tmp, app.pw_uid, app.pw_gid)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, ROUTING_FILE)
+        return routing_config.load(ROUTING_FILE) == cfg
+    except (OSError, KeyError, ValueError):
+        return False
+
+
+def routing_save(form: dict) -> tuple[bool, str]:
+    def flag(name): return form.get(name) == "on"
+    try:
+        override = {
+            "enabled": flag("enabled"), "mode": "shadow", "canary_percent": 0,
+            "confidence": {"automatic": float(form.get("automatic", "0.85")), "review": float(form.get("review", "0.65"))},
+            "escalation": {"enabled": True, "max_escalations": int(form.get("max_escalations", "2")),
+                           "max_retries_per_step": int(form.get("max_retries_per_step", "2"))},
+            "limits": {"max_task_duration_seconds": int(form.get("max_task_duration_seconds", "1800")),
+                       "max_task_cost_usd": float(form.get("max_task_cost_usd", "1.0"))},
+            "routes": {r: flag("route_" + r) for r in routing_config.ROUTES if r != "abstain"},
+        }
+        cfg = routing_config.validate(routing_config._merge(routing_config.DEFAULTS, override))
+    except (ValueError, routing_config.ConfigError) as e:
+        audit("routing-save", "settings", "refused")
+        return False, "not saved: " + str(e)[:150]
+    if not routing_write(cfg):
+        return False, "the settings file did not confirm the change"
+    if not audit("routing-save", "settings", json.dumps({"enabled": cfg["enabled"], "mode": cfg["mode"]})):
+        return False, "audit write failed — change not recorded as confirmed"
+    return True, "Routing settings saved" + ("" if cfg["enabled"] else " (routing is OFF)")
+
+
+def routing_rollback() -> tuple[bool, str]:
+    """Emergency rollback: routing config off AND the owner switch off. Always allowed."""
+    cfg = routing_load()
+    cfg["enabled"] = False
+    wrote = routing_write(cfg)
+    try:
+        switch_store().set("jev_routing", False, "owner")
+    except switches.SwitchError:
+        pass
+    audit("routing-rollback", "all", "ok" if wrote else "config write failed")
+    return wrote, "Routing is OFF everywhere" if wrote else "switch is off, but the settings file could not be updated"
+
+
+def routing_report() -> dict | None:
+    env = {**os.environ, "PYTHONPATH": "/opt/agentai-platform/current"}
+    try:
+        done = subprocess.run(["python3", "-m", "agentai_platform.routing.report_cli"], capture_output=True, text=True,
+                              timeout=25, cwd="/opt/agentai-platform/current", env=env)
+        return json.loads(done.stdout) if done.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def routing_page(rec: dict) -> str:
+    cfg = routing_load()
+    store = switch_store()
+    facts = live_facts()
+    store.facts = lambda f=facts: f
+    sw = store.describe("jev_routing")
+    state = "ON (shadow: records only)" if sw["effective_on"] and cfg["enabled"] else "OFF"
+    csrf = f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+    r = routing_report()
+    if r is None:
+        stats = "<p class=muted>Statistics are not available right now.</p>"
+    else:
+        def v(x, suffix=""): return "—" if x is None else f"{x}{suffix}"
+        rows = [("Requests seen (30 days)", v(r["total_routed"])), ("Classified by JEV", v(r["classified"])),
+                ("JEV unavailable or rejected", v(r["unavailable_or_rejected"])),
+                ("Would use a lightweight route", v(r["jev_selected_percent"], "%")),
+                ("Would escalate to Claude", v(r["claude_escalation_percent"], "%")),
+                ("Would change today's route", v(r["would_change_route_percent"], "%")),
+                ("Success rate of those requests", v(r["success_percent"], "%")), ("Failed requests", v(r["failed_count"])),
+                ("Average real task cost", v(r["avg_task_cost_usd"], " USD")), ("Average task time", v(r["avg_task_seconds"], " s")),
+                ("Average JEV answer time", v(r["avg_classifier_latency_ms"], " ms")),
+                ("Confidence spread", esc(", ".join(f"{k}: {n}" for k, n in r["confidence_distribution"].items()))),
+                ("Recommended routes", esc(", ".join(f"{k}: {n}" for k, n in r["by_recommended_route"].items()) or "—")),
+                ("Routing cost so far (estimate)", v(r["classifier_cost_usd_estimated"], " USD")),
+                ("Estimated monthly savings", "not measured yet — needs the benchmark")]
+        stats = table(["Measure", "Value"], [(esc(a), b if a in ("Confidence spread", "Recommended routes") else esc(b)) for a, b in rows], "no data")
+    def chk(name, on): return f"<label class=small><input type=checkbox name={name} {'checked' if on else ''}> {name.replace('route_', '')}</label> "
+    routes = "".join(chk("route_" + k, cfg["routes"].get(k, False)) for k in routing_config.ROUTES if k != "abstain")
+    form = (f"<form method=post action=/routing-save>{csrf}"
+            f"<p>{chk('enabled', cfg['enabled'])} <b>Routing on</b> (also needs the switch below)</p>"
+            f"<p class=small>Mode: <b>shadow</b> — recommendations are recorded, nothing about how requests run changes. Canary and live routing are not built yet, so there is no rollout control to move.</p>"
+            f"<p class=small>Routes JEV may recommend (only <b>claude</b> is wired end to end today; others fall back to it): {routes}</p>"
+            f"<p class=small>Send straight through at confidence ≥ <input name=automatic value='{cfg['confidence']['automatic']}' size=4> "
+            f"· run extra checks from <input name=review value='{cfg['confidence']['review']}' size=4> · below that, use the stronger model. "
+            f"<span class=mut>(starting values, not yet calibrated)</span></p>"
+            f"<p class=small>Max escalations <input name=max_escalations value='{cfg['escalation']['max_escalations']}' size=2> "
+            f"· retries per step <input name=max_retries_per_step value='{cfg['escalation']['max_retries_per_step']}' size=2> "
+            f"· max minutes per task <input name=max_task_duration_seconds value='{cfg['limits']['max_task_duration_seconds']}' size=5> seconds "
+            f"· max spend per task $<input name=max_task_cost_usd value='{cfg['limits']['max_task_cost_usd']}' size=4></p>"
+            f"<button type=submit>Save routing settings</button></form>")
+    rollback = (f"<form method=post action=/routing-rollback class=inline>{csrf}<button type=submit class=danger>Emergency rollback: turn routing off everywhere</button></form>")
+    return ("<h2>Smart routing (JEV)</h2>"
+            f"<div class=card><b>Status: {esc(state)}</b><div class=small>Owner switch: {esc(sw['status'])}"
+            + ("" if sw["effective_on"] else " — set it on the <a href=/switches>Feature switches</a> page (needs the data-terms tick and the key installed)")
+            + f".</div>{form}{rollback}</div><h3>What JEV recommended (last 30 days)</h3>" + stats)
 
 
 def jev_research_enabled() -> bool | None:

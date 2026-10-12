@@ -25,6 +25,7 @@ SWITCH_DIR = "/opt/openclaw-production/feature-switches"
 FILES = {
     REPO / "openclaw-project/dashboard/app.py": DASH + "/app.py",
     REPO / "openclaw-project/platform/agentai_platform/switches.py": DASH + "/switches.py",
+    REPO / "openclaw-project/platform/agentai_platform/routing/config.py": DASH + "/routing_config.py",
 }
 STAMP = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 BACKUP = f"{DASH}.bak-{STAMP}"

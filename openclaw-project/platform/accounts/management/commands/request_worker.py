@@ -21,7 +21,12 @@ def build_worker(store):
     factory = lambda claim: NativeGateway(BridgeRpc(claim.account_id, settings.CELL_BRIDGE_SOCKET))
     driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store),
                         sleep=time.sleep, heartbeat=queue.heartbeat)
-    return RequestWorker(queue, driver, host_capacity)
+    from agentai_platform.routing.shadow import ShadowRouter
+    from agentai_platform.switches import SwitchStore
+    switches = SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None)
+    shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
+                          switch_on=lambda: switches.is_on('jev_routing'))
+    return RequestWorker(queue, driver, host_capacity, shadow=shadow)
 
 
 class Command(BaseCommand):

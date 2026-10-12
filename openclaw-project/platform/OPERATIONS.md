@@ -154,3 +154,8 @@ The lifecycle worker then creates the cell (capped volume, gateway token, its ow
 - *Cell killed under load*: cells are capped at 2 GiB (a 1 GiB cap was OOM-killed in a real turn).
 - Two services must **not** gain mount-namespace sandboxing (`ProtectKernelModules`, `ProtectKernelLogs`, `PrivateTmp`, ...): `agentai-supervisor-native` mounts loop volumes that the cell engine has to see.
 - The cell engine does not manage iptables (two engines on one host clobbered each other's chains on 2026-10-12). Cell egress is the nft table `agentai_cells` plus the `ufw route`/`ufw allow` rules written by `agentai-cells-routes`.
+
+
+## 13. Smart routing (JEV, shadow mode)
+
+Dashboard → **Routing**: status, what JEV recommended over 30 days, settings, and *Emergency rollback*. It needs the `jev_routing` switch (data-terms tick) and the key at `/var/lib/agentai-platform/routing/typesafe.key` (owner `agentai-platform`, mode 0600). In this version it **only records**; requests run exactly as before. Each request costs about $0.00003 for the classification. Details and limits: `plans/product/routing.md`. Re-run the classification benchmark with `python3 -m agentai_platform.routing.bench --key-file <key> --out <file>`.
