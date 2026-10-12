@@ -5,6 +5,7 @@ from . import telegram as tg
 from . import streams as st
 from . import api as api
 from . import uishell as shell
+from . import genui as gen
 urlpatterns=[
  path('healthz',v.health),path('readyz',v.ready),path('',v.account_page),path('account/',v.account_page),
  path('account/ui',v.assets),path('account/ui/',v.assets),path('account/chat/',ch.chat_page),path('account/<str:page>/',v.account_page),path('auth/login',v.signin),path('auth/logout',v.signout),
@@ -46,6 +47,8 @@ urlpatterns += [
  path('v1/conversations',ch.chat_conversations),path('v1/conversations/<str:conversation_id>',ch.chat_conversations),
  path('v1/conversations/<str:conversation_id>/messages',ch.chat_messages),path('v1/conversations/<str:conversation_id>/archive',ch.chat_archive),
  path('v1/conversations/<str:conversation_id>/send',ch.chat_send),
+ path('v1/conversations/<str:conversation_id>/blocks',gen.blocks),
+ path('v1/blocks/<str:block_id>/state',gen.block_state),path('v1/blocks/<str:block_id>/submit',gen.block_submit),path('v1/blocks/<str:block_id>/launch',gen.block_launch),
  path('v1/tasks/<str:request_id>',ch.chat_task),path('v1/tasks/<str:request_id>/cancel',ch.chat_cancel),
  path('v1/account/telegram/link',tg.link),path('v1/account/telegram/unlink',tg.unlink),
  path('v1/account/telegram',tg.bindings),path('v1/telegram/webhook',tg.webhook),

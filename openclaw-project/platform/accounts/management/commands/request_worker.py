@@ -9,6 +9,8 @@ from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat import ChatDriver
 from agentai_platform.events import EventService
 from agentai_platform.gateway import NativeGateway
+from agentai_platform.genui.runtime import GenUiRuntime
+from agentai_platform.genui.store import BlockStore
 from agentai_platform.lifecycle.profiles import host_capacity
 from agentai_platform.request_queue import RequestQueue
 from agentai_platform.request_worker import RequestWorker
@@ -20,7 +22,7 @@ def build_worker(store):
     queue = RequestQueue(store, require_cell=True)
     factory = lambda claim: NativeGateway(BridgeRpc(claim.account_id, settings.CELL_BRIDGE_SOCKET))
     driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store),
-                        sleep=time.sleep, heartbeat=queue.heartbeat)
+                        sleep=time.sleep, heartbeat=queue.heartbeat, genui=GenUiRuntime(store, BlockStore(store)))
     from agentai_platform.routing.shadow import ShadowRouter
     from agentai_platform.switches import SwitchStore
     switches = SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None)

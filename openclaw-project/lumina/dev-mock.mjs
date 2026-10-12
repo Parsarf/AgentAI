@@ -12,6 +12,10 @@ const requests = [
   { id: 'r2', message: 'Summarize this research paper on retrieval augmented generation', state: 'completed', cancel_requested: 0, result: 'Summary…', created_epoch: now() - 90000 },
   { id: 'r1', message: 'Set up daily stock market report', state: 'failed', cancel_requested: 0, result: null, created_epoch: now() - 200000 },
 ];
+const ph = (id, title, deps = [], extra = {}) => ({ id, title, description: 'Describe the work for this phase.', enabled: true, optional: false, requiresApproval: false, dependsOn: deps, ...extra });
+const PLAN = { schemaVersion: '1.0', type: 'task_plan', title: 'Online store', summary: 'Plan for a small e-commerce site with sign-in and payments.', phases: [
+  ph('analyze', 'Analyze requirements'), ph('design', 'Design architecture', ['analyze']), ph('frontend', 'Build frontend', ['design']), ph('backend', 'Implement backend', ['design']),
+  ph('test', 'Test application', ['frontend', 'backend']), ph('deploy', 'Deploy application', ['test'], { optional: true, requiresApproval: true })] };
 const messages = [
   { id: 1, provenance: 'customer', content: 'What is 17 times 3?', created_at: '2026-10-12T20:25:00Z' },
   { id: 2, provenance: 'agent', content: '51', created_at: '2026-10-12T20:25:30Z' },
@@ -38,6 +42,18 @@ http.createServer(async (req, res) => {
       features: { chat: true, execution: true, files: false, uploads: false, telegram: false, connectors: false, billing_mode: 'open', requests: true, usage: true }, limits: { max_message_chars: 16000 } });
     if (p === '/v1/requests') return json(res, 200, { requests });
     if (p === '/v1/conversations') return json(res, 200, { conversations: [{ id: 'c1', project_id: 'p1' }] });
+    if (p.endsWith('/blocks')) return json(res, 200, { blocks: [
+      { id: 'b1', conversation_id: 'c1', anchor_message_id: 1, kind: 'form', schema_version: '1.0', version: 3, status: 'draft', launched_request_id: null,
+        spec: { schemaVersion: '1.0', type: 'form', title: 'Shape your website', description: 'A few choices that change the plan.', submit: { label: 'Create the plan', action: 'submit_requirements' }, fields: [
+          { id: 'kind', type: 'segmented', label: 'What kind of website?', required: true, default: 'ecommerce', options: [{ label: 'Business', value: 'business' }, { label: 'E-commerce', value: 'ecommerce' }, { label: 'Portfolio', value: 'portfolio' }, { label: 'SaaS', value: 'saas' }] },
+          { id: 'style', type: 'segmented', label: 'Visual style', default: 'futuristic', options: [{ label: 'Minimal', value: 'minimal' }, { label: 'Modern', value: 'modern' }, { label: 'Futuristic', value: 'futuristic' }] },
+          { id: 'accounts', type: 'toggle', label: 'Include user accounts and sign-in', default: true },
+          { id: 'payments', type: 'select', label: 'Payment provider', default: 'stripe', showIf: { field: 'kind', equals: 'ecommerce' }, options: [{ label: 'Stripe', value: 'stripe' }, { label: 'PayPal', value: 'paypal' }] },
+          { id: 'catalog', type: 'slider', label: 'Products in the first catalog', min: 1, max: 500, step: 1, default: 40, unit: 'items', showIf: { field: 'kind', equals: 'ecommerce' } }] },
+        state: { answers: {} } },
+      { id: 'b2', conversation_id: 'c1', anchor_message_id: 2, kind: 'task_plan', schema_version: '1.0', version: 2, status: 'draft', launched_request_id: null,
+        spec: PLAN, state: { plan: PLAN, requirements: {}, revision: 1 } }] });
+    if (p.endsWith('/state')) { const b = await body(req); return json(res, 200, { block: { version: (b.version || 1) + 1 } }); }
     if (p.endsWith('/messages')) return json(res, 200, { messages, tasks: [] });
     if (p.endsWith('/send')) { const b = await body(req); requests.unshift({ id: 'n' + Date.now(), message: b.message, state: 'waiting', cancel_requested: 0, result: null, created_epoch: now() }); return json(res, 202, { request: { admission: 'reserved' } }); }
     if (p.endsWith('/events')) return json(res, 200, { events });

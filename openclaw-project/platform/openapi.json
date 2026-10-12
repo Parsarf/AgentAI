@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "AgentAI private account API",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Invite-only account API. Everything a replacement front end needs: /v1/csrf, /auth/*, /v1/app, then the resource endpoints. See UI_CONTRACT.md. Customer execution is live when features.execution is true."
  },
  "servers": [
@@ -1967,6 +1967,15 @@
          },
          "key": {
           "type": "string"
+         },
+         "mode": {
+          "type": "string",
+          "enum": [
+           "auto",
+           "text",
+           "plan"
+          ],
+          "description": "auto picks text, a requirements form or a plan; text forces a plain answer"
          }
         },
         "required": [
@@ -2690,6 +2699,215 @@
      }
     },
     "security": []
+   }
+  },
+  "/v1/conversations/{id}/blocks": {
+   "get": {
+    "summary": "Interactive blocks (forms, task plans) of a conversation, with their saved state",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/state": {
+   "post": {
+    "summary": "Autosave edits to a draft block (optimistic version check; validated against its specification)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer"
+         },
+         "state": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "state"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/submit": {
+   "post": {
+    "summary": "Submit a requirements form: queues a plan request using the answers (idempotent per version)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "required": [
+         "version"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/launch": {
+   "post": {
+    "summary": "Approve and launch a task plan: stores the approved revision and queues the execution request (idempotent)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "required": [
+         "version"
+        ]
+       }
+      }
+     }
+    }
    }
   }
  },

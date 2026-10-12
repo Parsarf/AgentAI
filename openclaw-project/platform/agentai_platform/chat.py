@@ -16,6 +16,9 @@ from .adapters import CapabilityUnavailable
 from .budget import BudgetDenied, BudgetLedger
 from .events import EventService
 from .gateway import SyntheticGateway
+from .genui import intent as gen_intent, prompts as gen_prompts, schema as gen_schema
+from .genui.runtime import GenUiRuntime
+from .genui.store import BlockStore
 from .lifecycle.coordinator import Coordinator, identifier
 from .lifecycle.types import Conflict
 from .request_queue import RequestQueue, RequestClaim, RequestReceipt
@@ -73,6 +76,7 @@ class ChatService:
         self.pricer = pricer
         self.clock = clock
         self.coordinator = Coordinator(store, clock=clock)
+        self.blocks = BlockStore(store, clock=clock)
         self.max_conversations_per_project = max_conversations_per_project
 
     def create_conversation(self, principal: Principal, project_id: str):
@@ -143,15 +147,58 @@ class ChatService:
             self.coordinator._audit(con, principal.account_id, principal.actor_id, project, 'chat.project_create', 'completed')
             return {'id': project, 'name': name}
 
+    def _admit(self, principal, result, conversation_id, key, message_for_cost):
+        with self.coordinator.transaction() as con:
+            row = con.execute('SELECT project_id FROM customer_requests WHERE account_id=? AND id=?',
+                              (principal.account_id, result['id'])).fetchone()
+            if not row:
+                raise NotFound('unavailable')
+            project_id = row['project_id']
+        try:
+            amount, price_version = self.pricer.reservation(message_for_cost)
+        except CapabilityUnavailable:
+            return None, None, project_id
+        try:
+            self.ledger.admit(principal, task=result['id'], project=project_id, conversation=conversation_id,
+                              key=key, amount_microusd=amount, upper_bound_verified=True)
+        except Exception:
+            self.queue.cancel(principal, result['id'])
+            raise
+        return amount, price_version, project_id
+
+    def _local_form(self, principal, conversation_id, message, key, template):
+        """A requirements form needs no model call: record the customer's message and attach the template. Idempotent by key."""
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            existing = con.execute('SELECT id FROM ui_blocks WHERE account_id=? AND idempotency_key=?', (principal.account_id, 'form-' + key)).fetchone()
+            if not existing:
+                cur = con.execute('''INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content) VALUES (?,?,NULL,'customer',?)''',
+                                  (principal.account_id, conversation_id, message))
+                block = self.blocks.create_form(principal.account_id, conversation_id, template, key='form-' + key, anchor_message_id=cur.lastrowid, con=con)
+                self.coordinator._audit(con, principal.account_id, principal.actor_id, block['id'], 'chat.form_created', 'completed')
+            else:
+                block = self.blocks.get(principal, existing['id'], con)
+        return {'id': None, 'state': 'completed', 'response_type': 'interactive', 'block': block, 'conversation_id': conversation_id,
+                'execution_enabled': self.execution, 'admission': 'none', 'price_version': None}
+
     def send(self, principal: Principal, *, conversation_id: str, message: str, key: str,
-             provenance: str = 'customer'):
+             provenance: str = 'customer', mode: str = 'auto'):
         """One actionable request per send; admission via Phase 5 before any
         native effect. A repeat with the same key never starts a second task."""
         identifier(key)
         if not isinstance(message, str) or not message.strip() or len(message) > 16000 or '\x00' in message:
             raise ValueError('invalid message')
+        if mode not in ('auto', 'text', 'plan'):
+            raise ValueError('invalid mode')
         self.conversation(principal, conversation_id)
-        result = self.queue.submit(principal, message=message, key=key, conversation_id=conversation_id)
+        kind = gen_intent.detect(message, mode=mode) if provenance == 'customer' else 'text'
+        if kind == 'requirements':
+            template = gen_intent.requirements_template(message)
+            if template:
+                return self._local_form(principal, conversation_id, message, key, template)
+            kind = 'plan'
+        result = self.queue.submit(principal, message=message, key=key, conversation_id=conversation_id,
+                                   intent='plan' if kind == 'plan' else 'chat')
         with self.coordinator.transaction() as con:
             row = con.execute('SELECT project_id FROM customer_requests WHERE account_id=? AND id=?',
                               (principal.account_id, result['id'])).fetchone()
@@ -169,7 +216,7 @@ class ChatService:
         except CapabilityUnavailable:
             # No verified route: the request waits unfunded, execution stays off.
             return {**result, 'conversation_id': conversation_id, 'execution_enabled': False,
-                    'admission': 'route_unconfigured', 'price_version': None}
+                    'admission': 'route_unconfigured', 'price_version': None, 'response_type': 'plan' if kind == 'plan' else 'text'}
         try:
             self.ledger.admit(principal, task=result['id'], project=project_id, conversation=conversation_id,
                               key=key, amount_microusd=amount, upper_bound_verified=True)
@@ -179,7 +226,72 @@ class ChatService:
             self.queue.cancel(principal, result['id'])
             raise
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,
-                'admission': 'reserved', 'price_version': price_version}
+                'admission': 'reserved', 'price_version': price_version, 'response_type': 'plan' if kind == 'plan' else 'text'}
+
+    # -- generative UI operations (the only things a block button can do) -------------------------------------------
+    def _spawn(self, principal, conversation_id, *, message, key, intent, context, shown):
+        """Queue a request created by a block action, show `shown` as the customer's turn, and admit it like any send."""
+        result = self.queue.submit(principal, message=message, key=key, conversation_id=conversation_id, intent=intent, context=context)
+        with self.coordinator.transaction() as con:
+            if not con.execute('SELECT 1 FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance=\'customer\'',
+                               (principal.account_id, conversation_id, result['id'])).fetchone():
+                con.execute('INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content) VALUES (?,?,?,\'customer\',?)',
+                            (principal.account_id, conversation_id, result['id'], shown[:16000]))
+        amount, price_version, _project = self._admit(principal, result, conversation_id, key, message)
+        return {**result, 'conversation_id': conversation_id, 'execution_enabled': amount is not None,
+                'admission': 'reserved' if amount is not None else 'route_unconfigured'}
+
+    def submit_block(self, principal: Principal, block_id: str, version: int):
+        """Submit a requirements form: validates answers, then asks the runtime for a plan using them. Idempotent per version."""
+        block = self.blocks.get(principal, block_id)
+        if block['kind'] != 'form':
+            raise Conflict('only a form can be submitted')
+        if block['status'] == 'submitted':
+            with self.store.connect() as con:
+                prior = con.execute('SELECT id FROM customer_requests WHERE account_id=? AND idempotency_key=?',
+                                    (principal.account_id, f'plan-{block_id}-{version}')).fetchone()
+            if prior:   # a repeat of the same submission (double click, retry): the same request, nothing new
+                return {'request': self.queue.get(principal, prior['id']), 'block': block}
+        if block['version'] != version or block['status'] != 'draft':
+            raise Conflict('version conflict')
+        answers = gen_schema.validate_answers(block['spec'], block['state'].get('answers', {}), final=True)
+        with self.store.connect() as con:
+            anchor = con.execute('SELECT content FROM chat_messages WHERE account_id=? AND id=?', (principal.account_id, block['anchor_message_id'])).fetchone()
+        original = anchor['content'] if anchor else block['spec']['title']
+        summary = '; '.join(f'{f["label"]}: {answers[f["id"]]}' for f in gen_schema.visible_fields(block['spec'], answers) if f['id'] in answers and answers[f['id']] != '')
+        result = self._spawn(principal, block['conversation_id'], message=original, key=f'plan-{block_id}-{version}', intent='plan',
+                             context={'block': block_id, 'answers': answers}, shown='Requirements submitted. ' + summary)
+        with self.blocks.coordinator.transaction() as con:
+            if block['status'] == 'draft':
+                self.blocks.set_status(con, principal.account_id, block_id, 'submitted', request_id=result['id'])
+        return {'request': result, 'block': self.blocks.get(principal, block_id)}
+
+    def launch_plan(self, principal: Principal, block_id: str, version: int):
+        """Approve and run a plan. The exact approved revision is stored; the runtime executes that revision and nothing else."""
+        block = self.blocks.get(principal, block_id)
+        if block['kind'] != 'task_plan':
+            raise Conflict('only a plan can be launched')
+        if block['version'] != version:
+            raise Conflict('version conflict')
+        if block['status'] == 'launched':
+            return {'request': self.queue.get(principal, block['launched_request_id']), 'block': block}
+        if block['status'] != 'draft':
+            raise Conflict('this plan can no longer be launched')
+        plan = gen_schema.validate_plan(block['state']['plan'], launch=True)
+        revision = block['state']['revision'] + 1
+        with self.blocks.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            con.execute('INSERT OR IGNORE INTO plan_revisions VALUES (?,?,?,?,?,?)',
+                        (principal.account_id, block_id, revision, 'approved', __import__('json').dumps(plan), int(self.clock())))
+        result = self._spawn(principal, block['conversation_id'], message='Launch plan: ' + plan['title'], key=f'launch-{block_id}-{revision}', intent='execute',
+                             context={'block': block_id, 'revision': revision},
+                             shown='Launched the plan "' + plan['title'] + '" with ' + str(sum(1 for p in plan['phases'] if p['enabled'])) + ' phases.')
+        with self.blocks.coordinator.transaction() as con:
+            con.execute('INSERT OR IGNORE INTO plan_launches VALUES (?,?,?,?,?)', (principal.account_id, block_id, revision, result['id'], int(self.clock())))
+            state = dict(block['state']); state['revision'] = revision
+            con.execute('UPDATE ui_blocks SET state_json=? WHERE account_id=? AND id=?', (__import__('json').dumps(state), principal.account_id, block_id))
+            self.blocks.set_status(con, principal.account_id, block_id, 'launched', request_id=result['id'])
+        return {'request': result, 'block': self.blocks.get(principal, block_id)}
 
     def messages(self, principal: Principal, conversation_id: str, *, after: int = 0, limit: int = 100):
         if type(after) is not int or after < 0 or type(limit) is not int or not 1 <= limit <= 100:
@@ -227,7 +339,8 @@ class ChatDriver:
     """
 
     def __init__(self, store, *, ledger: BudgetLedger, gateway_factory, clock=time.time,
-                 events: EventService | None = None, sleep=None, poll_interval=1.5, run_timeout=900, usage_wait=45, heartbeat=None):
+                 events: EventService | None = None, sleep=None, poll_interval=1.5, run_timeout=900, usage_wait=45, heartbeat=None, genui=None):
+        self.genui = genui   # GenUiRuntime: plan/execute prompts and plan-reply handling; None keeps plain chat behaviour
         self.heartbeat = heartbeat   # callable(claim): keeps the queue lease alive during long runs
         self.sleep = sleep if sleep is not None else (lambda seconds: None)
         self.poll_interval, self.run_timeout, self.usage_wait = poll_interval, run_timeout, usage_wait
@@ -277,8 +390,9 @@ class ChatDriver:
             provenance = {'customer': 'customer', 'agent': 'agent', 'assistant': 'agent'}.get(role)
             if provenance == 'customer':
                 con.execute('''UPDATE chat_messages SET native_message_id=? WHERE account_id=? AND conversation_id=?
-                    AND request_id=? AND provenance='customer' AND native_message_id IS NULL''',
-                    (native_id, claim.account_id, claim.conversation_id, claim.request_id))
+                    AND request_id=? AND provenance='customer' AND native_message_id IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM chat_messages o WHERE o.account_id=? AND o.conversation_id=? AND o.native_message_id=?)''',
+                    (native_id, claim.account_id, claim.conversation_id, claim.request_id, claim.account_id, claim.conversation_id, native_id))
             elif provenance == 'agent':
                 added += con.execute('''INSERT OR IGNORE INTO chat_messages(account_id,conversation_id,request_id,provenance,content,native_message_id)
                     VALUES (?,?,?,'agent',?,?)''', (claim.account_id, claim.conversation_id, claim.request_id, content, native_id)).rowcount
@@ -385,6 +499,8 @@ class ChatDriver:
             # Aborted before any native effect; recorded, settled, no retry.
             return self._close(claim, 'cancelled', 'Cancelled before execution')
         self._emit(claim, 'task_started', {'summary': 'Dispatched to the isolated runtime.'})
+        intent, context = self.genui.request_info(claim) if self.genui else ('chat', {})
+        outgoing = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
         before = self._usage_before(gateway)
         if before is not None:
             with self.coordinator.transaction() as con:
@@ -396,7 +512,7 @@ class ChatDriver:
                 with self.coordinator.transaction() as con:
                     con.execute('UPDATE conversations SET native_session_ref=? WHERE account_id=? AND id=?',
                                 (session, claim.account_id, claim.conversation_id))
-            ack = gateway.send(session, operation_id, claim.message)
+            ack = gateway.send(session, operation_id, outgoing)
             with self.coordinator.transaction() as con:
                 self._set_delivery(con, claim, attempt, 'acknowledged', run_id=ack['run_id'], ack_seq=ack['message_seq'])
             self._emit(claim, 'progress', {'summary': 'Runtime accepted the request.'}, 'gateway')
@@ -405,10 +521,40 @@ class ChatDriver:
             with self.coordinator.transaction() as con:
                 self._set_delivery(con, claim, attempt, 'uncertain')
             raise
-        cursor = None
+        poll = {'cursor': None, 'new_agent_rows': 0, 'idle_reads': 0}
+        outcome = self._poll(claim, gateway, session, ack, attempt, before, poll)
+        if isinstance(outcome, RequestReceipt):
+            return outcome
+        if intent == 'plan' and self.genui is not None and outcome == 'done':
+            with self.store.connect() as con:
+                reply = self._last_agent_message(con, claim.account_id, claim.conversation_id) or ''
+            plan, reason = self.genui.validate_reply(reply)
+            if plan is None:
+                # One bounded repair attempt in the same session; a second failure falls back to the plain reply.
+                self._emit(claim, 'progress', {'summary': 'The plan needs a correction; asking once more.'}, 'gateway')
+                repair_op = uuid.uuid4().hex
+                ack = gateway.send(session, repair_op, gen_prompts.repair_prompt(reason))
+                poll['new_agent_rows'] = poll['idle_reads'] = 0
+                outcome = self._poll(claim, gateway, session, ack, attempt, before, poll)
+                if isinstance(outcome, RequestReceipt):
+                    return outcome
+                with self.store.connect() as con:
+                    reply = self._last_agent_message(con, claim.account_id, claim.conversation_id) or ''
+                plan, reason = self.genui.validate_reply(reply)
+            if plan is not None:
+                self.genui.attach_plan(claim, context, plan)
+                self._emit(claim, 'progress', {'summary': 'Plan drafted and ready to edit.'}, 'gateway')
+            else:
+                self._emit(claim, 'progress', {'summary': 'The reply could not be shown as a plan; showing it as text.'}, 'gateway')
+        with self.store.connect() as con:
+            last = self._last_agent_message(con, claim.account_id, claim.conversation_id)
+        public = last if last else 'Completed without an agent transcript row; reconcile history before relying on this result.'
+        self._emit(claim, 'result', {'summary': public[:500]})
+        return self._close(claim, 'completed', public, gateway, before)
+
+    def _poll(self, claim, gateway, session, ack, attempt, before, poll):
+        """Wait for the run to finish. Returns 'done', or a RequestReceipt when the request was closed (cancel or timeout)."""
         deadline = self.clock() + self.run_timeout
-        new_agent_rows = idle_reads = pages = 0
-        timed_out = False
         while True:
             with self.coordinator.transaction() as con:
                 cancelled = bool(con.execute('SELECT cancel_requested FROM customer_requests WHERE account_id=? AND id=?',
@@ -424,42 +570,32 @@ class ChatDriver:
                 return self._close(claim, 'cancelled', 'Cancelled during execution', gateway, before)
             if self.heartbeat is not None:
                 self.heartbeat(claim)
-            page = gateway.history(session, cursor)
-            pages += 1
+            page = gateway.history(session, poll['cursor'])
             if page['kind'] == 'reset':
-                cursor = None
+                poll['cursor'] = None
                 continue
             with self.coordinator.transaction() as con:
-                new_agent_rows += self._absorb(con, claim, page['messages'])
+                poll['new_agent_rows'] += self._absorb(con, claim, page['messages'])
             if page['messages']:
-                self._emit(claim, 'progress', {'summary': f'{len(page["messages"])} transcript update(s) recorded.'},
-                           'gateway')
+                self._emit(claim, 'progress', {'summary': f'{len(page["messages"])} transcript update(s) recorded.'}, 'gateway')
             if page['cursor']:
-                cursor = page['cursor']
+                poll['cursor'] = page['cursor']
                 continue
             # A run is over only after it has produced an agent reply and the runtime reports idle twice in a row
             # (the reply row can land just before the active flag clears).
-            idle_reads = idle_reads + 1 if (not page['active_run'] and new_agent_rows) else 0
-            if idle_reads >= SETTLE_POLLS:
-                break
+            poll['idle_reads'] = poll['idle_reads'] + 1 if (not page['active_run'] and poll['new_agent_rows']) else 0
+            if poll['idle_reads'] >= SETTLE_POLLS:
+                return 'done'
             if self.clock() >= deadline:
-                timed_out = True
-                break
+                try:
+                    gateway.abort(session, ack['run_id'])
+                except Exception:
+                    pass
+                with self.coordinator.transaction() as con:
+                    self._set_delivery(con, claim, attempt, 'aborted', run_id=ack['run_id'])
+                self._emit(claim, 'progress', {'summary': 'The run took too long and was stopped.'}, 'gateway')
+                return self._close(claim, 'failed', 'The assistant took too long and was stopped. Please try a smaller request.', gateway, before)
             self.sleep(self.poll_interval)
-        if timed_out:
-            try:
-                gateway.abort(session, ack['run_id'])
-            except Exception:
-                pass
-            with self.coordinator.transaction() as con:
-                self._set_delivery(con, claim, attempt, 'aborted', run_id=ack['run_id'])
-            self._emit(claim, 'progress', {'summary': 'The run took too long and was stopped.'}, 'gateway')
-            return self._close(claim, 'failed', 'The assistant took too long and was stopped. Please try a smaller request.', gateway, before)
-        with self.store.connect() as con:
-            last = self._last_agent_message(con, claim.account_id, claim.conversation_id)
-        public = last if last else 'Completed without an agent transcript row; reconcile history before relying on this result.'
-        self._emit(claim, 'result', {'summary': public[:500]})
-        return self._close(claim, 'completed', public, gateway, before)
 
     def abandon(self, claim: RequestClaim):
         """Last resort for a request whose runtime cannot be reached for a long time: fail it and charge the reserved upper bound."""

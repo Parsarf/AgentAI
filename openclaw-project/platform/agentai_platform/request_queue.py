@@ -1,6 +1,7 @@
 """Durable serial customer intake. The privileged adapter owns budget/native effects."""
 from dataclasses import dataclass
 import hashlib
+import json
 import time
 import uuid
 from .adapters import CapabilityUnavailable
@@ -38,10 +39,12 @@ class RequestQueue:
         # require_cell (production): a request runs only while its own account's cell holds the active lifecycle slot.
         self.require_cell=require_cell
         self.store=store;self.clock=clock;self.coordinator=Coordinator(store,clock=clock)
-    def submit(self,principal,*,message,key,conversation_id=None):
+    def submit(self,principal,*,message,key,conversation_id=None,intent='chat',context=None):
         identifier(key)
         if not isinstance(message,str) or not message.strip() or len(message)>16000 or '\x00' in message:raise ValueError('invalid message')
-        digest=hashlib.sha256(message.encode()).hexdigest()
+        if intent not in ('chat','plan','execute'):raise ValueError('invalid intent')
+        context_json=json.dumps(context,sort_keys=True,separators=(',',':')) if context else None
+        digest=hashlib.sha256(message.encode()).hexdigest() if intent=='chat' and not context_json else hashlib.sha256((message+'|'+intent+'|'+(context_json or '')).encode()).hexdigest()
         with self.coordinator.transaction() as c:
             self.store._authorize(c,principal)
             old=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND idempotency_key=?',(principal.account_id,key)).fetchone()
@@ -57,8 +60,8 @@ class RequestQueue:
                 project=c.execute('SELECT id FROM projects WHERE account_id=? ORDER BY created_at,id LIMIT 1',(principal.account_id,)).fetchone()
                 if not project:raise Conflict('account setup incomplete')
             request=uuid.uuid4().hex
-            c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)
-                VALUES (?,?,?,?,?,?,?,?,'waiting',?)''',(principal.account_id,request,principal.actor_id,project[0],conversation_id,key,digest,message,int(self.clock())))
+            c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,intent,context_json)
+                VALUES (?,?,?,?,?,?,?,?,'waiting',?,?,?)''',(principal.account_id,request,principal.actor_id,project[0],conversation_id,key,digest,message,int(self.clock()),intent,context_json))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_submit','completed')
             return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
     def _public(self,row):

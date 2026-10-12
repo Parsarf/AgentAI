@@ -34,8 +34,8 @@ loaded by this application. No new runtime/agent loop.
   Logout deletes the session; sign-out-all increments the identity epoch.
   Django's password/session hash invalidates old sessions after recovery.
 - All POST routes use Django CSRF and same HTTPS origin. No GET has user effects.
-  Bodies ≤8KiB, no file uploads. Rate defaults match the contract: 60 reads/min,
-  10 mutations/min per identity+IP; shared sign-in/recovery ceiling 5/15min per
+  Bodies ≤8KiB, no file uploads. Rate limits per identity+IP: 240 reads/min and 30 mutations/min
+  (raised from 60/10 on 2026-10-13 because a live dashboard polls task state; draft autosave of generative-UI blocks has its own 90/min); shared sign-in/recovery ceiling 5/15min per
   email+IP. Additional global IP and email delivery limits bound abuse.
   Counts are private salted hashes, expire and are cleaned by maintenance.
 - TLS terminates at a loopback-only trusted proxy which overwrites protocol and

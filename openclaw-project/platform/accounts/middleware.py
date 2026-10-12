@@ -59,6 +59,9 @@ class AccountMiddleware:
         if request.user.is_authenticated:
             try:
                 scope='api.read' if request.method in ['GET','HEAD'] else 'api.mutate'
-                rate(scope,str(request.user.pk)+'|'+request.client_ip,60 if scope=='api.read' else 10,60)
+                limit=240 if scope=='api.read' else 30      # a live dashboard polls a few times per second at most
+                if scope=='api.mutate' and request.path.startswith('/v1/blocks/') and request.path.endswith('/state'):
+                    scope,limit='api.autosave',90          # debounced draft saves while editing a plan
+                rate(scope,str(request.user.pk)+'|'+request.client_ip,limit,60)
             except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'60'})
         return self.get_response(request)

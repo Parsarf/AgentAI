@@ -251,3 +251,36 @@ class OpenApiDriftChecks(ChatHTTPChecks):
         self.assertEqual(sorted(routes - documented), [])
         known_disabled = {norm(k) for k in spec if any(k.startswith('/v1/' + d) for d in self.DISABLED)}
         self.assertEqual(sorted(documented - routes - known_disabled), [])
+
+
+class GenUiHttpChecks(ChatHTTPChecks):
+    def send(self, client, conversation, message, key):
+        return self.post(client, '/v1/conversations/' + conversation + '/send', {'message': message, 'key': key, 'mode': 'auto'})
+
+    def test_form_roundtrip_conflict_isolation_and_bad_input(self):
+        conversation = self.conversation(); other = self.conversation(client=1)
+        a, b = self.clients
+        plain = self.send(a, conversation, 'What is React?', 'g0')
+        self.assertEqual(plain.status_code, 202); self.assertEqual(plain.json()['request']['response_type'], 'text')
+        sent = self.send(a, conversation, 'Build me an e-commerce website', 'g1')
+        self.assertEqual(sent.status_code, 202, sent.content)
+        block = sent.json()['request']['block']
+        self.assertEqual((block['kind'], block['version']), ('form', 1))
+        listed = a.get('/v1/conversations/' + conversation + '/blocks', secure=True).json()['blocks']
+        self.assertEqual([x['id'] for x in listed], [block['id']])
+        saved = self.post(a, '/v1/blocks/' + block['id'] + '/state', {'version': 1, 'state': {'answers': {'kind': 'ecommerce', 'catalog': 40}}})
+        self.assertEqual(saved.status_code, 200, saved.content); self.assertEqual(saved.json()['block']['version'], 2)
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/state', {'version': 1, 'state': {'answers': {}}}).status_code, 409)       # stale tab
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/state', {'version': 2, 'state': {'answers': {'kind': 'drop table'}}}).status_code, 400)
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/state', {'version': '2', 'state': {}}).status_code, 400)
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/state', {'version': 2, 'state': {}, 'account_id': 'x'}).status_code, 400)
+        self.assertEqual(self.post(b, '/v1/blocks/' + block['id'] + '/state', {'version': 2, 'state': {'answers': {}}}).status_code, 404)        # other tenant
+        self.assertEqual(self.post(b, '/v1/blocks/' + block['id'] + '/launch', {'version': 2}).status_code, 404)
+        self.assertEqual(b.get('/v1/conversations/' + conversation + '/blocks', secure=True).status_code, 404)
+        self.assertEqual(b.get('/v1/conversations/' + other + '/blocks', secure=True).json()['blocks'], [])
+        self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/launch', {'version': 2}).status_code, 409)                                 # a form cannot be launched
+        no_csrf = a.post('/v1/blocks/' + block['id'] + '/state', json.dumps({'version': 2, 'state': {}}), content_type='application/json', secure=True)
+        self.assertEqual(no_csrf.status_code, 403)
+        again = self.send(a, conversation, 'Build me an e-commerce website', 'g1')
+        self.assertEqual(again.status_code, 202, again.content)
+        self.assertEqual(again.json()['request']['block']['id'], block['id'])       # idempotent
