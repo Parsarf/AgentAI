@@ -31,7 +31,8 @@ class BoundaryMiddleware:
         response.setdefault('Cache-Control', 'no-store')
         response['X-Content-Type-Options']='nosniff'
         response['X-Frame-Options']='DENY'
-        response['Content-Security-Policy']="default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+        # The UI shell (/app/) sets its own policy because it must run scripts; every other response gets the strict one.
+        response.setdefault('Content-Security-Policy',"default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         response['Referrer-Policy']='same-origin'
         response['X-Request-ID']=str(request.request_id)
         # No URL/query/body/cookie/header/exception text in customer logs.

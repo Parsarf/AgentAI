@@ -1,0 +1,14 @@
+/* Reference dashboard: deliberately plain. Replace freely; only /v1 and /auth are the contract. */
+:root { --bg:#fff; --ink:#1b1f24; --muted:#667085; --line:#e4e7ec; --accent:#2f6fed; --bad:#b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171c; --ink:#e8ebef; --muted:#9aa4b2; --line:#2a2f37; --accent:#6c9bff; --bad:#f97066; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
+.wrap { max-width:760px; margin:0 auto; padding:16px; }
+header { display:flex; gap:12px; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--line); }
+button, input, textarea { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; }
+button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
+button.ghost { background:transparent; color:var(--ink); border-color:var(--line); }
+form { display:grid; gap:10px; margin:16px 0; }
+.msg { padding:10px 12px; border:1px solid var(--line); border-radius:10px; margin:8px 0; white-space:pre-wrap; }
+.msg.customer { margin-left:48px; } .msg.agent { margin-right:48px; }
+.meta { color:var(--muted); font-size:13px; } .err { color:var(--bad); }

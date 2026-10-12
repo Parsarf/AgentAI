@@ -227,7 +227,7 @@ def mfa(request):
 def me(request):
     denied=customer(request)
     if denied: return denied
-    return JsonResponse({'email':request.user.email,'role':'customer','account_id':request.account_id,'execution_enabled':False})
+    return JsonResponse({'email':request.user.email,'role':'customer','account_id':request.account_id,'execution_enabled':__import__('accounts.chat',fromlist=['execution_on']).execution_on()})
 
 @endpoint(['GET','POST'], ['name'], field_limits={'name':120})
 def projects(request, project_id=None):

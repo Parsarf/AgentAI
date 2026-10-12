@@ -1,6 +1,6 @@
 # Customer HTTPS edge only. Owner Gateway and internal operator API stay private.
 backend.getlumina.pro {
-    @customer path /account /account/* /auth /auth/* /v1 /v1/*
+    @customer path /account /account/* /auth /auth/* /v1 /v1/* /app /app/*
     handle @customer {
         reverse_proxy 127.0.0.1:18800 {
             header_up Host getlumina.pro

@@ -207,3 +207,47 @@ class ArchiveChecks(ChatHTTPChecks):
         self.assertEqual(self.post(self.clients[1], '/v1/conversations/' + conversation + '/archive', {}).status_code, 404)
         page = a.get('/account/chat/', secure=True)                          # opens a fresh conversation, not the archived one
         self.assertNotContains(page, 'hello')
+
+
+class UiContractChecks(ChatHTTPChecks):
+    def test_csrf_bootstrap_and_shell(self):
+        import tempfile, os
+        from django.test import override_settings
+        anon = self.new_client()
+        token = anon.get('/v1/csrf', secure=True)
+        self.assertEqual(token.status_code, 200); self.assertTrue(token.json()['csrf_token'])
+        self.assertEqual(anon.get('/v1/app', secure=True).status_code, 401)
+        app = self.clients[0].get('/v1/app', secure=True).json()
+        self.assertEqual(app['user']['email'], 'chatter@example.invalid')
+        self.assertEqual(set(app['features']), {'chat', 'execution', 'files', 'uploads', 'telegram', 'connectors', 'billing_mode', 'requests', 'usage'})
+        self.assertNotIn('account_id', json.dumps(app))                     # the shell never needs, and is never handed, internal ids
+        d = tempfile.mkdtemp()
+        with override_settings(UI_BUNDLE_DIR=d):
+            self.assertEqual(anon.get('/app/', secure=True).status_code, 404)           # nothing installed yet
+            open(os.path.join(d, 'index.html'), 'w').write('<p>shell</p>'); open(os.path.join(d, 'a.js'), 'w').write('1')
+            page = anon.get('/app/', secure=True)
+            self.assertContains(page, 'shell'); self.assertIn("script-src 'self'", page['Content-Security-Policy']); self.assertEqual(page['Cache-Control'], 'no-store')
+            self.assertEqual(anon.get('/app/some/client/route', secure=True).status_code, 200)       # SPA fallback
+            self.assertEqual(anon.get('/app/missing.js', secure=True).status_code, 404)
+            self.assertEqual(anon.get('/app/../settings.py', secure=True).status_code, 404)
+            self.assertEqual(anon.get('/app/%2e%2e/%2e%2e/etc/passwd', secure=True).status_code, 404)
+            self.assertIn(anon.post('/app/', {}, secure=True).status_code, (403, 405))   # writes are refused (CSRF first, then method)
+        self.assertIn("default-src 'none'", anon.get('/account/login/', secure=True)['Content-Security-Policy'])   # classic pages keep the strict policy
+
+
+class OpenApiDriftChecks(ChatHTTPChecks):
+    """Every public route must be documented, and nothing undocumented may be advertised: a new UI is built from this file."""
+    DISABLED = {'streams', 'exports', 'memory', 'schedules', 'integrations', 'controls'}   # routes that answer 404 by design
+
+    def test_routes_and_spec_agree(self):
+        import re
+        from . import urls
+        norm = lambda p: re.sub(r'\{[^}]+\}', '{}', re.sub(r'<[^>]+>', '{}', '/' + p.lstrip('/')))
+        routes = {norm(str(u.pattern)) for u in urls.urlpatterns}
+        routes = {r for r in routes if r.startswith(('/v1', '/auth', '/internal', '/app')) and not any(r.startswith('/v1/' + k) for k in self.DISABLED)}
+        routes -= {'/internal/accounts/{}/export', '/internal/accounts/{}/impersonate'}      # always-forbidden support actions, deliberately undocumented
+        spec = json.load(open('openapi.json'))['paths']
+        documented = {norm(k) for k in spec if k.startswith(('/v1', '/auth', '/internal', '/app'))}
+        self.assertEqual(sorted(routes - documented), [])
+        known_disabled = {norm(k) for k in spec if any(k.startswith('/v1/' + d) for d in self.DISABLED)}
+        self.assertEqual(sorted(documented - routes - known_disabled), [])

@@ -12,7 +12,7 @@ if (config.rewrites) {
     { src: '^/$', dest: backend + '/account/' },
     { src: '^/account/?$', dest: backend + '/account/' },
     { src: '^/account/(.*?)/?$', dest: backend + '/account/$1/' },
-    { src: '^/(auth|v1)(/.*)?$', dest: backend + '/$1$2' }
+    { src: '^/(auth|v1|app)(/.*)?$', dest: backend + '/$1$2' }
   );
 } else {
   copyFileSync(new URL('./public/index.html', import.meta.url), new URL('static/index.html', output));

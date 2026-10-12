@@ -3,12 +3,14 @@ from . import views as v
 from . import chat as ch
 from . import telegram as tg
 from . import streams as st
+from . import api as api
+from . import uishell as shell
 urlpatterns=[
  path('healthz',v.health),path('readyz',v.ready),path('',v.account_page),path('account/',v.account_page),
  path('account/ui',v.assets),path('account/ui/',v.assets),path('account/chat/',ch.chat_page),path('account/<str:page>/',v.account_page),path('auth/login',v.signin),path('auth/logout',v.signout),
  path('auth/recovery',v.recovery),path('auth/reset',v.finish,{'purpose':'recovery'}),
  path('auth/activate',v.finish,{'purpose':'onboarding'}),path('auth/mfa',v.mfa),path('auth/revoke-sessions',v.revoke_sessions),
- path('v1/me',v.me),path('v1/projects',v.projects),path('v1/projects/<str:project_id>',v.projects),
+ path('v1/me',v.me),path('v1/csrf',api.csrf),path('v1/app',api.app),path('app/',shell.serve),path('app/<path:path>',shell.serve),path('v1/projects',v.projects),path('v1/projects/<str:project_id>',v.projects),
  path('internal/accounts/<str:account>/invite',v.invite),path('internal/accounts/<str:account>/revoke',v.operator_revoke),
  path('internal/accounts/<str:account>/suspend',v.suspend),path('internal/accounts/<str:account>/audit',v.operator_audit),
  path('internal/accounts/<str:account>/impersonate',v.forbidden_support),path('internal/accounts/<str:account>/export',v.forbidden_support),
