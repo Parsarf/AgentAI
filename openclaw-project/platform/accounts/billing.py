@@ -33,6 +33,16 @@ def switch_on():
     return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('billing_checkout')
 
 
+def open_access_on():
+    return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('open_access')
+
+
+def access_mode():
+    """paid_required wins over open: turning payments on is what ends free access."""
+    if switch_on(): return 'paid_required'
+    return 'open' if open_access_on() else 'invite_only'
+
+
 def webhook_secrets():
     return [line.strip() for line in _read(settings.BILLING_WEBHOOK_SECRET_FILE).splitlines() if line.strip().startswith('whsec_')] \
         if settings.BILLING_WEBHOOK_SECRET_FILE else []
@@ -41,9 +51,10 @@ def webhook_secrets():
 def service():
     """Built per request so a rotated key or secret takes effect without a restart."""
     plans = []
-    if settings.BILLING_PLAN_FILE and settings.BILLING_PRICE_ID:
+    if settings.BILLING_PLAN_FILE:
         try:
-            plans = [plan_from_plan_json(json.loads(_read(settings.BILLING_PLAN_FILE)), settings.BILLING_PRICE_ID)]
+            # Free access needs only the plan file; the Stripe price id matters once payments are configured.
+            plans = [plan_from_plan_json(json.loads(_read(settings.BILLING_PLAN_FILE)), settings.BILLING_PRICE_ID or 'price_unconfigured')]
         except (ValueError, KeyError):
             plans = []
     api = None
@@ -80,7 +91,7 @@ def billing(request, page=False):
         return denied
     principal = _principal(request)
     try:
-        view = service().overview(principal, usage=_usage(principal))
+        view = service().overview(principal, usage=_usage(principal), mode=access_mode())
     except NotFound:
         raise Denied()
     view['checkout_available'] = switch_on() and view['can_subscribe']

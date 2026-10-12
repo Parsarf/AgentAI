@@ -30,7 +30,7 @@ class BillingHTTPChecks(TestCase):
         if switch:
             store = SwitchStore(paths['switches'], facts_path=paths['facts'])
             json.dump({k: True for k in ('stripe_test_keys_present', 'stripe_price_configured', 'webhook_secret_present', 'webhook_endpoint_registered')}, open(paths['facts'], 'w'))
-            store.confirm('billing_checkout', 'test_mode_only', 'owner'); store.set('billing_checkout', True, 'owner')
+            store.confirm('billing_checkout', 'test_mode_only', 'owner'); store.confirm('billing_checkout', 'pauses_free_users', 'owner'); store.set('billing_checkout', True, 'owner')
         overrides = override_settings(BILLING_SECRET_KEY_FILE=paths['key'], BILLING_WEBHOOK_SECRET_FILE=paths['secret'], BILLING_PLAN_FILE=paths['plan'],
                                       BILLING_PRICE_ID=PRICE, BILLING_API_VERSION='2025-09-30.clover', SWITCHES_FILE=paths['switches'] if switch else '',
                                       SWITCH_FACTS_FILE=paths['facts'] if switch else '')
@@ -64,7 +64,8 @@ class BillingHTTPChecks(TestCase):
     def test_default_overview_is_trial_and_buttons_are_off(self):
         a = self.signed(); self.seed_trial('a')
         body = a.get('/v1/account/billing', secure=True).json()
-        self.assertEqual((body['status'], body['checkout_available'], body['manage_available'], body['new_tasks_allowed']), ('none', False, False, False))
+        self.assertEqual((body['status'], body['checkout_available'], body['manage_available'], body['new_tasks_allowed']), ('none', False, False, True))   # invitation trial is still eligible
+        self.assertEqual(body['access_mode'], 'invite_only')
         self.assertNotIn('sk_', json.dumps(body))
         page = a.get('/account/billing/', secure=True).content.decode()
         self.assertIn('Subscriptions are not open yet', page); self.assertNotIn('Subscribe —', page)
@@ -128,8 +129,8 @@ class BillingHTTPChecks(TestCase):
     def test_worker_requires_configuration_and_reports_counts_only(self):
         out = io.StringIO(); call_command('billing_worker', '--check', stdout=out)
         self.assertEqual(json.loads(out.getvalue())['provider_configured'], False)
-        from django.core.management.base import CommandError
-        with self.assertRaises(CommandError): call_command('billing_worker')
+        out = io.StringIO(); call_command('billing_worker', stdout=out)   # no provider configured: only free-access sync runs
+        report = json.loads(out.getvalue()); self.assertEqual((report['provider'], report['access_mode']), ('not configured', 'invite_only'))
 
     def test_retention_and_account_deletion_leave_billing_records_alone(self):
         with connection.cursor() as c:
@@ -140,3 +141,35 @@ class BillingHTTPChecks(TestCase):
         with connection.cursor() as c:
             c.execute('SELECT count(*) FROM billing_invoices'); self.assertEqual(c.fetchone()[0], 1)
             c.execute('SELECT count(*) FROM billing_inbox'); self.assertEqual(c.fetchone()[0], 1)
+
+    def test_free_access_until_payments_are_turned_on(self):
+        self.configure(switch=False)
+        from django.test import override_settings as ov
+        d = tempfile.TemporaryDirectory(); self.addCleanup(d.cleanup)
+        switches, facts = os.path.join(d.name, 's.json'), os.path.join(d.name, 'f.json')
+        store = SwitchStore(switches, facts_path=facts)
+        with ov(SWITCHES_FILE=switches, SWITCH_FACTS_FILE=facts):
+            a, b = self.signed('a'), self.signed('b'); self.seed_trial('a')
+            self.assertEqual(a.get('/v1/account/billing', secure=True).json()['access_mode'], 'invite_only')
+            with self.assertRaises(Exception): store.set('open_access', True, 'owner')            # needs the cost confirmation
+            store.confirm('open_access', 'cost_accepted', 'owner'); store.set('open_access', True, 'owner')
+            report = self.worker(); self.assertEqual(report['access_mode'], 'open'); self.assertEqual(report['open_access']['granted'], 2)
+            for client in (a, b):
+                self.assertEqual(client.get('/v1/costs', secure=True).json()['period_limit_microusd'], 25_000_000)
+                self.assertTrue(client.get('/v1/costs', secure=True).json()['admission_eligible'])
+            view = b.get('/v1/account/billing', secure=True).json()
+            self.assertEqual((view['access_mode'], view['new_tasks_allowed'], view['checkout_available']), ('open', True, False))
+            self.assertIn('Free access is on', b.get('/account/billing/', secure=True).content.decode())
+            self.assertEqual(self.worker()['open_access'], {'granted': 0, 'refreshed': 0, 'ended': 0})   # idempotent
+            # Turning payments on ends free access for everyone without a paid plan.
+            json.dump({k: True for k in ('stripe_test_keys_present', 'stripe_price_configured', 'webhook_secret_present', 'webhook_endpoint_registered')}, open(facts, 'w'))
+            store.confirm('billing_checkout', 'test_mode_only', 'owner'); store.confirm('billing_checkout', 'pauses_free_users', 'owner')
+            store.set('billing_checkout', True, 'owner')
+            self.assertEqual(b.get('/v1/account/billing', secure=True).json()['access_mode'], 'paid_required')
+            self.assertEqual(self.worker()['open_access']['ended'], 2)
+            self.assertFalse(b.get('/v1/costs', secure=True).json()['admission_eligible'])
+            page = b.get('/account/billing/', secure=True).content.decode(); self.assertIn('A paid plan is required', page); self.assertNotIn('Free access is on', page)
+            # And back: payments off means free access again within one worker pass.
+            store.set('billing_checkout', False, 'owner')
+            self.assertEqual(self.worker()['open_access']['refreshed'], 2)   # re-activated rows
+            self.assertTrue(b.get('/v1/costs', secure=True).json()['admission_eligible'])

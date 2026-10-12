@@ -287,6 +287,60 @@ class GraceFromPlanChecks(Kit):
         self.assertEqual(short.grace_hours, 24)
 
 
+class OpenAccessChecks(Kit):
+    def ent(self, account='a'):
+        with self.store.connect() as con:
+            return {r['id']: r['status'] for r in con.execute('SELECT id,status FROM entitlements WHERE account_id=?', (account,)).fetchall()}
+    def test_grants_every_active_account_plan_limits_and_supersedes_the_trial(self):
+        with self.store.connect() as con: con.execute("INSERT INTO accounts(id,status) VALUES ('s','suspended')")
+        self.assertEqual(self.svc.sync_open_access(True), {'granted': 2, 'refreshed': 0, 'ended': 0})
+        self.assertEqual(self.ent(), {'trial-v1': 'expired', 'open': 'active'}); self.assertEqual(self.ent('s'), {})
+        summary = self.ledger.summary(self.a)
+        self.assertEqual((summary['period_limit_microusd'], summary['admission_eligible']), (25_000_000, True))
+        with self.store.connect() as con: limits = json.loads(con.execute("SELECT limits_json FROM entitlements WHERE id='open' AND account_id='a'").fetchone()[0])
+        self.assertEqual((limits['daily_microusd'], limits['task_microusd'], limits['max_queued_tasks']), (5_000_000, 5_000_000, 3))
+        import calendar, time
+        t = time.gmtime(self.now); self.assertEqual(limits['period_start_epoch'], calendar.timegm((t.tm_year, t.tm_mon, 1, 0, 0, 0)))
+        self.assertTrue(self.admit('free1', amount=5_000_000))
+        self.assertTrue(self.admit('free2', principal=self.b, amount=5_000_000))
+    def test_idempotent_and_refreshes_only_when_half_the_ttl_is_gone(self):
+        self.svc.sync_open_access(True)
+        self.assertEqual(self.svc.sync_open_access(True), {'granted': 0, 'refreshed': 0, 'ended': 0})
+        self.now += 2 * 86400
+        self.assertEqual(self.svc.sync_open_access(True)['refreshed'], 2); self.assertTrue(self.admit('later'))
+    def test_switching_off_ends_it_immediately_and_stopped_refreshing_lapses_it(self):
+        self.svc.sync_open_access(True)
+        self.assertEqual(self.svc.sync_open_access(False), {'granted': 0, 'refreshed': 0, 'ended': 2})
+        with self.assertRaises(BudgetDenied): self.admit('x')
+        self.svc.sync_open_access(True); self.now += 3 * 86400 + 1       # worker died: fail closed after the TTL
+        with self.assertRaises(BudgetDenied): self.admit('y')
+    def test_paid_access_wins_and_returns_the_account_to_one_eligible_row(self):
+        self.svc.sync_open_access(True); self.subscribe()
+        self.assertEqual(self.ent(), {'trial-v1': 'expired', 'open': 'expired', 'paid': 'active'})
+        self.assertEqual(self.svc.sync_open_access(True), {'granted': 0, 'refreshed': 0, 'ended': 0})   # a is paid, b already has free access
+        self.assertEqual(self.ent()['paid'], 'active'); self.assertEqual(self.ent()['open'], 'expired'); self.assertEqual(self.ent('b')['open'], 'active')
+        self.assertTrue(self.admit('paidtask'))
+    def test_expired_paid_account_falls_back_to_free_only_while_open_is_on(self):
+        sub = self.subscribe(); self.api.subs[sub['id']]['status'] = 'canceled'
+        self.deliver('customer.subscription.deleted', {'id': sub['id']}); self.drain()
+        with self.assertRaises(BudgetDenied): self.admit()
+        self.svc.sync_open_access(True); self.assertTrue(self.admit('freeagain'))
+        self.svc.sync_open_access(False)
+        with self.assertRaises(BudgetDenied): self.admit('paused')
+    def test_a_dispute_hold_is_not_bypassed_by_free_access(self):
+        sub = self.subscribe(); ch = self.api.invoices[sub['latest_invoice']]['charge']
+        did = self.api.dispute(ch); self.deliver('charge.dispute.created', {'id': did}); self.drain()
+        self.svc.sync_open_access(True)
+        self.assertEqual(self.ent()['paid'], 'suspended'); self.assertNotIn('open', self.ent())
+        with self.assertRaises(BudgetDenied): self.admit()
+    def test_overview_reports_mode_and_eligibility_and_missing_plan_is_an_error(self):
+        self.svc.sync_open_access(True)
+        view = self.svc.overview(self.a, usage=self.ledger.summary(self.a), mode='open')
+        self.assertEqual((view['access_mode'], view['new_tasks_allowed'], view['status']), ('open', True, 'none'))
+        self.assertEqual(BillingService(self.store, self.api, [], clock=self.clock).sync_open_access(False)['ended'], 2)   # ending needs no plan
+        with self.assertRaises(BillingNotConfigured): BillingService(self.store, self.api, [], clock=self.clock).sync_open_access(True)
+
+
 class PlanChangeChecks(Kit):
     def test_upgrade_and_downgrade_change_limits_without_a_new_period(self):
         sub = self.subscribe()

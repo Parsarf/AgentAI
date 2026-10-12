@@ -18,6 +18,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
+import calendar
 import hashlib
 import hmac
 import json
@@ -41,6 +42,8 @@ REQUIRED_EVENTS = ('checkout.session.completed', 'customer.subscription.created'
                    'invoice.paid', 'invoice.payment_failed', 'invoice.payment_action_required', 'invoice.finalized',
                    'charge.refunded', 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed')
 WEBHOOK_PATH = '/v1/billing/webhook'
+OPEN_ID = 'open'
+OPEN_TTL = 3 * 86400   # open access lapses by itself if the worker stops refreshing it
 
 
 class BillingError(Exception): pass
@@ -525,7 +528,8 @@ class BillingService:
                 limits_json=excluded.limits_json,valid_until=excluded.valid_until''', (account, plan.version, access.status, limits, valid))
         if access.status in ('active', 'grace'):
             # Exactly one eligible entitlement may exist; the trial allowance ends when paid access begins.
-            con.execute("UPDATE entitlements SET status='expired' WHERE account_id=? AND id!='paid' AND status IN ('trial','active','grace')", (account,))
+            con.execute("UPDATE entitlements SET status='expired',valid_until=? WHERE account_id=? AND id!='paid' AND status IN ('trial','active','grace')",
+                        (time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now)), account))
         return not same
 
     def _store_invoice(self, con, account, sub_id, invoice, now):
@@ -569,6 +573,55 @@ class BillingService:
                 updated_epoch=excluded.updated_epoch''', (kind, object_id, owner['account_id'], sub_id, int(bool(active)), self._now()))
         return self._sync(sub_id, stamp)
 
+    # ------------------------------------------------------------- open access
+
+    def sync_open_access(self, open_on: bool):
+        """Grant or end the free-access entitlement for every active account (needs no Stripe configuration).
+
+        Free access is one rolling `open` entitlement carrying the plan's limits with the allowance resetting
+        each calendar month. It never overrides paid access, never overrides a dispute hold, supersedes an
+        invitation-trial row while it lasts, expires the moment it is switched off, and lapses on its own
+        after three days if nothing refreshes it (fail closed).
+        """
+        report = {'granted': 0, 'refreshed': 0, 'ended': 0}
+        if open_on and self.default_plan is None: raise BillingNotConfigured('no plan configured')
+        now = self._now()
+        t = time.gmtime(now)
+        month_start = calendar.timegm((t.tm_year, t.tm_mon, 1, 0, 0, 0))
+        stamp = lambda e: time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(e))
+        with self.tx() as con:
+            accounts = [r['id'] for r in con.execute("SELECT id FROM accounts WHERE status='active'").fetchall()]
+            for account in accounts:
+                paid = con.execute("SELECT status,valid_until FROM entitlements WHERE account_id=? AND id='paid'", (account,)).fetchone()
+                held = paid is not None and paid['status'] == 'suspended'
+                paid_ok = paid is not None and paid['status'] in ('active', 'grace') and con.execute(
+                    'SELECT julianday(?)>julianday(?,?)', (paid['valid_until'], now, 'unixepoch')).fetchone()[0]
+                row = con.execute("SELECT status,valid_until,limits_json FROM entitlements WHERE account_id=? AND id=?", (account, OPEN_ID)).fetchone()
+                if open_on and not paid_ok and not held:
+                    limits = json.dumps(self.default_plan.limits(month_start), sort_keys=True)
+                    if row is None:
+                        con.execute("INSERT INTO entitlements(account_id,id,plan_version,status,limits_json,valid_until) VALUES (?,?,?,'active',?,?)",
+                                    (account, OPEN_ID, self.default_plan.version, limits, stamp(now + OPEN_TTL)))
+                        con.execute("UPDATE entitlements SET status='expired',valid_until=? WHERE account_id=? AND id NOT IN (?, 'paid') AND status IN ('trial','active','grace')",
+                                    (stamp(now), account, OPEN_ID))
+                        self._audit(con, account, 'billing-worker', OPEN_ID, 'open_access.granted', 'completed')
+                        report['granted'] += 1
+                    else:
+                        remaining = con.execute('SELECT (julianday(?)-julianday(?,?))*86400', (row['valid_until'], now, 'unixepoch')).fetchone()[0]
+                        if row['status'] != 'active' or row['limits_json'] != limits or remaining < OPEN_TTL / 2:
+                            was_active = row['status'] == 'active'
+                            con.execute("UPDATE entitlements SET status='active',limits_json=?,valid_until=?,plan_version=? WHERE account_id=? AND id=?",
+                                        (limits, stamp(now + OPEN_TTL), self.default_plan.version, account, OPEN_ID))
+                            con.execute("UPDATE entitlements SET status='expired' WHERE account_id=? AND id NOT IN (?, 'paid') AND status IN ('trial','active','grace')",
+                                        (account, OPEN_ID))
+                            if not was_active: self._audit(con, account, 'billing-worker', OPEN_ID, 'open_access.granted', 'completed')
+                            report['refreshed'] += 1
+                elif row is not None and row['status'] in ('active', 'grace'):
+                    con.execute("UPDATE entitlements SET status='expired',valid_until=? WHERE account_id=? AND id=?", (stamp(now), account, OPEN_ID))
+                    self._audit(con, account, 'billing-worker', OPEN_ID, 'open_access.ended', 'completed')
+                    report['ended'] += 1
+        return report
+
     # --------------------------------------------------- reconcile / sweep / views
 
     def sweep(self):
@@ -603,7 +656,7 @@ class BillingService:
         return {'checked': len(subs), 'drift': drift, 'provider_errors': errors, 'inbox': inbox,
                 'dead_letters': inbox.get('dead', 0)}
 
-    def overview(self, principal: Principal, usage=None):
+    def overview(self, principal: Principal, usage=None, mode='invite_only'):
         account = principal.account_id
         with self.store.connect() as con:
             self._account(con, principal)
@@ -620,7 +673,8 @@ class BillingService:
                 'period_end': state['current_period_end'] if state else None,
                 'cancel_at_period_end': bool(state and state['cancel_at_period_end']),
                 'grace_ends': (state['past_due_since'] + self.grace_hours * 3600) if state and state['access_state'] == 'grace' and state['past_due_since'] else None,
-                'new_tasks_allowed': status in ('active', 'grace'),
+                'new_tasks_allowed': bool(usage['admission_eligible']) if usage else status in ('active', 'grace'),
+                'access_mode': mode,
                 'can_subscribe': status in ('none', 'expired') and plan is not None,
                 'can_manage': has_customer, 'usage': usage,
                 'invoices': [{'id': i['provider_invoice_id'], 'status': i['status'], 'amount_paid': i['amount_paid'], 'currency': i['currency'],

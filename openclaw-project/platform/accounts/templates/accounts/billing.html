@@ -2,6 +2,11 @@
 <div class="pagehead"><h1>Billing</h1><p>Your plan, what it includes, and your invoices. Card details are entered only on Stripe's own pages and never reach AgentAI.</p></div>
 {% if returned %}<div class="notice"><span><strong>Thanks — we are waiting for Stripe to confirm your payment.</strong> Your plan turns on only when Stripe confirms it, which usually takes under a minute. Refresh this page to check.</span></div>{% endif %}
 {% if cancelled %}<div class="notice warn"><span>Checkout was cancelled. Nothing was charged.</span></div>{% endif %}
+{% if v.access_mode == 'open' and v.status != 'active' and v.status != 'grace' and v.status != 'suspended' %}
+<div class="notice"><span><strong>Free access is on.</strong> You can use the service without paying right now, within your monthly allowance of ${{ v.plan.included_usd }}. This will change to a paid plan when payments are turned on; you will be told here first.</span></div>
+{% elif v.access_mode == 'invite_only' and v.status == 'none' %}
+<div class="notice warn"><span><strong>Subscriptions are not open yet.</strong> Your access follows your invitation.</span></div>
+{% endif %}
 {% if v.status == 'active' %}
   {% if v.cancel_at_period_end %}<div class="notice warn"><span><strong>Your plan is set to end on {{ v.period_end_text }}.</strong> You keep full access until then; it will not renew.</span></div>
   {% else %}<div class="notice"><span><strong>Your plan is active.</strong> It renews on {{ v.period_end_text }}.</span></div>{% endif %}
@@ -13,8 +18,8 @@
 <div class="notice warn"><span><strong>New tasks are paused.</strong>
 {% if v.reason == 'refunded' %}Your latest payment was refunded.{% elif v.reason == 'grace_ended' %}The payment grace period ended.{% elif v.reason == 'period_ended' %}Your paid period ended.{% else %}Your plan is no longer active.{% endif %}
 Work already running finishes, and you can still view billing and export your files.</span></div>
-{% else %}
-<div class="notice"><span><strong>No paid plan yet.</strong> You are on the invitation trial. {% if not v.checkout_available %}Subscriptions are not open yet.{% endif %}</span></div>
+{% elif v.access_mode == 'paid_required' %}
+<div class="notice warn"><span><strong>A paid plan is required to start new tasks.</strong> Subscribe below; your files and past work stay available.</span></div>
 {% endif %}
 <section class="card">
 <h3>Plan</h3>
