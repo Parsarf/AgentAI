@@ -51,11 +51,11 @@
     "django": "88 pass",
     "dashboard": "35 pass"
   },
-  "paid_calls": "4 short Haiku turns, about $0.05 in total, on the owner account key",
+  "paid_calls": "about $0.14 in total of provider spend on the owner account key (pong, arithmetic, two web fetch attempts, plus the earlier probe turns)",
   "open": [
     "customer_execution switch currently ON (turn off from the dashboard if not wanted)",
     "new accounts need the host provisioning step (OPERATIONS.md section 12) before they get a cell",
-    "the agent in a cell can run shell and web tools inside its own sandbox; browser and coding broker stages are not yet connected to the chat path",
-    "idle sleep not yet observed on the live server at time of writing"
-  ]
+    "the agent in a cell can run shell and web tools inside its own sandbox; browser and coding broker stages are not yet connected to the chat path"
+  ],
+  "idle_sleep_observed": "cell stopped by the lifecycle worker about 15 minutes after the last reply (2026-10-12 20:10 UTC)"
 }
