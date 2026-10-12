@@ -14,10 +14,9 @@
       "size": 24
     }
   ],
-  "icc": false,
-  "iptables": true,
-  "ip-masq": true,
-  "userland-proxy": false,
+  "iptables": false,
+  "ip-masq": false,
+  "userland-proxy": true,
   "no-new-privileges": true,
   "default-runtime": "runsc",
   "runtimes": {

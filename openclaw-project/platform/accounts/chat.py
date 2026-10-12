@@ -27,9 +27,20 @@ ERROR_CATEGORIES = {
 }
 
 
+def execution_on():
+    from django.conf import settings
+    from agentai_platform.switches import SwitchStore
+    return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('customer_execution')
+
+
 def service():
+    from django.conf import settings
+    from agentai_platform.chat import FixedRoute
     store = AccountStore(connection.settings_dict['NAME'])
-    return ChatService(store, queue=RequestQueue(store), ledger=BudgetLedger(store))
+    live = execution_on()
+    # Without the owner switch no route is priced, so a send waits unfunded exactly as before.
+    kwargs = {'pricer': FixedRoute(settings.CUSTOMER_RESERVATION_MICROUSD, 'plan-reservation-v1')} if live else {}
+    return ChatService(store, queue=RequestQueue(store, require_cell=live), ledger=BudgetLedger(store), execution=live, **kwargs)
 
 
 def principal(request):
@@ -188,7 +199,7 @@ def chat_page(request):
         'transcript': transcript, 'send_key': uuid.uuid4().hex,
         'error': error, 'error_text': ERROR_CATEGORIES.get(error or ''),
         'category': request.GET.get('category', ''),
-        'execution_enabled': False,
+        'execution_enabled': execution_on(),
         'artifacts': artifacts, 'project_files': project_files,
         'live_streaming': False,
         'storage_ready': storage_ready, 'uploads_enabled': uploads_enabled,

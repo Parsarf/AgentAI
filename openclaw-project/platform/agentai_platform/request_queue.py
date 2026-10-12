@@ -34,7 +34,9 @@ class DisabledRequestDriver:
     def reconcile(self,claim):self.preflight()
 
 class RequestQueue:
-    def __init__(self,store,clock=time.time):
+    def __init__(self,store,clock=time.time,*,require_cell=False):
+        # require_cell (production): a request runs only while its own account's cell holds the active lifecycle slot.
+        self.require_cell=require_cell
         self.store=store;self.clock=clock;self.coordinator=Coordinator(store,clock=clock)
     def submit(self,principal,*,message,key,conversation_id=None):
         identifier(key)
@@ -94,6 +96,7 @@ class RequestQueue:
                 self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_revoked','completed')
             cell_slot=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
             if cell_slot and (cell_slot['account_id']!=row['account_id'] or cell_slot['state']!='active'):return None
+            if self.require_cell and not cell_slot:return None
             c.execute('INSERT INTO request_slot VALUES (1,?,?)',(row['account_id'],row['id']))
             fence=row['fence']+1
             c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=? WHERE account_id=? AND id=?",(fence,owner,int(self.clock())+lease_seconds,row['account_id'],row['id']))
@@ -128,7 +131,9 @@ class RequestQueue:
             row=self._fenced(c,claim)
             if not reconciled and (row['state']=='uncertain' or row['lease_until']<=self.clock()):
                 c.execute("UPDATE customer_requests SET state='uncertain' WHERE account_id=? AND id=?",(claim.account_id,claim.request_id));return False
-            if c.execute('SELECT 1 FROM lifecycle_slot WHERE id=1').fetchone():raise Conflict('agent cell must stop before handoff')
+            held=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
+            # The cell may stay up for the same account (idle sleep stops it later); anything else must stop first.
+            if held and not (self.require_cell and held['account_id']==claim.account_id and held['state']=='active'):raise Conflict('agent cell must stop before handoff')
             reservation=c.execute('SELECT state FROM task_reservations WHERE account_id=? AND task_id=?',(claim.account_id,claim.request_id)).fetchone()
             if reservation and reservation[0] in {'active','uncertain'}:raise Conflict('usage must reconcile before handoff')
             c.execute('UPDATE customer_requests SET state=?,result=? WHERE account_id=? AND id=?',(receipt.state,receipt.public_result,claim.account_id,claim.request_id))

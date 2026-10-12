@@ -8,6 +8,7 @@ Type=oneshot
 RemainAfterExit=yes
 # Replace atomically: delete a stale table if present, then load the generated file.
 ExecStartPre=-/usr/sbin/nft delete table inet agentai_cells
+ExecStart=/usr/local/sbin/agentai-cells-routes
 ExecStart=/usr/sbin/nft -f /etc/agentai-cells/agentai_cells.nft
 ExecStop=-/usr/sbin/nft delete table inet agentai_cells
 

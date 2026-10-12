@@ -104,6 +104,9 @@ LOGGING = {'version': 1, 'disable_existing_loggers': False,
 # Owner feature switches (written by the private ops dashboard, read-only here). Missing = everything off.
 SWITCHES_FILE = os.environ.get('AGENTAI_SWITCHES_FILE', '')
 SWITCH_FACTS_FILE = os.environ.get('AGENTAI_SWITCH_FACTS_FILE', '')
+# Host cell bridge socket and the per-message spend reserved before a customer request may run.
+CELL_BRIDGE_SOCKET = os.environ.get('AGENTAI_CELL_BRIDGE_SOCKET', '/run/agentai-cell-bridge/bridge.sock')
+CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
 
 # Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.
 BILLING_SECRET_KEY_FILE = os.environ.get('AGENTAI_BILLING_SECRET_KEY_FILE', '')

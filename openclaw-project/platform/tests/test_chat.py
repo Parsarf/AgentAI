@@ -139,6 +139,41 @@ class ChatChecks(unittest.TestCase):
         self.assertEqual(self.service.cancel(self.a, result['id'])['state'], 'cancelled')
         self.assertIsNone(self.queue.claim(owner='w', capacity=CAPACITY))
 
+    def metered_driver(self, gateway, **kw):
+        return ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(gateway),
+                          clock=lambda: self.now, sleep=lambda s: None, **kw)
+
+    def test_usage_is_reconciled_from_provider_spend_delta(self):
+        class Metered(SyntheticGateway):
+            spend = [1000, 1000, 1700, 1700, 1700]
+            def usage_snapshot(self): return self.spend.pop(0) if len(self.spend) > 1 else self.spend[0]
+        self.send()
+        claim = self.queue.claim(owner='w', capacity=CAPACITY)
+        self.queue.finish(claim, self.metered_driver(Metered()).execute(claim))
+        receipt = self.rows("SELECT amount_microusd,price_version FROM provider_receipts WHERE account_id='a'")
+        self.assertEqual([tuple(r) for r in receipt], [(700, 'litellm-reported-v1')])
+        self.assertEqual(self.rows("SELECT state FROM task_reservations WHERE account_id='a'")[0][0], 'settled')
+
+    def test_unreadable_spend_charges_the_reserved_upper_bound(self):
+        class Blind(SyntheticGateway):
+            def usage_snapshot(self): raise RuntimeError('no spend')
+        self.send()
+        claim = self.queue.claim(owner='w', capacity=CAPACITY)
+        self.queue.finish(claim, self.metered_driver(Blind()).execute(claim))
+        self.assertEqual([tuple(r) for r in self.rows("SELECT amount_microusd,price_version FROM provider_receipts")],
+                         [(500, 'reservation-upper-bound-v1')])
+
+    def test_run_that_never_goes_idle_is_aborted_and_failed(self):
+        gateway = SyntheticGateway(active_pages=10**6)
+        def advance(seconds): self.now += 300
+        self.send()
+        claim = self.queue.claim(owner='w', capacity=CAPACITY)
+        driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(gateway),
+                            clock=lambda: self.now, sleep=advance, run_timeout=900)
+        receipt = driver.execute(claim)
+        self.assertEqual(receipt.state, 'failed')
+        self.assertTrue(gateway.abort_requests)
+
     def driver(self):
         return ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(self.gateway), clock=lambda:self.now)
 

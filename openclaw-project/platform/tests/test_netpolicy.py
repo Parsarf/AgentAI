@@ -31,6 +31,9 @@ class NetPolicyChecks(unittest.TestCase):
         text=self.policy().ruleset()
         self.assertTrue(text.startswith('table inet agentai_cells\ndelete table inet agentai_cells\n'))
         self.assertFalse(self.policy().ruleset(atomic=False).startswith('table inet agentai_cells\ndelete'))
+    def test_egress_translation_is_owned_here_not_by_the_container_engine(self):
+        text = self.policy().ruleset()
+        self.assertIn('type nat hook postrouting', text); self.assertIn('ip saddr @cell_sources ip daddr != @cell_sources masquerade', text)
     def test_counters_parse(self):
         listing='counter packets 3 bytes 180 drop comment "cell to host services"\n'
         self.assertEqual(parse_counters(listing),{'cell to host services':(3,180)})

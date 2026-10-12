@@ -30,6 +30,13 @@ class WiringChecks(unittest.TestCase):
             with self.assertRaises(ValueError): build_native_backend(self.write(w))
         w=dict(self.w);del w['fleet_custody']
         with self.assertRaises(ValueError): build_native_backend(self.write(w))
+    def test_isolation_docker_calls_target_the_cell_engine_explicitly(self):
+        from unittest.mock import patch
+        driver, _ = build_native_backend(self.write(self.w))
+        seen = []
+        with patch('agentai_platform.lifecycle.native_wiring.default_run', lambda argv, env=None: seen.append((argv, env)) or (0, '10.78.9.0/24\n')):
+            driver.isolation.subnet_of('aa-' + 'a' * 32)
+        self.assertEqual(seen[0][1], {'DOCKER_HOST': 'unix:///run/agentai-cells/docker.sock'})
     def test_health_probe_requires_http_200_within_the_bound(self):
         class R:
             def __init__(s,st): s.status=st

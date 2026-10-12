@@ -4,7 +4,7 @@ Numbers come from the 2026-10-11 measurements on the 15.6 GiB / 4 vCPU host
 (evidence/product/phase-04/20261011T235500Z): an idle gVisor Gateway cell raised
 host memory use by about 0.46 GiB (container reported 0.74 GiB); a light Chromium
 page peaked near 0.13 GiB. Admission does not rely on observed peaks: it reserves
-the enforced caps (cell 1 GiB, worker ceiling 1.5 GiB), which the kernel cgroup
+the enforced caps (cell 2 GiB, worker ceiling 1.5 GiB), which the kernel cgroup
 enforces, so a heavier page is killed rather than overcommitting the host.
 """
 from datetime import datetime, timezone
@@ -15,7 +15,7 @@ from agentai_platform.capacity import CapacityResult, assess
 GIB = 1024 ** 3
 
 PROFILE_ID = 'trial-measured-v1'
-CELL_MEMORY = 1 * GIB            # enforced --memory on the Gateway cell
+CELL_MEMORY = 2 * GIB            # enforced --memory; 1 GiB was OOM-killed in a real chat turn (peak ~1.4 GiB, 2026-10-12)
 WORKER_MEMORY = int(1.5 * GIB)   # enforced ceiling for the one active worker stage
 CELL_MILLIS = 1000               # enforced cell CPU cap
 WORKER_MILLIS = 1500

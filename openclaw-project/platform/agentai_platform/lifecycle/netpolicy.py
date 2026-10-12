@@ -7,7 +7,7 @@ every service bound on the host (SSH, HTTPS, anything on a bridge address).
 This ruleset adds only DROP rules in a separate nftables table, so it can never
 widen what Docker permits. It is loaded by a host unit, not by the app.
 
-Allowed by default: public internet egress. Allowed to the host: nothing except
+Allowed by default: public internet egress (translated by this table's postrouting chain). Allowed to the host: nothing except
 the optional model-proxy endpoint, which is authenticated by a per-account
 virtual key. Quarantined (restored) cells get all egress dropped.
 """
@@ -75,6 +75,12 @@ class NetPolicy:
             lines.append('    ip saddr @quarantined counter drop comment "quarantined cell egress"')
         lines += [
             '    ip daddr @private_ranges counter drop comment "cell to private/metadata"',
+            '  }',
+            # The cell engine does not touch iptables (two engines on one host clobber each other's chains),
+            # so address translation for cell egress lives here. Forwarding is allowed by `ufw route` rules.
+            '  chain postrouting {',
+            '    type nat hook postrouting priority srcnat; policy accept;',
+            '    ip saddr @cell_sources ip daddr != @cell_sources masquerade',
             '  }',
             '}',
         ]

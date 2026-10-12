@@ -33,7 +33,7 @@ import re
 import uuid
 from .adapters import CapabilityUnavailable, GatewayCapabilities
 
-SUPPORTED_PROTOCOL_VERSION = 3
+SUPPORTED_PROTOCOL_VERSION = 4   # installed 2026.9.6 negotiated protocol 4 in the 2026-10-12 live probe
 CHAT_METHODS = ("chat.send", "chat.history", "chat.abort")
 
 IDENTIFIER = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
@@ -124,7 +124,7 @@ class HttpGateway:
     def send(self, session: str, operation_id: str, message: str):
         self.require('send')
         result = self._call('chat.send', {'sessionKey': session, 'operationId': operation_id, 'message': message})
-        if result.get('status') != 'started' or result.get('runStarted') is not True:
+        if result.get('status') not in ('started', 'in_flight') or result.get('runStarted') is False:
             raise CapabilityUnavailable('send admission not confirmed')
         seq = result.get('messageSeq')
         return {'run_id': result.get('runId'), 'message_seq': seq if type(seq) is int and seq > 0 else None,
@@ -238,4 +238,100 @@ class SyntheticGateway:
         self.require('abort')
         self.calls.append(('abort', session, run_id))
         self.abort_requests.append((session, run_id))
+        return {'run_id': run_id}
+
+
+class NativeGateway:
+    """Gateway client over an injected ``rpc(method, params) -> dict`` callable.
+
+    The callable is the bridge client (the app never holds a cell token or a
+    docker handle). Shapes follow the live protocol-4 probe of 2026-10-12.
+    Raises CapabilityUnavailable for any refusal or malformed reply.
+    """
+    METHODS = ('hello', 'sessions.create', 'chat.send', 'chat.history', 'chat.abort', 'usage.snapshot')
+
+    def __init__(self, rpc):
+        self._rpc = rpc
+        self._caps = None
+
+    def _call(self, method, params=None):
+        if method not in self.METHODS:
+            raise ValueError('unsupported rpc method')
+        result = self._rpc(method, params or {})
+        if not isinstance(result, dict) or 'error' in result:
+            raise CapabilityUnavailable('gateway call unavailable')
+        return result
+
+    def capabilities(self):
+        if self._caps is None:
+            try:
+                hello = self._call('hello')
+            except (CapabilityUnavailable, OSError, TimeoutError):
+                self._caps = GatewayCapabilities('unverified', 0, False, False, False, False, False)
+                return self._caps
+            version = hello.get('protocol')
+            methods = set(hello.get('methods') or ())
+            self._caps = negotiate(GatewayCapabilities(
+                str(hello.get('runtimeVersion', 'unverified')), version if type(version) is int else 0,
+                'chat.send' in methods, 'chat.history' in methods, True, 'chat.abort' in methods, True))
+        return self._caps
+
+    def require(self, operation):
+        caps = self.capabilities()
+        if operation not in {'send', 'history', 'abort'} or not getattr(caps, operation):
+            raise CapabilityUnavailable('installed gateway does not support ' + operation)
+        return caps
+
+    def open_session(self, operation_id, label):
+        self.require('send')
+        result = self._call('sessions.create', {'label': label[:64]})
+        return session_ref(result.get('key')), False, None
+
+    def send(self, session, operation_id, message):
+        self.require('send')
+        result = self._call('chat.send', {'sessionKey': session_ref(session), 'message': message,
+                                          'idempotencyKey': session_ref(operation_id)})
+        if result.get('status') not in ('started', 'in_flight') or not isinstance(result.get('runId'), str):
+            raise CapabilityUnavailable('send admission not confirmed')
+        return {'run_id': result['runId'], 'message_seq': None, 'native_message_id': None}
+
+    @staticmethod
+    def _text(content):
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return '\n'.join(b.get('text', '') for b in content if isinstance(b, dict) and b.get('type') == 'text' and isinstance(b.get('text'), str))
+        return ''
+
+    def history(self, session, cursor):
+        self.require('history')
+        params = {'sessionKey': session_ref(session)}
+        if cursor is not None:
+            params['cursor'] = cursor
+        result = self._call('chat.history', params)
+        kind = result.get('kind', 'tail')
+        if kind not in {'tail', 'delta', 'reset'}:
+            raise CapabilityUnavailable('unsupported history response')
+        rows = []
+        for m in result.get('messages') or []:
+            if not isinstance(m, dict):
+                continue
+            meta = m.get('__openclaw') or {}
+            role = {'assistant': 'agent'}.get(m.get('role'))   # user rows are skipped: tail pages repeat every turn, so ids cannot be matched to one request
+            native_id = meta.get('id')
+            text = self._text(m.get('content'))
+            if role and isinstance(native_id, str) and text:
+                rows.append({'id': native_id, 'role': role, 'content': text, 'seq': meta.get('seq')})
+        info = result.get('sessionInfo') or {}
+        active = bool(info.get('hasActiveRun')) or bool(result.get('pendingInputs'))
+        return {'kind': kind, 'messages': rows, 'cursor': None, 'active_run': active}
+
+    def usage_snapshot(self):
+        return int(self._call('usage.snapshot')['spend_microusd'])
+
+    def abort(self, session, run_id):
+        self.require('abort')
+        result = self._call('chat.abort', {'sessionKey': session_ref(session)})
+        if result.get('aborted') is not True and result.get('ok') is not True:
+            raise CapabilityUnavailable('abort not confirmed')
         return {'run_id': run_id}

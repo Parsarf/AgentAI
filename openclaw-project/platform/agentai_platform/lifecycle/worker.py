@@ -21,10 +21,11 @@ from .types import Conflict
 
 class LifecycleWorker:
     def __init__(self, store, driver, capacity, *, coordinator=None, clock=time.time,
-                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None):
+                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None, wake=False, handover_idle=60):
         self.store, self.driver, self.capacity = store, driver, capacity
         self.coordinator = coordinator or Coordinator(store, clock=clock)
         self.clock, self.owner, self.idle_after, self.batch = clock, owner, idle_after, batch
+        self.wake, self.handover_idle = wake, handover_idle   # wake: start cells for waiting customer requests
         self.backup_max_age = backup_max_age   # seconds; None leaves backup scheduling to the operator
 
     def _rows(self, state):
@@ -74,8 +75,28 @@ class LifecycleWorker:
                 pass
         return queued
 
+    def enqueue_wakes(self):
+        """A stopped cell with a waiting customer request gets a system start (the request worker then claims it)."""
+        queued = 0
+        with self.store.connect() as con:
+            due = [(r['account_id'], r['generation'], r['request_id']) for r in con.execute(
+                "SELECT c.account_id,d.generation,(SELECT id FROM customer_requests q WHERE q.account_id=c.account_id AND q.state='waiting' "
+                "ORDER BY q.sequence LIMIT 1) AS request_id FROM lifecycle_cells c JOIN deployments d "
+                "ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.observed_state='stopped'").fetchall() if r['request_id']]
+        for account, generation, request in due:
+            try:
+                self.coordinator.request_system(account, key=f'wake-{generation}-{request}', generation=generation, kind='start')
+                queued += 1
+            except (Conflict, NotFound):
+                pass
+        return queued
+
+    def waiting_accounts(self):
+        with self.store.connect() as con:
+            return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting'")}
+
     def tick(self):
-        report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0}
+        report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0, 'woken': 0}
         for account, operation in self._rows('uncertain'):
             try:
                 if self.coordinator.reconcile(self.driver, account, operation):
@@ -95,13 +116,17 @@ class LifecycleWorker:
             except Exception:
                 report['uncertain'] += 1
         now = self.clock()
+        waiting = self.waiting_accounts() if self.wake else set()
         for facts, generation in self.facts():
-            if can_sleep(facts, now, idle_after=self.idle_after):
+            # Another account's request is waiting for the one cell slot: hand over after a short idle.
+            idle = self.handover_idle if waiting - {facts.account_id} else self.idle_after
+            if can_sleep(facts, now, idle_after=idle):
                 try:
                     self.coordinator.request_system(facts.account_id, key=f'idle-{generation}-{int(facts.last_activity_epoch)}',
                                                     generation=generation)
                     report['drained'] += 1
                 except (Conflict, NotFound):
                     pass
+        if self.wake: report['woken'] = self.enqueue_wakes()
         if self.backup_max_age: report['backups_queued'] = self.enqueue_due_backups(self.backup_max_age)
         return report

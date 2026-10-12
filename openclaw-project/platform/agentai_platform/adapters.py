@@ -15,7 +15,7 @@ class GatewayCapabilities:
     live_probed: bool
 
     def require(self, operation: str):
-        if operation not in {"send","history","events","abort"} or not self.live_probed or self.protocol_version != 3 or not getattr(self,operation):
+        if operation not in {"send","history","events","abort"} or not self.live_probed or self.protocol_version != 4 or not getattr(self,operation):
             raise CapabilityUnavailable("installed capability not verified")
 
 class GatewayClient(Protocol):
@@ -26,7 +26,7 @@ class GatewayClient(Protocol):
     def abort(self, task_id: str, operation_id: str): ...
 
 class DisabledGateway:
-    def capabilities(self): return GatewayCapabilities("unverified",3,False,False,False,False,False)
+    def capabilities(self): return GatewayCapabilities("unverified",4,False,False,False,False,False)
     def send(self,*args): raise CapabilityUnavailable("customer execution disabled")
     history = send
     abort = send

@@ -98,7 +98,7 @@ class CapacityChecks(unittest.TestCase):
     def cap(self,mem_gib,cpus=4,disk_gib=100):
         return host_capacity(now=datetime.now(timezone.utc),available=lambda:int(mem_gib*GIB),cpus=lambda:cpus,disk_free=lambda:disk_gib*GIB)
     def test_measured_host_admits_one_and_cpu_is_the_bottleneck(self):
-        r=self.cap(13.2);self.assertEqual((r.memory_slots,r.cpu_slots),(4,1));self.assertEqual(r.admitted_slots,1)
+        r=self.cap(13.2);self.assertEqual((r.memory_slots,r.cpu_slots),(3,1));self.assertEqual(r.admitted_slots,1)
     def test_exhausted_memory_admits_zero(self):
         r=self.cap(0.5);self.assertEqual(r.admitted_slots,0);self.assertIn('memory_exhausted',r.blockers)
     def test_small_cpu_or_disk_blocks(self):
@@ -128,3 +128,40 @@ class BackupSchedulingChecks(unittest.TestCase):
         self.assertEqual(self.quiet().enqueue_due_backups(), 0)
         with self.assertRaises(ValueError): self.engine.request_system('a', key='k9', generation=1, kind='delete')
         with self.assertRaises(Conflict): self.engine.request_system('a', key='k8', generation=1, kind='backup')   # running: refused
+
+
+class WakeChecks(unittest.TestCase):
+    setUp, worker, request, state, op_state = (WorkerChecks.setUp, WorkerChecks.worker, WorkerChecks.request, WorkerChecks.state, WorkerChecks.op_state)
+
+    def submit(self, account='a', key='m1'):
+        with self.store.connect() as con:
+            con.execute('INSERT OR IGNORE INTO projects(account_id,id,name) VALUES (?,?,?)', (account, 'p-' + account, 'P'))
+        return self.queue().submit(Principal(account, 'customer-' + account, 'customer'), message='hello', key=key)
+
+    def queue(self):
+        from agentai_platform.request_queue import RequestQueue
+        return RequestQueue(self.store, clock=lambda: self.now, require_cell=True)
+
+    def test_waiting_request_wakes_a_stopped_cell_and_only_then_can_be_claimed(self):
+        self.request('create'); self.worker(wake=True).tick()
+        self.assertEqual(self.state(), 'stopped')
+        self.assertEqual(self.worker(wake=True).tick()['woken'], 0)               # nothing waiting yet
+        self.submit()
+        self.assertIsNone(self.queue().claim(owner='w', capacity=OK))             # cell is stopped: not claimable
+        report = self.worker(wake=True, idle_after=10**12).tick()
+        self.assertEqual(report['woken'], 1)
+        self.worker(wake=True, idle_after=10**12).tick()
+        self.assertEqual(self.state(), 'running')
+        self.assertIsNotNone(self.queue().claim(owner='w', capacity=OK))
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 0)   # running cells are not woken again
+
+    def test_wake_is_off_by_default(self):
+        self.request('create'); self.worker().tick(); self.submit()
+        self.assertEqual(self.worker().tick()['woken'], 0)
+
+    def test_other_accounts_waiting_request_shortens_idle_handover(self):
+        self.request('create', 'a'); self.request('create', 'b'); self.worker(idle_after=10**12).tick()
+        self.request('start', 'a'); self.worker(idle_after=10**12).tick()
+        self.now += 120                                                            # idle for 2 minutes only
+        self.submit('b')
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).tick()['drained'], 1)

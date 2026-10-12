@@ -120,14 +120,14 @@ class Coordinator:
             return self._public(con,account,operation)
 
     def request_system(self, account, *, key, generation, kind='stop'):
-        """System-originated host maintenance: `stop` (idle drain, running cell) or `backup` (nightly, stopped cell).
+        """System-originated host maintenance: `stop` (idle drain, running cell), `backup` (nightly, stopped cell) or `start` (wake a stopped cell that has a waiting customer request).
 
         Used by the lifecycle worker's sleep policy. It has no operator grant (none
         exists for a machine decision) so it is limited to the one operation that
         only releases resources, never to anything that creates, restores or deletes.
         """
         identifier(account);identifier(key)
-        if kind not in {'stop','backup'}: raise ValueError('system requests may only stop or back up')
+        if kind not in {'stop','backup','start'}: raise ValueError('system requests may only stop, back up or start')
         if type(generation) is not int or generation<1: raise ValueError('invalid generation')
         body=json.dumps({'kind':kind,'generation':generation,'profile':None,'backup':None,'system':True},sort_keys=True,separators=(',',':'))
         digest=hashlib.sha256(body.encode()).hexdigest()
@@ -141,7 +141,9 @@ class Coordinator:
                 ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.account_id=?''',(account,)).fetchone()
             if not cell: raise NotFound()
             if cell['generation']!=generation: raise Conflict('stale generation')
-            if cell['observed_state']!={'stop':'running','backup':'stopped'}[kind]: raise Conflict('cell is not in the required state')
+            if cell['observed_state']!={'stop':'running','backup':'stopped','start':'stopped'}[kind]: raise Conflict('cell is not in the required state')
+            if kind=='start' and not con.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting'",(account,)).fetchone():
+                raise Conflict('no waiting request needs this cell')
             if con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')",(account,)).fetchone():
                 raise Conflict('account operation unresolved')
             operation=uuid.uuid4().hex

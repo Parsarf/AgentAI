@@ -134,11 +134,12 @@ class FleetCustody:
 class FleetCliDriver:
     """Executes fixed Fleet plans under the pinned candidate CLI. Never receives secrets."""
 
-    def __init__(self,custody,*,secrets=None,volumes=None,isolation=None,health=None):
+    def __init__(self,custody,*,secrets=None,volumes=None,isolation=None,health=None,provisioner=None):
         self.custody=custody
         # Optional host services. Absent in unit fixtures; the production wiring
         # supplies all four so a cell never starts without token/volume/firewall.
         self.secrets,self.volumes,self.isolation,self.health=secrets,volumes,isolation,health
+        self.provisioner=provisioner   # model-route key + Gateway config; absent in unit fixtures
 
     def check(self,kind):
         self.custody.verified_kind(kind)
@@ -158,8 +159,12 @@ class FleetCliDriver:
                 self.volumes.prepare(VolumeSpec(binding.tenant_ref,binding.volume_bytes))
             if self.secrets is not None:
                 argv=argv+['--gateway-token',self.secrets.gateway_token(binding.tenant_ref)]
+            if self.provisioner is not None:
+                argv=argv+self.provisioner.prepare(binding)
         code,stdout=self._run(argv)
         if code!=0: raise OutcomeUncertain('native executor rejected')
+        if claim.kind=='create' and self.provisioner is not None:
+            self.provisioner.finish(binding)
         state=self._observed_state(binding)
         backup_ref=None
         if claim.kind=='delete':

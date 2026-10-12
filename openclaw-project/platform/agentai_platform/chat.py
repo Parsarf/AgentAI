@@ -8,6 +8,8 @@ session remains authoritative for execution and is reconciled by
 native message identity, never by predicted positions.
 """
 from __future__ import annotations
+import hashlib
+import json
 import time
 import uuid
 from .adapters import CapabilityUnavailable
@@ -23,6 +25,7 @@ MAX_CONVERSATIONS_PER_PROJECT = 10
 MAX_PROJECTS = 10  # product/plan.json max_projects; the numeric source of truth
 MAX_TRANSCRIPT_CHARS = 16000
 HISTORY_PAGES = 32
+SETTLE_POLLS = 2   # consecutive idle history reads that end a run
 
 BUDGET_CATEGORIES = (
     ('queue full', 'queue_full'),
@@ -62,7 +65,8 @@ def denial_category(error: BudgetDenied) -> str:
 
 class ChatService:
     def __init__(self, store, *, queue: RequestQueue, ledger: BudgetLedger, pricer=UnmeasuredRoute(),
-                 clock=time.time, max_conversations_per_project=MAX_CONVERSATIONS_PER_PROJECT):
+                 clock=time.time, max_conversations_per_project=MAX_CONVERSATIONS_PER_PROJECT, execution=False):
+        self.execution = bool(execution)   # owner switch state, shown to the customer UI
         self.store = store
         self.queue = queue
         self.ledger = ledger
@@ -181,7 +185,7 @@ class ChatService:
                 (principal.account_id, conversation_id)).fetchall()
             return {'conversation_id': conversation_id,
                     'messages': [dict(row) for row in rows], 'tasks': [dict(row) for row in tasks],
-                    'execution_enabled': False}
+                    'execution_enabled': self.execution}
 
     def task(self, principal: Principal, request_id: str):
         with self.store.connect() as con:
@@ -193,7 +197,7 @@ class ChatService:
                 WHERE r.account_id=? AND r.id=?''', (principal.account_id, request_id)).fetchone()
             if not row:
                 raise NotFound('unavailable')
-            return {**dict(row), 'execution_enabled': False}
+            return {**dict(row), 'execution_enabled': self.execution}
 
     def cancel(self, principal: Principal, request_id: str):
         return self.queue.cancel(principal, request_id)
@@ -210,7 +214,10 @@ class ChatDriver:
     """
 
     def __init__(self, store, *, ledger: BudgetLedger, gateway_factory, clock=time.time,
-                 events: EventService | None = None):
+                 events: EventService | None = None, sleep=None, poll_interval=1.5, run_timeout=900, usage_wait=45, heartbeat=None):
+        self.heartbeat = heartbeat   # callable(claim): keeps the queue lease alive during long runs
+        self.sleep = sleep if sleep is not None else (lambda seconds: None)
+        self.poll_interval, self.run_timeout, self.usage_wait = poll_interval, run_timeout, usage_wait
         self.store = store
         self.ledger = ledger
         self.gateway_factory = gateway_factory
@@ -249,6 +256,7 @@ class ChatDriver:
             (state, run_id, ack_seq, int(self.clock()), claim.account_id, claim.request_id, attempt))
 
     def _absorb(self, con, claim, messages):
+        added = 0
         for row in messages:
             native_id, role, content = row.get('id'), row.get('role'), row.get('content')
             if not isinstance(native_id, str) or not isinstance(content, str) or not content or len(content) > MAX_TRANSCRIPT_CHARS:
@@ -259,11 +267,61 @@ class ChatDriver:
                     AND request_id=? AND provenance='customer' AND native_message_id IS NULL''',
                     (native_id, claim.account_id, claim.conversation_id, claim.request_id))
             elif provenance == 'agent':
-                con.execute('''INSERT OR IGNORE INTO chat_messages(account_id,conversation_id,request_id,provenance,content,native_message_id)
-                    VALUES (?,?,?,'agent',?,?)''', (claim.account_id, claim.conversation_id, claim.request_id, content, native_id))
+                added += con.execute('''INSERT OR IGNORE INTO chat_messages(account_id,conversation_id,request_id,provenance,content,native_message_id)
+                    VALUES (?,?,?,'agent',?,?)''', (claim.account_id, claim.conversation_id, claim.request_id, content, native_id)).rowcount
+        return added
 
-    def _close(self, claim, state, public_result):
+    def _usage_before(self, gateway):
+        snapshot = getattr(gateway, 'usage_snapshot', None)
+        if snapshot is None:
+            return None
+        try:
+            return snapshot()
+        except Exception:
+            return None
+
+    def _reconcile_usage(self, gateway, claim, before):
+        """Record what the provider key actually spent for this task as a ledger receipt.
+
+        Falls back to the reserved upper bound when provider spend cannot be read,
+        so the slot never wedges and the customer is never under-charged silently.
+        """
+        snapshot = getattr(gateway, 'usage_snapshot', None)
+        if snapshot is None:
+            return
+        with self.store.connect() as con:
+            reserved = con.execute('SELECT amount_microusd FROM task_reservations WHERE account_id=? AND task_id=?',
+                                   (claim.account_id, claim.request_id)).fetchone()
+        amount, version, last = None, 'reservation-upper-bound-v1', None
+        if before is not None:
+            deadline = self.clock() + self.usage_wait
+            stable = 0
+            while True:
+                try:
+                    now_spend = snapshot()
+                except Exception:
+                    break
+                stable = stable + 1 if now_spend == last else 0
+                last = now_spend
+                if stable >= 1 and now_spend > before:
+                    amount, version = now_spend - before, 'litellm-reported-v1'
+                    break
+                if self.clock() >= deadline:
+                    if now_spend >= before:
+                        amount, version = now_spend - before, 'litellm-reported-v1'
+                    break
+                self.sleep(self.poll_interval)
+        if amount is None:
+            amount = reserved[0] if reserved else 0
+        digest = hashlib.sha256(json.dumps({'before': before, 'after': last, 'task': claim.request_id}).encode()).hexdigest()
+        self.ledger.receipt(account=claim.account_id, task=claim.request_id, provider='litellm',
+                            request='litellm-' + claim.request_id, amount_microusd=int(amount),
+                            observed_epoch=int(self.clock()), price_version=version, payload_hash=digest)
+
+    def _close(self, claim, state, public_result, gateway=None, before=None):
         # Usage must reconcile before the global slot hands over (queue.finish rechecks).
+        if gateway is not None:
+            self._reconcile_usage(gateway, claim, before)
         self.ledger.settle(account=claim.account_id, task=claim.request_id,
                            effects_quiesced=True, all_routes_reconciled=True)
         with self.coordinator.transaction() as con:
@@ -311,6 +369,7 @@ class ChatDriver:
             # Aborted before any native effect; recorded, settled, no retry.
             return self._close(claim, 'cancelled', 'Cancelled before execution')
         self._emit(claim, 'task_started', {'summary': 'Dispatched to the isolated runtime.'})
+        before = self._usage_before(gateway)
         try:
             if session is None:
                 session, _run_started, _run_error = gateway.open_session(operation_id, 'chat-' + claim.request_id[:16])
@@ -327,7 +386,10 @@ class ChatDriver:
                 self._set_delivery(con, claim, attempt, 'uncertain')
             raise
         cursor = None
-        for _ in range(HISTORY_PAGES):
+        deadline = self.clock() + self.run_timeout
+        new_agent_rows = idle_reads = pages = 0
+        timed_out = False
+        while True:
             with self.coordinator.transaction() as con:
                 cancelled = bool(con.execute('SELECT cancel_requested FROM customer_requests WHERE account_id=? AND id=?',
                                              (claim.account_id, claim.request_id)).fetchone()[0])
@@ -339,26 +401,45 @@ class ChatDriver:
                 with self.coordinator.transaction() as con:
                     self._set_delivery(con, claim, attempt, 'aborted', run_id=ack['run_id'])
                 self._emit(claim, 'progress', {'summary': 'Cancellation confirmed by the runtime.'}, 'gateway')
-                return self._close(claim, 'cancelled', 'Cancelled during execution')
+                return self._close(claim, 'cancelled', 'Cancelled during execution', gateway, before)
+            if self.heartbeat is not None:
+                self.heartbeat(claim)
             page = gateway.history(session, cursor)
+            pages += 1
             if page['kind'] == 'reset':
                 cursor = None
                 continue
             with self.coordinator.transaction() as con:
-                self._absorb(con, claim, page['messages'])
+                new_agent_rows += self._absorb(con, claim, page['messages'])
             if page['messages']:
                 self._emit(claim, 'progress', {'summary': f'{len(page["messages"])} transcript update(s) recorded.'},
                            'gateway')
             if page['cursor']:
                 cursor = page['cursor']
                 continue
-            if not page['active_run']:
+            # A run is over only after it has produced an agent reply and the runtime reports idle twice in a row
+            # (the reply row can land just before the active flag clears).
+            idle_reads = idle_reads + 1 if (not page['active_run'] and new_agent_rows) else 0
+            if idle_reads >= SETTLE_POLLS:
                 break
+            if self.clock() >= deadline:
+                timed_out = True
+                break
+            self.sleep(self.poll_interval)
+        if timed_out:
+            try:
+                gateway.abort(session, ack['run_id'])
+            except Exception:
+                pass
+            with self.coordinator.transaction() as con:
+                self._set_delivery(con, claim, attempt, 'aborted', run_id=ack['run_id'])
+            self._emit(claim, 'progress', {'summary': 'The run took too long and was stopped.'}, 'gateway')
+            return self._close(claim, 'failed', 'The assistant took too long and was stopped. Please try a smaller request.', gateway, before)
         with self.store.connect() as con:
             last = self._last_agent_message(con, claim.account_id, claim.conversation_id)
         public = last if last else 'Completed without an agent transcript row; reconcile history before relying on this result.'
         self._emit(claim, 'result', {'summary': public[:500]})
-        return self._close(claim, 'completed', public)
+        return self._close(claim, 'completed', public, gateway, before)
 
     def reconcile(self, claim: RequestClaim):
         if claim.conversation_id is None:
@@ -387,7 +468,7 @@ class ChatDriver:
             last = self._last_agent_message(con, claim.account_id, claim.conversation_id)
         public = last if last else 'Reconciled without an agent transcript row.'
         self._emit(claim, 'result', {'summary': public[:500]}, 'reconciler')
-        return self._close(claim, 'completed', public)
+        return self._close(claim, 'completed', public, gateway, None)
 
 
 def synthetic_gateway_factory(gateway: SyntheticGateway):
