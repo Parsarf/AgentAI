@@ -41,7 +41,11 @@ http.createServer(async (req, res) => {
     if (p === '/v1/app') return json(res, 200, { api_version: 'mock', user: { email: 'parsa@example.com', role: 'customer' }, assistant: { state: 'ready' },
       features: { chat: true, execution: true, files: false, uploads: false, telegram: false, connectors: false, billing_mode: 'open', requests: true, usage: true }, limits: { max_message_chars: 16000 } });
     if (p === '/v1/requests') return json(res, 200, { requests });
-    if (p === '/v1/conversations') return json(res, 200, { conversations: [{ id: 'c1', project_id: 'p1' }] });
+    if (p === '/v1/conversations' && req.method === 'POST') return json(res, 201, { conversation: { id: 'cnew', project_id: 'p1' } });
+    if (p === '/v1/conversations') return json(res, 200, { conversations: [
+      { id: 'c1', project_id: 'p1', created_at: new Date().toISOString(), title: 'Search for the best cheap carbon pickleball rackets', last_activity: new Date().toISOString(), active: 1 },
+      { id: 'c2', project_id: 'p1', created_at: new Date(Date.now() - 86400000).toISOString(), title: 'What is 17 times 3?', last_activity: new Date(Date.now() - 86400000).toISOString(), active: 0 },
+      { id: 'c3', project_id: 'p1', created_at: '2026-09-20T10:00:00Z', title: 'Build me an e-commerce website', last_activity: '2026-09-20T10:05:00Z', active: 0 }] });
     if (p.endsWith('/blocks')) return json(res, 200, { blocks: [
       { id: 'b1', conversation_id: 'c1', anchor_message_id: 1, kind: 'form', schema_version: '1.0', version: 3, status: 'draft', launched_request_id: null,
         spec: { schemaVersion: '1.0', type: 'form', title: 'Shape your website', description: 'A few choices that change the plan.', submit: { label: 'Create the plan', action: 'submit_requirements' }, fields: [
@@ -54,7 +58,7 @@ http.createServer(async (req, res) => {
       { id: 'b2', conversation_id: 'c1', anchor_message_id: 2, kind: 'task_plan', schema_version: '1.0', version: 2, status: 'draft', launched_request_id: null,
         spec: PLAN, state: { plan: PLAN, requirements: {}, revision: 1 } }] });
     if (p.endsWith('/state')) { const b = await body(req); return json(res, 200, { block: { version: (b.version || 1) + 1 } }); }
-    if (p.endsWith('/messages')) return json(res, 200, { messages, tasks: [] });
+    if (p.endsWith('/messages')) return json(res, 200, { messages: [{ id: 1, request_id: 'r4', provenance: 'customer', content: 'Search for the best cheap carbon pickleball rackets for me and rank the top 10', created_at: 'x' }, { id: 2, request_id: 'r4', provenance: 'agent', content: 'I\'ll start by searching the web for current options.', created_at: 'x' }], tasks: [{ id: 'r4', state: 'running', created_epoch: now() - 140 }] });
     if (p.endsWith('/send')) { const b = await body(req); requests.unshift({ id: 'n' + Date.now(), message: b.message, state: 'waiting', cancel_requested: 0, result: null, created_epoch: now() }); return json(res, 202, { request: { admission: 'reserved' } }); }
     if (p.endsWith('/events')) return json(res, 200, { events });
     if (p.endsWith('/cancel')) return json(res, 202, {});

@@ -9,16 +9,17 @@ export const TEMPLATES: Record<string, string> = {
 const ERRORS: Record<string, string> = {
   budget_denied: 'Your plan allowance cannot fund this request right now.', queue_full: 'You already have the maximum number of waiting tasks.',
   request_conflict: 'That message conflicts with an earlier one. Try again.', rate_limited: 'Too many requests. Wait a moment.',
+  conversation_conflict: 'You have too many chats. Clear some old ones and try again.',
 };
 
-export async function ensureConversation(): Promise<string> {
-  const list = (await api<{ conversations: { id: string }[] }>('GET', '/v1/conversations')).conversations;
-  if (list.length) return list[list.length - 1].id;
-  const projects = (await api<{ projects: { id: string }[] }>('GET', '/v1/projects')).projects;
-  return (await api<{ conversation: { id: string } }>('POST', '/v1/conversations', { project_id: projects[0].id })).conversation.id;
+/** A new chat needs no project: the server uses the account's first one. Created only when the first message is sent. */
+export async function createChat(): Promise<string> {
+  return (await api<{ conversation: { id: string } }>('POST', '/v1/conversations', {})).conversation.id;
 }
 
-export default function Composer({ seed, onSent }: { seed?: { text: string; n: number } | null; onSent?: (result: any) => void }) {
+export default function Composer({ conversationId, seed, onSent, autoFocus }: {
+  conversationId?: string | null; seed?: { text: string; n: number } | null; onSent?: (result: any) => void; autoFocus?: boolean;
+}) {
   const { app, refresh } = useData();
   const [text, setText] = useState(''); const [mode, setMode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [listening, setListening] = useState(false);
@@ -26,6 +27,7 @@ export default function Composer({ seed, onSent }: { seed?: { text: string; n: n
   const box = useRef<HTMLTextAreaElement>(null); const rec = useRef<any>(null);
   const max = app?.limits.max_message_chars ?? 16000;
   useEffect(() => { if (seed) { setText(seed.text); setTimeout(() => { box.current?.focus(); box.current?.setSelectionRange(seed.text.length, seed.text.length); }, 0); } }, [seed]);
+  useEffect(() => { if (autoFocus) box.current?.focus(); }, [autoFocus, conversationId]);
   useEffect(() => { const el = box.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 260) + 'px'; } }, [text]);
   const speech = typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
 
@@ -43,9 +45,9 @@ export default function Composer({ seed, onSent }: { seed?: { text: string; n: n
     const message = text.trim(); if (!message || busy) return;
     setBusy(true); setErr('');
     try {
-      const id = await ensureConversation();
+      const id = conversationId || await createChat();
       const r = await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: respond });
-      setText(''); setMode(null); await refresh(); onSent?.(r.request);
+      setText(''); setMode(null); await refresh(); onSent?.({ ...r.request, conversation_id: id });
     } catch (e) {
       const code = e instanceof ApiError ? e.code : 'unknown';
       setErr(ERRORS[code] ?? 'Could not send that. Please try again.');
@@ -55,13 +57,13 @@ export default function Composer({ seed, onSent }: { seed?: { text: string; n: n
   return (
     <div>
       <form className="composer" onSubmit={e => { e.preventDefault(); submit(); }}>
-        <label className="sr" htmlFor="ask">Ask anything or give Lumina a task</label>
-        <textarea id="ask" ref={box} rows={2} value={text} maxLength={max} placeholder="Ask anything or give Lumina a task…"
+        <label className="sr" htmlFor="ask">Message Lumina</label>
+        <textarea id="ask" ref={box} rows={2} value={text} maxLength={max} placeholder={conversationId ? 'Reply or ask a follow-up…' : 'Ask anything or give Lumina a task…'}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || (!e.shiftKey && !e.nativeEvent.isComposing))) { e.preventDefault(); submit(); } }}
           onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); setErr('File attachments are not enabled yet; paste text instead.'); } }} />
         <div className="row">
-          {Object.keys(TEMPLATES).map(k => (
+          {!conversationId && Object.keys(TEMPLATES).map(k => (
             <button type="button" key={k} className="chip" aria-pressed={mode === k} onClick={() => choose(k)}>
               {k === 'Web' && <I.Browser width={16} height={16} />}{k === 'Code' && <I.Code width={16} height={16} />}{k === 'Data' && <I.Chart width={16} height={16} />}{k === 'Automate' && <I.Bolt width={16} height={16} />}{k}
             </button>))}
@@ -72,10 +74,10 @@ export default function Composer({ seed, onSent }: { seed?: { text: string; n: n
           </span>
           <span className="actions">
           {speech && <button type="button" className="iconbtn" aria-label={listening ? 'Stop dictation' : 'Dictate'} aria-pressed={listening} style={{ width: 44, height: 44, borderRadius: '50%' }} onClick={toggleVoice}><I.Mic /></button>}
-          <button className="send" disabled={!text.trim() || busy} aria-label="Send task"><I.Up /></button>
+          <button className="send" disabled={!text.trim() || busy} aria-label="Send message"><I.Up /></button>
           </span>
         </div>
       </form>
-      <p className={`hint${err ? ' err' : ''}`} role={err ? 'alert' : undefined}>{err || (live ? 'Enter to send · Shift+Enter for a new line · the first reply after a pause takes ~30–40 s while your assistant wakes up.' : 'Execution is off right now: your task is saved and waits.')}</p>
+      <p className={`hint${err ? ' err' : ''}`} role={err ? 'alert' : undefined}>{err || (live ? 'Enter to send · Shift+Enter for a new line · you can keep chatting while a task runs.' : 'Execution is off right now: your message is saved and waits.')}</p>
     </div>);
 }

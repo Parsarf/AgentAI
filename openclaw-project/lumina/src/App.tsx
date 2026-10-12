@@ -16,7 +16,7 @@ export default function App() {
     <BrowserRouter basename="/app">
       <Routes>
         <Route element={<Shell />}>
-          <Route index element={<Home />} /><Route path="chat" element={<Chat />} />
+          <Route index element={<Home />} /><Route path="chat" element={<Chat />} /><Route path="chat/:id" element={<Chat />} />
           <Route path="tasks" element={<Tasks />} /><Route path="tasks/:id" element={<Tasks />} />
           <Route path="browser" element={<Browser />} /><Route path="files" element={<Files />} /><Route path="calendar" element={<Calendar />} />
           <Route path="automations" element={<Automations />} /><Route path="integrations" element={<Integrations />} /><Route path="settings" element={<Settings />} />

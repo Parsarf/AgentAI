@@ -9,7 +9,7 @@ import { displayName, title } from '../lib/format';
 import { phase } from '../lib/tasks';
 
 export const NAV = [
-  { to: '/', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat }, { to: '/tasks', label: 'Tasks', icon: I.Tasks },
+  { to: '/', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/tasks', label: 'Tasks', icon: I.Tasks },
   { to: '/browser', label: 'Browser', icon: I.Browser }, { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
   { to: '/automations', label: 'Automations', icon: I.Bolt }, { to: '/integrations', label: 'Integrations', icon: I.Cube }, { to: '/settings', label: 'Settings', icon: I.Gear },
 ];

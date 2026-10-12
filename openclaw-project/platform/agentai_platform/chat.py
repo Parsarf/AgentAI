@@ -24,7 +24,7 @@ from .lifecycle.types import Conflict
 from .request_queue import RequestQueue, RequestClaim, RequestReceipt
 from .security import NotFound, Principal
 
-MAX_CONVERSATIONS_PER_PROJECT = 10
+MAX_CONVERSATIONS_PER_PROJECT = 100   # chat-style use: many conversations; clearing (archiving) one frees a slot
 MAX_PROJECTS = 10  # product/plan.json max_projects; the numeric source of truth
 MAX_TRANSCRIPT_CHARS = 16000
 HISTORY_PAGES = 32
@@ -102,13 +102,19 @@ class ChatService:
     def conversations(self, principal: Principal, project_id: str | None = None):
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            sql = 'SELECT c.id,c.project_id,c.created_at FROM conversations c WHERE c.account_id=? AND c.archived_epoch IS NULL'
+            sql = '''SELECT c.id,c.project_id,c.created_at,
+                (SELECT substr(m.content,1,90) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id
+                    AND m.provenance IN ('customer','telegram') ORDER BY m.id LIMIT 1) AS title,
+                (SELECT max(m.created_at) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id) AS last_activity,
+                (SELECT count(*) FROM customer_requests r WHERE r.account_id=c.account_id AND r.conversation_id=c.id
+                    AND r.state IN ('waiting','starting','running','uncertain')) AS active
+                FROM conversations c WHERE c.account_id=? AND c.archived_epoch IS NULL'''
             args: list = [principal.account_id]
             if project_id is not None:
                 identifier(project_id)
                 sql += ' AND c.project_id=?'
                 args.append(project_id)
-            return [dict(row) for row in con.execute(sql + ' ORDER BY c.created_at,c.id LIMIT 100', args).fetchall()]
+            return [dict(row) for row in con.execute(sql + ' ORDER BY c.created_at,c.id LIMIT 500', args).fetchall()]
 
     def archive_conversation(self, principal: Principal, conversation_id: str):
         """Hide a conversation (history, tasks and ledger rows stay). Idempotent."""

@@ -32,7 +32,7 @@ export default function Home() {
   return (
     <div className="center">
       <header className="hero"><h1>{greeting(new Date())},<br />{name}.</h1><p>What would you like to do today?</p></header>
-      <Composer seed={seed} onSent={r => { if (r && r.response_type && r.response_type !== 'text') nav('/chat'); }} />
+      <Composer seed={seed} onSent={r => nav(`/chat/${r.conversation_id}`)} />
       <div className="caps" role="list">
         {CAPS.map(c => (
           <button key={c.key} role="listitem" className="cap" style={{ ['--c' as any]: c.color }} onClick={() => setSeed({ text: TEMPLATES[c.key], n: Date.now() })}>

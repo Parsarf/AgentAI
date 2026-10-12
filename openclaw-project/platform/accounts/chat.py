@@ -82,6 +82,9 @@ def chat_conversations(request, conversation_id=None):
         p = principal(request)
         if request.method == 'POST':
             project_id = request.input.get('project_id', '')
+            if not project_id:                       # a new chat needs no project choice: use the account's first one
+                projects = s.projects(p)
+                project_id = projects[0]['id'] if projects else ''
             created = s.create_conversation(p, project_id)
             request.form_redirect = '/account/chat/?project=' + created['project_id'] + '&conversation=' + created['id']
             return JsonResponse({'conversation': created}, status=201)

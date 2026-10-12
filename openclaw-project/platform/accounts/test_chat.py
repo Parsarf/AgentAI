@@ -284,3 +284,20 @@ class GenUiHttpChecks(ChatHTTPChecks):
         again = self.send(a, conversation, 'Build me an e-commerce website', 'g1')
         self.assertEqual(again.status_code, 202, again.content)
         self.assertEqual(again.json()['request']['block']['id'], block['id'])       # idempotent
+
+
+class ChatListChecks(ChatHTTPChecks):
+    def test_new_chat_needs_no_project_and_the_list_carries_titles_and_activity(self):
+        a = self.clients[0]
+        made = self.post(a, '/v1/conversations', {})
+        self.assertEqual(made.status_code, 201, made.content)
+        cid = made.json()['conversation']['id']
+        first = [c for c in a.get('/v1/conversations', secure=True).json()['conversations'] if c['id'] == cid][0]
+        self.assertEqual((first['title'], first['active']), (None, 0))
+        self.post(a, '/v1/conversations/' + cid + '/send', {'message': 'What is the capital of Portugal? ' + 'x' * 200, 'key': 'cl1', 'mode': 'text'})
+        row = [c for c in a.get('/v1/conversations', secure=True).json()['conversations'] if c['id'] == cid][0]
+        self.assertTrue(row['title'].startswith('What is the capital of Portugal?')); self.assertLessEqual(len(row['title']), 90)
+        self.assertEqual(row['active'], 1); self.assertTrue(row['last_activity'])                               # a waiting request counts as active
+        self.assertEqual(self.post(self.clients[1], '/v1/conversations/' + cid + '/archive', {}).status_code, 404)
+        for n in range(15):                                                                                       # more than the old limit of 10
+            self.assertEqual(self.post(a, '/v1/conversations', {}).status_code, 201)
