@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly AgentAI backup set (after the owner archive at 03:17 UTC)
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 UTC
+RandomizedDelaySec=120
+Persistent=true
+Unit=agentai-ops-backup.service
+
+[Install]
+WantedBy=timers.target

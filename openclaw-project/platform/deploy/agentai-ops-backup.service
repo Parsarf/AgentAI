@@ -1,0 +1,20 @@
+[Unit]
+Description=AgentAI encrypted backup set (verified, per-tenant manifests)
+After=network-online.target openclaw-ops-backup.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/agentai-platform/current
+Environment=PYTHONPATH=/opt/agentai-platform/current
+ExecStart=/usr/bin/python3 -m agentai_platform.ops.cli backup
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadWritePaths=/var/lib/agentai-ops /var/backups/agentai
+MemoryMax=512M
+CPUQuota=50%
+TimeoutStartSec=3600
+Nice=10

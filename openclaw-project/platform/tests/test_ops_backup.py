@@ -138,8 +138,14 @@ class RetentionChecks(unittest.TestCase):
         return [time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(base - i * step)) for i in range(days)]
     def test_bounded_and_always_keeps_the_newest(self):
         ids = self.ids(400); keep = select_keep(ids, 2_000_000_000)
-        self.assertIn(ids[0], keep); self.assertLessEqual(len(keep), 14 + 8 + 6 + 1); self.assertGreaterEqual(len(keep), 14)
+        self.assertIn(ids[0], keep); self.assertLessEqual(len(keep), 14 + 2 + 1); self.assertGreaterEqual(len(keep), 14)
         self.assertTrue(set(ids[:14]) <= keep)
+    def test_nothing_older_than_the_maximum_age_survives_except_the_only_newest_point(self):
+        ids = self.ids(120); keep = select_keep(ids, 2_000_000_000)
+        self.assertTrue(all(i >= self.ids(31)[-1] for i in keep))                     # none older than 30 days
+        stale_only = self.ids(3, base=2_000_000_000 - 90 * 86400)
+        self.assertEqual(select_keep(stale_only, 2_000_000_000), {stale_only[0]})     # backups stopped: keep the one recovery point
+        self.assertEqual(select_keep(ids, 2_000_000_000, max_age_days=10) - {ids[0]}, {i for i in keep if i >= self.ids(11)[-1]} - {ids[0]})
     def test_few_sets_are_all_kept_and_empty_is_safe(self):
         ids = self.ids(5); self.assertEqual(select_keep(ids, 2_000_000_000), set(ids)); self.assertEqual(select_keep([], 0), set())
     def test_pruning_removes_only_old_set_directories_and_leaves_other_files(self):
@@ -153,7 +159,7 @@ class RetentionChecks(unittest.TestCase):
             names = {n for n, _, _ in dest.list()}
             self.assertIn('notes/keep-me.txt', names); self.assertIn('sets/not-a-set/file', names)
             kept = {n.split('/')[1] for n in names if n.startswith('sets/') and n.split('/')[1][0].isdigit()}
-            self.assertIn(self.ids(30)[0], kept); self.assertLessEqual(len(kept), 14 + 8 + 6 + 1); self.assertLess(len(kept), 30)
+            self.assertIn(self.ids(30)[0], kept); self.assertLessEqual(len(kept), 14 + 2 + 1); self.assertLess(len(kept), 30)
 
 
 class DestinationChecks(unittest.TestCase):

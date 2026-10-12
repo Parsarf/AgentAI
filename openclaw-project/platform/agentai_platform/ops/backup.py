@@ -21,7 +21,8 @@ import time
 import uuid
 
 SET_ID = re.compile(r'\d{8}T\d{6}Z')
-KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 14, 8, 6
+KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 14, 2, 0   # 30-day maximum retention (plan.json backup_expiry_days): deleted data ages out
+MAX_AGE_DAYS = 30
 
 
 class BackupError(Exception): pass
@@ -130,8 +131,9 @@ def latest_file_source(name, directory, pattern, kind, max_age_seconds, clock=ti
 
 # ------------------------------------------------------------------- retention
 
-def select_keep(set_ids, now, daily=KEEP_DAILY, weekly=KEEP_WEEKLY, monthly=KEEP_MONTHLY):
-    """Newest set always; then newest-per-day, per-ISO-week and per-month within the bounds."""
+def select_keep(set_ids, now, daily=KEEP_DAILY, weekly=KEEP_WEEKLY, monthly=KEEP_MONTHLY, max_age_days=MAX_AGE_DAYS):
+    """Newest set always (the only recovery point if backups have stopped); then newest-per-day, per-ISO-week and
+    per-month within the bounds; nothing else older than the maximum age survives."""
     parsed = sorted(((calendar.timegm(time.strptime(s, '%Y%m%dT%H%M%SZ')), s) for s in set_ids), reverse=True)
     keep = {parsed[0][1]} if parsed else set()
     for limit, key in ((daily, lambda t: time.strftime('%Y%m%d', time.gmtime(t))),
@@ -143,17 +145,19 @@ def select_keep(set_ids, now, daily=KEEP_DAILY, weekly=KEEP_WEEKLY, monthly=KEEP
             if label not in seen:
                 seen.append(label)
                 if len(seen) <= limit: keep.add(sid)
-    return keep
+    newest = parsed[0][1] if parsed else None
+    ages = {sid: (now - stamp) / 86400 for stamp, sid in parsed}
+    return {sid for sid in keep if sid == newest or ages[sid] <= max_age_days}
 
 
 # ------------------------------------------------------------------------- job
 
 class BackupJob:
     def __init__(self, sources, crypto, destinations, *, work_root, status_path, clock=time.time, alert=None,
-                 release=None, expected_assets=()):
+                 release=None, expected_assets=(), max_age_days=MAX_AGE_DAYS):
         self.sources, self.crypto, self.destinations = list(sources), crypto, list(destinations)
         self.work_root, self.status_path, self.clock, self.alert = Path(work_root), Path(status_path), clock, alert
-        self.release, self.expected_assets = release, tuple(expected_assets)
+        self.release, self.expected_assets, self.max_age_days = release, tuple(expected_assets), max_age_days
 
     def _set_id(self): return time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(self.clock()))
 
@@ -227,7 +231,7 @@ class BackupJob:
             try:
                 names = [n for n, _, _ in dest.list('sets/')]
                 complete = sorted({n.split('/')[1] for n in names if n.endswith('/manifest.json') and SET_ID.fullmatch(n.split('/')[1])})
-                keep = select_keep(complete, self.clock())
+                keep = select_keep(complete, self.clock(), max_age_days=self.max_age_days)
                 for sid in {n.split('/')[1] for n in names if SET_ID.fullmatch(n.split('/')[1])}:
                     # Only exact set ids under sets/ are ever removed; sets without a manifest are partial leftovers.
                     if sid not in keep:

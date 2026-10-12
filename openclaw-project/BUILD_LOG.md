@@ -1580,3 +1580,10 @@ Django 67. Nothing installed on the server; the server's research toggle still r
 ## 2026-10-12 — Free access mode, Phase 13 code deployed
 
 - Owner asked for no payment until Stripe is on: added `open_access` switch + `sync_open_access`; payments switch now means "require payment" and wins. Deployed release 20261012T0230Z-billing (migrations 0009-0013, worker timer, dashboard update); free access ON; Stripe not configured. 357 platform / 76 Django / 35 dashboard tests pass.
+
+## 2026-10-12 — Phase 14 operations built and exercised
+
+- Encrypted verified backups (age, public key on host), scoped restore, monitor with unknown/stale states, alert router, rotation, privacy-safe diagnostics,
+  rate-limit gaps closed, canary release tool with rollback, nightly tenant backup scheduling, runbooks. Deployed with timers; four real canary releases.
+  Drills: owner-side decrypt of all 7 artifacts, real-schema account restore, corruption rejection, release rollback in sandboxes.
+- Open: automatic off-server destination (launch blocker), SSH keys-only, Phase 15 acceptance. 421 platform / 79 Django / 35 dashboard tests pass.

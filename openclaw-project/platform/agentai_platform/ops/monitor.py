@@ -11,7 +11,7 @@ from pathlib import Path
 import time
 import uuid
 
-from . import exposure
+from . import exposure, pins
 from .inventory import gaps
 
 OK, WARN, CRIT, UNKNOWN = 'ok', 'warn', 'crit', 'unknown'
@@ -84,7 +84,11 @@ class Monitor:
         if status.get('last_complete') is False: out.append(result('backup_last_run', CRIT, 'the last backup run was incomplete: ' + ', '.join(f['source'] for f in status.get('failures', [])) , failures=len(status.get('failures', []))))
         else: out.append(result('backup_last_run', OK, 'last backup run complete'))
         off = status.get('offsite_copy')
-        out.append(result('backup_offsite', OK if off else WARN, 'an off-server copy exists' if off else 'NO off-server copy: backups survive mistakes but not losing this server'))
+        pulled = self.probe.last_pull_epoch() if hasattr(self.probe, 'last_pull_epoch') else None
+        recent_pull = bool(pulled) and now - pulled < 7 * 86400
+        if off: out.append(result('backup_offsite', OK, 'an automatic off-server copy exists'))
+        elif recent_pull: out.append(result('backup_offsite', OK, f'copied to the owner computer {(now - pulled) / 86400:.1f} days ago (manual pull; no automatic off-server destination)'))
+        else: out.append(result('backup_offsite', WARN, 'NO off-server copy: backups survive mistakes but not losing this server'))
         manifest = self.probe.latest_manifest()
         if manifest:
             missing = gaps(manifest)
@@ -123,7 +127,12 @@ class Monitor:
         status = [OK, UNKNOWN, WARN, CRIT][worst]
         return [result('host_exposure', status, '; '.join(m for _, m in findings)[:300] if findings else 'only expected ports open, firewall active, secrets private', findings=len(findings))]
 
-    CHECKS = ('services', 'containers', 'capacity', 'database', 'queues', 'backups', 'timers', 'certificate', 'cells', 'exposure')
+    def pinning(self):
+        findings = pins.evaluate_compose(self.probe.read('/opt/openclaw-production/docker-compose.yml')) + pins.evaluate_lock(self.probe.read('/opt/agentai-platform/current/requirements.lock'))
+        worst = max((RANK[s] for s, _ in findings), default=0)
+        return [result('pinning', [OK, UNKNOWN, WARN, CRIT][worst], '; '.join(m for _, m in findings)[:300] if findings else 'images and dependencies are pinned by digest/hash', findings=len(findings))]
+
+    CHECKS = ('services', 'containers', 'capacity', 'database', 'queues', 'backups', 'timers', 'certificate', 'cells', 'exposure', 'pinning')
 
     def run(self):
         correlation = uuid.uuid4().hex[:12]
@@ -154,7 +163,8 @@ class Monitor:
         """Dead-man's switch: alert if the other job's status file has stopped updating."""
         try: age = self.clock() - json.loads(Path(other_status_path).read_text())['checked_epoch' if name == 'monitor' else 'updated_epoch']
         except (OSError, ValueError, KeyError): age = None
-        if age is None or age > max_age:
+        if age is None: return False   # never reported yet: first-run ordering, not a stall (the timers check covers a job that never starts)
+        if age > max_age:
             if self.router: self.router.send(f'watchdog.{name}', 'crit', f'the {name} job has not reported recently', correlation_id='watchdog')
             return False
         if self.router: self.router.resolved(f'watchdog.{name}')

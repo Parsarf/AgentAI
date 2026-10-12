@@ -38,6 +38,8 @@ class BoundaryMiddleware:
         print(json.dumps({'event':'account_http','request_id':str(request.request_id),'status':response.status_code}),flush=True)
         return response
 
+PUBLIC_UNMETERED={'/healthz','/readyz','/v1/telegram/webhook','/v1/billing/webhook'}
+
 class AccountMiddleware:
     def __init__(self, get_response): self.get_response=get_response
     def __call__(self, request):
@@ -49,6 +51,10 @@ class AccountMiddleware:
             elif identity.role=='customer':
                 try: request.account_id=customer_scope(request.user,request.session.get('epoch'))
                 except Denied: logout(request)
+        if not request.user.is_authenticated and request.path not in PUBLIC_UNMETERED:
+            # Ingress limit for anonymous traffic by source address; provider webhooks meter themselves.
+            try: rate('ingress.anonymous',request.client_ip,120,60)
+            except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'60'})
         if request.user.is_authenticated:
             try:
                 scope='api.read' if request.method in ['GET','HEAD'] else 'api.mutate'

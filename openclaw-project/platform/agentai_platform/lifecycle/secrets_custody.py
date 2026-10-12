@@ -117,7 +117,7 @@ class ProviderKeys:
     def __init__(self, http, store):
         self.http, self.store = http, store
 
-    def issue(self, tenant, account_id, *, max_budget_usd, duration_days, models):
+    def issue(self, tenant, account_id, *, max_budget_usd, duration_days, models, rpm_limit=30, tpm_limit=200_000):
         if not isinstance(max_budget_usd, (int, float)) or isinstance(max_budget_usd, bool) \
                 or not 0 < max_budget_usd <= 1000:
             raise CustodyError('invalid key budget')
@@ -125,11 +125,13 @@ class ProviderKeys:
             raise CustodyError('invalid key duration')
         if type(models) is not list or not models or not all(type(m) is str and m for m in models):
             raise CustodyError('explicit model allowlist required')
+        for limit in (rpm_limit, tpm_limit):   # per-key provider rate limits bound a runaway agent independently of the ledger
+            if type(limit) is not int or isinstance(limit, bool) or limit < 1: raise CustodyError('invalid provider rate limit')
         if self.store.provider_key(tenant) is not None:
             return False  # idempotent: a retry reuses the key already in custody
         status, body = self.http('POST', '/key/generate', {
             'key_alias': tenant, 'max_budget': max_budget_usd, 'duration': f'{duration_days}d',
-            'models': models, 'metadata': {'account_id': account_id, 'tenant': tenant}})
+            'models': models, 'rpm_limit': rpm_limit, 'tpm_limit': tpm_limit, 'metadata': {'account_id': account_id, 'tenant': tenant}})
         key = body.get('key') if isinstance(body, dict) else None
         if status != 200 or type(key) is not str:
             raise CustodyError('provider key issuance failed')

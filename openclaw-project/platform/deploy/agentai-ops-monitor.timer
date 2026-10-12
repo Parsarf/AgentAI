@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentAI monitor every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=10
+Unit=agentai-ops-monitor.service
+
+[Install]
+WantedBy=timers.target

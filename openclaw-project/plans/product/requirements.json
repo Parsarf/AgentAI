@@ -924,7 +924,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 14,
-      "implementation_state": "PARTIAL",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-RECOVERY",
       "observable_assertion": "Restore A without B changes; corrupt reject; current budget/access/tombstones",
@@ -932,10 +932,17 @@
         13
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "openclaw-project/plans/product/phase-14.md",
+        "openclaw-project/platform/OPERATIONS.md",
+        "openclaw-project/platform/agentai_platform/ops/",
+        "openclaw-project/platform/deploy/release.py",
+        "openclaw-project/evidence/product/phase-14/20261012T2030Z/manifest.json"
       ],
-      "activation_blocker": "Approved encrypted off-host destination and key custody required",
-      "acceptance_result": "NOT_RUN"
+      "activation_blocker": "Built, deployed and exercised (encrypted backup set, owner-side decrypt, scoped restore on the real schema, corruption rejection, canary release and rollback drills). Remaining: an automatic off-server destination (owner choice), first scheduled timer fire, measured RPO/RTO and a restore after a real timer run (Phase 15), SSH key-only login.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "READY",
+      "targeted_check_result": "PASS: 62 ops tests, 421 platform / 79 Django / 35 dashboard in total; live set 7/7 artifacts decrypted and verified on the owner computer; four release drills passed"
     },
     {
       "id": "OPS-02",
@@ -943,7 +950,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 14,
-      "implementation_state": "PARTIAL",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-OPERATIONS",
       "observable_assertion": "Scoped observability and incident controls; actual schedule/fire/rollback",
@@ -951,10 +958,17 @@
         13
       ],
       "evidence": [
-        "openclaw-project/BUILD_LOG.md"
+        "openclaw-project/BUILD_LOG.md",
+        "openclaw-project/plans/product/phase-14.md",
+        "openclaw-project/platform/OPERATIONS.md",
+        "openclaw-project/platform/agentai_platform/ops/",
+        "openclaw-project/platform/deploy/release.py",
+        "openclaw-project/evidence/product/phase-14/20261012T2030Z/manifest.json"
       ],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
-      "acceptance_result": "NOT_RUN"
+      "activation_blocker": "Built, deployed and exercised (encrypted backup set, owner-side decrypt, scoped restore on the real schema, corruption rejection, canary release and rollback drills). Remaining: an automatic off-server destination (owner choice), first scheduled timer fire, measured RPO/RTO and a restore after a real timer run (Phase 15), SSH key-only login.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "READY",
+      "targeted_check_result": "PASS: 62 ops tests, 421 platform / 79 Django / 35 dashboard in total; live set 7/7 artifacts decrypted and verified on the owner computer; four release drills passed"
     },
     {
       "id": "OPS-03",
@@ -1600,7 +1614,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 14,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-LIMIT-BACKUP_EXPIRY_DAYS",
       "observable_assertion": "Enforcing server/adapter uses plan.json backup_expiry_days; above-limit request denied without effect",
@@ -1608,10 +1622,14 @@
         13
       ],
       "evidence": [
-        "product/plan.json"
+        "product/plan.json",
+        "openclaw-project/plans/product/phase-14.md",
+        "openclaw-project/platform/OPERATIONS.md",
+        "openclaw-project/platform/agentai_platform/ops/"
       ],
       "activation_blocker": null,
-      "acceptance_result": "NOT_RUN"
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS offline: retention reads plan.json backup_expiry_days (30); no set older than the limit survives except the single newest recovery point (documented exception)"
     },
     {
       "id": "LEGACY-T10-OWNER-TELEGRAM-REPLY",

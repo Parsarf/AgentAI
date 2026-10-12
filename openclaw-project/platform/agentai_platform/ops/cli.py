@@ -34,12 +34,17 @@ def main(argv=None):
         if not (cfg.get('alerts') or {}).get('email', {}).get('enabled') and not (cfg.get('alerts') or {}).get('telegram', {}).get('enabled'): problems.append('no alert destination enabled')
         print('\n'.join(problems) or 'setup checks passed'); return 1 if any(not x.startswith('LAUNCH') for x in problems) else 0
     if a.command == 'backup':
+        Monitor(hostconfig.probe(cfg), cfg['monitor_status'], hostconfig.router(cfg)).watchdog(cfg['monitor_status'], 'monitor', 1800)   # the monitor must be alive too
+        from .housekeeping import prune_snapshots
+        try: prune_snapshots(Path(cfg['app_db']).parent)
+        except OSError: pass
         report = hostconfig.backup_job(cfg).run(); print(json.dumps({k: report[k] for k in ('set_id', 'complete', 'offsite_copy', 'artifacts')} | {'failures': len(report['failures']), 'warnings': len(report['warnings'])}))
         return 0 if report['complete'] else 1
     if a.command in ('monitor', 'watchdog'):
         mon = Monitor(hostconfig.probe(cfg), cfg['monitor_status'], None if a.no_alert else hostconfig.router(cfg))
         if a.command == 'watchdog':
             ok = mon.watchdog(cfg['monitor_status'], 'monitor', 1800) & mon.watchdog(cfg['backup_status'], 'backup', 2 * 86400); return 0 if ok else 1
+        if not a.no_alert: mon.watchdog(cfg['backup_status'], 'backup', 2 * 86400)   # and the backup job must have reported
         status = mon.run(); print(json.dumps({'overall': status['overall'], 'counts': status['counts'], 'correlation_id': status['correlation_id']})); return 0 if status['overall'] in ('ok', 'unknown') else 1
     if a.command == 'diagnostics':
         print(json.dumps(diagnostics.collect(cfg['app_db'], monitor_status=_json(cfg['monitor_status']), backup_status=_json(cfg['backup_status'])), indent=2)); return 0

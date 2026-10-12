@@ -105,13 +105,19 @@ def sources(cfg, clock=time.time):
     return out, release
 
 
+def retention_days(cfg):
+    """The approved plan file owns the backup maximum (backup_expiry_days); config only overrides when the plan file is absent."""
+    try: return int(json.loads(Path(cfg['plan_file']).read_text())['backup_expiry_days'])
+    except (OSError, ValueError, KeyError): return int(cfg.get('backup_expiry_days', 30))
+
+
 def backup_job(cfg):
     srcs, release = sources(cfg)
     expected = [a for a in BACKED_UP if a != 'tenant-cells']
     return BackupJob(srcs, AgeCrypto(cfg['age_recipients']), destinations(cfg), work_root=cfg['work_root'], status_path=cfg['backup_status'],
                      alert=lambda kind, report: router(cfg).send(kind, 'crit', f"backup set {report['set_id']} incomplete: " + ', '.join(f['source'] for f in report['failures']) + ' ' + ', '.join(report['missing_assets']),
                                                                correlation_id=report['set_id']),
-                     release=release, expected_assets=expected)
+                     release=release, expected_assets=expected, max_age_days=retention_days(cfg))
 
 
 def probe(cfg):

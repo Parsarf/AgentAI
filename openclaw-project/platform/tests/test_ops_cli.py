@@ -50,7 +50,7 @@ class EndToEndChecks(unittest.TestCase):
         return code, out.getvalue()
 
     def test_backup_verify_fetch_and_scoped_restore_through_the_real_cli(self):
-        code, text = self.run_cli('backup'); report = json.loads(text)
+        code, text = self.run_cli('backup'); report = json.loads(text.splitlines()[-1])
         self.assertEqual((code, report['complete'], report['offsite_copy']), (0, True, False)); self.assertGreaterEqual(report['artifacts'], 7)
         code, text = self.run_cli('verify'); self.assertEqual(code, 0); self.assertEqual(json.loads(text)['size_mismatch'], [])
         # nothing readable on the host side
@@ -73,6 +73,11 @@ class EndToEndChecks(unittest.TestCase):
         self.cfg['age_recipients'] = []; self.cfg_path.write_text(json.dumps(self.cfg))
         code, text = self.run_cli('check'); self.assertEqual(code, 1); self.assertIn('no age recipient', text); self.assertIn('LAUNCH BLOCKER', text); self.assertIn('no alert destination', text)
 
+    def test_backup_retention_comes_from_the_approved_plan_file(self):
+        from agentai_platform.ops import hostconfig
+        plan = self.root / 'plan.json'; plan.write_text(json.dumps({'backup_expiry_days': 21}))
+        cfg = hostconfig.load(str(self.cfg_path)); cfg['plan_file'] = str(plan); self.assertEqual(hostconfig.backup_job(cfg).max_age_days, 21)
+        cfg['plan_file'] = str(self.root / 'absent.json'); self.assertEqual(hostconfig.backup_job(cfg).max_age_days, 30)
     def test_inventory_and_diagnostics_commands(self):
         code, text = self.run_cli('inventory'); self.assertIn('app-db', text); self.assertIn('encryption-keys', text)
         code, text = self.run_cli('diagnostics'); self.assertNotIn('hello-a', text); self.assertEqual(len(json.loads(text)['accounts']), 2)

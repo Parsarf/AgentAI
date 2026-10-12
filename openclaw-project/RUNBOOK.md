@@ -846,3 +846,10 @@ or session); `billing_worker --reconcile` compares every subscription with Strip
 buttons at any time; webhooks keep being stored and applied so no paid state is lost.
 
 **Free access (live since 2026-10-12):** the dashboard switch *Free access for every account* is ON; every active account has an `open` entitlement with the plan allowance. To start charging: finish the Stripe test setup, then turn on *Require payment*; free access ends within about 30 seconds and unsubscribed accounts are paused. To stop all use immediately: turn *Free access* off. Check what the worker did: `journalctl -u agentai-billing-worker -n 3`.
+
+## Operations runbook (Phase 14, live since 2026-10-12)
+
+Full procedures: `platform/OPERATIONS.md`. In short: encrypted backup set nightly at 03:40 UTC (`agentai-ops-backup.timer`) into `/var/backups/agentai`;
+monitor every 5 minutes (`agentai-ops-monitor.timer`) with email alerts to the owner; releases only through `deploy/release.py` (canary + rollback);
+**pull a copy to your computer weekly** with `python3 openclaw-project/bin/pull-backups.py` (the only outside copy until an automatic destination is chosen);
+the private key is `~/agentai-backup-key/identity.txt` on your computer, never on the server.

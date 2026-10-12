@@ -23,6 +23,7 @@ class FakeProbe:
         self.days = 60.0
         self.cells = {'running': 0, 'engine_up': True, 'firewall_loaded': True, 'quarantined': 0, 'quarantine_age_days': 0}
         self.ports = {('0.0.0.0', 22), ('0.0.0.0', 80), ('0.0.0.0', 443), ('127.0.0.1', 18789)}
+        self.files = {'/opt/openclaw-production/docker-compose.yml': 'image: postgres@sha256:' + 'a' * 64 + '\nimage: openclaw-gateway:2026.9.6-sdk-peer\n', '/opt/agentai-platform/current/requirements.lock': 'Django==5.2.17 --hash=sha256:aa\n'}
         self.ufw_text, self.modes, self.ssh = 'Status: active', [], 'PasswordAuthentication no\nPermitRootLogin prohibit-password'
     def service_states(self, units): return dict(self.units)
     def container_health(self, names): return dict(self.containers)
@@ -40,6 +41,7 @@ class FakeProbe:
     def ufw(self): return self.ufw_text
     def file_modes(self): return list(self.modes)
     def sshd_config(self): return self.ssh
+    def read(self, path): return self.files.get(path, '')
 
 
 class Sink:
@@ -85,6 +87,12 @@ class MonitorChecks(unittest.TestCase):
         self.probe.manifest = {'artifacts': [{'asset': a} for a in BACKED_UP]}; self.probe.tenant_times = {'abc123': NOW - 40 * 3600, 'def456': 0}
         t = self.status('tenant_backups'); self.assertEqual((t['status'], t['counts']['stale']), (WARN, 2))
         self.assertNotIn('aa-', t['summary'])
+    def test_a_recent_manual_pull_counts_as_an_outside_copy_but_an_old_one_does_not(self):
+        self.probe.status['offsite_copy'] = False
+        self.probe.last_pull_epoch = lambda: NOW - 2 * 86400
+        r = self.status('backup_offsite'); self.assertEqual(r['status'], OK); self.assertIn('manual pull', r['summary'])
+        self.probe.last_pull_epoch = lambda: NOW - 9 * 86400; self.assertEqual(self.status('backup_offsite')['status'], WARN)
+        self.probe.last_pull_epoch = lambda: None; self.assertEqual(self.status('backup_offsite')['status'], WARN)
     def test_missing_backup_status_is_unknown_not_ok(self):
         self.probe.status = None; self.assertEqual(self.status('backups')['status'], UNKNOWN)
     def test_a_probe_that_raises_is_unknown_and_the_rest_still_run(self):
@@ -107,7 +115,21 @@ class MonitorChecks(unittest.TestCase):
         (self.root / 'other.json').write_text(json.dumps({'checked_epoch': NOW - 100}))
         self.assertTrue(self.mon.watchdog(self.root / 'other.json', 'monitor', 1800))
         self.now += 4000; self.assertFalse(self.mon.watchdog(self.root / 'other.json', 'monitor', 1800)); self.assertTrue(any('watchdog.monitor' in s for s, _ in self.sink.sent))
-        self.assertFalse(self.mon.watchdog(self.root / 'missing.json', 'monitor', 1800))
+        before = len(self.sink.sent); self.assertFalse(self.mon.watchdog(self.root / 'missing.json', 'monitor', 1800)); self.assertEqual(len(self.sink.sent), before)   # first run: no false alarm
+
+
+class PinningChecks(unittest.TestCase):
+    def test_unpinned_images_and_dependencies_are_flagged(self):
+        from agentai_platform.ops import pins
+        self.assertEqual(pins.evaluate_compose('image: x@sha256:' + 'a' * 64), [])
+        self.assertEqual(pins.evaluate_compose('image: nginx:latest')[0][0], 'crit'); self.assertEqual(pins.evaluate_compose('image: nginx:1.27')[0][0], 'warn')
+        self.assertEqual(pins.evaluate_lock('Django==5.2 --hash=sha256:ab \\\n    --hash=sha256:cd\n'), []); self.assertEqual(pins.evaluate_lock('Django>=5\n')[0][0], 'crit')
+        self.assertEqual(pins.evaluate_custody({'cli': {}})[0][0], 'crit')
+    def test_monitor_reports_pinning(self):
+        probe = FakeProbe(); probe.files['/opt/openclaw-production/docker-compose.yml'] = 'image: nginx:latest\n'
+        with tempfile.TemporaryDirectory() as d:
+            run = Monitor(probe, Path(d) / 's.json', None, clock=lambda: NOW).run()
+        self.assertEqual(next(r for r in run['checks'] if r['check'] == 'pinning')['status'], CRIT)
 
 
 class AlertChecks(unittest.TestCase):

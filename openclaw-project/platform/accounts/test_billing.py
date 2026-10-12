@@ -173,3 +173,24 @@ class BillingHTTPChecks(TestCase):
             store.set('billing_checkout', False, 'owner')
             self.assertEqual(self.worker()['open_access']['refreshed'], 2)   # re-activated rows
             self.assertTrue(b.get('/v1/costs', secure=True).json()['admission_eligible'])
+
+
+class IngressLimitChecks(TestCase):
+    new_client = AccountBoundaryTests.new_client
+    post = AccountBoundaryTests.post
+    signed = AccountBoundaryTests.signed
+    setUp = AccountBoundaryTests.setUp
+
+    def test_anonymous_ingress_is_limited_per_source_but_probes_and_webhooks_are_not(self):
+        c = self.new_client()
+        codes = [c.get('/account/login/', secure=True).status_code for _ in range(125)]
+        self.assertEqual(codes[:120].count(429), 0); self.assertEqual(codes[120:], [429] * 5)
+        for path in ('/healthz', '/readyz'): self.assertNotEqual(c.get(path, secure=True).status_code, 429)
+        self.assertNotEqual(c.post('/v1/billing/webhook', '{}', content_type='application/json', secure=True).status_code, 429)
+
+    def test_task_creation_is_limited_per_account(self):
+        a = self.signed()
+        from unittest.mock import patch
+        with patch('accounts.requests.rate') as limited:
+            self.post(a, '/v1/requests', {'message': 'hello', 'key': 'k1'})
+            limited.assert_any_call('task.create', limited.call_args_list[0][0][1], 30, 3600)

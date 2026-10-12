@@ -74,6 +74,10 @@ class HostProbe:
         try: return json.loads(Path(self.cfg['backup_status']).read_text())
         except (OSError, ValueError): return None
 
+    def last_pull_epoch(self):
+        try: return json.loads(Path(self.cfg.get('last_pull', '/var/lib/agentai-ops/last-pull.json')).read_text())['epoch']
+        except (OSError, ValueError, KeyError): return None
+
     def latest_manifest(self):
         from .sets import newest_complete
         sid = newest_complete(self.dest)
@@ -135,6 +139,8 @@ class HostProbe:
             try: st = os.lstat(path); rows.append((path, st.st_mode, st.st_uid, max_mode, owner))
             except OSError: continue
         return rows
+
+    def read(self, path): return Path(path).read_text()
 
     def sshd_config(self):
         text = ''

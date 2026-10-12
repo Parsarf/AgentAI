@@ -1,0 +1,14 @@
+{
+  "age_recipients": ["age1REPLACE_WITH_THE_PUBLIC_KEY_PRINTED_BY_setup-backup-key.py"],
+  "destinations": [
+    {"type": "local", "path": "/var/backups/agentai", "offsite": false}
+  ],
+  "alerts": {
+    "email": {"enabled": true, "to": ["owner@example.com"], "smtp_env_file": "/etc/agentai-platform/accounts.env"},
+    "telegram": {"enabled": false, "token_file": "/etc/agentai-ops/telegram-token", "chat_id": "0"}
+  },
+  "_second_copy_example": {"type": "command", "offsite": true,
+    "put": ["rclone", "copyto", "{src}", "remote:agentai/{name}"],
+    "list": ["sh", "-c", "rclone lsf --format 'pst' --separator '\\t' remote:agentai/{prefix} | sed 's|^|{prefix}|'"],
+    "remove": ["rclone", "deletefile", "remote:agentai/{name}"]}
+}

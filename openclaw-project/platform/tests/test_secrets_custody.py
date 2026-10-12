@@ -41,12 +41,13 @@ class CustodyChecks(unittest.TestCase):
         self.assertFalse(keys.issue(A,'acct1',max_budget_usd=25,duration_days=30,models=['m']))
         self.assertEqual(len(calls),1)
         self.assertEqual(calls[0][1]['max_budget'],25);self.assertEqual(calls[0][1]['models'],['m'])
+        self.assertEqual((calls[0][1]['rpm_limit'],calls[0][1]['tpm_limit']),(30,200000))   # provider rate limits are always set
         self.assertTrue(keys.revoke(A));self.assertEqual(calls[-1][0],'/key/delete')
         self.assertFalse(keys.revoke(B))
     def test_unbounded_or_open_keys_are_refused(self):
         keys=ProviderKeys(lambda *a:(200,{'key':'sk-'+'k'*30}),self.store)
         for kw in [dict(max_budget_usd=0),dict(max_budget_usd=True),dict(max_budget_usd=5000),
-                   dict(duration_days=0),dict(models=[]),dict(models=None)]:
+                   dict(duration_days=0),dict(models=[]),dict(models=None),dict(rpm_limit=0),dict(tpm_limit=True)]:
             args=dict(max_budget_usd=25,duration_days=30,models=['m']);args.update(kw)
             with self.assertRaises(CustodyError): keys.issue(A,'acct1',**args)
     def test_failed_issuance_stores_nothing(self):
