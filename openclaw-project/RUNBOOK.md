@@ -835,3 +835,12 @@ and `journalctl -u agentai-lifecycle-worker -n 5` (counts only, all zero when id
   with scratch state and clean up; rerun after any host change (kernel, Docker, gVisor, nftables).
 - **Never** name a bridge `docker0` for the cell engine; never give a cell or worker the owner socket.
 - **Stop everything customer-side**: `systemctl disable --now agentai-lifecycle-worker agentai-supervisor-native`.
+
+## Hosted billing (Phase 13, built offline 2026-10-12; not deployed, switch off)
+
+Reference: `platform/BILLING.md`, `plans/product/phase-13.md`. Nothing here is on the server yet. When the owner supplies Stripe
+**test** values: deploy the platform release (migration 0013 applies with the others), run `python3 platform/deploy/billing_install.py`
+(dry run, then `--apply`), restart `agentai-platform-app`, enable `agentai-billing-worker.timer`, then turn on the dashboard switch.
+Check: `manage.py billing_worker --check` (inbox counts only). A growing `dead` count means events that need a person (unknown customer
+or session); `billing_worker --reconcile` compares every subscription with Stripe and reports drift. Turn the switch off to hide the
+buttons at any time; webhooks keep being stored and applied so no paid state is lost.

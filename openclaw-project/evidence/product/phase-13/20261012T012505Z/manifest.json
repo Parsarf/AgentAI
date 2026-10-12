@@ -1,0 +1,51 @@
+{
+  "phase": 13,
+  "run_id": "20261012T012505Z",
+  "recorded_at": "2026-10-12T01:25:05Z",
+  "base_revision": "85c83a4",
+  "build_result": "READY",
+  "acceptance": "NOT_RUN (Phase 15)",
+  "deployed": false,
+  "provider_account_used": false,
+  "keys_used": false,
+  "live_mode_possible": false,
+  "checks": {
+    "platform_tests": "350 pass, 2 skipped (Linux-only)",
+    "django_tests": "75 pass",
+    "dashboard_tests": "35 pass",
+    "billing_scenarios": 45,
+    "installer_checks": 6,
+    "django_billing_routes": 8
+  },
+  "docs_verified": [
+    "https://docs.stripe.com/webhooks",
+    "https://docs.stripe.com/api/idempotent_requests",
+    "https://docs.stripe.com/api/subscriptions/object",
+    "https://docs.stripe.com/billing/subscriptions/webhooks",
+    "https://docs.stripe.com/api/checkout/sessions/create",
+    "https://docs.stripe.com/api/customer_portal/sessions/create"
+  ],
+  "not_done": [
+    "No Stripe account, key, price or webhook endpoint exists; no network call was made",
+    "Migration 0013, routes and worker are not on the server",
+    "Live test-mode scenarios, tax, refund terms and regional fees are Phase 15 / owner decisions",
+    "Export of billing records and restore-tombstone interplay (Phase 14/15)"
+  ],
+  "owner_switch": "billing_checkout (off; needs confirmation test_mode_only and four verified facts)",
+  "rollback": "nothing deployed; after deployment: switch off, disable agentai-billing-worker.timer, revert settings; billing tables kept as records",
+  "source_sha256": {
+    "platform/agentai_platform/billing.py": "e3891dc75e1e02504db604dc8bad97930c0f82ecb7fe1152a36bb2c950258df4",
+    "platform/migrations/0013_billing.sql": "578ccce4d4c44c82d52fe1d2e2721a12406ce8501e0d5ed5a4837ec47e89bf80",
+    "platform/accounts/billing.py": "6f5d282ed2688ac7908d019ab249005a8630845916cb1adfc3d9bead4cbd991d",
+    "platform/accounts/templates/accounts/billing.html": "7a5c541fe2cb93846a6e142ad28f3abf9b1aa1eaf1a4fa57a5150996baba294f",
+    "platform/accounts/management/commands/billing_worker.py": "49b069af80dd2ff77ba16598cdda1f9ec24e95792cafddf88f7d26d13c9419c5",
+    "platform/deploy/billing_install.py": "621fd4f698a9ea5cf45634fdc0275b235b4841b77fb1fa1b6c77331a0f2afddd",
+    "platform/deploy/agentai-billing-worker.service": "90f11545b6e231a91286616c4c7ee7bee6336c534f9ff95ba46c24e05ada7610",
+    "platform/deploy/agentai-billing-worker.timer": "60fc35be1ef44b57d745c57a4e512fda2ee8b57faeae6aeb4c2dc695bf5fe94c",
+    "platform/tests/test_billing.py": "e93f5decad009e5615fd600c30e2a8af39acaa481dd3ba4fbc715b0661481568",
+    "platform/tests/billing_fixture.py": "0ab493ec43662b60734b0dd34f478704b2bbf4a5fbeddf766fd9b9e7f2877439",
+    "platform/tests/test_billing_install.py": "8ef35ef6ecc6056efefd3e63f27b916786d0f00d94d4c4dd090c5ab4491a246a",
+    "platform/accounts/test_billing.py": "0eeffedc928e79ec58c7f63743570ba22575d51573e3a5ac1ac9d4ab561403b5",
+    "platform/BILLING.md": "44fa5371a4b79964e9725c2590ebb5213e1ebbe0d5ddb1861915a66c9f3936ee"
+  }
+}

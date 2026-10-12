@@ -56,3 +56,7 @@ urlpatterns += [path('v1/account/connections',cn.connections),path('v1/account/c
  path('v1/account/connections/callback',cn.callback),path('v1/account/connections/disconnect',cn.disconnect),
  path('v1/account/drafts',cn.drafts)]
 urlpatterns.insert(0,path('account/connections/',cn.connections,{'page':True}))
+from . import billing as bl
+urlpatterns += [path('v1/account/billing',bl.billing),path('v1/account/billing/checkout',bl.checkout),
+ path('v1/account/billing/portal',bl.portal),path('v1/billing/webhook',bl.webhook)]
+urlpatterns.insert(0,path('account/billing/',bl.billing,{'page':True}))

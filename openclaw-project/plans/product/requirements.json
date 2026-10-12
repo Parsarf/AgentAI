@@ -898,16 +898,25 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 13,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-BILLING",
       "observable_assertion": "Verified webhook state, no redirect access, dedup/out-of-order/reconciliation",
       "dependencies": [
         12
       ],
-      "evidence": [],
-      "activation_blocker": "Activation requires verified identity, tenant execution boundary and budget admission",
-      "acceptance_result": "NOT_RUN"
+      "evidence": [
+        "openclaw-project/platform/BILLING.md",
+        "openclaw-project/plans/product/phase-13.md",
+        "openclaw-project/platform/agentai_platform/billing.py",
+        "openclaw-project/platform/tests/test_billing.py",
+        "openclaw-project/platform/accounts/test_billing.py",
+        "openclaw-project/evidence/product/phase-13/20261012T012505Z/manifest.json"
+      ],
+      "activation_blocker": "Built and tested offline against a Stripe-shaped test provider (no network, no key). Needs the owner to create a Stripe TEST account, price and webhook endpoint (plans/product/phase-13.md), deploy migration 0013 and the worker, and run the live test-mode scenarios in Phase 15. Legal/tax/refund terms are still open.",
+      "acceptance_result": "NOT_RUN",
+      "build_result": "READY",
+      "targeted_check_result": "PASS: 45 platform billing scenarios, 6 installer checks, 8 Django route checks (350 platform, 75 Django, 35 dashboard in total)"
     },
     {
       "id": "OPS-01",
@@ -1023,7 +1032,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 13,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-LIMIT-MONTHLY_PRICE_USD",
       "observable_assertion": "Enforcing server/adapter uses plan.json monthly_price_usd; above-limit request denied without effect",
@@ -1031,10 +1040,14 @@
         12
       ],
       "evidence": [
-        "product/plan.json"
+        "product/plan.json",
+        "openclaw-project/platform/BILLING.md",
+        "openclaw-project/plans/product/phase-13.md",
+        "openclaw-project/platform/agentai_platform/billing.py"
       ],
       "activation_blocker": null,
-      "acceptance_result": "NOT_RUN"
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS offline: value read from product/plan.json by billing.py (price shown, limits written to the entitlement, grace window used by derive_access); above-limit admission is denied by the Phase 5 ledger"
     },
     {
       "id": "LIMIT-INCLUDED_PROVIDER_COST_USD",
@@ -1522,7 +1535,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 13,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-LIMIT-AUTOMATIC_OVERAGE",
       "observable_assertion": "Enforcing server/adapter uses plan.json automatic_overage; above-limit request denied without effect",
@@ -1530,10 +1543,14 @@
         12
       ],
       "evidence": [
-        "product/plan.json"
+        "product/plan.json",
+        "openclaw-project/platform/BILLING.md",
+        "openclaw-project/plans/product/phase-13.md",
+        "openclaw-project/platform/agentai_platform/billing.py"
       ],
       "activation_blocker": null,
-      "acceptance_result": "NOT_RUN"
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS offline: value read from product/plan.json by billing.py (price shown, limits written to the entitlement, grace window used by derive_access); above-limit admission is denied by the Phase 5 ledger"
     },
     {
       "id": "LIMIT-BILLING_GRACE_HOURS",
@@ -1541,7 +1558,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 13,
-      "implementation_state": "MISSING",
+      "implementation_state": "READY",
       "acceptance_phase": 15,
       "acceptance_case": "P15-LIMIT-BILLING_GRACE_HOURS",
       "observable_assertion": "Enforcing server/adapter uses plan.json billing_grace_hours; above-limit request denied without effect",
@@ -1549,10 +1566,14 @@
         12
       ],
       "evidence": [
-        "product/plan.json"
+        "product/plan.json",
+        "openclaw-project/platform/BILLING.md",
+        "openclaw-project/plans/product/phase-13.md",
+        "openclaw-project/platform/agentai_platform/billing.py"
       ],
       "activation_blocker": null,
-      "acceptance_result": "NOT_RUN"
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS offline: value read from product/plan.json by billing.py (price shown, limits written to the entitlement, grace window used by derive_access); above-limit admission is denied by the Phase 5 ledger"
     },
     {
       "id": "LIMIT-DELETION_ACTIVE_DATA_DAYS",
@@ -2494,7 +2515,7 @@
       "source": "product/CONTRACT.md",
       "release_scope": "launch",
       "implementation_phase": 13,
-      "implementation_state": "MISSING",
+      "implementation_state": "PARTIAL",
       "acceptance_phase": 15,
       "acceptance_case": "P15-RETENTION-BILLING",
       "observable_assertion": "Scoped export/delete/expiry meets 7years proposed pending jurisdiction review; retained exceptions disclosed; restore respects tombstones",
@@ -2502,10 +2523,13 @@
         12
       ],
       "evidence": [
-        "product/CONTRACT.md"
+        "product/CONTRACT.md",
+        "openclaw-project/platform/BILLING.md",
+        "openclaw-project/platform/migrations/0013_billing.sql"
       ],
       "activation_blocker": "Retention/route term implementation must pass before affected activation",
-      "acceptance_result": "NOT_RUN"
+      "acceptance_result": "NOT_RUN",
+      "targeted_check_result": "PASS: billing tables have no foreign key to accounts and are untouched by account retention/deletion (Django test); export, expiry job and restore-tombstone interplay are not built (Phase 14/15)"
     },
     {
       "id": "RETENTION-PROVIDER",

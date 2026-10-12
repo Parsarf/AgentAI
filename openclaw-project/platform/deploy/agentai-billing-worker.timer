@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the AgentAI billing worker
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=30s
+RandomizedDelaySec=5s
+Unit=agentai-billing-worker.service
+
+[Install]
+WantedBy=timers.target

@@ -65,7 +65,7 @@ def endpoint(methods, fields=(), field_limits=None):
                 if request.method=='POST' and request.content_type=='application/x-www-form-urlencoded' and response.status_code<400:
                     if fn.__name__=='disconnect': return HttpResponseRedirect('/account/connections/')
                     if fn.__name__ in ['requests','cancel']: return HttpResponseRedirect('/account/requests/')
-                    if fn.__name__ in {'link','ticket'}: return response
+                    if fn.__name__ in {'link','ticket','checkout','portal'}: return response
                     if fn.__name__.startswith('chat_'):
                         return HttpResponseRedirect(getattr(request,'form_redirect','/account/chat/'))
                     if fn.__name__=='signin': return HttpResponseRedirect('/account/mfa/' if request.user.identity.role=='operator' else '/account/')

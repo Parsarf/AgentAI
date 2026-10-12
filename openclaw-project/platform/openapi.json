@@ -2169,6 +2169,85 @@
           }
         }
       }
+    },
+    "/v1/account/billing": {
+      "get": {
+        "summary": "Plan, access status, included limits, usage (reconciled vs held) and invoices for the signed-in account",
+        "responses": {
+          "200": {
+            "description": "Billing overview"
+          },
+          "401": {
+            "description": "Identity required"
+          }
+        }
+      }
+    },
+    "/v1/account/billing/checkout": {
+      "post": {
+        "summary": "Start hosted Stripe Checkout (test mode). Account, price and quantity are derived server-side; no fields accepted",
+        "responses": {
+          "200": {
+            "description": "Hosted checkout URL"
+          },
+          "302": {
+            "description": "Redirect to hosted checkout for form posts"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "409": {
+            "description": "Already subscribed"
+          },
+          "502": {
+            "description": "Provider unavailable"
+          },
+          "503": {
+            "description": "Feature off or billing not configured"
+          }
+        }
+      }
+    },
+    "/v1/account/billing/portal": {
+      "post": {
+        "summary": "Open the hosted customer portal (payment method, plan, cancel)",
+        "responses": {
+          "200": {
+            "description": "Hosted portal URL"
+          },
+          "401": {
+            "description": "Identity required"
+          },
+          "502": {
+            "description": "Provider unavailable"
+          },
+          "503": {
+            "description": "Feature off or billing not configured"
+          }
+        }
+      }
+    },
+    "/v1/billing/webhook": {
+      "post": {
+        "summary": "Stripe event ingress: signature over the raw body, size and rate limited, stored before acknowledgment. No cookie.",
+        "responses": {
+          "200": {
+            "description": "Stored or duplicate"
+          },
+          "400": {
+            "description": "Invalid signature or event"
+          },
+          "413": {
+            "description": "Body too large"
+          },
+          "429": {
+            "description": "Rate limited; the provider retries"
+          },
+          "503": {
+            "description": "Not configured or storage unavailable; the provider retries"
+          }
+        }
+      }
     }
   },
   "components": {

@@ -104,3 +104,12 @@ LOGGING = {'version': 1, 'disable_existing_loggers': False,
 # Owner feature switches (written by the private ops dashboard, read-only here). Missing = everything off.
 SWITCHES_FILE = os.environ.get('AGENTAI_SWITCHES_FILE', '')
 SWITCH_FACTS_FILE = os.environ.get('AGENTAI_SWITCH_FACTS_FILE', '')
+
+# Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.
+BILLING_SECRET_KEY_FILE = os.environ.get('AGENTAI_BILLING_SECRET_KEY_FILE', '')
+BILLING_WEBHOOK_SECRET_FILE = os.environ.get('AGENTAI_BILLING_WEBHOOK_SECRET_FILE', '')   # one whsec_ per line (rotation overlap)
+BILLING_API_VERSION = os.environ.get('AGENTAI_BILLING_API_VERSION', '')                   # pinned Stripe API version, required
+BILLING_PRICE_ID = os.environ.get('AGENTAI_BILLING_PRICE_ID', '')                         # the one launch plan price
+BILLING_PLAN_FILE = os.environ.get('AGENTAI_BILLING_PLAN_FILE', '')                       # product/plan.json copy
+BILLING_PUBLIC_ORIGIN = os.environ.get('AGENTAI_BILLING_PUBLIC_ORIGIN', 'https://getlumina.pro')
+BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'                   # owner-only, off by default

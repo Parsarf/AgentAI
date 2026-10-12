@@ -1569,3 +1569,10 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   `evidence/product/phase-04/20261012T002000Z/manifest.json`.
 - Incident: starting the cell engine first reused/deleted the owner `docker0`; recreated and verified.
 - Open: per-account model route, Gateway-to-broker integration, separate controller identity, Phase 15.
+
+## 2026-10-12 — Phase 13 hosted billing built offline
+
+- Stripe test-mode checkout/portal, signed webhook inbox and worker, access state machine writing the Phase 5 entitlements,
+  billing page, reconciliation, owner switch `billing_checkout` (off), installer, worker units (not installed). Docs verified
+  against docs.stripe.com. 350 platform / 75 Django / 35 dashboard tests pass. Not deployed; no keys; acceptance in Phase 15.
+- Open: Stripe test account/price/webhook from the owner, API version pin, tax/refund terms, deployment of migration 0013.
