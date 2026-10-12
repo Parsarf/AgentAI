@@ -1233,3 +1233,357 @@ Installed exact fs-safe Linux0.18.1 package after the omitted-optional warning;
 native require mode and synthetic read/traversal/symlink/no-clobber-move checks
 pass, fixtures cleaned. This is not native customer OS/worker isolation. GitHub
 Linux gate for3f0cc73 passes40 account+51 core cases and Vercel routing.
+
+### 2026-10-05 — Phase 6 customer chat build (projects, conversations, transcript, adapter)
+
+Implemented the Phase 6 local contract flow on the existing accounts/queue/
+budget core: SQL0005+Django0009 add `chat_messages` (provenance-tagged durable
+transcript with native-identity uniqueness), `chat_deliveries` (per-attempt
+native delivery state) and `customer_requests.conversation_id`. New Gateway
+adapter (`platform/agentai_platform/gateway.py`) records the installed
+session-control contract for chat.send/history/abort (protocol v3): send
+acknowledgement is separate from transcript persistence, history reconnects
+via opaque deltaCursor with reset handling, abort is runId-scoped and never
+undoes effects; `negotiate()` fails closed on unprobed/unsupported versions
+and bindings resolve only from host configuration — no browser-supplied URL,
+token, RPC name or session key. `platform/agentai_platform/chat.py` adds
+project/conversation creation (plan/project caps), admission-gated sends
+through the Phase 5 ledger (idempotent by key; budget refusal cancels the
+waiting request and answers 402 without any native call), scoped transcript
+cursor reads, task state/cancel, and the trusted ChatDriver sequence
+(authorization/reservation recheck after claim, delivery attempt records,
+session resolve/create, transcript absorption by native message identity,
+intent-driven scoped abort with honest unsupported-abort uncertainty, budget
+settlement before the global slot handoff, receipt-based reconciliation with
+no resend). Customer surface: `accounts/chat.py` APIs + script-free
+`account/chat/` page with the execution-disabled banner, budget-denial banner
+and honest cancel availability; `POST /v1/projects` implemented; middleware
+now admits the 16KB chat body on `*/send`. Task list/create, streams and
+pause stay disabled (Phase 9); existing cross-account 404 regression checks
+preserved, conversation-list assertions updated for the newly enabled route.
+
+Verification (local operator workspace; disposable synthetic identities and
+synthetic gateway fixture only): 110 core tests OK (incl. new test_chat and
+test_gateway; 2 pre-existing Linux CI skips), 47 Django tests OK, account
+concurrency and loopback HTTP scripts PASS, Vercel routing checks PASS, fresh
+bootstrap applies SQL0001-0005+Django0009 and `request_worker --check`
+reports execution_ready:false. No live Gateway probe, no host chat dispatch,
+no paid model call, no customer account/invitation, no VPS or owner runtime
+change. Native execution remains disabled; production sends wait unfunded
+(`route_unconfigured`) until a measured provider route exists. Remaining
+gates: live installed-Gateway probe (CHAT-05), Phase 4 isolation/capacity and
+Phase 5 live enforcement before any real customer chat task; acceptance is
+Phase 15/17. Evidence: evidence/product/phase-06/20261005T170833Z/manifest.json.
+See plans/product/phase-06.md and platform/CHAT.md.
+
+### 2026-10-05 — Phase 6 chat release deployed to the existing VPS
+
+Deployed release 20261005T185900Z-chat to /opt/agentai-platform/releases and
+flipped current; mail timer restarted. Private SQLite was backed up first via
+the sqlite backup API (backup-20261005T180607Z.sqlite3, integrity ok, pre-chat
+schema retained). SQL0005 + Django0009 applied during a stopped-services window
+of about 8 seconds; the release hash manifest (75 files) verified server-side
+before cutover. Readiness: foundation/identity true, customer_ready false,
+execution_enabled false, mail_configured true; unit properties unchanged
+(128MiB/no-swap/25% CPU). Public checks through getlumina.pro: login 200,
+/account/chat/ anonymous 302 to login, /v1/conversations and /v1/tasks 401,
+internal routes 404 at the edge, invalid-login-with-CSRF 401, no-store plus
+__Host- Secure HttpOnly SameSite=Strict cookies and HSTS confirmed.
+
+Deployment verification surfaced a pre-existing latent defect: anonymous
+callers on direct internal operator routes raised an uncaught TypeError inside
+operator_scope (failed closed as 503; the old release reproduced identical
+behavior; publicly unreachable because the edge blocks internal routes). Fixed
+with an explicit anonymous guard in accounts/services.py, covered by two
+regression tests, and included in this release. Rollback: code-only rollback
+to 20261005T181500Z-chat is schema-compatible; restoring the pre-chat backup
+requires the runbook fresh-state-root procedure. No customer account,
+invitation or execution change; no paid provider call.
+Evidence: evidence/product/phase-06/20261005T185900Z-deployment/ and
+plans/product/chat-release-deployment.json.
+
+### 2026-10-05 — Product UI for the account app deployed (releases 20261005T191500Z/194500Z/200500Z-ui)
+
+Replaced the unstyled prototype pages with a complete product UI matching the
+public origin's brand language (near-black blue surfaces, mint accent, system
+stack): a shared base shell with wordmark, private-beta pill, section nav and
+sign-out; redesigned Overview, Chat (two-pane project/conversation sidebar,
+provenance-labeled transcript bubbles, composer, work cards with state pills
+and cancel), Requests, Usage (allowance meter computed server-side with
+discrete-width classes because the CSP forbids inline styles), auth forms and
+error pages. Stylesheet is a single self-hosted asset at /account/ui/ served
+by a fixed-name view (no user input reaches the filesystem) with
+public max-age caching; every API response keeps no-store. Inline styles and
+scripts remain impossible under the existing CSP. Project creation and new
+conversation flows got first-class forms with redirect-and-banner error
+handling; budget summary now exposes the period limit for the usage meter.
+
+Two edge findings recorded during verification: (1) dotted app paths are not
+forwarded by the Vercel rewrite (/account/ui.css and /v1/me.json 404 through
+the origin while loopback/Caddy serve them), so the stylesheet link uses the
+slashed dot-free path /account/ui/; (2) the edge delivers slashed account
+paths to the app, so the asset route is registered both slashed and unslashed.
+All checks re-run: 48 Django tests, 110 core tests, loopback HTTP script.
+Public verification: /account/ui/ 200 text/css, login page links it, chat
+302, conversations/tasks 401, internal 404, readiness honest. No schema
+change, no execution change, no customer data touched. Live release:
+20261005T200500Z-ui; prior releases retained for code-level rollback.
+
+### 2026-10-06 — Phase 7 Telegram ingress deployed (release 20261006T073000Z-telegram)
+
+Built and deployed one customer Telegram ingress with secure account
+linking. Design: webhook over polling (owner bot keeps its poller; separate
+customer bot rides the TLS edge with constant-time secret-header
+verification; CSRF-exempt as provider-authenticated). SQL0006/Django0010 add
+telegram_links (unique chat→account), telegram_link_codes (SHA-256 only,
+single-use, 10-minute expiry), telegram_updates (durable dedup before
+routing) and telegram_outbox (replies with receipts); chat_messages rebuilt
+with the telegram provenance (production rows: 0). Link codes are bearer
+credentials bound to the numeric sender identity from authenticated updates;
+one chat maps to one account; suspension/revocation recheck on every update;
+groups and attachments are rejected. Linked DMs route into the same Phase 5
+admission and serial queue as dashboard chat (idempotent key tg<update_id>,
+provenance telegram, conversation continuity), with /projects, /use, /status,
+/unlink commands. Replies go through the outbox with sent/uncertain/failed
+receipts plus a bounded telegram_worker drain; acks state execution is
+offline. Everything fails closed while AGENTAI_TELEGRAM_* settings are
+absent.
+
+Verification: 14 service tests + 5 Django HTTP tests (secret enforcement,
+dedup, swapped/expired/replayed codes, race guard, cross-account isolation,
+budget-denial cancellation, receipt states), full suites 124 core + 53
+Django OK, scripts PASS. Deployed with hash-verified release; readiness and
+origin checks honest. Process lapse recorded: pre-migration backup was
+skipped; post-migration backup taken (integrity ok) and checklist corrected.
+No real bot/token exists; no customer contacted; no paid call. Real
+linking/reply proof belongs to Phase 15/17.
+Evidence: evidence/product/phase-07/20261006T073000Z/manifest.json and
+plans/product/phase-07.md.
+
+### 2026-10-08 — Phase 8 files/artifacts deployed (release 20261008T091500Z-files)
+
+Built and deployed project files, immutable versioned artifacts, ticketed
+downloads and reproducible project bundles. SQL0007/Django0011 add
+project_files (quarantine/scanned states) and single-use download_tickets
+(HMAC-only). agentai_platform/storage.py provides race-safe private storage:
+component validation, O_DIRECTORY|O_NOFOLLOW directory chains and O_NOFOLLOW
+leaves, closing the intermediate-symlink swap race (tests prove a directory
+replaced by a symlink after validation fails to open). files.py enforces the
+launch allowlist with content sniffing independent of declared types
+(UTF-8/no-NUL text, JSON parse, PNG/JPEG/PDF signatures, encrypted PDFs
+rejected, executables/archives denied) plus 10MiB/25MiB/10-file batch and
+2GiB account quotas; uploads stay disabled without the documented scan
+capability (AGENTAI_UPLOADS_ENABLED). artifacts.py captures immutable
+versions bound to account/project/task with hashes, mints single-use
+5-minute download tickets bound to exact account/object/version, and builds
+reproducible project ZIP bundles (latest versions + manifest with
+paths/hashes/task provenance; 250MiB uncompressed bound; missing storage
+content yields a labeled partial bundle). Chat page gained a Files &
+results section with ticket-gated downloads, upload form (only when the
+scan capability is on) and a bundle builder; storage-unconfigured renders
+honest empty panels and all routes answer 503 fail-closed.
+
+Verification: 9 service tests + 6 Django HTTP tests (traversal/symlink race,
+allowlist and content mismatch, batch limits, cross-account 404, ticket
+single-use/scoping, bundle accounting, page rendering), full suites 133
+core + 59 Django OK, scripts PASS, Vercel routing PASS. Deployed release
+20261008T091500Z-files with SQL0007/Django0011 applied during a stopped-
+services window and hash-verified sources; origin checks pass (files 401
+anon, chat 302, stylesheet 200, internal 404, readiness honest). Storage is
+unconfigured on production by design: file/artifact routes answer 503 for
+signed customers until the operator provisions AGENTAI_STORAGE_DIR +
+AGENTAI_ARTIFACT_SIGNING_KEY (uploads additionally need the scan flag).
+Process lapse repeated and recorded: pre-migration backup skipped;
+post-migration backup 20261008T091800Z integrity ok; deploy checklist to
+move backups before systemctl stop going forward. No customer contact, no
+paid call.
+Evidence: evidence/product/phase-08/20261008T091500Z/manifest.json and
+plans/product/phase-08.md.
+
+### 2026-10-08 — Phase 9 durable timeline deployed (release 20261008T115500Z-events)
+
+Built and deployed the durable scoped task timeline. agentai_platform/events.py
+adds typed payload allowlists per event kind, recursive secret redaction
+(token formats + key-name patterns), a 32KiB payload bound with truncation
+markers, per-task sequences with stable ids, gap-free cursor reads, a
+three-streams-per-account cap with expiry, and 30-day retention pruning in
+the host retention command. New authenticated SSE transport
+(GET /v1/tasks/{id}/stream, CSRF-exempt read-only): bounded 45-second window
+with reopen cursor, heartbeats, per-event ids, liveness/revocation rechecks
+between batches, and 429+Retry-After at the stream cap; cursor polling
+(GET .../events) is the no-script fallback the chat page uses. The
+execution driver now emits durable task_started/progress/result/cancellation
+events best-effort; the chat page renders per-task timelines and states
+plainly that it updates on refresh while live browser streaming awaits the
+CSP/JS product decision. Approval bridging intentionally absent: approval
+requests render read-only; native pause is unverified and no pause control
+is rendered. A synthetic running task's timeline survives
+departure/return/restart with exactly one execution and no duplicated
+transcript rows (tested).
+
+Verification: 10 service tests + 3 HTTP tests, full suites 143 core + 62
+Django OK, scripts PASS, Vercel routing PASS. Deployed release
+20261008T115500Z-events; pre-migration backup taken BEFORE the stop step
+(checklist correction applied; integrity ok); SQL0008/Django0012 applied;
+origin checks: events/stream 401 anonymous, chat 302, internal 404,
+readiness honest. No real task events (execution disabled), no customer
+contact, no paid call. Real-event proof belongs to Phase 15/17.
+Evidence: evidence/product/phase-09/20261008T120000Z/manifest.json and
+plans/product/phase-09.md.
+
+### 2026-10-09 — Phase 10 slice 1 (local build, not deployed)
+
+Added tenant-scoped memory (selective recall, correction, deletion with index
+invalidation, outside-content-as-data), reusable skills (proposed/approved
+revisions, outside origin refused) and quiet watchers (unchanged = zero model
+calls, deduplicated notifications, budget-gated escalation) with SQL 0009 and
+10 tests; full suite 153 OK. Native runtime wiring, tool-ceiling inspection,
+Codex/ACP confinement inventory, durable controller mapping and scheduler
+enforcement remain open. Nothing deployed; no paid call.
+Evidence: plans/product/phase-10.md.
+
+### 2026-10-09 — Phase 10 slice 2 (tool ceilings, harness inventory; local)
+
+Added policy_check over the recorded inventory (0 fail, 4 customer-blockers:
+owner integration tools on researcher, unsandboxed main, global elevated,
+global browser) and a Codex/ACP harness inventory (Codex app-server boundary
+and metered auth unverified; ACP reviewer unconfigured). Suite 157 OK. No live
+probe, paid call or deployment. Evidence: evidence/product/phase-10/20261009T120000Z/.
+
+### 2026-10-09 — Phase 10 build complete (local, not deployed)
+
+Delivered memory, skills, watchers, durable objectives (explicit resume only;
+autonomous restart recorded as launch gap), gated schedules
+(enforcement_proven=False), browser-task and skill-improvement procedures,
+Phase 15 fixtures, policy_check, harness inventory, runbook/architecture
+sections. SQL 0009/0010. Suite 171 OK (one earlier unexplained failure did not
+recur). Blocked for activation: unconfigured ACP reviewer / metered Codex
+route (owner decision) and customer cell boundary. No paid call or deployment.
+Evidence: plans/product/phase-10.md, evidence/product/phase-10/20261009T120000Z/.
+
+### 2026-10-09 — Phase 10 harness change: Codex -> Claude Code (Sonnet 5.5)
+
+Owner decision. Updated the harness inventory, policy_check builder ids, Phase 10
+record and NATIVE-02/03 blockers. No native config rewritten: the Claude Code
+launch mechanism is unprobed; Codex batches/evidence remain as history. No
+deployment or paid call.
+
+### 2026-10-09 — Phase 10: Claude Code launch mechanism identified (read-only)
+
+Read installed OpenClaw 2026.9.6 help/config schema and official docs. Claude
+Code runs via `agentRuntime.id: "claude-cli"` or ACP `claude` (acpx), both on
+the Gateway host outside OpenClaw's sandbox; ACP cannot be spawned from a
+sandboxed session; default auth is a subscription login (not for customers).
+No live probe, config write, paid call or deployment. Details in
+plans/product/phase-10-harness-inventory.json.
+
+### 2026-10-09 — Phase 10: read-only server probe for Claude Code
+
+No claude binary on host or in the Gateway container, acpx/acp unset,
+catalog has litellm/claude-sonnet-4-6 only (no claude-sonnet-5-5). Nothing
+changed or installed. Evidence: evidence/product/phase-10/20261009T120000Z/live-probe.json.
+
+### 2026-10-09 — Phase 10 closed: Claude Code activation prepared, not applied
+
+Added litellm route for claude-sonnet-5-5, Dockerfile.claude-code (pins
+mandatory), preflight/activation batches (dry-run validated on a scratch
+profile), activation runbook with rollback. Suite 173 OK. Nothing applied to
+the server; no paid call. Open: Claude Code metering bypass risk, customer cell
+boundary. Phase 10 complete for the offline build; awaiting owner go-ahead for
+the next phase.
+
+### 2026-10-09 — Phase 11 build (connectors; local, not deployed)
+
+Built customer connector service (OAuth state+PKCE, strict redirects, read-only scope
+enforcement, account-bound custody refs, selection gating, bounded retries, operation
+receipts with reconcile-before-retry, local drafts, disconnect-with-purge), SSRF guard and
+account-bound browser profiles; routes/page fail closed (link/callback 503); permission
+matrix; hostile-content fixtures; policy rule keeping connector tools on the researcher.
+Read-only server probe confirmed google-readonly (8 read tools) and github-readonly are
+disabled. Platform suite and Django suite pass. Nothing deployed; no account connected or
+read; no provider key touched.
+**Secret-custody obligation carried forward:** Brave key exposed once in a Phase 6 tool
+transcript (see Phase 6 entry); owner rotation still pending; key never reproduced here.
+Evidence: plans/product/phase-11.md, evidence/product/phase-11/20261009T180000Z/.
+
+### 2026-10-09 — Phase 12 optional optimization build (local; adapters stay disabled)
+
+Audited both tracks. Findings: (1) the research middleware IS registered by the installed loader (lazy owner
+loading); the real defect was a non-fail-open handler (log could throw; hard-coded state path) — fixed and proven
+with a real-loader diagnostic, but the fix is not deployed; (2) the Phase 9 browser adapter used the wrong TypeSafe
+request/response schema — corrected against docs.typesafe.ai; (3) added fresh-target checks, sensitive-control
+routing, a controlled route loop and a Phase 5-billed optimization gate; separate frozen research rubric and
+hash-locked held-out fixtures. **Live readback: server jev-research config.json reads enabled=true and the
+disposable Jev key file is present in the owner gateway, contrary to the Sept 28 'left off' note; registry is empty
+so nothing is eligible; no change made — owner decision pending.** No TypeSafe call, no deployment.
+Evidence: plans/product/phase-12.md, evidence/product/phase-12/20261009T200000Z/.
+
+### 2026-10-09 — Feature switches page in the owner dashboard (local; not installed)
+
+Added a stdlib-only switch store (`switches.py`) with plain-language catalog, confirmations and prerequisite facts,
+a Feature switches page in the private dashboard (turn on needs confirmations + finished setup; off always works;
+locked items stay locked; read-back and audit on every change; drift warning with one-click fix), routed the old Jev
+toggle endpoints through it, and made customer connector linking honor the owner switch. One-command installer
+`bin/update-ops-dashboard.py` (dry run by default). Tests: dashboard 35 (incl. real-handler login/CSRF/POST flow), switches 10,
+Django 67. Nothing installed on the server; the server's research toggle still reads enabled=true until this is applied.
+
+### 2026-10-11 — Owner action list: dashboard installed, research toggle off, fresh host measurement
+
+- Installed the Feature switches dashboard update on the VPS with `bin/update-ops-dashboard.py --apply`
+  (backup `/opt/openclaw-production/dashboard.bak-20261011T200441Z`; sign-in page 200, service active).
+- Set `jev-research/config.json` to `{"enabled": false}` (was true) with readback; audit line written. The
+  disposable `phase4a-jev-eval.key` file is still present (owner decision whether to remove).
+- Re-measured the host read-only (evidence/product/phase-04/20261011T200600Z/host-measurement.json): 2 vCPU,
+  3.78 GiB RAM, 0.51 GiB available, swap 99.6% used, 81 GiB disk free, load ~0. Eight idle sandbox containers
+  hold ~1.25 GiB. Capacity assessment: 0 admitted customer slots (memory_exhausted). Even if every idle sandbox were
+  stopped, one default 2 GiB cell plus reserves would still be short by ~1.0 GiB. Conclusion: the current server cannot
+  host a customer cell; the 16 GiB / 4 vCPU proposal (or equivalent) is required for Phase 4 execution.
+- `git push` of branch product-phases-6-11 was refused by the permission classifier; nothing pushed.
+
+## 2026-10-11 — Server migration to 179.236.71.203 (4 vCPU / 15 GiB / 193 GB, Ubuntu 26.04)
+
+- Full verified backup of the old server (69.48.206.62) taken first and kept outside the repo
+  (`~/openclaw-migration-backup-20261011/`; contains secrets, never commit).
+- Restored: /opt/openclaw-production (state, workspace, secrets, dashboard, feature switches),
+  /opt/agentai-*, LiteLLM Postgres (pg_dumpall), customer account SQLite, Caddy + systemd units.
+  Venv rebuilt from the hash-pinned `requirements.lock` (Python 3.14); gateway image rebuilt from
+  `phase4-sdk-image`; sandbox images copied with `docker save/load`. compose `group_add` set to the
+  new docker gid (986). Service users re-created (agentai-fleet 1000:1000, agentai-platform).
+- Cutover: old gateway/LiteLLM/Caddy/app/dashboard/timers stopped, final DB snapshots + changed
+  files copied, new stack started. Gateway healthy, Telegram polling, LiteLLM 200, app 302, TLS
+  certificate issued for backend.getlumina.pro. Research toggle remains OFF.
+- Firewall: ufw 22/80/443 only; fail2ban + unattended-upgrades enabled.
+- Helpers `bin/ssh-server`, `scp-server`, `open-*`, `activate-telegram.py` now default to the new
+  server (`OPENCLAW_NEW_SSH_*` in .env); `OPENCLAW_SERVER=old` selects the old one.
+- Open: change the new root password (it was printed once in a tool transcript); move to SSH keys;
+  old server still exists but is stopped (do not delete until the owner is satisfied).
+
+## 2026-10-12 — Phase 4 built and live-tested on the new host
+
+- Added gVisor, a separate cell Docker engine (own socket/bridge), a drop-only nftables policy,
+  per-tenant capped volumes, secret custody, a worker broker, pinned upgrade+rollback, quarantined
+  restore, retention purge, idle sleep/wake, a lifecycle worker and host enrollment. Supervisor and
+  worker installed with **zero enrolled bindings**; customer execution still off.
+- Live: 26 lifecycle/isolation + 16 broker + 10 pipeline checks pass; 299 local platform tests pass.
+  Capacity 1 admitted slot (CPU-bound). See `plans/product/phase-04.md` and
+  `evidence/product/phase-04/20261012T002000Z/manifest.json`.
+- Incident: starting the cell engine first reused/deleted the owner `docker0`; recreated and verified.
+- Open: per-account model route, Gateway-to-broker integration, separate controller identity, Phase 15.
+
+## 2026-10-12 — Phase 13 hosted billing built offline
+
+- Stripe test-mode checkout/portal, signed webhook inbox and worker, access state machine writing the Phase 5 entitlements,
+  billing page, reconciliation, owner switch `billing_checkout` (off), installer, worker units (not installed). Docs verified
+  against docs.stripe.com. 350 platform / 75 Django / 35 dashboard tests pass. Not deployed; no keys; acceptance in Phase 15.
+- Open: Stripe test account/price/webhook from the owner, API version pin, tax/refund terms, deployment of migration 0013.
+
+## 2026-10-12 — Free access mode, Phase 13 code deployed
+
+- Owner asked for no payment until Stripe is on: added `open_access` switch + `sync_open_access`; payments switch now means "require payment" and wins. Deployed release 20261012T0230Z-billing (migrations 0009-0013, worker timer, dashboard update); free access ON; Stripe not configured. 357 platform / 76 Django / 35 dashboard tests pass.
+
+## 2026-10-12 — Phase 14 operations built and exercised
+
+- Encrypted verified backups (age, public key on host), scoped restore, monitor with unknown/stale states, alert router, rotation, privacy-safe diagnostics,
+  rate-limit gaps closed, canary release tool with rollback, nightly tenant backup scheduling, runbooks. Deployed with timers; four real canary releases.
+  Drills: owner-side decrypt of all 7 artifacts, real-schema account restore, corruption rejection, release rollback in sandboxes.
+- Open: automatic off-server destination (launch blocker), SSH keys-only, Phase 15 acceptance. 421 platform / 79 Django / 35 dashboard tests pass.

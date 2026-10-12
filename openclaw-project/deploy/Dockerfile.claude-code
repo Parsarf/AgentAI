@@ -1,0 +1,14 @@
+# Gateway image layer adding the Claude Code CLI for the claude-cli/ACP harness.
+# NOT BUILT OR DEPLOYED. Pins are mandatory and intentionally unset: choose them
+# from the release you have reviewed, record them in runtime.lock.json, then build.
+#   docker build -f Dockerfile.claude-code \
+#     --build-arg BASE_IMAGE=openclaw-gateway:2026.9.6-sdk-peer \
+#     --build-arg CLAUDE_CODE_VERSION=<reviewed version> .
+# Credentials are never baked in; the Anthropic key arrives only as an
+# OpenClaw-managed per-account profile (no `claude auth login`, no subscription).
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG CLAUDE_CODE_VERSION
+USER root
+RUN test -n "${CLAUDE_CODE_VERSION}" && npm install -g --ignore-scripts=false "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+USER node

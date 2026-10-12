@@ -151,7 +151,10 @@ class HostSupervisor:
 
     def _binding(self,con,claim):
         row=con.execute('SELECT * FROM bindings WHERE account=?',(claim.account_id,)).fetchone()
-        if not row or (row['deployment'],row['tenant'])!=(claim.deployment_id,claim.tenant_ref):
+        # No host binding yet is an effect-free wait for the operator's enrollment, not
+        # an integrity failure: the worker keeps the operation pending instead of poisoning it.
+        if not row: raise SupervisorBusy('account not enrolled')
+        if (row['deployment'],row['tenant'])!=(claim.deployment_id,claim.tenant_ref):
             raise Conflict('host binding mismatch')
         spec=json.loads(row['spec']);spec['backup_root']=Path(spec['backup_root'])
         binding=FleetBinding(**spec)
@@ -229,6 +232,12 @@ class HostSupervisor:
             generation=claim.generation+int(receipt.applied and claim.kind in {'restore','upgrade'})
             con.execute('UPDATE bindings SET state=?,generation=? WHERE account=?',
                 (receipt.state,generation,claim.account_id))
+            if claim.kind=='upgrade' and receipt.applied:
+                row=con.execute('SELECT spec FROM bindings WHERE account=?',(claim.account_id,)).fetchone()
+                spec=json.loads(row['spec'])
+                if spec.get('upgrade_image'):
+                    spec['image'],spec['upgrade_image']=spec['upgrade_image'],None
+                    con.execute('UPDATE bindings SET spec=? WHERE account=?',(json.dumps(spec,sort_keys=True),claim.account_id))
 
     def reconcile(self,claim):
         claim=decode_claim(asdict(claim))

@@ -1,0 +1,20 @@
+{% extends 'accounts/base.html' %}{% block title %}Connections — AgentAI{% endblock %}{% block body %}
+<div class="pagehead"><h1>Connections</h1><p>Read-only access to your own accounts. Nothing is connected until you link it, and AgentAI never sends, shares, edits or deletes through a connection.</p></div>
+{% if available %}<div class="notice"><span><strong>Linking is switched on.</strong> Sign-in appears here once each provider is ready; nothing has been read or connected yet.</span></div>
+{% else %}<div class="notice warn"><span><strong>Linking is not available yet.</strong> Provider sign-in is being prepared; no account has been read or connected.</span></div>{% endif %}
+{% for item in items %}
+<section class="card">
+<h3>{{ item.label }}</h3>
+<dl class="facts">
+<dt>Status</dt><dd>{% if item.state == 'not_connected' %}Not connected{% elif item.state == 'connected' %}Connected{% elif item.state == 'reconnect_required' %}Reconnect required{% else %}{{ item.state }}{% endif %}</dd>
+{% if item.identity %}<dt>Account</dt><dd>{{ item.identity }}</dd>{% endif %}
+<dt>Access</dt><dd>Read-only. Drafts stay on AgentAI until you copy them yourself.</dd>
+</dl>
+<p class="hint">{{ item.disclosure }}</p>
+{% if item.state == 'connected' or item.state == 'reconnect_required' %}
+<form method="post" action="/v1/account/connections/disconnect">{% csrf_token %}<input type="hidden" name="connection_id" value="{{ item.connection_id }}"><button class="ghost small">Disconnect</button></form>
+{% endif %}
+</section>
+{% endfor %}
+<p class="actions"><a class="btn ghost small" href="/account/">Back to overview</a></p>
+{% endblock %}

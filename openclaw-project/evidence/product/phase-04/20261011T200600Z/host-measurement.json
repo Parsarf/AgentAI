@@ -1,0 +1,45 @@
+{
+  "observed_at": "2026-10-11T20:06:00+00:00",
+  "method": "read-only ssh: nproc, /proc/meminfo, df, uptime, docker stats --no-stream; no load, no change",
+  "cpu_count": 2,
+  "mem_total_bytes": 4055998464,
+  "mem_available_bytes": 542474240,
+  "swap_total_bytes": 2147479552,
+  "swap_free_bytes": 8056832,
+  "swap_used_percent": 99.6,
+  "disk_total_bytes": 123690532864,
+  "disk_available_bytes": 87039062016,
+  "load_average": [
+    0.03,
+    0.04,
+    0.0
+  ],
+  "owner_containers": {
+    "gateway_mem": "1.345GiB",
+    "litellm": "121.8MiB",
+    "postgres": "35.8MiB",
+    "idle_sandbox_containers": 8,
+    "idle_sandbox_mem_mib_total": 1243.9
+  },
+  "one_default_cell_needs_bytes": 2147483648,
+  "reserves_bytes": 805306368,
+  "best_case_if_every_idle_sandbox_were_stopped": {
+    "available_bytes": 1846797926,
+    "still_short_by_bytes": 1105992090
+  },
+  "assessment": {
+    "memory_slots": 0,
+    "cpu_slots": null,
+    "disk_slots": null,
+    "pid_slots": null,
+    "admitted_slots": 0,
+    "blockers": [
+      "isolation_unverified",
+      "tenant_peak_unverified",
+      "memory_exhausted",
+      "cpu_unknown",
+      "disk_unknown",
+      "pids_unknown"
+    ]
+  }
+}

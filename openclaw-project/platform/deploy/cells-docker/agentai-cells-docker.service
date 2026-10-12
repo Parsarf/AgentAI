@@ -1,0 +1,24 @@
+[Unit]
+Description=AgentAI customer-cell Docker engine (gVisor default; separate from the owner engine)
+After=network-online.target containerd.service
+Wants=network-online.target
+Requires=containerd.service
+
+[Service]
+Type=notify
+RuntimeDirectory=agentai-cells
+RuntimeDirectoryMode=0750
+ExecStartPre=/usr/local/sbin/agentai-cells-bridge up
+ExecStart=/usr/bin/dockerd --config-file /etc/agentai-cells/daemon.json
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=1048576
+LimitNPROC=infinity
+TasksMax=infinity
+Delegate=yes
+KillMode=process
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,116 @@
+{
+  "phase": 4,
+  "run_id": "20261012T002000Z",
+  "recorded_at": "2026-10-12T00:20:00Z",
+  "base_revision": "158bce0",
+  "target": "new service-operated VPS 179.236.71.203 (4 vCPU, 15.6 GiB, 193 GB, Ubuntu 26.04.1, kernel 7.0.0-34); two invite-only accounts, one global running customer task",
+  "build_result": "READY",
+  "native_acceptance": "NOT_RUN (Phase 15)",
+  "customer_execution_enabled": false,
+  "supervisor_installed": true,
+  "native_backend_enabled": true,
+  "enrolled_bindings": 0,
+  "lifecycle_worker_installed": true,
+  "owner_authorization": "owner said \"go to next phase\" then \"do everything yourself\"; owner approved migration to the new server earlier",
+  "host_changes": {
+    "gvisor": "runsc release-20261005.0 installed to /usr/local/bin (sha256 runsc 210b437a\u2026, shim 2bff94d1\u2026); registered as a second runtime on the owner engine (additive; /etc/docker/daemon.json backup kept)",
+    "cell_engine": "separate dockerd (agentai-cells-docker) on /run/agentai-cells/docker.sock, data-root /var/lib/agentai-cells/docker, default runtime runsc, own bridge agentai0 10.77.0.0/16, per-cell nets from 10.78.0.0/16, icc=false, no-new-privileges",
+    "firewall": "drop-only nftables table inet agentai_cells (cells cannot reach host services, private ranges, metadata or other cells; quarantined cells have all egress dropped)",
+    "services": "agentai-supervisor-native (root, caps limited, 768M cap) and agentai-lifecycle-worker (app user, no caps, 128M cap) enabled; zero enrolled bindings so nothing can dispatch",
+    "incident": "first cell-engine start collided with the owner engine bridge name docker0 and deleted it; docker0 was recreated as 172.17.0.1/16 and verified with a default-bridge container; owner stack never affected"
+  },
+  "findings": [
+    "Fleet restore refuses another tenant slug and swaps the whole data dir, impossible on a volume mounted there; the host uses its own bounded extractor into a freshly created quarantine cell",
+    "fleet create accepts --gateway-token, so the host supplies the token from custody and never scrapes stdout",
+    "Fleet backup requires a stopped cell; Fleet places cell data in $HOME/.openclaw/fleet/cells/<tenant> and auth in auth-profile-secrets/<tenant>",
+    "Docker isolation alone left SSH/HTTPS on the host reachable from a cell; the nftables table closes it (verified by counters and probes)",
+    "Chromium needs a writable HOME and CHROME_HEADLESS under the read-only worker envelope; the fixed catalog command sets them",
+    "The supervisor now answers effect-free \"account not enrolled\" as busy so unenrolled operations wait instead of becoming uncertain"
+  ],
+  "measurements": {
+    "idle_gateway_cell_under_gvisor": "container 756 MiB of 1 GiB cap; host available memory fell 458 MiB",
+    "browser_stage_light_page": "Chromium loading example.com under gVisor peaked at 134 MiB container / 126 MiB host (light page only; heavy pages are bounded by the 1.5 GiB cap, not measured)",
+    "disk_cap": "300 MiB loop volume stopped a 400 MiB write at 200 MiB; cell and host stayed healthy",
+    "admitted_capacity": {
+      "memory_slots": 4,
+      "cpu_slots": 1,
+      "disk_slots": 14,
+      "pid_slots": 63,
+      "admitted_slots": 1,
+      "blockers": []
+    },
+    "host": {
+      "os": "Ubuntu 26.04.1 LTS",
+      "kernel": "7.0.0-34-generic",
+      "cpus": 4,
+      "memory_bytes": {
+        "MemTotal": 16763621376,
+        "MemAvailable": 13853519872,
+        "SwapTotal": 0,
+        "SwapFree": 0
+      },
+      "disk_free_bytes": 177151713280,
+      "disk_total_bytes": 207071854592
+    },
+    "owner_containers_memory": [
+      "openclaw-production-openclaw-gateway-1 1.143GiB / 15.61GiB",
+      "openclaw-production-litellm-1 499.4MiB / 15.61GiB",
+      "openclaw-production-postgres-1 51.03MiB / 15.61GiB"
+    ]
+  },
+  "live_checks": {
+    "lifecycle_isolation": {
+      "count": 26,
+      "all_pass": true
+    },
+    "worker_broker": {
+      "count": 16,
+      "all_pass": true
+    },
+    "queue_to_cell_pipeline": {
+      "count": 10,
+      "all_pass": true
+    }
+  },
+  "local_checks": "299 platform tests pass (2 Linux-only skips on macOS); new modules covered by test_netpolicy, test_volumes, test_secrets_custody, test_broker, test_sleep, test_maintenance, test_fleet_maintenance, test_native_wiring, test_worker, test_enroll_cli",
+  "not_done": [
+    "Per-account model route: LiteLLM virtual key issuance is implemented and unit tested (ProviderKeys) but not run against the live proxy, and the cell Gateway model/provider configuration plus the 10.77.0.1:4000 proxy path are not wired (Phase 5/9 activation)",
+    "Controller identity is the app user (SQLite file permissions); a compromised web app could send claims for enrolled bindings only",
+    "Cell Gateway to worker integration (OpenClaw browser/coding tools calling the broker) is not built; the broker is the host-side envelope",
+    "Heavy-page and sustained-load peaks, simultaneous concurrency, restore-and-promote drill, power loss and reboot recovery are Phase 15",
+    "Reboot persistence of the new units was not tested (server not rebooted)"
+  ],
+  "rollback": "systemctl disable --now agentai-lifecycle-worker agentai-supervisor-native agentai-cells-firewall agentai-cells-docker; remove /etc/docker/daemon.json runsc entry from backup; no customer data exists",
+  "source_sha256": {
+    "platform/agentai_platform/lifecycle/netpolicy.py": "773a57ad67722cacb3deca3b094dbb7e6096c7262b530e0735654e95e009b950",
+    "platform/agentai_platform/lifecycle/volumes.py": "05f7ee3601fcbcb3d435d59e4036a19432656fe15cc6e22d78399684f74d34b1",
+    "platform/agentai_platform/lifecycle/secrets_custody.py": "e3a3f2ebba9056f5c4c99f2b772889ac1ce280860b5eeb0028a3bf4ae8e3ef77",
+    "platform/agentai_platform/lifecycle/broker.py": "65aa6617d5bf5f5a7325727f0a5b2ff9d63c2af177caaf94af431aace908edaf",
+    "platform/agentai_platform/lifecycle/sleep.py": "672fbfad0cb06db30339ec0430a3a181be5d39a0c3f5e8740f1f9f081744a208",
+    "platform/agentai_platform/lifecycle/maintenance.py": "3bacb17260f63789b0a81734668e5214c0496e9fad667774351a7bef67b7b4e8",
+    "platform/agentai_platform/lifecycle/fleet_driver.py": "277194f6e73b64c91cc35a2177dd191dcfc768bb20b19a6a535b31de73c87aad",
+    "platform/agentai_platform/lifecycle/fleet_plan.py": "9419c0f45a0c866a9ae2e585b638d5017ee89941da21a4facdd2b73eaa4a6504",
+    "platform/agentai_platform/lifecycle/supervisor.py": "e0d75c48e1a092b6133e9907457d6f2dcdf12ad7d55ca04a01140c0f9c312957",
+    "platform/agentai_platform/lifecycle/native_wiring.py": "9f7886397d4d2cfeedf765e1ceafd5c26fe420bb26301ecc70501b6d84e0443f",
+    "platform/agentai_platform/lifecycle/profiles.py": "26c02d00b305daff9303c59e9d5ec053a9bebb80997e286f4001f64a52812e34",
+    "platform/agentai_platform/lifecycle/worker.py": "aaa74642aacfc50d50df83d30077c0e7b0300f7d782f637573645b7d97a89ede",
+    "platform/agentai_platform/lifecycle/worker_main.py": "8a25e2552ea8b9e8866cba8667fc4ce67eabbfd8b9a0cdc4c2abd8ba9fa6692f",
+    "platform/agentai_platform/lifecycle/enroll_cli.py": "9208b9c063d64591f0c978843aaf7141c4d115211bf9b7eb80a9c4653bd336a0",
+    "platform/agentai_platform/lifecycle/supervisor_main.py": "b12d4f06bfff1ad111c3323ca0f9e64bacf94cc75ee1fbf55dee3b752862149a",
+    "platform/deploy/p4_live_check.py": "2a85efe99f4f4d8dc87ad1d2fc5a0f697e855249755196158f83e488c0be8473",
+    "platform/deploy/p4_broker_check.py": "1f6f1513c1e845dd027e6c4e209de7bb1b32d1b8a3fbfb163d5569b3b79fd9e5",
+    "platform/deploy/p4_pipeline_check.py": "5ef1cf1cd1d83be0c43f482ac89bb12ff38e41c784b659a774208d5d9d88595d",
+    "platform/deploy/agentai-supervisor-native.service": "ec08f3aac0094d7d9d4358f6fb481cbc15b8d63a073e743b5e5ab1fb51982bd3",
+    "platform/deploy/agentai-lifecycle-worker.service": "39b7a07201ac458f2f27c6567c52ee08bb4005ea293a93223cee8b61aff2d642",
+    "platform/deploy/cells-docker/daemon.json": "50d87d1456deb2e88e3a25e4a0b426f42401dba5a22543ed29a71ca8ee4c157d",
+    "platform/deploy/cells-docker/agentai-cells-docker.service": "60fe64d76d37c16ccd537da54a9b07626e506da94cbf0583515cb9bd323496c8",
+    "platform/deploy/cells-docker/agentai-cells-firewall.service": "0f87cb576328d0de922c8dfd053ea6b1e2983b9352e13fd3fcc7afc7a321f147",
+    "platform/deploy/cells-docker/agentai-cells-bridge": "7b3e6cea37215455568d883d5c4baa6e2e70bb0a93d2dd9df3f37e42e1575dd2"
+  },
+  "evidence_files": [
+    "host-capacity.json",
+    "p4-broker-evidence.json",
+    "p4-live-evidence.json",
+    "p4-pipeline-evidence.json"
+  ]
+}

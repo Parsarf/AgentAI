@@ -1,0 +1,90 @@
+{
+ "created_at": "2026-10-08T09:15:00Z",
+ "phase": 8,
+ "run_id": "20261008T091500Z",
+ "status": "READY_BUILD_FAIL_CLOSED",
+ "target": "existing VPS, release 20261008T091500Z-files",
+ "native_execution_enabled": false,
+ "storage_configured_on_production": false,
+ "uploads_enabled_on_production": false,
+ "paid_provider_calls": 0,
+ "customer_accounts_touched": 0,
+ "changes": [
+  "SQL0007/Django0011 project_files + download_tickets",
+  "race-safe RootStore (O_NOFOLLOW chain, component validation, symlink-race tests)",
+  "allowlist/content-sniffing upload pipeline with quarantine states and quotas",
+  "immutable artifact versions, single-use download tickets, project ZIP bundles with manifest",
+  "chat page Files & results section; uploads honest 503 without scan capability"
+ ],
+ "checks": [
+  {
+   "id": "P08-SERVICE",
+   "command": "python -m unittest tests.test_files",
+   "observation": "9 tests OK (traversal, symlink race, allowlist, quotas, tickets, bundle)",
+   "status": "PASS"
+  },
+  {
+   "id": "P08-CORE",
+   "command": "full core selection incl. chat/gateway/telegram/files",
+   "observation": "133 tests OK (2 pre-existing Linux skips)",
+   "status": "PASS"
+  },
+  {
+   "id": "P08-ACCOUNTS",
+   "command": "python manage.py test accounts",
+   "observation": "59 tests OK incl. HTTP upload/download/bundle flows",
+   "status": "PASS"
+  },
+  {
+   "id": "P08-SCRIPTS",
+   "command": "concurrency + loopback HTTP + vercel routing checks",
+   "observation": "PASS",
+   "status": "PASS"
+  },
+  {
+   "id": "P08-DEPLOY",
+   "command": "release hash verify + migrate + restart + origin checks",
+   "observation": "SQL0007 applied; files 401 anon via origin; readiness honest",
+   "status": "PASS"
+  }
+ ],
+ "deferred_cases": [
+  "P15-UPLOAD live scan-capability proof",
+  "P15-ARTIFACT end-to-end with real task results",
+  "P15-FILE-BOUNDARY adversarial storage probes on the host",
+  "PDF page-count enforcement pending a safe parser"
+ ],
+ "cost": {
+  "paid_routes": [],
+  "unknown": [
+   "storage growth depends on customer usage; 2GiB/account cap enforced at admission"
+  ]
+ },
+ "blockers": [
+  "AGENTAI_STORAGE_DIR + AGENTAI_ARTIFACT_SIGNING_KEY not provisioned (owner/operator step)",
+  "uploads scan flag off by design",
+  "Phase 4/5 execution gates unchanged"
+ ],
+ "process_note": "Pre-migration backup skipped again (lapse repeated from Phase 7); post-migration backup 20261008T091800Z integrity ok. Deploy checklist must move the backup before systemctl stop in future releases.",
+ "rollback": "No schema-compatible prior release; restore verified backup into a fresh state root per runbook. Code-only rollback refuses the newer schema.",
+ "source_sha256": {
+  "openclaw-project/platform/migrations/0007_files_artifacts.sql": "6561c04cb14339afb5ecb0ca3ed52a9a9935df40dcbe313ef57b65194851924a",
+  "openclaw-project/platform/accounts/migrations/0011_files_artifacts.py": "6fa2964f743cc0014ab60cea94f8d5b59c6fd145be65746ba9d196736d66f0ce",
+  "openclaw-project/platform/agentai_platform/storage.py": "ff91ba05081fe05579e198999077677960db829635a9ce19539292ada5f243fc",
+  "openclaw-project/platform/agentai_platform/files.py": "2a1d1ab3ece56899dfbcbc1c45bf76bbf3c20a2685528ba34d9e443390ed043d",
+  "openclaw-project/platform/agentai_platform/artifacts.py": "8223a76891cee3d44c64503146ce1801057002f14a4af766a8ea62e30644b59f",
+  "openclaw-project/platform/accounts/files.py": "afe6dd4c75de0cf784cc220a80a642712366c813e1cdecef220052cf42d5c697",
+  "openclaw-project/platform/accounts/urls.py": "0c23d45f19515f90eafddad8219e77ed4c76c2bf4cd961e0e4b60d1a087af729",
+  "openclaw-project/platform/accounts/settings.py": "fd154baa691d0cd301fc0e498c54d48ed8dc100967f305f37616ed9aaf4639a3",
+  "openclaw-project/platform/accounts/middleware.py": "6882a352793639a478d453e90047813d2561c707d74bce1c7a91fe46b663be54",
+  "openclaw-project/platform/accounts/chat.py": "e69cca3e05469813b74e5a8d640679bcd39cbe603d266138a34259e8dc6cae23",
+  "openclaw-project/platform/accounts/templates/accounts/chat.html": "43b2270f3c7fe22df207501e47b522b0cb8c3dc34dd8b8997303f8c3f9f6b41f",
+  "openclaw-project/platform/accounts/test_files.py": "01b580caf8754d69f452b8be1b1f8f97100e232131dba794f957f54e9f68d1ce",
+  "openclaw-project/platform/tests/test_files.py": "11315af04b6587f2c096a97aed48acf35c912152d105b14445ab08db8e6578c9",
+  "openclaw-project/platform/accounts/tests.py": "7f4a2ec8b951e59c12b55a13149935979d762300591c203294c1c7ab8d80af1c",
+  "openclaw-project/plans/product/phase-08.md": "0e83b8a05a1b903252f882fe0320a544469f51d8c1aa19500badec60db2ad4ac",
+  "openclaw-project/plans/product/requirements.json": "82586cb9ce0d5757b640dc53722859a4deba5fb277ec7e02f797212c84b7e49f",
+  "openclaw-project/plans/product/requirements.md": "4b5c1b8c1519bec98ffe6fae69f08805e44bae07ad7032041ea0d2110637a953",
+  ".github/workflows/platform.yml": "c4186399442369500e49be70f3bf45929da31544f6c78151fb66b418fe79d230"
+ }
+}

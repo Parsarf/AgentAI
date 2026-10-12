@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "recorded": "2026-10-09 (revised: builder harness changed from Codex to Claude Code, Sonnet 5.5)",
+  "basis": "config/phase4-native-workers.batch.json, config/phase4-codex-activation.batch.json, plans/product/capability-inventory.json, BUILD_LOG Phase 4 entries. No live host probe was run for this record; nothing here proves runtime behavior beyond the cited historical evidence.",
+  "harnesses": {
+    "acp-reviewer": {
+      "role": "independent review of a final snapshot, spec and evidence (no builder conversation)",
+      "execution_identity": "Not configured. Mechanism now identified: ACP claude via acpx (see claude-code-builder.runtime_mechanism). Runs on the Gateway host outside OpenClaw sandbox; read-only source must be enforced by the cell mount, not by Gateway policy.",
+      "writable_roots": "required: source read-only, separate scratch",
+      "network": "required: none beyond the metered model route",
+      "inherited_env": "required: cleared of owner and customer credentials",
+      "auth": "NOT provisioned; same metered-route requirement as the builder",
+      "billing": "NOT metered; reviewer route admission pending",
+      "unverified": [
+        "a host-side ACP process is not covered by Gateway sandbox policy, so it needs its own confinement",
+        "no reviewer inference has ever run"
+      ],
+      "independence_note": "Builder and reviewer now share a model family (Claude). Independence must come from a fresh session, snapshot-only input, read-only source and no builder conversation, not from a different vendor; consider a different model tier for the reviewer."
+    },
+    "claude-code-builder": {
+      "role": "build/debug (claude-debugger shares the same shape)",
+      "model": "claude-sonnet-5-5",
+      "execution_identity": "NOT configured; required: unprivileged container user, no host shell",
+      "writable_roots": "required: project workspace only, root filesystem read-only, separate scratch",
+      "network": "required: none for tool processes; model traffic only through the metered route",
+      "inherited_env": "Docs document no env clearing for the claude-cli child. Required: the cell supplies a clean environment (no owner/customer credentials, GH_TOKEN, TELEGRAM_BOT_TOKEN, etc.) and CLAUDE_CONFIG_DIR pointing at a per-account directory. Unverified.",
+      "auth": "Default documented path is a Claude subscription login on the Gateway host (`claude auth login`) \u2014 NOT allowed for customers. Customer path must be an explicit OpenClaw-managed Anthropic API-key profile forwarded per invocation through a protected file descriptor, scoped to a per-account virtual key via the metered proxy. Not provisioned.",
+      "billing": "meterable in principle via the proxy/budget ledger (per-call fences and attribution still missing, Phase 5); not yet connected",
+      "runtime_mechanism": {
+        "status": "READ FROM INSTALLED SCHEMA/HELP (2026.9.6) AND OFFICIAL DOCS 2026-10-09; NOT PROBED LIVE",
+        "options": {
+          "claude-cli backend": "model/provider/agent-model `agentRuntime.id: \"claude-cli\"`. Runs the `claude` binary as a Gateway-host process; Claude Code (not OpenClaw) owns cwd, PATH, env and sandboxing. Bundled launch: --allowedTools mcp__openclaw__*, --disallowedTools ScheduleWakeup,CronCreate,Bash(run_in_background:true),Monitor, --setting-sources user, default permission mode. Restricted runs (toolsAllow) disable native tools and user/project customizations; tools come only via the per-run-grant loopback MCP bridge (bundleMcp). Docs: no env-clearing mechanism for the child. Exec allowlist is argument-level policy, explicitly \"not sandboxed execution by OpenClaw\".",
+          "ACP harness": "agent `runtime: {type: \"acp\", acp: {agent: \"claude\", backend, mode, cwd}}` via the acpx plugin. Runs on the host, NOT inside the OpenClaw sandbox; ACP spawns are blocked from sandboxed requesting sessions and `sandbox: \"require\"` is unsupported. Permissions are the harness's own (acpx permissionMode approve-all|approve-reads(default)|deny-all, nonInteractivePermissions fail(default)|deny); file access is bounded only by harness permissions and cwd. pluginToolsMcpBridge / openClawToolsMcpBridge off by default and must stay off.",
+          "openclaw attach": "inverse direction: attaches a user-run Claude Code to a Gateway session with a scoped, TTL-bound MCP grant. Interactive/operator tool, not a customer worker.",
+          "sandbox-enforced alternative": "`runtime: subagent` (embedded runtime with Docker sandbox) is the only sandbox-enforced path and does not run Claude Code."
+        },
+        "implication": "Both Claude Code paths execute on the Gateway host outside OpenClaw sandbox policy. Confinement must therefore come from the customer cell itself (separate OS user/container, read-only snapshot mounts, no host credentials, egress limits), not from Gateway sandbox config. Because ACP cannot be spawned from a sandboxed session, an in-cell orchestrator that delegates to ACP must be unsandboxed *inside* a verified cell; that is only acceptable once the cell boundary (Phase 4) is proven.",
+        "model_id": "claude-sonnet-5-5 availability in the installed OpenClaw model catalog is NOT confirmed (local catalog query returned no Sonnet rows; server catalog not queried)."
+      },
+      "historical_evidence": "none for Claude Code. Prior builder/debugger evidence (Codex) in evidence/phase-4/ proves only that sandbox config, not this harness",
+      "unverified": [
+        "launch mechanism and process boundary relative to the agent sandbox",
+        "tool/permission controls available to the harness",
+        "egress path",
+        "per-customer home and credential separation under a customer cell"
+      ],
+      "required_launch_settings": {
+        "builder": "claude-cli with restricted toolsAllow (native tools/customizations disabled, tools via MCP bridge only), exec approval ask != off, security deny for anything outside the workspace",
+        "reviewer": "ACP claude, mode oneshot, permissionMode deny-all (or approve-reads), nonInteractivePermissions deny, both MCP bridges off, cwd = read-only snapshot mount with separate scratch outside it, acp.allowedAgents restricted to claude"
+      },
+      "live_probe_2026-10-09": "Read-only server probe: no claude binary on host or in the Gateway container, acpx not installed/configured, acp unset, no ~/.claude. Catalog has only litellm/claude-sonnet-4-6; claude-sonnet-5-5 is absent. Evidence: evidence/product/phase-10/20261009T120000Z/live-probe.json",
+      "model_id": "claude-sonnet-5-5 is NOT in the installed catalog; it needs a LiteLLM route plus an OpenClaw catalog entry (and a price/upper bound in the budget ledger) before use.",
+      "prepared_not_applied": [
+        "deploy/litellm.yaml (+example): claude-sonnet-5-5 route",
+        "deploy/Dockerfile.claude-code (mandatory unset pins)",
+        "config/phase10-claude-code-preflight.batch.json (disabled acpx/acp, catalog row)",
+        "config/phase10-claude-code-activation.batch.json (claude-builder/debugger/reviewer, acpx deny-all)",
+        "plans/product/phase-10-claude-code-activation.md"
+      ],
+      "batch_validation": "Both batches pass `openclaw config set --dry-run` (activation after preflight) on a scratch profile built from config/openclaw.example.json under the session scratchpad; the live server config was not touched. acpx plugin must still be installed (`openclaw plugins install @openclaw/acpx@<pin>`).",
+      "metering_open_question": "claude-cli/ACP call Anthropic from Claude Code itself; docs describe no routing through the LiteLLM proxy. Spend may bypass proxy caps and the budget ledger until Claude Code is proven to use a per-account virtual key through the proxy."
+    },
+    "codex-builder-superseded": {
+      "status": "superseded by claude-code-builder; kept as historical record only",
+      "previous": {
+        "role": "build/debug (codex-debugger shares the same shape)",
+        "execution_identity": "container user 1000:1000 per agent sandbox config; Codex app-server process identity NOT recorded",
+        "writable_roots": "agent workspace mounted rw; root filesystem read-only; Codex appServer sandbox=workspace-write",
+        "network": "agent sandbox network=none (tool processes). Codex model traffic to the provider necessarily leaves the sandbox; app-server egress path NOT verified",
+        "inherited_env": "appServer.clearEnv strips OPENAI_API_KEY, CODEX_API_KEY, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, TELEGRAM_BOT_TOKEN, GH_TOKEN, GITHUB_TOKEN; homeScope=agent",
+        "auth": "owner ChatGPT OAuth profile openai:default (personal subscription, quota-limited, zero credits)",
+        "billing": "NOT metered through the product budget ledger; no commercial customer billing path exists",
+        "approvals": "guardian mode, on-request, auto_review reviewer (hit its own usage limit once; a review failure is not a safety rejection)",
+        "historical_evidence": "evidence/phase-4/20260926T225237Z: project-only mounts, non-root, read-only root, network none, no elevated tools observed for builder tools",
+        "unverified": [
+          "whether the Codex app-server process itself runs inside the agent sandbox or on the Gateway host",
+          "app-server egress restrictions",
+          "per-customer credential and home separation under a customer cell"
+        ]
+      }
+    }
+  },
+  "activation_blockers": [
+    "Claude Code (both paths) runs on the Gateway host outside OpenClaw sandbox; confinement exists only if the customer cell boundary does (Phase 4, not activated)",
+    "No per-account metered Anthropic API key profile; subscription login is the default and is forbidden for customers (NATIVE-02)",
+    "acpx plugin, acp.enabled and the reviewer agent are not configured; no env-clearing documented for the CLI child",
+    "claude-sonnet-5-5 absent from the server catalog (only litellm/claude-sonnet-4-6): needs LiteLLM route, catalog entry and budget price; Claude Code binary and acpx are not installed in the Gateway",
+    "Claude Code spend may bypass the LiteLLM proxy caps and budget ledger (no documented proxy routing); customer use blocked until proven"
+  ],
+  "decision": "Owner decision 2026-10-09: coding/build/debug harness is Claude Code on claude-sonnet-5-5 instead of Codex. Historical Codex config/evidence is preserved unchanged and is NOT evidence for Claude Code."
+}

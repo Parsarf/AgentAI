@@ -1,0 +1,55 @@
+{
+  "results": [
+    {
+      "check": "supervisor socket is up",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "unenrolled accounts wait (nothing runs, nothing poisoned)",
+      "pass": true,
+      "detail": "{'denied': 0, 'drained': 0, 'ran': 0, 'reconciled': 0, 'uncertain': 0, 'waiting': 2}"
+    },
+    {
+      "check": "host enrolls pipea",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "host enrolls pipeb",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "worker creates both cells via the socket",
+      "pass": true,
+      "detail": "{'denied': 0, 'drained': 0, 'ran': 2, 'reconciled': 0, 'uncertain': 0, 'waiting': 0}"
+    },
+    {
+      "check": "only one cell starts; the other waits",
+      "pass": true,
+      "detail": "{'denied': 0, 'drained': 0, 'ran': 1, 'reconciled': 0, 'uncertain': 0, 'waiting': 1}"
+    },
+    {
+      "check": "idle cell gets a system drain request",
+      "pass": true,
+      "detail": "{'denied': 0, 'drained': 1, 'ran': 0, 'reconciled': 0, 'uncertain': 0, 'waiting': 1}"
+    },
+    {
+      "check": "drain stops the idle cell",
+      "pass": true,
+      "detail": "{'denied': 0, 'drained': 0, 'ran': 1, 'reconciled': 0, 'uncertain': 0, 'waiting': 1}"
+    },
+    {
+      "check": "the waiting account then wakes and runs",
+      "pass": true,
+      "detail": "{'denied': 0, 'drained': 0, 'ran': 1, 'reconciled': 0, 'uncertain': 0, 'waiting': 0}"
+    },
+    {
+      "check": "both cells deleted through the pipeline",
+      "pass": true,
+      "detail": "['absent', 'absent']"
+    }
+  ],
+  "all_pass": true
+}

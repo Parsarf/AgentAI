@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
@@ -26,6 +27,42 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from http import cookies as http_cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+def _load_switches():
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "switches.py"),
+                      os.path.join(here, "..", "platform", "agentai_platform", "switches.py")):
+        if os.path.exists(candidate):
+            spec = importlib.util.spec_from_file_location("owner_switches", candidate)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["owner_switches"] = module  # dataclasses look the module up by name
+            spec.loader.exec_module(module)
+            return module
+    raise RuntimeError("switches.py not found next to the dashboard")
+
+
+switches = _load_switches()
+
+
+def _load_routing_config():
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "routing_config.py"),
+                      os.path.join(here, "..", "platform", "agentai_platform", "routing", "config.py")):
+        if os.path.exists(candidate):
+            spec = importlib.util.spec_from_file_location("owner_routing_config", candidate)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["owner_routing_config"] = module
+            spec.loader.exec_module(module)
+            return module
+    return None
+
+
+routing_config = _load_routing_config()
+ROUTING_DIR = "/var/lib/agentai-platform/routing"
+ROUTING_FILE = os.path.join(ROUTING_DIR, "routing.json")
+ROUTING_KEY = os.path.join(ROUTING_DIR, "typesafe.key")
 
 BASE = "/opt/openclaw-production"
 DIR = os.path.join(BASE, "dashboard")
@@ -39,6 +76,9 @@ POSTGRES = "openclaw-production-postgres-1"
 LITELLM = "openclaw-production-litellm-1"
 HOST_STATE = os.path.join(BASE, "openclaw-state")  # = container /home/node/.openclaw
 JEV_DIR = os.path.join(HOST_STATE, "jev-research")
+SWITCH_DIR = os.path.join(BASE, "feature-switches")
+SWITCH_FILE = os.path.join(SWITCH_DIR, "switches.json")
+SWITCH_FACTS = os.path.join(SWITCH_DIR, "facts.json")
 PORT, BIND = 18795, "127.0.0.1"
 SESSION_TTL_IDLE, SESSION_TTL_ABS = 2 * 3600, 24 * 3600
 DOWNLOAD_TTL, MAX_FILE_BYTES = 300, 2_000_000
@@ -520,6 +560,7 @@ def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
                "<a href=/sessions>Sessions</a><a href=/files>Files</a>"
                "<a href=/approvals>Approvals</a><a href=/schedules>Schedules</a>"
                "<a href=/memory>Memory</a><a href=/integrations>Integrations</a>"
+               "<a href=/switches>Feature switches</a><a href=/routing>Routing</a>"
                "<a href=/costs>Costs</a><a href=/audit>Audit</a></nav>")
         logout = (f"<form method=post action=/logout class=inline>"
                   f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
@@ -708,15 +749,15 @@ class Handler(BaseHTTPRequestHandler):
             sb = sandbox_browser_enabled()
             jev_on = jev_research_enabled()
             controls = ("<h2>Controls</h2><div class=grid>" +
-                        toggle_row("jev_research", "Jev research layer", jev_on, True,
-                                   "fail-open fetch decisions for the researcher") +
+                        toggle_row("jev_research", "Jev research layer", jev_on, False,
+                                   "managed on the Feature switches page") +
                         toggle_row("sandbox_browser", "Sandbox browser",
                                    sb, True, "per-session browser containers for "
                                    "browser-worker (pinned image)") +
                         toggle_row("web_search", "Native web search", False, False,
                                    "off — no supported provider credential; Brave MCP "
                                    "search stays available to the researcher") +
-                        "</div>")
+                        "</div><p><a href=/switches>All feature switches →</a></p>")
             gates = ("<h2>Fixed boundaries</h2>" +
                      gate("session cancel: no owner-scoped native abort verified on "
                           "this build — use the Control UI") +
@@ -732,6 +773,14 @@ class Handler(BaseHTTPRequestHandler):
                      "<p class=ok>no pending approvals</p>") +
                     controls + gates)
             return self._send(200, page("overview", body, rec))
+
+        if path == "/switches":
+            flash = q.get("msg", [""])[0][:200]
+            return self._send(200, page("feature switches", switches_page(rec), rec, flash))
+
+        if path == "/routing":
+            flash = q.get("msg", [""])[0][:200]
+            return self._send(200, page("routing", routing_page(rec), rec, flash))
 
         if path == "/sessions":
             s = sessions_data()
@@ -997,21 +1046,30 @@ class Handler(BaseHTTPRequestHandler):
             if not audit("revoke-all-sessions", "all", f"revoked={n}"):
                 return self._deny(500, "audit write failed — action refused")
             return self._redirect("/login", cookie="dsh=; HttpOnly; Max-Age=0; Path=/")
+        if path == "/switch":
+            name, value = form.get("name", ""), form.get("value", "")
+            if value not in ("on", "off"):
+                return self._deny(400, "bad value")
+            ok, message = apply_switch(name, value == "on")
+            return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+        if path == "/switch-confirm":
+            name, cid = form.get("name", ""), form.get("id", "")
+            try:
+                switch_store().confirm(name, cid, "owner")
+            except switches.SwitchError as e:
+                return self._deny(400, "; ".join(e.reasons))
+            if not audit("switch-confirm", f"{name}:{cid}", "recorded"):
+                return self._deny(500, "audit write failed — confirmation not trusted")
+            return self._redirect("/switches?msg=" + urllib.parse.quote("Confirmation recorded"))
         if path == "/toggle":
             name = form.get("name", "")
             value = form.get("value", "")
             if value not in ("on", "off"):
                 return self._deny(400, "bad value")
             if name == "jev_research":
-                try:
-                    os.makedirs(JEV_DIR, exist_ok=True)
-                    with open(os.path.join(JEV_DIR, "config.json"), "w") as f:
-                        json.dump({"enabled": value == "on"}, f)
-                    os.chmod(os.path.join(JEV_DIR, "config.json"), 0o600)
-                except OSError as e:
-                    return self._deny(500, f"toggle failed: {type(e).__name__}")
-                state = jev_research_enabled()
-            elif name == "sandbox_browser":
+                ok, message = apply_switch("research_optimization", value == "on")
+                return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+            if name == "sandbox_browser":
                 rc, out = run(["docker", "exec", GATEWAY, "node", "dist/index.js",
                                "config", "set",
                                "agents.defaults.sandbox.browser.enabled",
@@ -1033,23 +1091,14 @@ class Handler(BaseHTTPRequestHandler):
             value = form.get("value", "")
             if layer != "research" or value not in ("on", "off"):
                 return self._deny(400, "unsupported layer or value")
-            target = os.path.join(JEV_DIR, "config.json")
-            try:
-                os.makedirs(JEV_DIR, exist_ok=True)
-                with open(target, "w") as f:
-                    json.dump({"enabled": value == "on"}, f)
-                os.chmod(target, 0o600)
-                with open(target) as f:
-                    readback = json.load(f)
-            except OSError as e:
-                return self._deny(500, f"toggle failed: {type(e).__name__}")
-            if not audit("jev-toggle", layer, f"{value}; readback={readback}"):
-                return self._deny(500, "audit write failed — change refused")
-            body = (f"<h2>Jev research layer</h2>"
-                    f"<p>Requested <b>{esc(value)}</b>; read back "
-                    f"<b>{esc(json.dumps(readback))}</b>.</p>"
-                    f"<p><a href=/live>back to live viewer</a></p>")
-            return self._send(200, page("jev toggle", body, rec))
+            ok, message = apply_switch("research_optimization", value == "on")
+            return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+        if path == "/routing-save":
+            ok, message = routing_save(form)
+            return self._redirect("/routing?msg=" + urllib.parse.quote(message))
+        if path == "/routing-rollback":
+            ok, message = routing_rollback()
+            return self._redirect("/routing?msg=" + urllib.parse.quote(message))
         self._deny(404, "not found")
 
     def _static(self, name: str, ctype: str) -> None:
@@ -1058,6 +1107,244 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), ctype)
         except OSError:
             self._deny(404, "missing asset")
+
+
+
+def switch_store():
+    return switches.SwitchStore(SWITCH_FILE, facts_path=SWITCH_FACTS)
+
+
+def live_facts() -> dict:
+    """Facts written by deployment tooling, plus the few the dashboard can verify itself."""
+    facts = switches.load_facts(SWITCH_FACTS)
+    rc, _ = run(["docker", "exec", GATEWAY, "test", "-e", "/run/secrets/phase4a-jev-eval.key"], timeout=15)
+    facts["typesafe_key_present"] = rc == 0
+    facts["routing_key_present"] = os.path.isfile(ROUTING_KEY)
+    return facts
+
+
+def write_jev_plugin_file(on: bool) -> bool | None:
+    """Mirror the research switch into the plugin's documented config file, with readback."""
+    target = os.path.join(JEV_DIR, "config.json")
+    try:
+        os.makedirs(JEV_DIR, exist_ok=True)
+        with open(target, "w") as f:
+            json.dump({"enabled": bool(on)}, f)
+        os.chmod(target, 0o600)
+    except OSError:
+        return None
+    return jev_research_enabled()
+
+
+def apply_switch(key: str, on: bool) -> tuple[bool, str]:
+    """One code path for every feature switch: checks, save, mirror, readback, audit.
+    Turning OFF always works; turning ON needs every confirmation and fact."""
+    store = switch_store()
+    if key not in store.catalog:
+        return False, "unknown switch"
+    store.facts = lambda f=live_facts(): f  # one consistent fact snapshot for this change
+    try:
+        result = store.set(key, on, "owner")
+    except switches.SwitchError as e:
+        audit("switch", key, f"refused {'on' if on else 'off'}: {'; '.join(e.reasons)[:200]}")
+        return False, "; ".join(e.reasons)
+    if key == "research_optimization":
+        actual = write_jev_plugin_file(on)
+        if actual is None or actual != bool(on):
+            try:
+                store.set(key, False, "owner")      # never leave the switch on if the plugin file disagrees
+                write_jev_plugin_file(False)
+            except switches.SwitchError:
+                pass
+            audit("switch", key, "plugin file readback mismatch; forced off")
+            return False, "the research plugin file did not confirm the change, so it was switched off"
+    if not audit("switch", key, "on" if on else "off"):
+        return False, "audit write failed — change not recorded as confirmed"
+    return True, f"{result['title']} is now {'ON' if on else 'OFF'}"
+
+
+def switches_page(rec: dict, flash: str = "") -> str:
+    store = switch_store()
+    facts = live_facts()
+    store.facts = lambda f=facts: f
+    plugin = jev_research_enabled()
+    cards = []
+    drift = ""
+    research = store.describe("research_optimization")
+    if plugin is True and not research["effective_on"]:
+        drift = ("<div class='card'><span class='pill warn'>needs attention</span> "
+                 "<b>The research plugin file on the server says ON, but its switch here is OFF or blocked.</b>"
+                 "<div class='small mut'>Nothing is eligible right now so it is not spending, but it should match. "
+                 "Press the button to switch it off everywhere.</div>"
+                 f"<form method=post action=/switch class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                 "<input type=hidden name=name value=research_optimization><input type=hidden name=value value=off>"
+                 "<button type=submit class=small>Turn it off everywhere</button></form></div>")
+    for d in store.all():
+        status = {"on": ("ok", "ON"), "off": ("warn", "OFF"), "locked": ("unknown", "LOCKED"),
+                  "on_but_blocked": ("down", "ON but blocked")}[d["status"]]
+        key = esc(d["key"])
+        blockers = "".join(f"<li>{esc(b)}</li>" for b in d["blockers"] if not b.startswith("Confirm:"))
+        confirms = ""
+        for c in d["confirmations"]:
+            if c["at"]:
+                confirms += f"<div class='small'>✓ {esc(c['text'])} <span class=mut>(recorded)</span></div>"
+            elif not d["locked"]:
+                confirms += (f"<form method=post action=/switch-confirm class=inline>"
+                             f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                             f"<input type=hidden name=name value='{key}'><input type=hidden name=id value='{esc(c['id'])}'>"
+                             f"<label class=small><input type=checkbox required> {esc(c['text'])}</label> "
+                             f"<button type=submit class=small>Record</button></form>")
+        if d["locked"]:
+            action = f"<span class=muted>{esc(d['locked'])}</span>"
+        elif d["recorded_on"]:
+            action = (f"<form method=post action=/switch class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                      f"<input type=hidden name=name value='{key}'><input type=hidden name=value value=off>"
+                      f"<button type=submit>Turn OFF</button></form>")
+        elif d["can_turn_on"]:
+            action = (f"<form method=post action=/switch class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+                      f"<input type=hidden name=name value='{key}'><input type=hidden name=value value=on>"
+                      f"<button type=submit>Turn ON</button></form>")
+        else:
+            action = "<span class=muted>Can't be turned on yet — see below</span>"
+        todo = (f"<div class='small'><b>Before it can be turned on:</b><ul>{blockers}</ul></div>" if blockers and not d["locked"] else "")
+        cards.append(
+            f"<div class=card><div style='display:flex;justify-content:space-between;gap:1rem;align-items:center'>"
+            f"<div><b>{esc(d['title'])}</b> {pill(status[0]).replace(esc(status[0]) + '</span>', esc(status[1]) + '</span>')}</div>"
+            f"<div>{action}</div></div>"
+            f"<p class=small>{esc(d['plain'])}</p>"
+            f"<div class='small mut'><b>When on:</b> {esc(d['when_on'])}</div>"
+            f"<div class='small mut'><b>Cost:</b> {esc(d['cost_note'])}</div>"
+            f"{confirms}{todo}"
+            + (f"<div class='small mut'>last changed by {esc(d['changed_by'])}</div>" if d["changed_by"] else "")
+            + "</div>")
+    note = ("<p class=muted>These are the only on/off controls for optional features. A switch never overrides a safety check: "
+            "turning one ON only works when its confirmations are ticked and its setup is really finished, and turning one "
+            "OFF always works immediately. Every change is read back and written to the audit log.</p>")
+    return "<h2>Feature switches</h2>" + note + drift + "<div class=grid style='grid-template-columns:1fr'>" + "".join(cards) + "</div>"
+
+
+def routing_load() -> dict:
+    try:
+        return routing_config.load(ROUTING_FILE)
+    except Exception:
+        return routing_config.validate(routing_config._merge(routing_config.DEFAULTS, {}))
+
+
+def routing_write(cfg: dict) -> bool:
+    """Atomic write, readable by the app user only; returns whether the readback matches."""
+    import pwd
+    try:
+        os.makedirs(ROUTING_DIR, exist_ok=True)
+        try:
+            app = pwd.getpwnam("agentai-platform") if os.geteuid() == 0 else None
+        except KeyError:
+            app = None
+        if app:
+            os.chown(ROUTING_DIR, app.pw_uid, app.pw_gid)
+        os.chmod(ROUTING_DIR, 0o700)
+        tmp = ROUTING_FILE + ".new"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f, indent=1, sort_keys=True)
+        if app:
+            os.chown(tmp, app.pw_uid, app.pw_gid)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, ROUTING_FILE)
+        return routing_config.load(ROUTING_FILE) == cfg
+    except (OSError, KeyError, ValueError):
+        return False
+
+
+def routing_save(form: dict) -> tuple[bool, str]:
+    def flag(name): return form.get(name) == "on"
+    try:
+        override = {
+            "enabled": flag("enabled"), "mode": "shadow", "canary_percent": 0,
+            "confidence": {"automatic": float(form.get("automatic", "0.85")), "review": float(form.get("review", "0.65"))},
+            "escalation": {"enabled": True, "max_escalations": int(form.get("max_escalations", "2")),
+                           "max_retries_per_step": int(form.get("max_retries_per_step", "2"))},
+            "limits": {"max_task_duration_seconds": int(form.get("max_task_duration_seconds", "1800")),
+                       "max_task_cost_usd": float(form.get("max_task_cost_usd", "1.0"))},
+            "routes": {r: flag("route_" + r) for r in routing_config.ROUTES if r != "abstain"},
+        }
+        cfg = routing_config.validate(routing_config._merge(routing_config.DEFAULTS, override))
+    except (ValueError, routing_config.ConfigError) as e:
+        audit("routing-save", "settings", "refused")
+        return False, "not saved: " + str(e)[:150]
+    if not routing_write(cfg):
+        return False, "the settings file did not confirm the change"
+    if not audit("routing-save", "settings", json.dumps({"enabled": cfg["enabled"], "mode": cfg["mode"]})):
+        return False, "audit write failed — change not recorded as confirmed"
+    return True, "Routing settings saved" + ("" if cfg["enabled"] else " (routing is OFF)")
+
+
+def routing_rollback() -> tuple[bool, str]:
+    """Emergency rollback: routing config off AND the owner switch off. Always allowed."""
+    cfg = routing_load()
+    cfg["enabled"] = False
+    wrote = routing_write(cfg)
+    try:
+        switch_store().set("jev_routing", False, "owner")
+    except switches.SwitchError:
+        pass
+    audit("routing-rollback", "all", "ok" if wrote else "config write failed")
+    return wrote, "Routing is OFF everywhere" if wrote else "switch is off, but the settings file could not be updated"
+
+
+def routing_report() -> dict | None:
+    env = {**os.environ, "PYTHONPATH": "/opt/agentai-platform/current"}
+    try:
+        done = subprocess.run(["python3", "-m", "agentai_platform.routing.report_cli"], capture_output=True, text=True,
+                              timeout=25, cwd="/opt/agentai-platform/current", env=env)
+        return json.loads(done.stdout) if done.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def routing_page(rec: dict) -> str:
+    cfg = routing_load()
+    store = switch_store()
+    facts = live_facts()
+    store.facts = lambda f=facts: f
+    sw = store.describe("jev_routing")
+    state = "ON (shadow: records only)" if sw["effective_on"] and cfg["enabled"] else "OFF"
+    csrf = f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+    r = routing_report()
+    if r is None:
+        stats = "<p class=muted>Statistics are not available right now.</p>"
+    else:
+        def v(x, suffix=""): return "—" if x is None else f"{x}{suffix}"
+        rows = [("Requests seen (30 days)", v(r["total_routed"])), ("Classified by JEV", v(r["classified"])),
+                ("JEV unavailable or rejected", v(r["unavailable_or_rejected"])),
+                ("Would use a lightweight route", v(r["jev_selected_percent"], "%")),
+                ("Would escalate to Claude", v(r["claude_escalation_percent"], "%")),
+                ("Would change today's route", v(r["would_change_route_percent"], "%")),
+                ("Success rate of those requests", v(r["success_percent"], "%")), ("Failed requests", v(r["failed_count"])),
+                ("Average real task cost", v(r["avg_task_cost_usd"], " USD")), ("Average task time", v(r["avg_task_seconds"], " s")),
+                ("Average JEV answer time", v(r["avg_classifier_latency_ms"], " ms")),
+                ("Confidence spread", esc(", ".join(f"{k}: {n}" for k, n in r["confidence_distribution"].items()))),
+                ("Recommended routes", esc(", ".join(f"{k}: {n}" for k, n in r["by_recommended_route"].items()) or "—")),
+                ("Routing cost so far (estimate)", v(r["classifier_cost_usd_estimated"], " USD")),
+                ("Estimated monthly savings", "not measured yet — needs the benchmark")]
+        stats = table(["Measure", "Value"], [(esc(a), b if a in ("Confidence spread", "Recommended routes") else esc(b)) for a, b in rows], "no data")
+    def chk(name, on): return f"<label class=small><input type=checkbox name={name} {'checked' if on else ''}> {name.replace('route_', '')}</label> "
+    routes = "".join(chk("route_" + k, cfg["routes"].get(k, False)) for k in routing_config.ROUTES if k != "abstain")
+    form = (f"<form method=post action=/routing-save>{csrf}"
+            f"<p>{chk('enabled', cfg['enabled'])} <b>Routing on</b> (also needs the switch below)</p>"
+            f"<p class=small>Mode: <b>shadow</b> — recommendations are recorded, nothing about how requests run changes. Canary and live routing are not built yet, so there is no rollout control to move.</p>"
+            f"<p class=small>Routes JEV may recommend (only <b>claude</b> is wired end to end today; others fall back to it): {routes}</p>"
+            f"<p class=small>Send straight through at confidence ≥ <input name=automatic value='{cfg['confidence']['automatic']}' size=4> "
+            f"· run extra checks from <input name=review value='{cfg['confidence']['review']}' size=4> · below that, use the stronger model. "
+            f"<span class=mut>(starting values, not yet calibrated)</span></p>"
+            f"<p class=small>Max escalations <input name=max_escalations value='{cfg['escalation']['max_escalations']}' size=2> "
+            f"· retries per step <input name=max_retries_per_step value='{cfg['escalation']['max_retries_per_step']}' size=2> "
+            f"· max minutes per task <input name=max_task_duration_seconds value='{cfg['limits']['max_task_duration_seconds']}' size=5> seconds "
+            f"· max spend per task $<input name=max_task_cost_usd value='{cfg['limits']['max_task_cost_usd']}' size=4></p>"
+            f"<button type=submit>Save routing settings</button></form>")
+    rollback = (f"<form method=post action=/routing-rollback class=inline>{csrf}<button type=submit class=danger>Emergency rollback: turn routing off everywhere</button></form>")
+    return ("<h2>Smart routing (JEV)</h2>"
+            f"<div class=card><b>Status: {esc(state)}</b><div class=small>Owner switch: {esc(sw['status'])}"
+            + ("" if sw["effective_on"] else " — set it on the <a href=/switches>Feature switches</a> page (needs the data-terms tick and the key installed)")
+            + f".</div>{form}{rollback}</div><h3>What JEV recommended (last 30 days)</h3>" + stats)
 
 
 def jev_research_enabled() -> bool | None:

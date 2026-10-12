@@ -1,0 +1,101 @@
+{
+  "phase": 14,
+  "run_id": "20261012T2030Z",
+  "recorded_at": "2026-10-12T20:30:00Z",
+  "base_revision": "383a189",
+  "build_result": "READY",
+  "acceptance": "NOT_RUN (Phase 15)",
+  "launch_blockers": [
+    "No automatic off-server backup destination configured; backups are encrypted, verified, kept on the server and pulled to the owner computer manually"
+  ],
+  "deployed": {
+    "ops_timers": [
+      "agentai-ops-backup.timer (03:40 UTC)",
+      "agentai-ops-monitor.timer (5 min)"
+    ],
+    "config": "/etc/agentai-ops/config.json (root 0600)",
+    "backup_dir": "/var/backups/agentai (0700)",
+    "alerts": "email to the owner address only",
+    "encryption": "age public recipient on the host; private key only on the owner computer",
+    "real_releases_through_canary": 4
+  },
+  "checks": {
+    "platform_tests": "421 pass, 2 skipped",
+    "django_tests": "79 pass",
+    "dashboard_tests": "35 pass",
+    "ops_tests": 62
+  },
+  "live": {
+    "first_encrypted_set": {
+      "artifacts": 7,
+      "bytes_on_disk": "~12 MB",
+      "seconds": 7,
+      "complete": true,
+      "offsite_copy_automatic": false
+    },
+    "monitor_against_real_host": {
+      "ok": 19,
+      "warn": 2,
+      "crit": 0,
+      "unknown": 0,
+      "warnings": [
+        "fresh timers not yet fired",
+        "SSH accepts root password login"
+      ]
+    },
+    "owner_computer": {
+      "pull_verified_files": 7,
+      "decrypted_and_verified": 7,
+      "account_scoped_restore_on_real_schema": "other account unchanged; backup rows restored; post-backup row kept; all production tables classified",
+      "corruption_rejected": "ciphertext hash mismatch, no plain output"
+    },
+    "release_drills_in_sandboxes": {
+      "broken_release": "refused before any change",
+      "compatible_failure": "automatic rollback, previous release serves",
+      "schema_change_failure": "pre-migration database restored, drill table absent",
+      "clean_release": "released"
+    },
+    "alert_emails_delivered": true
+  },
+  "not_done": [
+    "Automatic off-server destination (needs owner choice)",
+    "SSH key-only login (owner decision)",
+    "Scheduled timer first fire, measured RPO/RTO, restore after a real timer run (Phase 15)",
+    "Nightly tenant-cell backups exercised live (no enrolled tenants; offline tests only)",
+    "CLI for emergency revocation of one account model key; tenant gateway-token rotation automation; Telegram alerts (supported, off)"
+  ],
+  "rollback": "systemctl disable --now agentai-ops-backup.timer agentai-ops-monitor.timer; previous app release recorded by release.py",
+  "source_sha256": {
+    "platform/agentai_platform/ops/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "platform/agentai_platform/ops/alerts.py": "30575570c8d0cbee45d6a73f4feddaf9007e33d73b8781e9c39c439b51376f94",
+    "platform/agentai_platform/ops/backup.py": "3daaf0858a906dd8743f0fbd5c84527db71feaf0189c7aae8a551df5f9387803",
+    "platform/agentai_platform/ops/cli.py": "0b9e553e1e355d8f0fc372e46556c72c539f369284f16c8954dca459c329ecd6",
+    "platform/agentai_platform/ops/crypto.py": "f575ac7cc4f5f2ace037cf1c9878fb60dea878122692710531fd9aae248b0752",
+    "platform/agentai_platform/ops/destinations.py": "6afe44778be9c390aec92274f5ac29b3965e15bf3c1525fe87a1a4d51ca33b2c",
+    "platform/agentai_platform/ops/diagnostics.py": "70e57aecac756f2bd853008a33d418a443a275d097c545f6ca09be2d2a58750c",
+    "platform/agentai_platform/ops/exposure.py": "774903bb04a71a392245c968bd83c83f24aae5234c855a82b296c139fd23a19d",
+    "platform/agentai_platform/ops/hostconfig.py": "65f8e9531747b914f51a9650a949b0f33b9513fd7b0b0f4320a6639592434713",
+    "platform/agentai_platform/ops/hostprobe.py": "6b8fa46b347184e890862e56052539cc006d1329a9737962a181a40a4b9895b6",
+    "platform/agentai_platform/ops/housekeeping.py": "e08523ca6e0c5965b1b051a0c3feaf658d78b2b98c0fd1cc698c1318cff6c869",
+    "platform/agentai_platform/ops/inventory.py": "a953a3e67d972954bda451e0cb6506b840cf739d452c89a492a6f507d6158fbe",
+    "platform/agentai_platform/ops/monitor.py": "fb8167a738b35e210321527b05b744f65aa3a9182d3e326b158f20af64367090",
+    "platform/agentai_platform/ops/pins.py": "a32892e79d607588b53555ac429eea13fc4a904e83420501de02da3dd7b135b5",
+    "platform/agentai_platform/ops/restore.py": "154e56f4dee2991f18b5724874d28af76f82e17489e7f78ee2632d1aff1c95f3",
+    "platform/agentai_platform/ops/rotation.py": "de709e6dc9db75f0a677b0816b9517dff846b8e3d4b554d69a61b2ec0af0667a",
+    "platform/agentai_platform/ops/sets.py": "84f51f6bae66ae3cae15640357f50e5f7c5ff0831ed92cfad6996af9ab883b8f",
+    "platform/deploy/release.py": "efbf35909e12bfaa8ffd12b6002ef865ed6dc775a11f76c4a53ec2cc18f65bc1",
+    "platform/deploy/agentai-ops-backup.service": "1fa5d4c8e260faa4f21ab96cd3f5c99c6ee9d9f45b0626041f0adf3ae9765ce2",
+    "platform/deploy/agentai-ops-backup.timer": "32ea7c7acb6c9e1e7544cdcdd946072f97285c9c5c32934fe5c1a5ede667e888",
+    "platform/deploy/agentai-ops-monitor.service": "253a72ce62243a3d275c8ca5feae8d57c2cb04f86f8fe0f17bf88d9df9510260",
+    "platform/deploy/agentai-ops-monitor.timer": "73dd0b327f137acd84bc04303002cfa5b6ec7726f1be0f372d946ad57cf4c3d0",
+    "platform/deploy/ops-config.example.json": "938601f82c04c0785ba21b9edcffd299df04ab7d3490416b7e5be46f8ec14259",
+    "bin/setup-backup-key.py": "2dbcd0c62ecbd1017b1d06ef8fc397c7a7369f8bc4bc3eb452866fb95d7172e1",
+    "bin/pull-backups.py": "450e4ca0c88e8282468198d5cdba2f8e6c292920b9b016d33a4a883de7881079",
+    "platform/OPERATIONS.md": "5b5db2e55a5bad525ea1b183543de46d889371ba9af8178e57ccd4c9419adcf6",
+    "platform/tests/test_ops_backup.py": "3e2ee5375664bd50643be913aacaa67e5209614d0c972e0b8986972c9200facb",
+    "platform/tests/test_ops_restore.py": "f75846783e9065274751e9516fe98293eeb420e9d53b88266fb83dfa099e5ab6",
+    "platform/tests/test_ops_monitor.py": "2b5f245ffff2ac874bf4b78f0e88d7425435844a70c4b69b0336863a53b444db",
+    "platform/tests/test_ops_cli.py": "41c2e9bc060b50b6b9399bc877a5cb112de0396d9ca2145b6be3ff00d0ba133b",
+    "platform/accounts/test_ops.py": "55eb8ed2f455c3394a33c6b75ebf668eb4bc35ee3846638cd4f2d371a01eb94a"
+  }
+}

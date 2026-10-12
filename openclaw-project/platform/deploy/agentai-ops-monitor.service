@@ -1,0 +1,20 @@
+[Unit]
+Description=AgentAI monitor (health, queues, backups, exposure)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/agentai-platform/current
+Environment=PYTHONPATH=/opt/agentai-platform/current
+ExecStart=/usr/bin/python3 -m agentai_platform.ops.cli monitor
+SuccessExitStatus=0 1
+UMask=0027
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadWritePaths=/var/lib/agentai-ops
+MemoryMax=256M
+CPUQuota=25%
+TimeoutStartSec=180

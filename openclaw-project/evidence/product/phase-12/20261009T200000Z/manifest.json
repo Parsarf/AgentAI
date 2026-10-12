@@ -1,0 +1,35 @@
+{
+  "run": "20261009T200000Z",
+  "phase": 12,
+  "kind": "optional build (offline; read-only server readback; no TypeSafe call, no account, no paid call, no server change, no deployment)",
+  "checks": {
+    "platform_suite": "214 tests OK (2 skipped); Django 66 OK",
+    "browser_opt_tests": "31 tests OK (adapter 20, route 11: fresh-target, sensitive control, loop, cancel, deadline, budget, outage, uncertain-effect reconciliation)",
+    "research_opt_python": "10 OK",
+    "research_plugin_node": "8 OK (fail-open, kill-switch readback, manifest)",
+    "registration_diagnostic": "diagnostic-before-fix.json => not_registered/passthrough false; diagnostic-after-fix.json => registered/passthrough true (real installed OpenClaw 2026.9.6 loader and runner, scratch state)"
+  },
+  "records": [
+    "plans/product/phase-12.md",
+    "plans/product/phase-12-typesafe-pin.json",
+    "plans/product/phase-12-transport-boundary.md",
+    "research-opt/RUBRIC.md",
+    "research-opt/rubric.lock.json",
+    "research-opt/fixtures.yaml",
+    "browser-opt/adversarial.yaml",
+    "browser-opt/route.py",
+    "platform/agentai_platform/optimization.py",
+    "platform/migrations/0012_optimization.sql",
+    "evidence/product/phase-12/20261009T200000Z/live-readback.json"
+  ],
+  "not_run": [
+    "any TypeSafe request",
+    "paired comparison (Phase 16)",
+    "server plugin replacement",
+    "calibration of thresholds"
+  ],
+  "open_findings": [
+    "server jev-research config.json reads enabled=true (documented as off)",
+    "phase4a-jev-eval.key present in owner gateway /run/secrets"
+  ]
+}

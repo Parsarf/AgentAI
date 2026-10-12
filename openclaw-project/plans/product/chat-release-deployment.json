@@ -1,0 +1,38 @@
+{
+ "release": "20261005T185900Z-chat",
+ "previous": "20261001T005331Z-activation",
+ "backend": "127.0.0.1:18800",
+ "applied_schema": [
+  "0001_foundation.sql",
+  "0002_lifecycle.sql",
+  "0003_budget_admission.sql",
+  "0004_serial_requests.sql",
+  "0005_chat_transcript.sql"
+ ],
+ "downtime_seconds": 8,
+ "backup": "state-dir backup-20261005T180607Z.sqlite3 (sqlite backup API, integrity ok, pre-chat schema retained)",
+ "readiness": {
+  "foundation_ready": true,
+  "identity_ready": true,
+  "customer_ready": false,
+  "execution_enabled": false,
+  "mail_configured": true
+ },
+ "service_properties": "MemoryMax=134217728 MemorySwapMax=0 CPUQuotaPerSecUSec=250ms TasksCurrent=3 ActiveState=active (app and mail timer)",
+ "public_ingress": true,
+ "public_checks": {
+  "login_page": 200,
+  "chat_anonymous": "302 -> /account/login/",
+  "v1_conversations_anonymous": 401,
+  "v1_tasks_anonymous": 401,
+  "internal_via_origin": 404,
+  "invalid_login_with_csrf": 401,
+  "cookies": "__Host-agentai_csrf Secure HttpOnly SameSite=Strict; Cache-Control no-store; HSTS 31536000",
+  "stylesheet": "200 text/css via /account/ui/"
+ },
+ "customer_execution_enabled": false,
+ "hotfix": "accounts/services.py operator_scope anonymous guard (pre-existing uncaught TypeError on direct internal routes; old release reproduced identical behavior); regression tests added",
+ "rollback": "stop units; ln -sfn /opt/agentai-platform/releases/20261001T005331Z-activation current would refuse the newer schema: restore requires the verified pre-chat backup into a fresh state root per runbook; code-only rollback to 20261005T181500Z-chat dir is schema-compatible",
+ "live_release": "20261005T200500Z-ui",
+ "ui_release": "20261005T200500Z-ui (product UI; asset served at /account/ui/; dotted edge paths documented in BUILD_LOG)"
+}

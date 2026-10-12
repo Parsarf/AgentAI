@@ -1,0 +1,37 @@
+{
+ "openclaw_version": "2026.9.6",
+ "pinned": "2026.9.6",
+ "plugin_id": "jev-research",
+ "plugin_status": {
+  "status": "loaded",
+  "enabled": true,
+  "explicitlyEnabled": true,
+  "origin": "global"
+ },
+ "owners": [
+  [
+   "openclaw"
+  ]
+ ],
+ "registered": [
+  {
+   "runtimes": [
+    "openclaw"
+   ],
+   "scopes": [
+    {
+     "runtimes": [
+      "openclaw"
+     ],
+     "matcher": [
+      "web_fetch"
+     ]
+    }
+   ]
+  }
+ ],
+ "diagnostics": [],
+ "runner_handlers": 1,
+ "passthrough_with_toggle_off": false,
+ "result": "not_registered"
+}

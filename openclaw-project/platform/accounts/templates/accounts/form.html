@@ -1,6 +1,29 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentAI account — {{ page }}</title><main><h1>AgentAI {{ page }}</h1>
-{% if page == 'login' %}<form method="post" action="/auth/login">{% csrf_token %}<p><label>Email <input type="email" name="email" autocomplete="username" required maxlength="254"></label></p><p><label>Password <input type="password" name="password" autocomplete="current-password" required maxlength="128"></label></p><button>Sign in</button></form><a href="/account/recover/">Recover account</a>
-{% elif page == 'recover' %}<p>If your address is eligible, we will send a code. Access is currently invitation-only.</p><form method="post" action="/auth/recovery">{% csrf_token %}<label>Email <input type="email" name="email" autocomplete="email" required></label><button>Request instructions</button></form><a href="/account/reset/">Enter recovery code</a>
-{% elif page == 'mfa' %}<form method="post" action="/auth/mfa">{% csrf_token %}<label>Authenticator code <input name="code" inputmode="numeric" autocomplete="one-time-code" required></label><button>Verify</button></form>
-{% else %}<p>Paste the long verification code from your newest AgentAI account email. Codes expire 15 minutes after sending. Choose a password with at least 12 characters.</p><form method="post" action="{% if page == 'activate' %}/auth/activate{% else %}/auth/reset{% endif %}">{% csrf_token %}<p><label>Single-use code <input name="code" autocomplete="off" autocapitalize="none" spellcheck="false" required maxlength="512"></label></p><p><label>New password <input type="password" name="password" autocomplete="new-password" minlength="12" maxlength="128" required></label></p><button>Complete verification</button></form>{% endif %}
-<p><a href="/account/">Account</a> · <a href="/account/login/">Sign in</a></p></main></html>
+{% extends 'accounts/base.html' %}{% block title %}AgentAI account — {{ page|capfirst }}{% endblock %}{% block body %}
+{% if page == 'login' %}
+<div class="pagehead"><h1>Sign in</h1><p>Access is by invitation.</p></div>
+<section class="card"><form class="stack" method="post" action="/auth/login">{% csrf_token %}
+<label class="field" for="email">Email<input id="email" type="email" name="email" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required maxlength="254"></label>
+<label class="field" for="password">Password<input id="password" type="password" name="password" autocomplete="current-password" required maxlength="128"></label>
+<button>Sign in</button></form>
+<p class="hint"><a href="/account/recover/">Recover account</a></p></section>
+{% elif page == 'recover' %}
+<div class="pagehead"><h1>Recover account</h1><p>If your address is eligible, we will send a single-use code. Access is currently invitation-only.</p></div>
+<section class="card"><form class="stack" method="post" action="/auth/recovery">{% csrf_token %}
+<label class="field">Email<input type="email" name="email" autocomplete="email" required></label>
+<button>Request instructions</button></form>
+<p class="hint"><a href="/account/reset/">Already have a code? Enter it here</a></p></section>
+{% elif page == 'mfa' %}
+<div class="pagehead"><h1>Two-factor verification</h1><p>Enter the current code from your authenticator.</p></div>
+<section class="card"><form class="stack" method="post" action="/auth/mfa">{% csrf_token %}
+<label class="field">Authenticator code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button>Verify</button></form></section>
+{% else %}
+<div class="pagehead"><h1>{% if page == 'activate' %}Activate your account{% else %}Reset your password{% endif %}</h1><p>Paste the long verification code from your newest AgentAI account email. Codes expire 15 minutes after sending.</p></div>
+<section class="card"><form class="stack" method="post" action="{% if page == 'activate' %}/auth/activate{% else %}/auth/reset{% endif %}">{% csrf_token %}
+<label class="field">Single-use code<input name="code" autocomplete="off" autocapitalize="none" spellcheck="false" required maxlength="512"></label>
+<label class="field" for="new-password">New password<input id="new-password" type="password" name="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+<p class="hint">At least 12 characters.</p>
+<button>Complete verification</button></form></section>
+{% endif %}
+<p class="actions"><a class="btn ghost small" href="/account/">Account</a><a class="btn ghost small" href="/account/login/">Sign in</a></p>
+{% endblock %}

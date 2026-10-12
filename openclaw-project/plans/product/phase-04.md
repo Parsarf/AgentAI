@@ -201,3 +201,61 @@ Checks: 14 driver cases, 72 core, 40 account and Vercel checks pass. The
 invitation was re-delivered (activation remains the owner's action). No native
 backend is enabled in the shipped entry point; Phase4 stays PARTIAL; Phase15
 acceptance stays NOT_RUN.
+
+## Phase 4 completion on the new server — 2026-10-12 UTC
+
+Owner moved to a new 4 vCPU / 15.6 GiB / 193 GB host (Ubuntu 26.04.1, kernel 7.0) and
+said to proceed. The lifecycle, isolation and sleep/wake work is **built and live-tested
+in a disposable environment**; customer execution stays off (no binding is enrolled).
+Implementation **READY**; live two-customer acceptance, concurrency, restore-and-promote,
+reboot and load remain **NOT_RUN (Phase 15)**.
+
+What now exists (all under `platform/agentai_platform/lifecycle/` unless noted):
+
+- **Separate cell engine** (`deploy/cells-docker/`): its own dockerd on its own socket, default
+  runtime **gVisor `runsc`**, own bridge `agentai0`, `icc=false`, no-new-privileges. Cells and
+  workers never see the owner engine or its socket.
+- **Network policy** (`netpolicy.py`): a drop-only nftables table. Cells reach the public internet
+  but not host services, private ranges, metadata or each other; quarantined cells lose all egress.
+  Atomic reload; syntax-checked before load.
+- **Hard disk caps** (`volumes.py`): fixed-size loop-mounted ext4 per tenant (root FS has no project
+  quota). A 400 MiB write stopped at the 300 MiB cap without affecting the host or the other cell.
+- **Secret custody** (`secrets_custody.py`): per-tenant Gateway token (passed with
+  `fleet create --gateway-token`, never scraped) and per-tenant provider virtual key issue/revoke
+  with a model allowlist and budget. Host-owned, 0600, exclusive create.
+- **Worker broker** (`broker.py`): fixed catalog of coder/reviewer/browser envelopes on the cell
+  engine under gVisor; no customer text in argv, read-only root, dropped caps, per-tenant uid, only
+  that tenant's project/job/out mounts, no secrets, no network unless the stage allows egress, hard
+  timeout, drain proof, one stage on the host at a time, idempotent replay.
+- **Pinned upgrade with rollback, quarantined restore, retention purge** (`fleet_driver.py`,
+  `maintenance.py`): upgrade replaces to a host-staged pinned image, canary-checks health and rolls
+  back to the recorded image on failure (no-effect receipt). Restore goes to a **separate quarantine
+  cell** (own slug, volume, token, network, egress dropped before any code runs) using the host's
+  bounded extractor, because Fleet's own restore refuses another slug and cannot swap a mounted
+  data directory. `discard_quarantine` and `purge` remove exactly one tenant and revoke keys.
+- **Sleep/wake and the worker** (`sleep.py`, `worker.py`, `worker_main.py`): idle cells with no
+  running, queued or approval-waiting work are drained and stopped; the worker drains pending
+  operations to the supervisor socket, reconciles uncertain ones from receipts only, recomputes
+  host capacity (`profiles.py`) before every dispatch, and treats "supervisor busy" and "account
+  not enrolled" as waits, not failures. `Coordinator.request_system` can only request an idle stop.
+- **Host operator enrollment** (`enroll_cli.py`) and **native wiring** (`native_wiring.py`); the
+  supervisor entry point enables the native backend only when given a host-owned wiring file.
+
+Measured on the new host: an idle gVisor Gateway cell uses about 0.46 GiB of host memory (container
+reports 0.74 GiB of a 1 GiB cap); a light Chromium page peaks near 0.13 GiB; the enforced worker
+ceiling is 1.5 GiB. Capacity from live numbers: memory 4 tenants, CPU **1**, disk 14, PIDs 63 ->
+**1 admitted slot (CPU-bound)**, matching the one-global-task rule. Admission reserves the caps,
+not the observed peaks.
+
+Live checks on the server (`deploy/p4_live_check.py`, `p4_broker_check.py`,
+`p4_pipeline_check.py`; evidence JSON beside the manifest): **26 lifecycle+isolation, 16 broker and
+10 queue-to-cell pipeline checks passed**, plus 299 local platform tests. Failures found and fixed
+on the way are kept in the manifest findings (restore semantics, create-while-running rule,
+socket timeout, Chromium profile directory, unenrolled-account handling).
+
+Incident: the first cell-engine start reused the bridge name `docker0` and deleted the owner
+engine's bridge; it was recreated (172.17.0.1/16) and verified. The owner stack never stopped.
+
+Still open before any customer runs: per-account model route and Gateway provider configuration
+(Phase 5/9), Gateway-to-broker tool integration, a controller identity separate from the web app,
+and everything in Phase 15. Evidence: `evidence/product/phase-04/20261012T002000Z/manifest.json`.

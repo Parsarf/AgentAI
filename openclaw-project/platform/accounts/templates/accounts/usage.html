@@ -1,13 +1,20 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Usage — AgentAI</title></head>
-<body><main><h1>Usage</h1>
-{% if unconfigured %}<p>Your usage allowance has not been configured yet.</p>
+{% extends 'accounts/base.html' %}{% block title %}Usage — AgentAI{% endblock %}{% block body %}
+<div class="pagehead"><h1>Usage</h1><p>Provider consumption against your plan allowance. Costs are counted after reconciliation, never estimated.</p></div>
+{% if unconfigured %}
+<div class="empty">Your usage allowance has not been configured yet. It appears here as soon as a plan is attached to your account.</div>
 {% else %}
-<dl><dt>Reported provider cost (USD)</dt><dd>${{ reported_usd }}</dd>
-<dt>Held for unfinished work (USD)</dt><dd>${{ held_usd }}</dd>
-<dt>Remaining period allowance (USD)</dt><dd>${{ remaining_usd }}</dd></dl>
-<p>Running estimates are unavailable until provider accounting is connected.</p>
-{% if usage.usage_pending %}<p>Some usage is awaiting reconciliation.</p>{% endif %}
-<p>Live provider accounting is not connected yet.</p>
+<section class="card">
+<h3>Billing period allowance</h3>
+<div class="meter" role="img" aria-label="{{ used_percent }} percent of the period allowance used"><span class="w{{ meter_step }}"></span></div>
+<p class="amounts"><strong>${{ used_usd }}</strong> used of <strong>${{ limit_usd }}</strong> · <strong>${{ remaining_usd }}</strong> remaining</p>
+<dl class="facts">
+<dt>Reported provider cost</dt><dd class="amounts">${{ reported_usd }}</dd>
+<dt>Held for unfinished work</dt><dd class="amounts">${{ held_usd }}</dd>
+<dt>Remaining allowance</dt><dd class="amounts">${{ remaining_usd }}</dd>
+</dl>
+</section>
+{% if usage.usage_pending %}<div class="notice warn"><span><strong>Reconciliation pending.</strong> Some usage is still awaiting confirmation from the provider; held amounts stay reserved until it settles.</span></div>{% endif %}
+<p class="hint">Running cost estimates are unavailable until provider accounting is connected. Live provider accounting is not connected yet.</p>
 {% endif %}
-<p><a href="/account/">Back to account</a></p></main></body></html>
+<p class="actions"><a class="btn ghost small" href="/account/">Back to overview</a></p>
+{% endblock %}

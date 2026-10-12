@@ -1,0 +1,58 @@
+{% extends 'accounts/base.html' %}{% block title %}Billing — AgentAI{% endblock %}{% block body %}
+<div class="pagehead"><h1>Billing</h1><p>Your plan, what it includes, and your invoices. Card details are entered only on Stripe's own pages and never reach AgentAI.</p></div>
+{% if returned %}<div class="notice"><span><strong>Thanks — we are waiting for Stripe to confirm your payment.</strong> Your plan turns on only when Stripe confirms it, which usually takes under a minute. Refresh this page to check.</span></div>{% endif %}
+{% if cancelled %}<div class="notice warn"><span>Checkout was cancelled. Nothing was charged.</span></div>{% endif %}
+{% if v.access_mode == 'open' and v.status != 'active' and v.status != 'grace' and v.status != 'suspended' %}
+<div class="notice"><span><strong>Free access is on.</strong> You can use the service without paying right now, within your monthly allowance of ${{ v.plan.included_usd }}. This will change to a paid plan when payments are turned on; you will be told here first.</span></div>
+{% elif v.access_mode == 'invite_only' and v.status == 'none' %}
+<div class="notice warn"><span><strong>Subscriptions are not open yet.</strong> Your access follows your invitation.</span></div>
+{% endif %}
+{% if v.status == 'active' %}
+  {% if v.cancel_at_period_end %}<div class="notice warn"><span><strong>Your plan is set to end on {{ v.period_end_text }}.</strong> You keep full access until then; it will not renew.</span></div>
+  {% else %}<div class="notice"><span><strong>Your plan is active.</strong> It renews on {{ v.period_end_text }}.</span></div>{% endif %}
+{% elif v.status == 'grace' %}
+<div class="notice warn"><span><strong>Your last payment did not go through.</strong> You can keep starting tasks until {{ v.grace_ends_text }}. After that new tasks pause, while work already running finishes and your files stay available. Update your payment method to keep going.</span></div>
+{% elif v.status == 'suspended' %}
+<div class="notice warn"><span><strong>Your plan is on hold while a payment dispute is reviewed.</strong> New tasks are paused; your files and billing pages stay available.</span></div>
+{% elif v.status == 'expired' %}
+<div class="notice warn"><span><strong>New tasks are paused.</strong>
+{% if v.reason == 'refunded' %}Your latest payment was refunded.{% elif v.reason == 'grace_ended' %}The payment grace period ended.{% elif v.reason == 'period_ended' %}Your paid period ended.{% else %}Your plan is no longer active.{% endif %}
+Work already running finishes, and you can still view billing and export your files.</span></div>
+{% elif v.access_mode == 'paid_required' %}
+<div class="notice warn"><span><strong>A paid plan is required to start new tasks.</strong> Subscribe below; your files and past work stay available.</span></div>
+{% endif %}
+<section class="card">
+<h3>Plan</h3>
+<dl class="facts">
+<dt>Plan</dt><dd>{{ v.plan.name }}</dd>
+<dt>Price</dt><dd class="amounts">${{ v.plan.monthly_price_usd }} / month</dd>
+<dt>Included provider usage</dt><dd class="amounts">${{ v.plan.included_usd }} each month. No automatic overage: tasks stop at your allowance.</dd>
+<dt>Status</dt><dd>{% if v.status == 'none' %}Trial{% else %}{{ v.status|title }}{% endif %}</dd>
+</dl>
+<div class="actions">
+{% if v.checkout_available %}<form method="post" action="/v1/account/billing/checkout">{% csrf_token %}<button class="btn">Subscribe — ${{ v.plan.monthly_price_usd }}/month</button></form>{% endif %}
+{% if v.manage_available %}<form method="post" action="/v1/account/billing/portal">{% csrf_token %}<button class="btn ghost">Manage payment, plan or cancel</button></form>{% endif %}
+</div>
+{% if v.manage_available %}<p class="hint">Cancelling ends renewal and keeps your access through the period you already paid for.</p>{% endif %}
+</section>
+<section class="card">
+<h3>Usage this period</h3>
+{% if v.usage %}
+<dl class="facts">
+<dt>Confirmed by providers</dt><dd class="amounts">${{ reported_usd }}</dd>
+<dt>Held for unfinished tasks (estimate)</dt><dd class="amounts">${{ held_usd }}</dd>
+<dt>Period allowance</dt><dd class="amounts">${{ limit_usd }}</dd>
+</dl>
+{% if v.usage.usage_pending %}<p class="hint">Some usage is still awaiting confirmation from the provider. Held amounts stay reserved until it settles; estimates are never shown as final.</p>{% endif %}
+{% else %}<p class="hint">Usage appears here once an allowance is attached to your account.</p>{% endif %}
+</section>
+<section class="card">
+<h3>Invoices</h3>
+{% if v.invoices %}
+<table class="list"><thead><tr><th>Date</th><th>Status</th><th>Paid</th><th></th></tr></thead><tbody>
+{% for i in v.invoices %}<tr><td>{{ i.created_text }}</td><td>{{ i.status|title }}</td><td class="amounts">${{ i.paid_usd }}</td><td>{% if i.url %}<a href="{{ i.url }}" rel="noopener noreferrer">View invoice</a>{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="hint">No invoices yet.</p>{% endif %}
+</section>
+<p class="actions"><a class="btn ghost small" href="/account/">Back to overview</a></p>
+{% endblock %}

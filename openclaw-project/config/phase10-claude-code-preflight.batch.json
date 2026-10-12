@@ -1,0 +1,63 @@
+[
+  {
+    "path": "models.providers.litellm.models",
+    "value": [
+      {
+        "id": "claude-sonnet-4-6",
+        "name": "Claude Sonnet 4.6 via LiteLLM",
+        "reasoning": true,
+        "input": [
+          "text",
+          "image"
+        ],
+        "contextWindow": 200000,
+        "maxTokens": 4096
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "name": "Claude Haiku 4.5 via LiteLLM",
+        "reasoning": false,
+        "input": [
+          "text",
+          "image"
+        ],
+        "contextWindow": 200000,
+        "maxTokens": 4096
+      },
+      {
+        "id": "claude-sonnet-5-5",
+        "name": "Claude Sonnet 5.5 via LiteLLM",
+        "reasoning": true,
+        "input": [
+          "text",
+          "image"
+        ],
+        "contextWindow": 200000,
+        "maxTokens": 4096
+      }
+    ]
+  },
+  {
+    "path": "agents.defaults.models.litellm/claude-sonnet-5-5",
+    "value": {
+      "params": {}
+    }
+  },
+  {
+    "path": "plugins.entries.acpx",
+    "value": {
+      "enabled": false,
+      "config": {
+        "permissionMode": "deny-all",
+        "nonInteractivePermissions": "deny",
+        "pluginToolsMcpBridge": false,
+        "openClawToolsMcpBridge": false,
+        "timeoutSeconds": 120
+      }
+    }
+  },
+  {
+    "path": "acp.enabled",
+    "value": false
+  }
+]

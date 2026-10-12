@@ -17,6 +17,7 @@ class RequestClaim:
     message: str
     fence: int
     owner: str
+    conversation_id: str | None = None
 
 @dataclass(frozen=True)
 class RequestReceipt:
@@ -33,9 +34,11 @@ class DisabledRequestDriver:
     def reconcile(self,claim):self.preflight()
 
 class RequestQueue:
-    def __init__(self,store,clock=time.time):
+    def __init__(self,store,clock=time.time,*,require_cell=False):
+        # require_cell (production): a request runs only while its own account's cell holds the active lifecycle slot.
+        self.require_cell=require_cell
         self.store=store;self.clock=clock;self.coordinator=Coordinator(store,clock=clock)
-    def submit(self,principal,*,message,key):
+    def submit(self,principal,*,message,key,conversation_id=None):
         identifier(key)
         if not isinstance(message,str) or not message.strip() or len(message)>16000 or '\x00' in message:raise ValueError('invalid message')
         digest=hashlib.sha256(message.encode()).hexdigest()
@@ -48,9 +51,11 @@ class RequestQueue:
             if c.execute("SELECT count(*) FROM customer_requests WHERE account_id=? AND state='waiting'",(principal.account_id,)).fetchone()[0]>=3:raise Conflict('queue full')
             project=c.execute('SELECT id FROM projects WHERE account_id=? ORDER BY created_at,id LIMIT 1',(principal.account_id,)).fetchone()
             if not project:raise Conflict('account setup incomplete')
+            if conversation_id is not None and not c.execute('SELECT 1 FROM conversations WHERE account_id=? AND id=?',(principal.account_id,conversation_id)).fetchone():
+                raise NotFound('unavailable')
             request=uuid.uuid4().hex
-            c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch)
-                VALUES (?,?,?,?,?,?,?,'waiting',?)''',(principal.account_id,request,principal.actor_id,project[0],key,digest,message,int(self.clock())))
+            c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)
+                VALUES (?,?,?,?,?,?,?,?,'waiting',?)''',(principal.account_id,request,principal.actor_id,project[0],conversation_id,key,digest,message,int(self.clock())))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_submit','completed')
             return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
     def _public(self,row):
@@ -91,11 +96,12 @@ class RequestQueue:
                 self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_revoked','completed')
             cell_slot=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
             if cell_slot and (cell_slot['account_id']!=row['account_id'] or cell_slot['state']!='active'):return None
+            if self.require_cell and not cell_slot:return None
             c.execute('INSERT INTO request_slot VALUES (1,?,?)',(row['account_id'],row['id']))
             fence=row['fence']+1
             c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=? WHERE account_id=? AND id=?",(fence,owner,int(self.clock())+lease_seconds,row['account_id'],row['id']))
             self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_claim','pending')
-            return RequestClaim(row['account_id'],row['id'],row['project_id'],row['actor_id'],row['message'],fence,owner)
+            return RequestClaim(row['account_id'],row['id'],row['project_id'],row['actor_id'],row['message'],fence,owner,row['conversation_id'])
     def _fenced(self,c,claim):
         row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(claim.account_id,claim.request_id)).fetchone()
         if not row:raise NotFound()
@@ -125,7 +131,9 @@ class RequestQueue:
             row=self._fenced(c,claim)
             if not reconciled and (row['state']=='uncertain' or row['lease_until']<=self.clock()):
                 c.execute("UPDATE customer_requests SET state='uncertain' WHERE account_id=? AND id=?",(claim.account_id,claim.request_id));return False
-            if c.execute('SELECT 1 FROM lifecycle_slot WHERE id=1').fetchone():raise Conflict('agent cell must stop before handoff')
+            held=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
+            # The cell may stay up for the same account (idle sleep stops it later); anything else must stop first.
+            if held and not (self.require_cell and held['account_id']==claim.account_id and held['state']=='active'):raise Conflict('agent cell must stop before handoff')
             reservation=c.execute('SELECT state FROM task_reservations WHERE account_id=? AND task_id=?',(claim.account_id,claim.request_id)).fetchone()
             if reservation and reservation[0] in {'active','uncertain'}:raise Conflict('usage must reconcile before handoff')
             c.execute('UPDATE customer_requests SET state=?,result=? WHERE account_id=? AND id=?',(receipt.state,receipt.public_result,claim.account_id,claim.request_id))

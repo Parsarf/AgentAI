@@ -185,5 +185,221 @@ class Audit(unittest.TestCase):
             app.AUDIT = orig
 
 
+class FeatureSwitches(unittest.TestCase):
+    """The owner UI is the only place optional features are switched; it must never bypass a gate."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        d = self.tmp.name
+        self.saved = {k: getattr(app, k) for k in ("SWITCH_FILE", "SWITCH_FACTS", "JEV_DIR", "AUDIT", "AUDIT_DIR", "run")}
+        app.SWITCH_FILE, app.SWITCH_FACTS = os.path.join(d, "sw", "switches.json"), os.path.join(d, "sw", "facts.json")
+        app.JEV_DIR, app.AUDIT_DIR = os.path.join(d, "jev"), os.path.join(d, "audit")
+        app.AUDIT = os.path.join(app.AUDIT_DIR, "audit.jsonl")
+        os.makedirs(app.AUDIT_DIR); os.makedirs(os.path.dirname(app.SWITCH_FILE))
+        self.key_present = True
+        app.run = lambda argv, timeout=25: (0 if self.key_present else 1, "")
+        self.addCleanup(lambda: [setattr(app, k, v) for k, v in self.saved.items()])
+        self.rec = {"csrf": "CSRF123"}
+
+    def facts(self, **kw):
+        with open(app.SWITCH_FACTS, "w") as f:
+            json.dump(kw, f)
+
+    def plugin_file(self):
+        try:
+            return json.load(open(os.path.join(app.JEV_DIR, "config.json")))["enabled"]
+        except OSError:
+            return None
+
+    def audit_lines(self):
+        return [json.loads(l) for l in open(app.AUDIT)]
+
+    def test_everything_defaults_off_and_turn_on_is_refused_with_reasons(self):
+        ok, message = app.apply_switch("research_optimization", True)
+        self.assertFalse(ok)
+        self.assertIn("Confirm", message)
+        self.assertIsNone(self.plugin_file())                      # plugin file untouched on refusal
+        self.assertIn("refused on", self.audit_lines()[-1]["result"])
+        self.assertEqual(app.apply_switch("nonsense", True), (False, "unknown switch"))
+
+    def test_full_flow_confirm_then_on_then_off_mirrors_plugin_file_and_audits(self):
+        self.facts(research_provenance=True)
+        app.switch_store().confirm("research_optimization", "data_handling", "owner")
+        ok, message = app.apply_switch("research_optimization", True)
+        self.assertTrue(ok, message)
+        self.assertIs(self.plugin_file(), True)
+        self.assertEqual(self.audit_lines()[-1]["action"], "switch")
+        ok, _ = app.apply_switch("research_optimization", False)
+        self.assertTrue(ok)
+        self.assertIs(self.plugin_file(), False)
+        self.assertFalse(app.switch_store().is_on("research_optimization"))
+
+    def test_missing_server_key_blocks_turning_on(self):
+        self.key_present = False
+        self.facts(research_provenance=True)
+        app.switch_store().confirm("research_optimization", "data_handling", "owner")
+        ok, message = app.apply_switch("research_optimization", True)
+        self.assertFalse(ok)
+        self.assertIn("TypeSafe key", message)
+
+    def test_plugin_file_disagreement_forces_the_switch_off(self):
+        self.facts(research_provenance=True)
+        app.switch_store().confirm("research_optimization", "data_handling", "owner")
+        original = app.write_jev_plugin_file
+        app.write_jev_plugin_file = lambda on: (False if on else original(on))   # plugin file refuses to turn on
+        self.addCleanup(lambda: setattr(app, "write_jev_plugin_file", original))
+        ok, message = app.apply_switch("research_optimization", True)
+        self.assertFalse(ok)
+        self.assertIn("switched off", message)
+        self.assertFalse(app.switch_store().is_on("research_optimization"))
+
+    def test_page_shows_plain_status_reasons_drift_and_csrf(self):
+        os.makedirs(app.JEV_DIR)
+        json.dump({"enabled": True}, open(os.path.join(app.JEV_DIR, "config.json"), "w"))   # the real server state on 2026-10-09
+        html_page = app.switches_page(self.rec)
+        self.assertIn("plugin file on the server says ON", html_page)
+        self.assertIn("Turn it off everywhere", html_page)
+        self.assertIn("Locked until the safety checks", html_page)           # locked switches explain themselves
+        self.assertIn("Before it can be turned on", html_page)
+        self.assertIn("CSRF123", html_page)
+        self.assertNotIn("Turn ON</button>", html_page)                      # nothing can be switched on yet
+        self.assertEqual(html_page.count("name=value value=on"), 0)
+
+    def test_turn_it_off_everywhere_fixes_the_drift(self):
+        os.makedirs(app.JEV_DIR)
+        json.dump({"enabled": True}, open(os.path.join(app.JEV_DIR, "config.json"), "w"))
+        ok, _ = app.apply_switch("research_optimization", False)
+        self.assertTrue(ok)
+        self.assertIs(self.plugin_file(), False)
+        self.assertNotIn("plugin file on the server says ON", app.switches_page(self.rec))
+
+    def test_locked_switches_have_no_on_button_even_with_every_fact_true(self):
+        self.facts(**{f: True for s in app.switches.CATALOG.values() for f, _ in s.needs})
+        html_page = app.switches_page(self.rec)
+        for key in ("customer_schedules", "claude_code_for_customers"):
+            self.assertEqual(app.apply_switch(key, True)[0], False)
+        self.assertIn("Locked", html_page)
+
+    def test_no_other_code_path_writes_the_plugin_toggle(self):
+        source = open(os.path.join(os.path.dirname(__file__), "app.py")).read()
+        self.assertEqual(source.count('json.dump({"enabled"'), 1)             # only write_jev_plugin_file
+
+
+class RoutingControls(FeatureSwitches):
+    """Routing settings: validated, audited, and always switch-offable."""
+
+    def setUp(self):
+        super().setUp()
+        self.saved.update({k: getattr(app, k) for k in ("ROUTING_DIR", "ROUTING_FILE", "ROUTING_KEY")})
+        d = self.tmp.name
+        app.ROUTING_DIR = os.path.join(d, "routing"); app.ROUTING_FILE = os.path.join(app.ROUTING_DIR, "routing.json")
+        app.ROUTING_KEY = os.path.join(app.ROUTING_DIR, "typesafe.key")
+
+    def test_save_validates_audits_and_never_enables_canary(self):
+        ok, msg = app.routing_save({"enabled": "on", "automatic": "0.9", "review": "0.7", "route_claude": "on", "route_deterministic": "on"})
+        self.assertTrue(ok, msg)
+        cfg = json.load(open(app.ROUTING_FILE))
+        self.assertEqual((cfg["enabled"], cfg["mode"], cfg["canary_percent"], cfg["confidence"]["automatic"]), (True, "shadow", 0, 0.9))
+        self.assertEqual(oct(os.stat(app.ROUTING_FILE).st_mode & 0o777), "0o600")
+        self.assertEqual(self.audit_lines()[-1]["action"], "routing-save")
+
+    def test_bad_values_are_refused_and_leave_the_file_alone(self):
+        app.routing_save({"enabled": "on", "route_claude": "on"})
+        before = open(app.ROUTING_FILE).read()
+        for bad in ({"automatic": "0.5", "review": "0.9"}, {"max_task_cost_usd": "50"}, {"automatic": "abc"}, {"max_escalations": "-1"}):
+            ok, _ = app.routing_save({"enabled": "on", "route_claude": "on", **bad})
+            self.assertFalse(ok)
+        self.assertEqual(open(app.ROUTING_FILE).read(), before)
+
+    def test_rollback_turns_config_and_switch_off_and_page_renders(self):
+        self.facts(routing_key_present=True)
+        open(app.ROUTING_KEY, "w").close() if os.path.isdir(app.ROUTING_DIR) else None
+        app.routing_save({"enabled": "on", "route_claude": "on"})
+        sw = app.switch_store(); sw.facts = lambda: {"routing_key_present": True}
+        sw.confirm("jev_routing", "data_handling", "owner"); sw.set("jev_routing", True, "owner")
+        ok, _ = app.routing_rollback()
+        self.assertTrue(ok)
+        self.assertFalse(json.load(open(app.ROUTING_FILE))["enabled"])
+        self.assertFalse(app.switch_store().describe("jev_routing")["recorded_on"])
+        app.routing_report = lambda: {"total_routed": 0, "classified": 0, "unavailable_or_rejected": 0, "jev_selected_percent": None,
+            "claude_escalation_percent": None, "would_change_route_percent": None, "success_percent": None, "failed_count": 0,
+            "avg_task_cost_usd": None, "avg_task_seconds": None, "avg_classifier_latency_ms": None,
+            "confidence_distribution": {"<0.65": 0}, "by_recommended_route": {}, "classifier_cost_usd_estimated": 0, "estimated_monthly_savings_usd": None}
+        html = app.routing_page(self.rec)
+        self.assertIn("Emergency rollback", html); self.assertIn("not measured yet", html); self.assertNotIn("typesafe.key", html)
+
+
+class FeatureSwitchesOverHttp(FeatureSwitches):
+    """Drives the real request handler: login, page, CSRF, refused turn-on, turn-off."""
+
+    def setUp(self):
+        super().setUp()
+        import http.cookiejar, threading, urllib.request
+        from http.server import ThreadingHTTPServer
+        d = self.tmp.name
+        self.saved2 = {k: getattr(app, k) for k in ("DIR", "OWNER_SECRET", "SESSION_SECRET", "SESSIONS", "gw_health")}
+        app.DIR = d
+        app.OWNER_SECRET, app.SESSION_SECRET = os.path.join(d, "owner-secret"), os.path.join(d, "session-secret")
+        open(app.OWNER_SECRET, "w").write("correct horse battery"); os.chmod(app.OWNER_SECRET, 0o600)
+        open(app.SESSION_SECRET, "w").write("s" * 64); os.chmod(app.SESSION_SECRET, 0o600)
+        app.SESSIONS = app.SessionStore(os.path.join(d, "sessions.json"))
+        self.addCleanup(lambda: [setattr(app, k, v) for k, v in self.saved2.items()])
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.shutdown)
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        self.jar = http.cookiejar.CookieJar()
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar), NoRedirect)
+
+    def call(self, path, data=None):
+        import urllib.error, urllib.parse, urllib.request
+        body = urllib.parse.urlencode(data).encode() if data is not None else None
+        try:
+            r = self.opener.open(urllib.request.Request(self.base + path, data=body), timeout=10)
+            return r.status, r.read().decode(), r.headers
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode(), e.headers
+
+    def login(self):
+        self.call("/login", {"password": "correct horse battery"})
+        status, page_html, _ = self.call("/switches")
+        self.assertEqual(status, 200)
+        import re
+        return re.search(r"name=csrf value='([^']+)'", page_html).group(1), page_html
+
+    def test_requires_login(self):
+        self.assertEqual(self.call("/switches")[0], 303)
+        self.assertEqual(self.call("/switch", {"name": "research_optimization", "value": "off"})[0], 403)
+
+    def test_page_post_flow_through_the_real_handler(self):
+        csrf, page_html = self.login()
+        self.assertIn("Feature switches", page_html)
+        self.assertEqual(self.call("/switch", {"csrf": "wrong", "name": "research_optimization", "value": "off"})[0], 403)
+        status, _, headers = self.call("/switch", {"csrf": csrf, "name": "research_optimization", "value": "on"})
+        self.assertEqual(status, 303)
+        self.assertIn("Confirm", headers["Location"])                       # refused with a plain reason
+        self.assertFalse(app.switch_store().is_on("research_optimization"))
+        self.assertEqual(self.call("/switch", {"csrf": csrf, "name": "research_optimization", "value": "banana"})[0], 400)
+        status, _, headers = self.call("/switch-confirm", {"csrf": csrf, "name": "research_optimization", "id": "data_handling"})
+        self.assertEqual(status, 303)
+        self.assertEqual(self.call("/switch-confirm", {"csrf": csrf, "name": "research_optimization", "id": "bogus"})[0], 400)
+        os.makedirs(app.JEV_DIR, exist_ok=True)
+        json.dump({"enabled": True}, open(os.path.join(app.JEV_DIR, "config.json"), "w"))
+        self.call("/switch", {"csrf": csrf, "name": "research_optimization", "value": "off"})
+        self.assertIs(self.plugin_file(), False)
+        status, page_html, _ = self.call("/switches?msg=hello")
+        self.assertIn("hello", page_html)
+        # the old toggle endpoints now go through the same checks
+        status, _, headers = self.call("/toggle", {"csrf": csrf, "name": "jev_research", "value": "on"})
+        self.assertIn("/switches", headers["Location"])
+        self.assertIs(self.plugin_file(), False)
+        status, _, headers = self.call("/jev-toggle", {"csrf": csrf, "layer": "research", "value": "on"})
+        self.assertIs(self.plugin_file(), False)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

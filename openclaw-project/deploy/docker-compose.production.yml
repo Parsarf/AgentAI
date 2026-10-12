@@ -44,6 +44,9 @@ services:
       postgres:
         condition: service_healthy
     expose: ["4000"]
+    # Loopback only: the host model relay (agentai-model-proxy, 10.77.0.1:4000) and the cell bridge reach the proxy here.
+    # Never a public or bridge address; customer cells get only the relay, with their own capped virtual key.
+    ports: ["127.0.0.1:4000:4000"]
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]

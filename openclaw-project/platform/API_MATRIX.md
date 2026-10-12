@@ -13,16 +13,22 @@ role/account/object and uses fixed operations; unknown fields rejected.
 | GET /readyz | Local operator | DB/schema/FK health; customer_ready distinct | Implemented app/control |
 | GET /v1/projects | Customer, active account/membership | Own list (100-row max), no native calls | Implemented handler/repository; default identity denies |
 | GET /v1/projects/{id} | Customer, own project | Scoped read; other/missing ID same404 | Implemented; test-only identity injection |
-| POST /v1/projects | Customer own account | Plan quota/name validation, durable audit/idempotency | Phase 3/6, disabled |
-| POST /v1/conversations/{id}/messages | Customer own project/conversation/deployment | Phase5 reservation + fixed native send; message op id, pending/uncertain reconciliation | Phase6, disabled |
-| GET /v1/conversations/{id}/history | Customer own conversation | Bounded history/cursor, private native key | Phase6, disabled |
-| POST /v1/tasks/{id}/cancel or pause | Customer own task | Verified exact native control, idempotency/audit, acknowledged state | Phases6/9; native pause/abort proof required |
+| POST /v1/projects | Customer own account | Plan quota(10)/name validation, durable audit | Implemented Phase6; quota/audit enforced |
+| GET/POST /v1/conversations; GET /v1/conversations/{id} | Customer own project/deployment | 10 conversations/project (documented default); native session key server-resolved only | Implemented Phase6; execution stays disabled |
+| POST /v1/conversations/{id}/send | Customer own project/conversation/deployment | Phase5 reservation + idempotency key; one task per key, budget denial402 without native call | Implemented Phase6; native dispatch disabled (`route_unconfigured` waits) |
+| GET /v1/conversations/{id}/messages?after= | Customer own conversation | Bounded transcript cursor (≤100), provenance, task chips | Implemented Phase6; reconnect-safe |
+| GET /v1/tasks/{id} | Customer own task/request | Scoped read: request/task/reservation state | Implemented Phase6 |
+| POST /v1/tasks/{id}/cancel | Customer own task | Waiting→cancelled immediate; running→intent until confirmed native abort | Implemented Phase6; native abort proof required at activation |
+| POST /v1/tasks/{id}/pause | Customer own task | Verified exact native control | Phase9, disabled; no native pause contract yet |
 | GET /v1/tasks/{id}/events | Customer own task + revocation during stream | Scoped cursor/replay; ≤3 streams/account, public typed payloads | Phase9, disabled |
 | POST /v1/account/telegram-link; unlink | Signed-in customer | Hashed one-time code10min, rate limit, atomic consumption, audit | Phase7, disabled |
 | GET/POST /v1/projects/{id}/files; artifacts/{id}/versions/{n} | Customer own project/task/version | Quotas/type/scan/preview/descriptor-safe download and revocation | Phase8, disabled |
 | GET/PATCH/DELETE /v1/memory/{id} | Customer own native memory | Exact correction/delete index, retention disclosure, audit | Phase10, disabled |
 | /v1/schedules, /v1/integrations | Customer scoped native job/connector | Stricter policy/OAuth identity/expiry/revoke, fixed tools, audit | Phases10/11 later scope, disabled |
 | GET /v1/usage; checkout/portal | Customer own ledger/provider customer | Estimate vs final; verified prices/server-derived IDs, idempotency/audit | Phases5/13, disabled |
+| GET /v1/account/connections; POST .../link, .../disconnect; GET .../callback, /v1/account/drafts | Signed-in customer, own account | Read-only connector status; link/callback fail closed (503) until provider registration + custody exist; disconnect revokes and cancels queued ops; drafts are local only | Phase11, link disabled |
+| GET /v1/account/billing; POST .../checkout, .../portal | Signed-in customer, own account | Overview of plan, access, usage and invoices; hosted checkout/portal behind the owner `billing_checkout` switch (503 when off or unconfigured); nothing is granted by a redirect | Phase13, test mode only |
+| POST /v1/billing/webhook | Stripe signature over the raw body (no cookie) | Verifies HMAC with tolerance, size and rate limit, stores the event, acknowledges; the worker applies canonical provider state | Phase13, fails closed unconfigured |
 | POST /v1/webhooks/billing or telegram | Verified provider ingress, not customer cookie | Raw signature/update verification, inbox dedup, fixed routing | Phases7/13, disabled |
 | POST /v1/operations (control port only) | Separate authenticated internal service identity | Fixed kind/account/deployment/generation, idempotency+request hash, durable audit; no command/path | Phase4, denies now |
 | /internal/accounts/{id}/deployments and incidents | Scoped internal operator with MFA | Explicit support/lifecycle scope/audit, no secret export | Phases3/4/14, disabled |
@@ -54,7 +60,8 @@ customer task capability becomes enabled as a result of this replacement.
 | POST /auth/logout,revoke-sessions | Current identity/customer respectively | Current session deletion/all-session epoch revocation + audit |
 | POST /auth/mfa | Explicit operator identity, confirmed TOTP | OTP throttle/replay protection, session rotation, audit |
 | GET /v1/me,projects,projects/{id} | Verified customer + live active membership | Account from identity; other/missing object same404 |
-| /v1/tasks,streams,artifacts,conversations,operations/{id} | Same customer + scoped object | Ownership checked; own503 disabled, other404; no side effects |
+| /v1/streams,artifacts,operations/{id}; /v1/tasks (list/create); POST /v1/tasks/{id}/pause | Same customer + scoped object | Ownership checked; own503 disabled, other404; no side effects |
+| /v1/conversations, /v1/tasks/{id}, cancel, messages, send | Same customer + scoped object | Ownership checked every read/write; other/missing same404; execution flags honest |
 | /v1/exports,memory,schedules,integrations,costs,controls | Same customer | Always503 disabled; no native calls or data |
 | /internal/accounts/{id}/invite,revoke,suspend,audit | Operator MFA + exact current account/action grant | Required audit; no unrestricted content browsing |
 | /internal/accounts/{id}/export,impersonate | None | Always403; unsupported privileges |

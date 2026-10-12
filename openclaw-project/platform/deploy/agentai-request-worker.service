@@ -1,0 +1,35 @@
+[Unit]
+Description=AgentAI customer request worker (runs waiting chat requests; idle while customer_execution is off)
+After=agentai-platform-app.service agentai-cell-bridge.service
+Wants=agentai-cell-bridge.service
+
+[Service]
+User=agentai-platform
+Group=agentai-platform
+WorkingDirectory=/opt/agentai-platform/current
+EnvironmentFile=/etc/agentai-platform/accounts.env
+ExecStart=/opt/agentai-platform/current/.venv/bin/python manage.py request_worker
+UMask=0077
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/agentai-platform
+ReadOnlyPaths=/etc/agentai-platform
+MemoryMax=192M
+MemorySwapMax=0
+CPUQuota=25%
+TasksMax=32
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

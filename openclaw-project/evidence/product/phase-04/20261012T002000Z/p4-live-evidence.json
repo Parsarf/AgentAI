@@ -1,0 +1,135 @@
+{
+  "results": [
+    {
+      "check": "A create",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "B create",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "A state volume is a capped loop mount",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "A start",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "A gateway healthy over loopback",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "A runs under gVisor with limits and dropped capabilities",
+      "pass": true,
+      "detail": "runsc 1073741824 256 false [ALL]"
+    },
+    {
+      "check": "measured idle cell memory recorded",
+      "pass": true,
+      "detail": "container=756.3MiB / 1GiB host_delta_mib=458"
+    },
+    {
+      "check": "A canary written inside its own volume",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "disk cap stops a 400 MiB write below the 300 MiB volume",
+      "pass": true,
+      "detail": "209715200"
+    },
+    {
+      "check": "A still healthy after hitting its disk cap",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "cell cannot reach host services, metadata or the owner network; internet works",
+      "pass": true,
+      "detail": "{'internet': 'OPEN', 'host_ssh': 'timeout', 'host_public_ssh': 'timeout', 'metadata': 'timeout', 'owner_net_litellm': 'timeout'}"
+    },
+    {
+      "check": "second cell refused while A runs (global active cell)",
+      "pass": true,
+      "detail": "global active cell"
+    },
+    {
+      "check": "A stop is quiesced",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "A backup verified as bounded gzip archive",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "A restore lands in a quarantined cell",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "quarantine subnet is in the egress-drop set",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "production A untouched by the restore",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "restored data carries the original canary",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "quarantined cell has no egress",
+      "pass": true,
+      "detail": "{'internet': 'timeout'}"
+    },
+    {
+      "check": "discard removes only the quarantine",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "A upgrade with canary health",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "B start after A stopped",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "B gateway healthy",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "B cannot see A canary or volume",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "delete keeps data for retention",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "purge removes volumes and secrets",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "all_pass": true
+}

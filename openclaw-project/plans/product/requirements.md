@@ -24,14 +24,19 @@ Launch/later/optional scope is decided before acceptance in product/CONTRACT.md.
 | TENANT-03 | Measured CPU/RAM/PID/disk admission | launch | 4 | P15-CAPACITY | PARTIAL |
 | USAGE-01 | Every-provider/task metering and reconciliation | launch | 5 | P15-USAGE | PARTIAL |
 | USAGE-02 | Atomic concurrent reservation and hard caps | launch | 5 | P15-BUDGET | PARTIAL |
-| CHAT-01 | Verified native send/stream/history/retry/cancel | launch | 6 | P15-CHAT-RECONNECT | PARTIAL |
-| TG-01 | Shared ingress secure numeric account link | launch | 7 | P15-TELEGRAM | MISSING |
-| TG-02 | Active project and shared dashboard history | launch | 7 | P15-CROSS-SURFACE | MISSING |
-| FILES-01 | Safe uploads/types/size/quarantine/quotas | launch | 8 | P15-UPLOAD | MISSING |
-| FILES-02 | Immutable artifacts/preview/download/provenance/bundle | launch | 8 | P15-ARTIFACT | MISSING |
-| FILES-03 | Race-safe filesystem containment | launch | 8 | P15-FILE-BOUNDARY | MISSING |
-| EVENT-01 | Durable scoped public timeline | launch | 9 | P15-LIVE-EVENTS | MISSING |
-| EVENT-02 | Native task controls and approval semantics | launch | 9 | P15-APPROVAL | MISSING |
+| CHAT-01 | Verified native send/stream/history/retry/cancel | launch | 6 | P15-CHAT-RECONNECT | READY (build) |
+| CHAT-02 | Project/conversation creation with quota and ownership | launch | 6 | P15-CHAT-RECONNECT | READY |
+| CHAT-03 | Idempotent delivery, recorded attempts, reconcile-before-retry | launch | 6 | P15-CHAT-RECONNECT | READY |
+| CHAT-04 | Customer chat page with honest states, budget denial and cancel | launch | 6 | P15-CHAT-RECONNECT | READY |
+| CHAT-05 | Recorded Gateway session-control contract, fail-safe negotiation | launch | 6 | P15-NATIVE-CONTRACT | READY (build) |
+| TG-01 | Shared ingress secure numeric account link | launch | 7 | P15-TELEGRAM | READY (build) |
+| TG-02 | Active project and shared dashboard history | launch | 7 | P15-CROSS-SURFACE | READY (build) |
+| FILES-01 | Safe uploads/types/size/quarantine/quotas | launch | 8 | P15-UPLOAD | READY (build; scan flag off) |
+| FILES-02 | Immutable artifacts/preview/download/provenance/bundle | launch | 8 | P15-ARTIFACT | READY (build) |
+| FILES-03 | Race-safe filesystem containment | launch | 8 | P15-FILE-BOUNDARY | READY (build) |
+| EVENT-01 | Durable scoped public timeline | launch | 9 | P15-LIVE-EVENTS | READY (build) |
+| EVENT-02 | Native task controls and approval semantics | launch | 9 | P15-APPROVAL | READY (build; pause/approval honestly absent) |
+| RETENTION-EVENTS | detailed timeline: 30days/cursor resync | launch | 9 | P15-RETENTION-EVENTS | READY (build) |
 | NATIVE-01 | Restricted roles/effective policies/primary research | launch | 10 | P15-RESEARCH | PARTIAL |
 | NATIVE-02 | Native coding build/browser/independent reviewer | launch | 10 | P15-NATIVE-BUILD | PARTIAL |
 | NATIVE-03 | Focused debug regression | launch | 10 | P15-DEBUG | PARTIAL |
@@ -124,7 +129,6 @@ Launch/later/optional scope is decided before acceptance in product/CONTRACT.md.
 | RETENTION-CHAT | chat/task summaries: 90days rolling, active deletion≤7days | launch | 3 | P15-RETENTION-CHAT | PARTIAL |
 | RETENTION-MEMORY | confirmed memory: until corrected/deleted, retrieval index removal | launch | 10 | P15-RETENTION-MEMORY | MISSING |
 | RETENTION-ARTIFACT | uploads and artifact versions: until deleted or30days subscription end | launch | 8 | P15-RETENTION-ARTIFACT | MISSING |
-| RETENTION-EVENTS | detailed timeline: 30days/cursor resync | launch | 9 | P15-RETENTION-EVENTS | MISSING |
 | RETENTION-AUDIT | minimal audit metadata: 180days restricted retention | launch | 3 | P15-RETENTION-AUDIT | REUSE |
 | RETENTION-BILLING | financial records: 7years proposed pending jurisdiction review | launch | 13 | P15-RETENTION-BILLING | MISSING |
 | RETENTION-PROVIDER | provider copies: terms/region reviewed before route activation | launch | 5 | P15-RETENTION-PROVIDER | MISSING |

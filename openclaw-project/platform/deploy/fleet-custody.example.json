@@ -8,15 +8,29 @@
   },
   "env": {
     "PATH": "/usr/local/bin:/usr/bin:/bin",
-    "HOME": "/var/lib/agentai-fleet"
+    "HOME": "/var/lib/agentai-fleet",
+    "DOCKER_HOST": "unix:///run/agentai-cells/docker.sock"
   },
   "cwd": "/var/lib/agentai-fleet",
   "timeout_seconds": 300,
   "output_limit_bytes": 262144,
   "headroom_reserve_bytes": 268435456,
   "list_states": {
-    "running": ["running"],
-    "stopped": ["created", "exited"]
+    "running": [
+      "running"
+    ],
+    "stopped": [
+      "created",
+      "exited"
+    ]
   },
-  "verified": ["create", "start", "stop", "backup", "delete"]
+  "verified": [
+    "create",
+    "start",
+    "stop",
+    "backup",
+    "delete",
+    "upgrade",
+    "restore"
+  ]
 }

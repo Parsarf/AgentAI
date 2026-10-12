@@ -725,3 +725,131 @@ Installed exact fs-safe Linux0.18.1 package after the omitted-optional warning;
 native require mode and synthetic read/traversal/symlink/no-clobber-move checks
 pass, fixtures cleaned. This is not native customer OS/worker isolation. GitHub
 Linux gate for3f0cc73 passes40 account+51 core cases and Vercel routing.
+
+## Telegram customer ingress activation (Hermes) — runbook
+
+Prerequisite: a dedicated customer bot from @BotFather (never reuse the
+owner's personal bot). Then:
+
+1. Add to the private local `.env` (mode 0600):
+   `OPENCLAW_TELEGRAM_BOT_TOKEN=<BotFather token>`
+2. Run `./bin/activate-telegram.py` from the repository root. It fetches the
+   bot username via getMe, generates the webhook secret server-side, writes
+   the three AGENTAI_TELEGRAM_* settings into
+   `/etc/agentai-platform/accounts.env` (replacing any previous values),
+   restarts the app unit, registers
+   `https://getlumina.pro/v1/telegram/webhook` with the secret and verifies.
+3. Verify: sign in on getlumina.pro → Overview shows the Telegram section →
+   "Create link code" → open the deep link within 10 minutes → send
+   /projects, then a message. Secrets are never printed by the helper.
+
+Rotate: replace the token in BotFather, update `.env`, re-run the helper
+(new secret issued automatically). Deactivate: remove the three
+AGENTAI_TELEGRAM_* lines from accounts.env, restart the app, and delete the
+webhook via deleteWebhook.
+
+## Phase 10 — customer memory, objectives, schedules (build; not activated)
+
+- **Memory** (`agentai_platform/memory.py`): per customer+project entries with
+  source/date/confidence/last-confirmed. Correct = supersede; forget = content
+  blanked and index terms deleted in the same transaction. Large tool output
+  is stored as an artifact and only referenced. Outside-sourced text is stored
+  as data (`instruction: false`) and cannot become a preference/correction.
+- **Backup/history retention for deleted memory:** live database holds no
+  deleted text. Existing database backups taken before a deletion still contain
+  it until they age out under the backup retention schedule; restoring one
+  re-introduces the entry, so after any restore re-run pending deletions and
+  record that in the operation notes. Do not hand-edit backups.
+- **Objectives** (`durable.py`): restart pauses every active objective
+  (`ObjectiveService.restart_recovery`); nothing resumes autonomously. Resume
+  is explicit and refused while a checkpoint effect is `uncertain`; reconcile
+  by reading observed state, never by resending. Cancellation is sticky and
+  returns the children (jobs/subagents/schedules) the caller must stop.
+- **Schedules** (`schedules.py`): creation raises `ScheduleDisabled` unless the
+  service is constructed with `enforcement_proven=True`; this stays false until
+  Phase 15 proves enforcement and the installed scheduler capacity is verified.
+- **Policy check:** `python3 -m agentai_platform.policy_check` (exit 1 on any
+  `fail`). `customer-blocker` findings must be cleared before activating a
+  customer cell.
+
+## Phase 11 — customer connectors and credentialed browsing (build; disconnected)
+
+- Service: `agentai_platform/connectors.py` (SQL 0011), routes under
+  `/v1/account/connections*`, page `/account/connections/`. **No provider is
+  configured and no custody backend exists**, so linking returns 503 and nothing
+  is created. Listing and disconnect work today.
+- Permission matrix and tool inventory: `plans/product/phase-11-permission-matrix.json`.
+  Read-only everywhere; the production catalog has no writable kind. Drafts are
+  local rows, never sent by AgentAI.
+- **Disconnect** revokes access first, cancels queued operations and deletes the
+  custody reference. If custody deletion fails the connection is still revoked,
+  the audit row is `uncertain`, and the host job
+  `ConnectorService.purge_revoked()` retries deletion; run it after any custody outage.
+- **Failure handling:** 429/5xx retry at most twice (Retry-After honoured, capped at 60s);
+  401 marks `reconnect_required`; uncertain operations are reconciled from the provider
+  receipt, never resent. Errors reaching users are generic.
+- **Credentialed browser** (`BrowserProfiles`): credentials and cookie jars live in
+  custody only; navigation is HTTPS-443 to the profile allowlist with private,
+  loopback, link-local, metadata and IPv4-mapped addresses blocked and redirects
+  rechecked per hop. Profile backups are credential-bearing: encrypt them with keys
+  held separately from the backup (recovery needs those keys).
+- **Secret-custody obligation (Brave):** the owner's Brave API key appeared once in a
+  tool transcript (Phase 6 BUILD_LOG). It remains operational until the owner rotates it
+  with `integrations/brave/rotate-key.py`. Track as open; do not reproduce the key.
+  The owner key is never shared with customer cells.
+
+## Phase 12 — optional Jev/browser and research adapters (build; DISABLED)
+
+- Kill switches: browser `browser-opt/config.json` `enabled`; research `jev-research/config.json` `enabled`
+  (read on every call; unreadable = off). **Check the server file reads `{"enabled": false}`** — on 2026-10-09 it read true.
+- Registration diagnostic (harmless, no network): `OPENCLAW_STATE_DIR=<scratch> OPENCLAW_CONFIG_PATH=<scratch>/openclaw.json
+  JEV_RESEARCH_STATE_DIR=<scratch dir> node research-opt/diagnostics/registration_diagnostic.mjs --root <openclaw package dir>`;
+  it is pinned to OpenClaw 2026.9.6 and refuses other versions. Install a plugin with
+  `openclaw plugins install npm-pack:<tgz> --force --accept-capabilities`; copying into `extensions/` leaves it untrusted.
+- Billing: TypeSafe calls reserve against the Phase 5 task allocation first (`OptimizationGate.reserve_call`) and become
+  `typesafe` provider receipts afterwards; an uncertain call keeps its hold until reconciled. Price pin:
+  `plans/product/phase-12-typesafe-pin.json`. The owner `phase4a-jev-eval` key is never used for customers.
+- Rollback: disable/uninstall `jev-research`, delete `browser-opt/`; migration 0012 is additive.
+
+## Feature switches (owner UI)
+
+Optional features are turned on and off from the private ops dashboard, **Feature switches** page — no file edits.
+See `plans/product/FEATURE_SWITCHES.md`. Install the update with `bin/update-ops-dashboard.py` (dry run first, `--apply` to run).
+OFF always works; ON needs recorded confirmations and finished setup; locked items cannot be unlocked from the UI.
+The old Jev toggle endpoints now use the same checks. If the research plugin file and its switch disagree the page flags it.
+
+## Customer cells on the new host (Phase 4, built 2026-10-12; customer execution OFF)
+
+State: cell engine (`agentai-cells-docker`), firewall (`agentai-cells-firewall`), `agentai-supervisor-native`
+and `agentai-lifecycle-worker` run with **no enrolled bindings**, so nothing can start. Check:
+`systemctl is-active agentai-cells-docker agentai-cells-firewall agentai-supervisor-native agentai-lifecycle-worker`
+and `journalctl -u agentai-lifecycle-worker -n 5` (counts only, all zero when idle).
+
+- **Enroll one account** (root, only after its `create` is queued by an operator): `python3 -m
+  agentai_platform.lifecycle.enroll_cli --app-db /var/lib/agentai-platform/platform.sqlite3 --account <id>
+  --image ghcr.io/openclaw/openclaw@sha256:<digest>` with `PYTHONPATH=/opt/agentai-supervisor/current`.
+  Never enroll the owner's test account.
+- **Quarantine / purge** are host-operator actions on `FleetCliDriver` (`discard_quarantine`, `purge`);
+  they remove exactly one tenant's cell, volume, secrets and provider key. Retention rules decide when.
+- **Disposable verification**: `deploy/p4_live_check.py`, `p4_broker_check.py`, `p4_pipeline_check.py` run
+  with scratch state and clean up; rerun after any host change (kernel, Docker, gVisor, nftables).
+- **Never** name a bridge `docker0` for the cell engine; never give a cell or worker the owner socket.
+- **Stop everything customer-side**: `systemctl disable --now agentai-lifecycle-worker agentai-supervisor-native`.
+
+## Hosted billing (Phase 13, built offline 2026-10-12; not deployed, switch off)
+
+Reference: `platform/BILLING.md`, `plans/product/phase-13.md`. Nothing here is on the server yet. When the owner supplies Stripe
+**test** values: deploy the platform release (migration 0013 applies with the others), run `python3 platform/deploy/billing_install.py`
+(dry run, then `--apply`), restart `agentai-platform-app`, enable `agentai-billing-worker.timer`, then turn on the dashboard switch.
+Check: `manage.py billing_worker --check` (inbox counts only). A growing `dead` count means events that need a person (unknown customer
+or session); `billing_worker --reconcile` compares every subscription with Stripe and reports drift. Turn the switch off to hide the
+buttons at any time; webhooks keep being stored and applied so no paid state is lost.
+
+**Free access (live since 2026-10-12):** the dashboard switch *Free access for every account* is ON; every active account has an `open` entitlement with the plan allowance. To start charging: finish the Stripe test setup, then turn on *Require payment*; free access ends within about 30 seconds and unsubscribed accounts are paused. To stop all use immediately: turn *Free access* off. Check what the worker did: `journalctl -u agentai-billing-worker -n 3`.
+
+## Operations runbook (Phase 14, live since 2026-10-12)
+
+Full procedures: `platform/OPERATIONS.md`. In short: encrypted backup set nightly at 03:40 UTC (`agentai-ops-backup.timer`) into `/var/backups/agentai`;
+monitor every 5 minutes (`agentai-ops-monitor.timer`) with email alerts to the owner; releases only through `deploy/release.py` (canary + rollback);
+**pull a copy to your computer weekly** with `python3 openclaw-project/bin/pull-backups.py` (the only outside copy until an automatic destination is chosen);
+the private key is `~/agentai-backup-key/identity.txt` on your computer, never on the server.

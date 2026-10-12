@@ -1,0 +1,6 @@
+{
+  "frozen": "2026-10-09",
+  "note": "Re-lock only with a recorded reason. The held-out section of fixtures.yaml is hashed separately.",
+  "rubric_sha256": "701d0313c78d761703c64e901885951468ee518a65419af39277a8eed9ecd415",
+  "heldout_section_sha256": "2f16c0077fa1499a6272776c6926b5fefef5f3111813a2e7ed580dd9edbce1c9"
+}

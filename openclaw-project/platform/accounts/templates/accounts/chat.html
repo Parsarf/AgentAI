@@ -1,0 +1,108 @@
+{% extends 'accounts/base.html' %}{% block title %}Chat — AgentAI{% endblock %}{% block head %}{% if working %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}{% block body %}
+{% if execution_enabled %}<div class="notice"><span><strong>Your assistant is live.</strong> Replies usually take under a minute; the first message after a pause takes a little longer while your assistant wakes up. This page refreshes by itself while it works.</span></div>
+{% else %}<div class="notice"><span><strong>Agent execution is not connected yet.</strong> Messages are saved and queued; nothing runs, and nothing is charged, until execution is available.</span></div>{% endif %}
+{% if error %}<div class="notice danger"><span><strong>{{ error|capfirst }}.</strong> {{ error_text }}{% if category %} <span class="mono">({{ category }})</span>{% endif %}</span></div>{% endif %}
+<div class="chat">
+<aside class="sidebar">
+<section>
+<h2>Projects</h2>
+<div class="list">
+{% for project in projects %}<a href="/account/chat/?project={{ project.id|urlencode }}" {% if project.id == project_id %}aria-current="true"{% endif %}>{{ project.name }}</a>
+{% empty %}<p class="hint">No projects yet — create one below.</p>{% endfor %}
+</div>
+<form class="stack" method="post" action="/v1/projects">{% csrf_token %}<input name="name" maxlength="120" placeholder="New project name" aria-label="New project name" required><button class="ghost small">Create project</button></form>
+</section>
+{% if project_id %}
+<section>
+<h2>Conversations</h2>
+<div class="list">
+{% for conversation in conversations %}<a href="/account/chat/?project={{ project_id|urlencode }}&amp;conversation={{ conversation.id|urlencode }}" {% if conversation.id == conversation_id %}aria-current="true"{% endif %}><span class="mono">{{ conversation.id|slice:":8" }}</span></a>
+{% empty %}<p class="hint">No conversations in this project yet.</p>{% endfor %}
+</div>
+<form class="stack" method="post" action="/v1/conversations">{% csrf_token %}<input type="hidden" name="project_id" value="{{ project_id }}"><button class="ghost small">New conversation</button></form>
+{% if conversation_id %}<form class="stack" method="post" action="/v1/conversations/{{ conversation_id }}/archive">{% csrf_token %}<button class="ghost small">Clear this conversation</button></form>{% endif %}
+</section>
+{% endif %}
+</aside>
+<section class="thread">
+{% if transcript %}
+{% for message in transcript.messages %}
+<article class="bubble {% if message.provenance == 'telegram' %}customer{% else %}{{ message.provenance }}{% endif %}">
+<div class="meta"><span class="who2">{% if message.provenance == 'customer' %}You{% elif message.provenance == 'telegram' %}Telegram{% else %}{{ message.provenance|capfirst }}{% endif %}</span><span class="when mono">{{ message.created_at|slice:"11:16" }} UTC</span></div>
+<p>{{ message.content }}</p>
+</article>
+{% empty %}
+<div class="empty">No messages yet. Start the conversation below.</div>
+{% endfor %}
+<div class="composer">
+<form class="stack" method="post" action="/v1/conversations/{{ conversation_id }}/send">{% csrf_token %}
+<input type="hidden" name="key" value="{{ send_key }}">
+<textarea name="message" maxlength="16000" rows="4" required placeholder="Describe what you need…"></textarea>
+<div class="row"><span class="hint">Sending the same form twice never duplicates work.</span><button>Send message</button></div>
+</form>
+</div>
+{% if transcript.tasks %}
+<h2>Work in this conversation</h2>
+<div class="work">
+{% for task in transcript.tasks %}
+<section class="card">
+<span class="state {{ task.state }}">{{ task.state|capfirst }}</span>
+<span class="hint">{% if task.task_state %}Task {{ task.task_state }}{% if task.reservation_state %} · budget {{ task.reservation_state }}{% endif %}{% else %}Queued for intake; no budget reserved yet{% endif %}{% if task.cancel_requested %} · cancellation requested{% endif %}</span>
+{% if task.state == 'waiting' or task.state == 'starting' or task.state == 'running' or task.state == 'uncertain' %}
+<form method="post" action="/v1/tasks/{{ task.id }}/cancel">{% csrf_token %}<button class="danger small">Cancel</button></form>
+{% else %}<span></span>{% endif %}
+{% if task.result %}<p class="result">{{ task.result }}</p>{% endif %}
+{% if task.events %}
+<div class="timeline">
+{% for event in task.events %}
+<p class="hint mono">{{ event.created_at|slice:"11:16" }} UTC · {{ event.kind }}{% if event.payload.summary %} — {{ event.payload.summary }}{% endif %}</p>
+{% endfor %}
+</div>
+{% endif %}
+</section>
+{% endfor %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty">{% if project_id %}Select a conversation on the left, or create one.{% else %}Create or select a project to start a conversation.{% endif %}</div>
+{% endif %}
+{% if project_id %}
+<h2>Files &amp; results</h2>
+{% if storage_ready %}
+<div class="work">
+{% for artifact in artifacts %}
+<section class="card">
+<span class="state completed">v{{ artifact.version }}</span>
+<span class="hint mono">{{ artifact.display_name }} · {{ artifact.media_type }} · {{ artifact.size_bytes }} bytes · sha256 {{ artifact.sha256|slice:":12" }}…</span>
+<form method="post" action="/v1/artifacts/{{ artifact.id }}/versions/{{ artifact.version }}/ticket">{% csrf_token %}<button class="small">Download</button></form>
+</section>
+{% empty %}<p class="hint">No generated results yet in this project.</p>
+{% endfor %}
+{% for file in project_files %}
+<section class="card">
+<span class="state {{ file.state }}">{{ file.state|capfirst }}</span>
+<span class="hint mono">{{ file.display_name }} · {{ file.media_type }} · {{ file.size_bytes }} bytes</span>
+<span></span>
+</section>
+{% empty %}<p class="hint">No uploaded files in this project.</p>
+{% endfor %}
+</div>
+<div class="composer">
+{% if uploads_enabled %}
+<form class="stack" method="post" action="/v1/projects/{{ project_id }}/files" enctype="multipart/form-data">{% csrf_token %}
+<label class="field">Upload files (10MiB each, up to 10 per batch)<input type="file" name="file" multiple required></label>
+<div class="row"><span class="hint">Text, JSON, CSV, PNG/JPEG, PDF and source files; content is validated on arrival.</span><button>Upload</button></div>
+</form>
+{% else %}<p class="hint">Uploads are disabled until the scanning capability is enabled for your plan.</p>{% endif %}
+<form class="stack" method="post" action="/v1/projects/{{ project_id }}/bundle">{% csrf_token %}
+<div class="row"><span class="hint">Build a versioned ZIP of every result in this project.</span><button class="ghost small">Build bundle</button></div>
+</form>
+</div>
+{% else %}
+<div class="empty">File storage is not configured yet for this environment.</div>
+{% endif %}
+{% endif %}
+<p class="actions"><a class="btn ghost small" href="/account/chat/{% if project_id %}?project={{ project_id|urlencode }}{% if conversation_id %}&amp;conversation={{ conversation_id|urlencode }}{% endif %}{% endif %}">Refresh</a><a class="btn ghost small" href="/account/requests/">Request queue</a></p>
+</section>
+</div>
+{% endblock %}

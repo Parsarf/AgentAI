@@ -1,0 +1,10 @@
+{
+  "preference": "Prefers concise answers with bullet points",
+  "preference_query": "how should answers be formatted",
+  "unrelated_facts": ["Office plant is a ficus", "Printer model is XJ-200", "Lunch order is soup", "Parking spot is 14",
+    "Cat is named Pixel", "Badge expires in March", "Favorite font is Inter", "Wifi network is Guest-2",
+    "Standup is at nine", "Mug is blue", "Desk faces east", "Locker is 22"],
+  "correction": {"original": "Deploy region is frankfurt", "corrected": "Deploy region is helsinki"},
+  "deletion_target": "Deploy region is helsinki",
+  "synthetic": true
+}

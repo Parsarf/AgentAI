@@ -14,6 +14,7 @@ from django_otp import verify_token, login as otp_login
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from .models import Identity, Audit, EmailJob
 from .services import Denied, Limited, audit, rate, token_for, deliver, consume, create_invite, operator_scope, revoke, models_f_epoch
+from agentai_platform.security import Principal, NotFound
 
 def csrf_failure(request, reason=''):
     # Record only a fixed category, never raw headers, tokens or request data.
@@ -31,6 +32,16 @@ def csrf_failure(request, reason=''):
                '/auth/login':'/account/login/','/auth/recovery':'/account/recover/'}.get(request.path,'/account/')
         return render(request,'accounts/csrf_error.html',{'retry':retry},status=403)
     return JsonResponse({'error':'csrf_denied'},status=403)
+
+ASSETS={'ui.css':'text/css; charset=utf-8'}
+def assets(request,name='ui.css'):
+    if name not in ASSETS: raise NotFound()
+    from pathlib import Path
+    asset=Path(__file__).resolve().parent/'static'/name
+    response=HttpResponse(asset.read_bytes(),content_type=ASSETS[name])
+    # Static, unauthenticated, secret-free stylesheet; everything else stays no-store.
+    response['Cache-Control']='public, max-age=86400'
+    return response
 
 def endpoint(methods, fields=(), field_limits=None):
     def decorate(fn):
@@ -52,7 +63,11 @@ def endpoint(methods, fields=(), field_limits=None):
                     request.input=data
                 response=fn(request,*args,**kwargs)
                 if request.method=='POST' and request.content_type=='application/x-www-form-urlencoded' and response.status_code<400:
+                    if fn.__name__=='disconnect': return HttpResponseRedirect('/account/connections/')
                     if fn.__name__ in ['requests','cancel']: return HttpResponseRedirect('/account/requests/')
+                    if fn.__name__ in {'link','ticket','checkout','portal'}: return response
+                    if fn.__name__.startswith('chat_'):
+                        return HttpResponseRedirect(getattr(request,'form_redirect','/account/chat/'))
                     if fn.__name__=='signin': return HttpResponseRedirect('/account/mfa/' if request.user.identity.role=='operator' else '/account/')
                     if fn.__name__ in ['signout','revoke_sessions','finish']: return HttpResponseRedirect('/account/login/')
                     return render(request,'accounts/result.html',{'pending':fn.__name__=='recovery'})
@@ -97,7 +112,8 @@ def account_page(request, page='home'):
         if denied: return HttpResponseRedirect('/account/login/')
         with connection.cursor() as c:
             c.execute('SELECT state FROM deployments WHERE account_id=%s ORDER BY generation DESC LIMIT 1',[request.account_id]); row=c.fetchone()
-        return render(request,'accounts/home.html',{'email':request.user.email,'deployment_state':row[0] if row else 'not provisioned'})
+        from .telegram import overview_context
+        return render(request,'accounts/home.html',{'email':request.user.email,'deployment_state':row[0] if row else 'not provisioned','nav':True,'nav_here':'home',**overview_context(request)})
     return render(request,'accounts/form.html',{'page':page})
 
 @endpoint(['POST'], ['email','password'])
@@ -211,12 +227,30 @@ def mfa(request):
 def me(request):
     denied=customer(request)
     if denied: return denied
-    return JsonResponse({'email':request.user.email,'role':'customer','account_id':request.account_id,'execution_enabled':False})
+    return JsonResponse({'email':request.user.email,'role':'customer','account_id':request.account_id,'execution_enabled':__import__('accounts.chat',fromlist=['execution_on']).execution_on()})
 
-@endpoint(['GET'])
+@endpoint(['GET','POST'], ['name'], field_limits={'name':120})
 def projects(request, project_id=None):
     denied=customer(request)
     if denied: return denied
+    if request.method=='POST':
+        if project_id: return JsonResponse({'error':'method_not_allowed'},status=405)
+        from agentai_platform.budget import BudgetLedger
+        from agentai_platform.chat import ChatService
+        from agentai_platform.lifecycle.types import Conflict as NativeConflict
+        from agentai_platform.request_queue import RequestQueue
+        from .lifecycle import AccountStore
+        store=AccountStore(connection.settings_dict['NAME'])
+        service=ChatService(store,queue=RequestQueue(store),ledger=BudgetLedger(store))
+        try:
+            created=service.create_project(Principal(request.account_id,str(request.user.pk),'customer'),request.input.get('name',''))
+        except NativeConflict:
+            if request.content_type=='application/x-www-form-urlencoded':
+                return HttpResponseRedirect('/account/chat/?error=project_limit_reached')
+            return JsonResponse({'error':'project_limit_reached'},status=409)
+        except NotFound: raise Denied()
+        request.form_redirect='/account/chat/?project='+created['id']
+        return JsonResponse({'project':created},status=201)
     with connection.cursor() as c:
         if project_id:
             c.execute('SELECT id,name,created_at FROM projects WHERE account_id=%s AND id=%s',[request.account_id,project_id])

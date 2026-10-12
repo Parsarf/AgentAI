@@ -1,0 +1,28 @@
+[Unit]
+Description=AgentAI cell bridge (app to customer Gateway relay; root, allowlisted methods only)
+After=agentai-cells-docker.service agentai-supervisor-native.service
+Requires=agentai-cells-docker.service
+
+[Service]
+User=root
+Group=agentai-platform
+WorkingDirectory=/opt/agentai-supervisor/current
+ExecStart=/usr/bin/python3 -m agentai_platform.lifecycle.cell_bridge_main
+UMask=0077
+RuntimeDirectory=agentai-cell-bridge
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=5
+# docker exec needs the host namespaces; everything else is closed.
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+MemoryMax=256M
+MemorySwapMax=0
+CPUQuota=50%
+TasksMax=128
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

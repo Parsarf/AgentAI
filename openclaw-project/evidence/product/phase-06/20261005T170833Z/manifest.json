@@ -1,0 +1,105 @@
+{
+ "created_at": "2026-10-05T17:08:33Z",
+ "phase": 6,
+ "run_id": "20261005T170833Z",
+ "status": "READY_BUILD_PARTIAL_RUNTIME",
+ "target": "local macOS operator workspace; no VPS change",
+ "runtime_versions": {
+  "python": "3.14.4",
+  "django": "5.2.17",
+  "node_check": "v23.10.0 (routing check only)"
+ },
+ "native_execution_enabled": false,
+ "live_gateway_probe_run": false,
+ "paid_provider_calls": 0,
+ "real_customer_invites_created": 0,
+ "customer_accounts_created": 0,
+ "changes": [
+  "SQL0005+Django0009 chat transcript/delivery tables and request conversation binding",
+  "Gateway adapter with recorded session-control contract, negotiation, synthetic fixture",
+  "Chat service: conversations, admission-gated idempotent sends, driver sequence, reconciliation",
+  "Chat HTTP APIs + script-free chat page; project creation; middleware 16KB body for /send",
+  "Docs/ledger/openapi/evidence close-out; CI includes chat test modules"
+ ],
+ "checks": [
+  {
+   "id": "P06-CORE",
+   "command": "python -m unittest tests.test_request_queue tests.test_lifecycle tests.test_supervisor tests.test_budget tests.test_capacity tests.test_foundation tests.test_fleet_driver tests.test_chat tests.test_gateway",
+   "observation": "110 tests OK (2 pre-existing Linux CI skips)",
+   "status": "PASS"
+  },
+  {
+   "id": "P06-ACCOUNTS",
+   "command": "python manage.py test accounts",
+   "observation": "47 tests OK incl. chat HTTP flows",
+   "status": "PASS"
+  },
+  {
+   "id": "P06-CONCURRENCY",
+   "command": "PYTHONPATH=. python tests/check_account_concurrency.py",
+   "observation": "PASS: token consume, migrations, private state/readiness",
+   "status": "PASS"
+  },
+  {
+   "id": "P06-HTTP",
+   "command": "PYTHONPATH=. python tests/check_account_http.py",
+   "observation": "PASS: loopback Gunicorn, cross-account denial, CSRF/routing guards, no secret logs",
+   "status": "PASS"
+  },
+  {
+   "id": "P06-VERCEL-ROUTING",
+   "command": "node deploy/vercel/check.mjs",
+   "observation": "configuration and build output checks passed",
+   "status": "PASS"
+  },
+  {
+   "id": "P06-BOOTSTRAP",
+   "command": "python manage.py bootstrap_accounts (fresh temp state)",
+   "observation": "SQL0001-0005 + Django0009 applied; chat tables present; request_worker --check execution_ready:false",
+   "status": "PASS"
+  }
+ ],
+ "deferred_cases": [
+  "P15-CHAT-RECONNECT live installed-Gateway completion (probe + isolated cell dispatch)",
+  "P15-NATIVE-CONTRACT live probe reconfirming framing/version",
+  "Phase 4/5 host gates: isolation proof, capacity profile, live budget enforcement before any real chat task",
+  "Phase 9 event streams (<=3/account); RETENTION-CHAT export/deletion projection"
+ ],
+ "cost_allocation": {
+  "paid_routes": [],
+  "unknown": [
+   "provider route prices remain unmeasured; no estimate claimed"
+  ]
+ },
+ "blockers": [
+  "No live installed-Gateway probe or host chat dispatch; HttpGateway framing reconfirm required at activation",
+  "No measured provider route: production sends wait unfunded (route_unconfigured)",
+  "Phase 4 native isolation/capacity and Phase 5 live enforcement remain PARTIAL"
+ ],
+ "rollback": "Phase 6 code is additive; stop/disable chat routes and remove the release; no schema downgrade required. Keep private SQLite snapshot discipline before any cutover.",
+ "source_sha256": {
+  "openclaw-project/platform/migrations/0005_chat_transcript.sql": "191b78e4d0a441efbb7502a0f3f5800a5811905dd283394f06f53f13878eae0d",
+  "openclaw-project/platform/accounts/migrations/0009_chat_transcript.py": "605dd5c0d8636c1f17c8f7d08842e870cf28b2c13f4db92841fd7e66ad974e86",
+  "openclaw-project/platform/agentai_platform/gateway.py": "56101da94f6e5a5c69085b4ecfa862be421c859580de08278655ab76ea6f1d31",
+  "openclaw-project/platform/agentai_platform/chat.py": "a7f49b3112d818692b3861bfb6dfb557b507aea48bc0a4ddd8629404d3622765",
+  "openclaw-project/platform/agentai_platform/request_queue.py": "44affdb75b5090ee1f928cc373eea8807dd31ff2f54b5b813c1d02c350a5a171",
+  "openclaw-project/platform/accounts/chat.py": "e588859f0d8eb780f093b18c94f9b2d0870b76977e9285d30dd8585bacf6a515",
+  "openclaw-project/platform/accounts/templates/accounts/chat.html": "a0130c9932ecd2cc63a73a463b5e06053a414c1fe31158e3e73b28e742bec288",
+  "openclaw-project/platform/accounts/urls.py": "bf7df22b979c0c8be935a5c1f3862d10ecacc98c12861f544f39b3a53eb241a3",
+  "openclaw-project/platform/accounts/views.py": "7ebef75e65ab8d8fa0f3de33b288ec0353568bda7aee54e6aeaffe45c12fe04f",
+  "openclaw-project/platform/accounts/middleware.py": "de4cc1a2cbe7822c28d6fcbe29b9582a4d2a0f4e2405e564903c1a0fca84818f",
+  "openclaw-project/platform/accounts/tests.py": "6024f59165c1c6b69e3dcb2da159b17824880780106f613b60673dc8ee467837",
+  "openclaw-project/platform/accounts/test_chat.py": "ff2f7c1601f3ef704b93409334c2d6d02f3c1293addee00cdb33c38f6d1d4f4f",
+  "openclaw-project/platform/tests/test_chat.py": "a11418d297228c4fb9a1cc219f1c1dda3366249e4a78661c5caee7402b8d1c01",
+  "openclaw-project/platform/tests/test_gateway.py": "6cb931ff1adf576f02f144e9bad7d365488606d55fcf2dd372048180c07d5e63",
+  "openclaw-project/platform/CHAT.md": "955fb8c6cd59b85128f127cbe67d41faf740b314b81d4b4fbab46ceb0dae1145",
+  "openclaw-project/platform/API_MATRIX.md": "4a420f1fa26665d9fb0fb06c69fbe2e4b08f077b4eeabb42f07a6d1c98fe09df",
+  "openclaw-project/platform/SERIAL_REQUESTS.md": "af1bbc88504b28d2a43be7641637ceac855e5c5a23bd8c5bfc70f4d21d400f09",
+  "openclaw-project/platform/README.md": "2a51c9ac7e47a812804137a55ee15f5b5af6e5e62b81e03703c64e8b5b7cf3d1",
+  "openclaw-project/platform/openapi.json": "b36c052baf401c294a717d17a912b0292a3e4ad17265054c71aeb6306d507604",
+  "openclaw-project/plans/product/phase-06.md": "414f2203be9a3fae092efce5ee377785122b4666bc4c04bdb6cb78415edf0000",
+  "openclaw-project/plans/product/requirements.json": "a27de85ece8b4dfd1bb2c65ab1bcc35410521ae73124232d51c815953c584d43",
+  "openclaw-project/plans/product/requirements.md": "a36c161cc3e9430d5eecb8a7c1507fa1fdb7f5169b43533c825dc29df4299613",
+  ".github/workflows/platform.yml": "90fd9293d7b39630c41dbbc08ad1a56d0762814c5eebef69b389936c9303ca15"
+ }
+}

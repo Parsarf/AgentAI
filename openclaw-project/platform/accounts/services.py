@@ -100,6 +100,8 @@ def customer_scope(user, epoch):
     return identity.account_id
 
 def operator_scope(request, account, action):
+    if not request.user.is_authenticated:
+        raise Denied()
     identity = Identity.objects.filter(user=request.user, role='operator', verified=True, epoch=request.session.get('epoch')).first()
     if not identity or not request.user.is_verified() or not request.user.otp_device.confirmed: raise Denied()
     if not OperatorGrant.objects.filter(user=request.user,account_id=account,action=action,expires_at__gt=timezone.now()).exists(): raise Denied()

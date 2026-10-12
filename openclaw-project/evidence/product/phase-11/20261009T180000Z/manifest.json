@@ -1,0 +1,14 @@
+{
+  "run": "20261009T180000Z",
+  "phase": 11,
+  "kind": "build (offline; read-only server config probe; no account connected, no credential read, no paid call, no deployment)",
+  "checks": {
+    "platform_suite": "200 tests OK (2 skipped)",
+    "django_suite": "66 tests OK (scratch venv from hash-pinned requirements.lock)",
+    "vercel_routing": "pass",
+    "server_probe": "mcp.servers config read: google-readonly and github-readonly disabled; tool names recorded; no secret values captured"
+  },
+  "records": ["plans/product/phase-11.md", "plans/product/phase-11-permission-matrix.json", "config/phase11-fixtures/cases.json", "platform/agentai_platform/connectors.py", "platform/agentai_platform/ssrf.py", "platform/migrations/0011_connectors.sql"],
+  "not_run": ["any provider sign-in or content read", "custody backend", "live browser login", "Phase 15 cases P15-GMAIL, P15-CALENDAR, P15-DRIVE, P15-GITHUB, P15-AUTH-BROWSER"],
+  "open_obligations": ["Brave key rotation (owner)", "Google/GitHub sign-ins (owner-deferred)"]
+}

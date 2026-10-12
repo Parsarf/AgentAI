@@ -1,0 +1,11 @@
+{
+  "fleet_custody": "/etc/agentai-supervisor/fleet-custody.json",
+  "secrets_dir": "/var/lib/agentai-supervisor-secrets",
+  "volume_images": "/var/lib/agentai-cells/volumes",
+  "cell_state_root": "/var/lib/agentai-fleet/.openclaw/fleet/cells",
+  "firewall_state": "/var/lib/agentai-cells/quarantine.json",
+  "firewall_rules": "/etc/agentai-cells/agentai_cells.nft",
+  "cell_pool": "10.78.0.0/16",
+  "bridge_gateway": "10.77.0.1",
+  "model_proxy_port": null
+}

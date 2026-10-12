@@ -5,6 +5,7 @@ execute native lifecycle operations until a verified backend is implemented.
 """
 import argparse
 import grp
+import json
 import os
 from pathlib import Path
 import pwd
@@ -13,6 +14,7 @@ import stat
 
 from .supervisor import HostSupervisor
 from .supervisor_transport import handle_connection
+from .native_wiring import build_native_backend
 from .types import DisabledDriver
 
 
@@ -22,14 +24,22 @@ def main():
     parser.add_argument('--state-dir',type=Path,default=Path('/var/lib/agentai-supervisor'))
     parser.add_argument('--socket',type=Path,default=Path('/run/agentai-supervisor/control.sock'))
     parser.add_argument('--check',action='store_true')
+    parser.add_argument('--native-wiring',type=Path,default=None,
+        help='host-owned wiring file; without it native effects stay disabled')
     args=parser.parse_args()
     if os.geteuid()!=0: raise SystemExit('host supervisor requires root custody')
     uid=pwd.getpwnam(args.controller_user).pw_uid
     gid=grp.getgrnam(args.controller_user).gr_gid
     if uid==0: raise SystemExit('controller must be unprivileged')
-    supervisor=HostSupervisor(args.state_dir,DisabledDriver(),owner_uid=0)
+    backend,admission=DisabledDriver(),None
+    if args.native_wiring is not None:
+        info=args.native_wiring.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)&0o022:
+            raise SystemExit('wiring file must be a host-owned regular file without group/world writes')
+        backend,admission=build_native_backend(args.native_wiring)
+    supervisor=HostSupervisor(args.state_dir,backend,owner_uid=0,admission=admission)
     if args.check:
-        print('{"custody_ready":true,"native_execution_enabled":false}');return
+        print(json.dumps({'custody_ready':True,'native_execution_enabled':args.native_wiring is not None}));return
     parent=args.socket.parent
     info=parent.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)&0o022:

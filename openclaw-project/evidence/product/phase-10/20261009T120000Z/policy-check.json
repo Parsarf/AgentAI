@@ -1,0 +1,31 @@
+[
+ {
+  "level": "customer-blocker",
+  "agent": "researcher",
+  "rule": "worker-has-integration-tools",
+  "detail": [
+   "brave-search__*",
+   "github-readonly__*",
+   "google-readonly__*",
+   "owner credentials must not exist in a customer cell"
+  ]
+ },
+ {
+  "level": "customer-blocker",
+  "agent": "main",
+  "rule": "orchestrator-unsandboxed",
+  "detail": "customer cell orchestrator must run sandboxed or inside the verified cell boundary"
+ },
+ {
+  "level": "customer-blocker",
+  "agent": "*",
+  "rule": "global-elevated-enabled",
+  "detail": "global elevated is enabled; per-agent denial exists but customer cells must disable it"
+ },
+ {
+  "level": "customer-blocker",
+  "agent": "*",
+  "rule": "global-browser-enabled",
+  "detail": "browser reachable only through browser-worker; confirm per-cell profile and no owner sign-ins"
+ }
+]

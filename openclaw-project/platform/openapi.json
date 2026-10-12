@@ -1,1964 +1,2711 @@
 {
-  "openapi": "3.1.0",
-  "info": {
-    "title": "AgentAI private account API",
-    "version": "0.3.0",
-    "description": "Invite-only identity plus lifecycle metadata queue and offline usage reads. Native customer execution/provisioning, mail and live billing are not activated."
-  },
-  "servers": [
-    {
-      "url": "https://agent.example.com",
-      "description": "Design placeholder, not a live endpoint"
-    }
-  ],
-  "paths": {
-    "/healthz": {
-      "get": {
-        "summary": "Private process liveness",
-        "responses": {
-          "200": {
-            "description": "Private health"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Not found or not owned"
-          },
-          "503": {
-            "description": "Unavailable"
-          }
-        }
-      }
-    },
-    "/readyz": {
-      "get": {
-        "summary": "Private foundation readiness",
-        "responses": {
-          "200": {
-            "description": "Private health"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Not found or not owned"
-          },
-          "503": {
-            "description": "Unavailable"
-          }
-        }
-      }
-    },
-    "/v1/projects": {
-      "get": {
-        "summary": "Own account project list",
-        "responses": {
-          "200": {
-            "description": "Scoped result"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Not found or not owned"
-          },
-          "503": {
-            "description": "Unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/projects/{id}": {
-      "get": {
-        "summary": "Own account project read",
-        "responses": {
-          "200": {
-            "description": "Scoped result"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Not found or not owned"
-          },
-          "503": {
-            "description": "Unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/v1/me": {
-      "get": {
-        "summary": "Current verified customer identity and execution gate",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/auth/login": {
-      "post": {
-        "summary": "Rotate authenticated session; operator MFA follows",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "csrfHeader": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "maxLength": 512
-                  },
-                  "password": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "email",
-                  "password"
-                ]
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "maxLength": 512
-                  },
-                  "password": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "email",
-                  "password"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/logout": {
-      "post": {
-        "summary": "Revoke current session",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {},
-                "required": []
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {},
-                "required": []
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/revoke-sessions": {
-      "post": {
-        "summary": "Revoke all customer sessions",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {},
-                "required": []
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {},
-                "required": []
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/recovery": {
-      "post": {
-        "summary": "Generic recovery request; queue only, no inline SMTP",
-        "responses": {
-          "202": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "csrfHeader": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "maxLength": 512
-                  }
-                },
-                "required": [
-                  "email"
-                ]
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "maxLength": 512
-                  }
-                },
-                "required": [
-                  "email"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/reset": {
-      "post": {
-        "summary": "Consume hashed recovery code atomically",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "csrfHeader": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  },
-                  "password": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "code",
-                  "password"
-                ]
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  },
-                  "password": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "code",
-                  "password"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/activate": {
-      "post": {
-        "summary": "Verified invitation onboarding",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "csrfHeader": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  },
-                  "password": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "code",
-                  "password"
-                ]
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  },
-                  "password": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "code",
-                  "password"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/mfa": {
-      "post": {
-        "summary": "Confirmed operator TOTP verification",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "code"
-                ]
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "maxLength": 512,
-                    "writeOnly": true
-                  }
-                },
-                "required": [
-                  "code"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/internal/accounts/{account}/invite": {
-      "post": {
-        "summary": "Explicit scoped operator invite",
-        "responses": {
-          "201": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
-        "parameters": [
-          {
-            "name": "account",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "maxLength": 512
-                  }
-                },
-                "required": [
-                  "email"
-                ]
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "maxLength": 512
-                  }
-                },
-                "required": [
-                  "email"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/internal/accounts/{account}/revoke": {
-      "post": {
-        "summary": "Explicit scoped operator revoke",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
-        "parameters": [
-          {
-            "name": "account",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "actor_id": {
-                    "type": "string",
-                    "maxLength": 512
-                  }
-                },
-                "required": [
-                  "actor_id"
-                ]
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "actor_id": {
-                    "type": "string",
-                    "maxLength": 512
-                  }
-                },
-                "required": [
-                  "actor_id"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/internal/accounts/{account}/suspend": {
-      "post": {
-        "summary": "Explicit scoped operator suspend",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
-        "parameters": [
-          {
-            "name": "account",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {},
-                "required": []
-              }
-            },
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {},
-                "required": []
-              }
-            }
-          }
-        }
-      }
-    },
-    "/internal/accounts/{account}/audit": {
-      "get": {
-        "summary": "Restricted audit metadata read, itself audited",
-        "responses": {
-          "200": {
-            "description": "Successful scoped result"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          },
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
-        "parameters": [
-          {
-            "name": "account",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/tasks": {
-      "get": {
-        "summary": "Disabled tasks capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/tasks/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled tasks capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/streams": {
-      "get": {
-        "summary": "Disabled streams capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/streams/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled streams capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/artifacts": {
-      "get": {
-        "summary": "Disabled artifacts capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/artifacts/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled artifacts capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/conversations": {
-      "get": {
-        "summary": "Disabled conversations capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/conversations/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled conversations capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/operations": {
-      "get": {
-        "summary": "Read current account lifecycle operations; native identifiers omitted",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Account-scoped result"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "503": {
-            "description": "Unconfigured usage/schema unavailable"
-          }
-        },
-        "parameters": []
-      }
-    },
-    "/v1/exports": {
-      "get": {
-        "summary": "Disabled exports capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/exports/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled exports capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/memory": {
-      "get": {
-        "summary": "Disabled memory capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/memory/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled memory capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/schedules": {
-      "get": {
-        "summary": "Disabled schedules capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/schedules/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled schedules capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/integrations": {
-      "get": {
-        "summary": "Disabled integrations capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/integrations/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled integrations capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/costs": {
-      "get": {
-        "summary": "Read reported cost, held allowance and pending reconciliation; running estimate may be unknown",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Account-scoped result"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "503": {
-            "description": "Unconfigured usage/schema unavailable"
-          }
-        },
-        "parameters": []
-      }
-    },
-    "/v1/controls": {
-      "get": {
-        "summary": "Disabled controls capability; authenticated customer required",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
-    "/v1/controls/{id}": {
-      "get": {
-        "summary": "Scoped ownership asserted before disabled controls capability",
-        "responses": {
-          "503": {
-            "description": "Audit/storage/capability unavailable"
-          },
-          "400": {
-            "description": "Invalid input or routing override"
-          },
-          "401": {
-            "description": "Identity or credentials required"
-          },
-          "403": {
-            "description": "CSRF or unsupported support privilege"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "429": {
-            "description": "Rate limit"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "maxLength": 96
-            }
-          }
-        ]
-      }
-    },
-    "/v1/operations/{operation_id}": {
-      "get": {
-        "summary": "Read a lifecycle operation owned by the current account",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Account-scoped result"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "503": {
-            "description": "Unconfigured usage/schema unavailable"
-          }
-        },
-        "parameters": [
-          {
-            "name": "operation_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/account/usage/": {
-      "get": {
-        "summary": "Account-scoped usage page",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Account-scoped result"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          },
-          "503": {
-            "description": "Unconfigured usage/schema unavailable"
-          }
-        },
-        "parameters": []
-      }
-    },
-    "/internal/accounts/{account}/deployment/operations": {
-      "post": {
-        "summary": "Queue fixed scoped lifecycle metadata; runtime remains disabled",
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "description": "Verified operator MFA and lifecycle_<kind> grant for exact account required. Generation mandatory except create; backup_ref mandatory only for restore. No native path/token/image input.",
-        "parameters": [
-          {
-            "name": "account",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Queued metadata only"
-          },
-          "400": {
-            "description": "Invalid request"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "403": {
-            "description": "CSRF denied"
-          },
-          "404": {
-            "description": "Unavailable or not scoped"
-          },
-          "409": {
-            "description": "State/idempotency conflict"
-          },
-          "429": {
-            "description": "Rate limited"
-          },
-          "503": {
-            "description": "Storage/audit unavailable"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "maxLength": 512
-                  },
-                  "key": {
-                    "type": "string",
-                    "maxLength": 512
-                  },
-                  "generation": {
-                    "type": "string",
-                    "maxLength": 512
-                  },
-                  "profile": {
-                    "type": "string",
-                    "maxLength": 512
-                  },
-                  "backup_ref": {
-                    "type": "string",
-                    "maxLength": 512
-                  }
-                },
-                "required": [
-                  "kind",
-                  "key"
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
-    "/internal/accounts/{account}/deployment/operations/{operation_id}/retry": {
-      "post": {
-        "summary": "Queue fixed scoped lifecycle metadata; runtime remains disabled",
-        "security": [
-          {
-            "sessionCookie": [],
-            "csrfHeader": []
-          }
-        ],
-        "description": "Verified operator MFA and lifecycle_<kind> grant for exact account required. Generation mandatory except create; backup_ref mandatory only for restore. No native path/token/image input.",
-        "parameters": [
-          {
-            "name": "account",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "operation_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Queued metadata only"
-          },
-          "400": {
-            "description": "Invalid request"
-          },
-          "401": {
-            "description": "Identity required"
-          },
-          "403": {
-            "description": "CSRF denied"
-          },
-          "404": {
-            "description": "Unavailable or not scoped"
-          },
-          "409": {
-            "description": "State/idempotency conflict"
-          },
-          "429": {
-            "description": "Rate limited"
-          },
-          "503": {
-            "description": "Storage/audit unavailable"
-          }
-        },
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {},
-                "required": []
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/requests": {
-      "get": {
-        "summary": "List the current account\u2019s saved requests",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Own account request records only"
-          },
-          "401": {
-            "description": "Sign-in required"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          }
-        }
-      },
-      "post": {
-        "summary": "Save waiting work; native execution is currently disabled",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "message",
-                  "key"
-                ],
-                "properties": {
-                  "message": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 16000
-                  },
-                  "key": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
-                    "minLength": 1,
-                    "maxLength": 64
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Saved waiting record; execution_enabled=false"
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "403": {
-            "description": "CSRF or account access denied"
-          },
-          "409": {
-            "description": "Idempotency conflict or queue full"
-          }
-        }
-      }
-    },
-    "/v1/requests/{request_id}": {
-      "parameters": [
-        {
-          "name": "request_id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
-          }
-        }
-      ],
-      "get": {
-        "summary": "Read own request status and public result",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Own account request records only"
-          },
-          "401": {
-            "description": "Sign-in required"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          }
-        }
-      }
-    },
-    "/v1/requests/{request_id}/cancel": {
-      "parameters": [
-        {
-          "name": "request_id",
-          "in": "path",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "format": "uuid"
-          }
-        }
-      ],
-      "post": {
-        "summary": "Cancel waiting work or record cancellation intent for active work",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Cancellation recorded; active slot stays held until confirmed stop"
-          },
-          "403": {
-            "description": "CSRF denied"
-          },
-          "404": {
-            "description": "Unavailable or not owned"
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "securitySchemes": {
-      "sessionCookie": {
-        "type": "apiKey",
-        "in": "cookie",
-        "name": "__Host-agentai_session"
-      },
-      "csrfHeader": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-CSRFToken",
-        "description": "Django CSRF form token and same-origin HTTPS checks are required on every POST, including anonymous authentication."
-      }
-    }
+ "openapi": "3.1.0",
+ "info": {
+  "title": "AgentAI private account API",
+  "version": "0.5.0",
+  "description": "Invite-only account API. Everything a replacement front end needs: /v1/csrf, /auth/*, /v1/app, then the resource endpoints. See UI_CONTRACT.md. Customer execution is live when features.execution is true."
+ },
+ "servers": [
+  {
+   "url": "https://agent.example.com",
+   "description": "Design placeholder, not a live endpoint"
   }
+ ],
+ "paths": {
+  "/healthz": {
+   "get": {
+    "summary": "Private process liveness",
+    "responses": {
+     "200": {
+      "description": "Private health"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     },
+     "503": {
+      "description": "Unavailable"
+     }
+    }
+   }
+  },
+  "/readyz": {
+   "get": {
+    "summary": "Private foundation readiness",
+    "responses": {
+     "200": {
+      "description": "Private health"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     },
+     "503": {
+      "description": "Unavailable"
+     }
+    }
+   }
+  },
+  "/v1/projects": {
+   "get": {
+    "summary": "Own account project list",
+    "responses": {
+     "200": {
+      "description": "Scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     },
+     "503": {
+      "description": "Unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   },
+   "post": {
+    "summary": "Create a project (plan quota 10)",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "maxLength": 120
+         }
+        },
+        "required": [
+         "name"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Created project"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "404": {
+      "description": "Unavailable"
+     },
+     "409": {
+      "description": "Project limit reached"
+     }
+    }
+   }
+  },
+  "/v1/projects/{id}": {
+   "get": {
+    "summary": "Own account project read",
+    "responses": {
+     "200": {
+      "description": "Scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     },
+     "503": {
+      "description": "Unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/me": {
+   "get": {
+    "summary": "Current verified customer identity and execution gate",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/auth/login": {
+   "post": {
+    "summary": "Rotate authenticated session; operator MFA follows",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "email",
+         "password"
+        ]
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "email",
+         "password"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/logout": {
+   "post": {
+    "summary": "Revoke current session",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/revoke-sessions": {
+   "post": {
+    "summary": "Revoke all customer sessions",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/recovery": {
+   "post": {
+    "summary": "Generic recovery request; queue only, no inline SMTP",
+    "responses": {
+     "202": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         }
+        },
+        "required": [
+         "email"
+        ]
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         }
+        },
+        "required": [
+         "email"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/reset": {
+   "post": {
+    "summary": "Consume hashed recovery code atomically",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "code",
+         "password"
+        ]
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "code",
+         "password"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/activate": {
+   "post": {
+    "summary": "Verified invitation onboarding",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "code",
+         "password"
+        ]
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "code",
+         "password"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/mfa": {
+   "post": {
+    "summary": "Confirmed operator TOTP verification",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "code"
+        ]
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         }
+        },
+        "required": [
+         "code"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/internal/accounts/{account}/invite": {
+   "post": {
+    "summary": "Explicit scoped operator invite",
+    "responses": {
+     "201": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
+    "parameters": [
+     {
+      "name": "account",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         }
+        },
+        "required": [
+         "email"
+        ]
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         }
+        },
+        "required": [
+         "email"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/internal/accounts/{account}/revoke": {
+   "post": {
+    "summary": "Explicit scoped operator revoke",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
+    "parameters": [
+     {
+      "name": "account",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "actor_id": {
+          "type": "string",
+          "maxLength": 512
+         }
+        },
+        "required": [
+         "actor_id"
+        ]
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "actor_id": {
+          "type": "string",
+          "maxLength": 512
+         }
+        },
+        "required": [
+         "actor_id"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/internal/accounts/{account}/suspend": {
+   "post": {
+    "summary": "Explicit scoped operator suspend",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
+    "parameters": [
+     {
+      "name": "account",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+       }
+      },
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+       }
+      }
+     }
+    }
+   }
+  },
+  "/internal/accounts/{account}/audit": {
+   "get": {
+    "summary": "Restricted audit metadata read, itself audited",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     },
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "description": "Verified operator MFA and a current account/action grant are mandatory; no staff/superuser bypass.",
+    "parameters": [
+     {
+      "name": "account",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ]
+   }
+  },
+  "/v1/tasks": {
+   "get": {
+    "summary": "Disabled tasks capability; authenticated customer required",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/v1/tasks/{id}": {
+   "get": {
+    "summary": "Read own request/task state",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Task/request/reservation state; execution_enabled false"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     }
+    }
+   }
+  },
+  "/v1/streams": {
+   "get": {
+    "summary": "Disabled streams capability; authenticated customer required",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/v1/streams/{id}": {
+   "get": {
+    "summary": "Scoped ownership asserted before disabled streams capability",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ]
+   }
+  },
+  "/v1/conversations": {
+   "get": {
+    "summary": "List own conversations (optionally by project)",
+    "responses": {
+     "200": {
+      "description": "Conversation list"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable"
+     }
+    }
+   },
+   "post": {
+    "summary": "Create a conversation in an own project (10 per project)",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "project_id": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "project_id"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Created conversation"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "404": {
+      "description": "Unavailable"
+     },
+     "409": {
+      "description": "Conversation limit reached"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}": {
+   "get": {
+    "summary": "Read an own conversation",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Conversation"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     }
+    }
+   }
+  },
+  "/v1/operations": {
+   "get": {
+    "summary": "Read current account lifecycle operations; native identifiers omitted",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/exports": {
+   "get": {
+    "summary": "Disabled exports capability; authenticated customer required",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/v1/exports/{id}": {
+   "get": {
+    "summary": "Scoped ownership asserted before disabled exports capability",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ]
+   }
+  },
+  "/v1/memory": {
+   "get": {
+    "summary": "Disabled memory capability; authenticated customer required",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/v1/memory/{id}": {
+   "get": {
+    "summary": "Scoped ownership asserted before disabled memory capability",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ]
+   }
+  },
+  "/v1/schedules": {
+   "get": {
+    "summary": "Disabled schedules capability; authenticated customer required",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/v1/schedules/{id}": {
+   "get": {
+    "summary": "Scoped ownership asserted before disabled schedules capability",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ]
+   }
+  },
+  "/v1/integrations": {
+   "get": {
+    "summary": "Disabled integrations capability; authenticated customer required",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/v1/integrations/{id}": {
+   "get": {
+    "summary": "Scoped ownership asserted before disabled integrations capability",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ]
+   }
+  },
+  "/v1/costs": {
+   "get": {
+    "summary": "Read reported cost, held allowance and pending reconciliation; running estimate may be unknown",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/controls": {
+   "get": {
+    "summary": "Disabled controls capability; authenticated customer required",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ]
+   }
+  },
+  "/v1/controls/{id}": {
+   "get": {
+    "summary": "Scoped ownership asserted before disabled controls capability",
+    "responses": {
+     "503": {
+      "description": "Audit/storage/capability unavailable"
+     },
+     "400": {
+      "description": "Invalid input or routing override"
+     },
+     "401": {
+      "description": "Identity or credentials required"
+     },
+     "403": {
+      "description": "CSRF or unsupported support privilege"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 96
+      }
+     }
+    ]
+   }
+  },
+  "/v1/operations/{operation_id}": {
+   "get": {
+    "summary": "Read a lifecycle operation owned by the current account",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": [
+     {
+      "name": "operation_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/account/usage/": {
+   "get": {
+    "summary": "Account-scoped usage page",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/internal/accounts/{account}/deployment/operations": {
+   "post": {
+    "summary": "Queue fixed scoped lifecycle metadata; runtime remains disabled",
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "description": "Verified operator MFA and lifecycle_<kind> grant for exact account required. Generation mandatory except create; backup_ref mandatory only for restore. No native path/token/image input.",
+    "parameters": [
+     {
+      "name": "account",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Queued metadata only"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not scoped"
+     },
+     "409": {
+      "description": "State/idempotency conflict"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "Storage/audit unavailable"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "kind": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "key": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "generation": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "profile": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "backup_ref": {
+          "type": "string",
+          "maxLength": 512
+         }
+        },
+        "required": [
+         "kind",
+         "key"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/internal/accounts/{account}/deployment/operations/{operation_id}/retry": {
+   "post": {
+    "summary": "Queue fixed scoped lifecycle metadata; runtime remains disabled",
+    "security": [
+     {
+      "sessionCookie": [],
+      "csrfHeader": []
+     }
+    ],
+    "description": "Verified operator MFA and lifecycle_<kind> grant for exact account required. Generation mandatory except create; backup_ref mandatory only for restore. No native path/token/image input.",
+    "parameters": [
+     {
+      "name": "account",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "operation_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Queued metadata only"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not scoped"
+     },
+     "409": {
+      "description": "State/idempotency conflict"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "Storage/audit unavailable"
+     }
+    },
+    "requestBody": {
+     "required": false,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/requests": {
+   "get": {
+    "summary": "List the current account\u2019s saved requests",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Own account request records only"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     }
+    }
+   },
+   "post": {
+    "summary": "Save waiting work; native execution is currently disabled",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "message",
+         "key"
+        ],
+        "properties": {
+         "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16000
+         },
+         "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "minLength": 1,
+          "maxLength": 64
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Saved waiting record; execution_enabled=false"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "403": {
+      "description": "CSRF or account access denied"
+     },
+     "409": {
+      "description": "Idempotency conflict or queue full"
+     }
+    }
+   }
+  },
+  "/v1/requests/{request_id}": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "get": {
+    "summary": "Read own request status and public result",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Own account request records only"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     }
+    }
+   }
+  },
+  "/v1/requests/{request_id}/cancel": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Cancel waiting work or record cancellation intent for active work",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Cancellation recorded; active slot stays held until confirmed stop"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/messages": {
+   "get": {
+    "summary": "Bounded transcript with id cursor",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "after",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Messages and conversation task states; execution_enabled false"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "400": {
+      "description": "Invalid pagination"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/send": {
+   "post": {
+    "summary": "Submit one actionable chat request (Phase 5 admission; idempotent by key)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "message": {
+          "type": "string",
+          "maxLength": 16000
+         },
+         "key": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "message",
+         "key"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Queued send; execution_enabled/admission flags honest"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "402": {
+      "description": "budget_denied with category; no native call"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     },
+     "409": {
+      "description": "Request conflict"
+     }
+    }
+   }
+  },
+  "/v1/tasks/{id}/cancel": {
+   "post": {
+    "summary": "Cancel own task (waiting immediate; running records intent until confirmed abort)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Cancellation recorded"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     }
+    }
+   }
+  },
+  "/v1/account/connections": {
+   "get": {
+    "summary": "List connector status (read-only; provider writes are never enabled)",
+    "responses": {
+     "200": {
+      "description": "Connections"
+     },
+     "401": {
+      "description": "Identity required"
+     }
+    }
+   }
+  },
+  "/v1/account/connections/link": {
+   "post": {
+    "summary": "Begin provider link (503 connector_not_configured until provider registration and custody exist)",
+    "responses": {
+     "400": {
+      "description": "Invalid request"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "Not configured"
+     }
+    }
+   }
+  },
+  "/v1/account/connections/callback": {
+   "get": {
+    "summary": "Provider callback (503 until an exchange adapter is installed; consumes nothing)",
+    "responses": {
+     "401": {
+      "description": "Identity required"
+     },
+     "503": {
+      "description": "Not configured"
+     }
+    }
+   }
+  },
+  "/v1/account/connections/disconnect": {
+   "post": {
+    "summary": "Revoke own connection and cancel its queued operations",
+    "responses": {
+     "200": {
+      "description": "Disconnected"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     }
+    }
+   }
+  },
+  "/v1/account/drafts": {
+   "get": {
+    "summary": "Local draft proposals (never sent by AgentAI)",
+    "responses": {
+     "200": {
+      "description": "Drafts"
+     },
+     "401": {
+      "description": "Identity required"
+     }
+    }
+   }
+  },
+  "/v1/account/billing": {
+   "get": {
+    "summary": "Plan, access status, included limits, usage (reconciled vs held) and invoices for the signed-in account",
+    "responses": {
+     "200": {
+      "description": "Billing overview"
+     },
+     "401": {
+      "description": "Identity required"
+     }
+    }
+   }
+  },
+  "/v1/account/billing/checkout": {
+   "post": {
+    "summary": "Start hosted Stripe Checkout (test mode). Account, price and quantity are derived server-side; no fields accepted",
+    "responses": {
+     "200": {
+      "description": "Hosted checkout URL"
+     },
+     "302": {
+      "description": "Redirect to hosted checkout for form posts"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "409": {
+      "description": "Already subscribed"
+     },
+     "502": {
+      "description": "Provider unavailable"
+     },
+     "503": {
+      "description": "Feature off or billing not configured"
+     }
+    }
+   }
+  },
+  "/v1/account/billing/portal": {
+   "post": {
+    "summary": "Open the hosted customer portal (payment method, plan, cancel)",
+    "responses": {
+     "200": {
+      "description": "Hosted portal URL"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "502": {
+      "description": "Provider unavailable"
+     },
+     "503": {
+      "description": "Feature off or billing not configured"
+     }
+    }
+   }
+  },
+  "/v1/billing/webhook": {
+   "post": {
+    "summary": "Stripe event ingress: signature over the raw body, size and rate limited, stored before acknowledgment. No cookie.",
+    "responses": {
+     "200": {
+      "description": "Stored or duplicate"
+     },
+     "400": {
+      "description": "Invalid signature or event"
+     },
+     "413": {
+      "description": "Body too large"
+     },
+     "429": {
+      "description": "Rate limited; the provider retries"
+     },
+     "503": {
+      "description": "Not configured or storage unavailable; the provider retries"
+     }
+    }
+   }
+  },
+  "/v1/csrf": {
+   "get": {
+    "summary": "Get a CSRF token for script clients (also sets the CSRF cookie). Send it as X-CSRFToken on every POST. Public.",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "security": []
+   }
+  },
+  "/v1/app": {
+   "get": {
+    "summary": "Signed-in bootstrap: user, assistant state, feature map, limits. One call for any front end.",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/archive": {
+   "post": {
+    "summary": "Hide a conversation (history and cost records are kept). Idempotent.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/tasks/{id}/events": {
+   "get": {
+    "summary": "Timeline events of one task (after/limit paging)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/tasks/{id}/stream": {
+   "get": {
+    "summary": "Server-sent events for one task (task_event); reconnect with Last-Event-ID",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/account/telegram": {
+   "get": {
+    "summary": "Telegram links of this account",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/account/telegram/link": {
+   "post": {
+    "summary": "Start linking a Telegram chat (returns a one-time code)",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/account/telegram/unlink": {
+   "post": {
+    "summary": "Unlink one Telegram chat",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "chat_id": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/telegram/webhook": {
+   "post": {
+    "summary": "Telegram delivery webhook (provider only, shared-secret header; not for front ends)",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "security": []
+   }
+  },
+  "/v1/projects/{id}/files": {
+   "get": {
+    "summary": "List (GET) or upload (POST, multipart) project files",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/projects/{id}/files/{file_id}/preview": {
+   "get": {
+    "summary": "Sandboxed preview of one file",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "file_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/projects/{id}/bundle": {
+   "get": {
+    "summary": "Download a project bundle",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/artifacts/{id}/versions/{version}/ticket": {
+   "post": {
+    "summary": "Mint a short-lived download ticket for an artifact version",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "version",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/artifacts/{id}/versions/{version}/download": {
+   "get": {
+    "summary": "Download an artifact version with a ticket",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "version",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/app/": {
+   "get": {
+    "summary": "Pluggable front-end shell: serves index.html from the installed UI bundle (own script-capable CSP); 404 until installed",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "security": []
+   }
+  },
+  "/app/{path}": {
+   "get": {
+    "summary": "Static files of the installed UI bundle; unknown extension-less paths return the shell for client-side routes",
+    "parameters": [
+     {
+      "name": "path",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    },
+    "security": []
+   }
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "sessionCookie": {
+    "type": "apiKey",
+    "in": "cookie",
+    "name": "__Host-agentai_session"
+   },
+   "csrfHeader": {
+    "type": "apiKey",
+    "in": "header",
+    "name": "X-CSRFToken",
+    "description": "Django CSRF form token and same-origin HTTPS checks are required on every POST, including anonymous authentication."
+   }
+  }
+ }
 }

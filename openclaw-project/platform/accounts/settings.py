@@ -76,6 +76,48 @@ if os.environ.get('AGENTAI_MAIL_ENABLED') == '1':
     validate_email(DEFAULT_FROM_EMAIL)
     if not EMAIL_HOST or DEFAULT_FROM_EMAIL.endswith('@localhost'):
         raise ImproperlyConfigured('Configured SMTP host and sender domain are required before mail activation')
+TELEGRAM_BOT_TOKEN = os.environ.get('AGENTAI_TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_WEBHOOK_SECRET = os.environ.get('AGENTAI_TELEGRAM_WEBHOOK_SECRET', '')
+TELEGRAM_BOT_USERNAME = os.environ.get('AGENTAI_TELEGRAM_BOT_USERNAME', '').lstrip('@')
+if TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_USERNAME:
+    # Partial configuration must fail loudly; the ingress stays fail-closed.
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_WEBHOOK_SECRET or not TELEGRAM_BOT_USERNAME:
+        raise ImproperlyConfigured('Telegram ingress requires bot token, webhook secret (>=32 chars) and bot username together')
+    if len(TELEGRAM_WEBHOOK_SECRET) < 32:
+        raise ImproperlyConfigured('Telegram webhook secret must be at least 32 characters')
+    TELEGRAM_ENABLED = True
+else:
+    TELEGRAM_ENABLED = False
+# Phase 8 storage: artifact/file content lives outside the metadata database.
+STORAGE_DIR = os.environ.get('AGENTAI_STORAGE_DIR', '')
+ARTIFACT_SIGNING_KEY = os.environ.get('AGENTAI_ARTIFACT_SIGNING_KEY', '')
+STORAGE_READY = bool(STORAGE_DIR) and len(ARTIFACT_SIGNING_KEY) >= 32
+if STORAGE_DIR and not STORAGE_READY:
+    raise ImproperlyConfigured('Artifact storage requires AGENTAI_ARTIFACT_SIGNING_KEY (>=32 chars)')
+# Documented scan capability (signature/UTF-8/JSON/binary validation). Without it,
+# uploads stay disabled per the launch contract.
+UPLOADS_ENABLED = os.environ.get('AGENTAI_UPLOADS_ENABLED') == '1'
+DATA_UPLOAD_MAX_MEMORY_SIZE = 31457280  # 25MiB batch cap plus multipart overhead
 LOGGING = {'version': 1, 'disable_existing_loggers': False,
  'handlers': {'null': {'class': 'logging.NullHandler'}},
  'loggers': {'django': {'handlers': ['null'], 'propagate': False}}}
+# Owner feature switches (written by the private ops dashboard, read-only here). Missing = everything off.
+SWITCHES_FILE = os.environ.get('AGENTAI_SWITCHES_FILE', '')
+SWITCH_FACTS_FILE = os.environ.get('AGENTAI_SWITCH_FACTS_FILE', '')
+# Host cell bridge socket and the per-message spend reserved before a customer request may run.
+CELL_BRIDGE_SOCKET = os.environ.get('AGENTAI_CELL_BRIDGE_SOCKET', '/run/agentai-cell-bridge/bridge.sock')
+# Total provider spend the service will fund across all customers: 2 trial accounts x $25 included usage.
+SERVICE_ALLOCATION_MICROUSD = int(os.environ.get('AGENTAI_SERVICE_ALLOCATION_MICROUSD', '50000000'))
+ROUTING_CONFIG_FILE = os.environ.get('AGENTAI_ROUTING_CONFIG_FILE', '/var/lib/agentai-platform/routing/routing.json')
+TYPESAFE_KEY_FILE = os.environ.get('AGENTAI_TYPESAFE_KEY_FILE', '/var/lib/agentai-platform/routing/typesafe.key')
+UI_BUNDLE_DIR = os.environ.get('AGENTAI_UI_BUNDLE_DIR', '/var/lib/agentai-platform/ui')
+CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
+
+# Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.
+BILLING_SECRET_KEY_FILE = os.environ.get('AGENTAI_BILLING_SECRET_KEY_FILE', '')
+BILLING_WEBHOOK_SECRET_FILE = os.environ.get('AGENTAI_BILLING_WEBHOOK_SECRET_FILE', '')   # one whsec_ per line (rotation overlap)
+BILLING_API_VERSION = os.environ.get('AGENTAI_BILLING_API_VERSION', '')                   # pinned Stripe API version, required
+BILLING_PRICE_ID = os.environ.get('AGENTAI_BILLING_PRICE_ID', '')                         # the one launch plan price
+BILLING_PLAN_FILE = os.environ.get('AGENTAI_BILLING_PLAN_FILE', '')                       # product/plan.json copy
+BILLING_PUBLIC_ORIGIN = os.environ.get('AGENTAI_BILLING_PUBLIC_ORIGIN', 'https://getlumina.pro')
+BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'                   # owner-only, off by default

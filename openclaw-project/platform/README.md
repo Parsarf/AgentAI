@@ -36,6 +36,7 @@ Cheap targeted checks (disposable synthetic identities, no model/mail charges):
 PYTHONPATH=. .venv/bin/python tests/check_account_concurrency.py
 PYTHONPATH=. .venv/bin/python tests/check_account_http.py
 PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -p test_foundation.py
+PYTHONPATH=. .venv/bin/python -m unittest tests.test_chat tests.test_gateway
 ```
 
 The HTTP checks need permission to bind loopback in sandboxed environments.
