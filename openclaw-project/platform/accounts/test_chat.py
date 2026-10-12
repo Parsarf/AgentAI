@@ -177,3 +177,18 @@ class ExecutionSwitchChecks(ChatHTTPChecks):
         self.assertEqual(sent.json()['request']['admission'], 'reserved')
         page = a.get('/account/chat/?conversation=' + conversation, secure=True)
         self.assertContains(page, 'http-equiv="refresh"')                     # refreshes itself while a task is waiting
+
+
+class DefaultOpenChecks(ChatHTTPChecks):
+    def test_chat_opens_into_a_ready_conversation_and_foreign_ids_do_not(self):
+        a = self.clients[0]
+        page = a.get('/account/chat/', secure=True)
+        self.assertContains(page, 'name="message"')                           # composer is there without clicking anything
+        self.assertEqual(len(self.service_conversations()), 1)
+        a.get('/account/chat/', secure=True)
+        self.assertEqual(len(self.service_conversations()), 1)                # reopening reuses it
+        other = self.conversation(client=1)
+        self.assertNotContains(a.get('/account/chat/?conversation=' + other, secure=True), 'name="message"')
+
+    def service_conversations(self):
+        return self.clients[0].get('/v1/conversations', secure=True).json()['conversations']

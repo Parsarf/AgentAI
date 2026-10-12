@@ -160,12 +160,25 @@ def chat_page(request):
     p = principal(request)
     project_id = request.GET.get('project') or None
     conversation_id = request.GET.get('conversation') or None
+    nothing_asked = not project_id and not conversation_id and not request.GET.get('error')
     projects = s.projects(p)
     if project_id and not any(item['id'] == project_id for item in projects):
         project_id = None
     conversations = s.conversations(p, project_id)
     if conversation_id and not any(item['id'] == conversation_id for item in conversations):
         conversation_id = None
+    if nothing_asked and projects:
+        # Open straight into a usable chat: the newest conversation of the first project, or a fresh one.
+        project_id = projects[0]['id']
+        conversations = s.conversations(p, project_id)
+        if conversations:
+            conversation_id = conversations[-1]['id']
+        else:
+            try:
+                conversation_id = s.create_conversation(p, project_id)['id']
+                conversations = s.conversations(p, project_id)
+            except Conflict:
+                pass   # account setup incomplete: keep the empty state
     transcript = s.messages(p, conversation_id) if conversation_id else None
     artifacts, project_files = [], []
     storage_ready = uploads_enabled = False

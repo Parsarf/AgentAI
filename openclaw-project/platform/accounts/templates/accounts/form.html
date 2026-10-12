@@ -2,8 +2,8 @@
 {% if page == 'login' %}
 <div class="pagehead"><h1>Sign in</h1><p>Access is by invitation.</p></div>
 <section class="card"><form class="stack" method="post" action="/auth/login">{% csrf_token %}
-<label class="field">Email<input type="email" name="email" autocomplete="username" required maxlength="254"></label>
-<label class="field">Password<input type="password" name="password" autocomplete="current-password" required maxlength="128"></label>
+<label class="field" for="email">Email<input id="email" type="email" name="email" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required maxlength="254"></label>
+<label class="field" for="password">Password<input id="password" type="password" name="password" autocomplete="current-password" required maxlength="128"></label>
 <button>Sign in</button></form>
 <p class="hint"><a href="/account/recover/">Recover account</a></p></section>
 {% elif page == 'recover' %}
@@ -21,7 +21,7 @@
 <div class="pagehead"><h1>{% if page == 'activate' %}Activate your account{% else %}Reset your password{% endif %}</h1><p>Paste the long verification code from your newest AgentAI account email. Codes expire 15 minutes after sending.</p></div>
 <section class="card"><form class="stack" method="post" action="{% if page == 'activate' %}/auth/activate{% else %}/auth/reset{% endif %}">{% csrf_token %}
 <label class="field">Single-use code<input name="code" autocomplete="off" autocapitalize="none" spellcheck="false" required maxlength="512"></label>
-<label class="field">New password<input type="password" name="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+<label class="field" for="new-password">New password<input id="new-password" type="password" name="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
 <p class="hint">At least 12 characters.</p>
 <button>Complete verification</button></form></section>
 {% endif %}
