@@ -9,6 +9,9 @@ from .lifecycle import AccountStore
 from .services import Denied, rate
 from .views import endpoint,customer
 
+def _live():
+    from .chat import execution_on
+    return execution_on()
 def queue():return RequestQueue(AccountStore(connection.settings_dict['NAME']))
 def principal(request):return Principal(request.account_id,str(request.user.pk),'customer')
 
@@ -21,8 +24,8 @@ def requests(request,request_id=None):
             if request_id:return JsonResponse({'error':'method_not_allowed'},status=405)
             rate('task.create',request.account_id,30,3600)   # per account, on top of the queue and budget caps
             item=queue().submit(principal(request),message=request.input.get('message',''),key=request.input.get('key',''))
-            return JsonResponse({'request':item,'execution_enabled':False},status=202)
-        return JsonResponse({'request':queue().get(principal(request),request_id)} if request_id else {'requests':queue().get(principal(request)),'execution_enabled':False})
+            return JsonResponse({'request':item,'execution_enabled':_live()},status=202)
+        return JsonResponse({'request':queue().get(principal(request),request_id)} if request_id else {'requests':queue().get(principal(request)),'execution_enabled':_live()})
     except NotFound:raise Denied()
     except Conflict:return JsonResponse({'error':'request_conflict'},status=409)
 

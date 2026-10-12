@@ -1,0 +1,16 @@
+/* Design tokens: the only place colours, radii and spacing are defined. ~92% of the UI is monochrome; neon is for
+   branding, capability icons, active states, progress and the primary action. */
+:root {
+  color-scheme: dark;
+  --bg: #050505; --bg-2: #0b0c0f; --card: #101115; --elevated: #16171c;
+  --ink: #f5f5f7; --ink-2: #9698a2; --ink-3: #646772;
+  --line: rgba(255, 255, 255, .08); --line-2: rgba(255, 255, 255, .13);
+  --neon: #6865ff; --neon-2: #a855f7; --ok: #2dd4bf; --warn: #f5b942; --bad: #ef6060;
+  --r-sm: 10px; --r: 16px; --r-lg: 22px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --gap: 16px; --pad: 20px; --ease: cubic-bezier(.2, .7, .2, 1);
+}
+:root[data-compact='true'] { --gap: 10px; --pad: 14px; }
+:root[data-motion='reduced'] *, :root[data-motion='reduced'] *::before { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -1,0 +1,3 @@
+earth.jpg: NASA Visible Earth "Blue Marble: Land Surface, Shallow Water, and Shaded Topography" (land_shallow_topo_2048.jpg),
+https://visibleearth.nasa.gov/images/57752/blue-marble-land-surface-shallow-water-and-shaded-topography
+NASA imagery is not subject to copyright in the United States and may be used with credit to NASA Earth Observatory (Reto Stockli, NASA GSFC).
