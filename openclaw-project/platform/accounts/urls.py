@@ -42,7 +42,7 @@ urlpatterns += [
 ]
 urlpatterns += [
  path('v1/conversations',ch.chat_conversations),path('v1/conversations/<str:conversation_id>',ch.chat_conversations),
- path('v1/conversations/<str:conversation_id>/messages',ch.chat_messages),
+ path('v1/conversations/<str:conversation_id>/messages',ch.chat_messages),path('v1/conversations/<str:conversation_id>/archive',ch.chat_archive),
  path('v1/conversations/<str:conversation_id>/send',ch.chat_send),
  path('v1/tasks/<str:request_id>',ch.chat_task),path('v1/tasks/<str:request_id>/cancel',ch.chat_cancel),
  path('v1/account/telegram/link',tg.link),path('v1/account/telegram/unlink',tg.unlink),

@@ -192,3 +192,18 @@ class DefaultOpenChecks(ChatHTTPChecks):
 
     def service_conversations(self):
         return self.clients[0].get('/v1/conversations', secure=True).json()['conversations']
+
+
+class ArchiveChecks(ChatHTTPChecks):
+    def test_archive_hides_without_deleting_and_frees_the_limit(self):
+        a = self.clients[0]
+        conversation = self.conversation()
+        self.post(a, '/v1/conversations/' + conversation + '/send', {'message': 'hello', 'key': 'arch1'})
+        self.assertEqual(self.post(a, '/v1/conversations/' + conversation + '/archive', {}).status_code, 200)
+        self.assertEqual(self.post(a, '/v1/conversations/' + conversation + '/archive', {}).status_code, 200)    # idempotent
+        self.assertNotIn(conversation, [c['id'] for c in a.get('/v1/conversations', secure=True).json()['conversations']])
+        with connection.cursor() as c:
+            c.execute('SELECT count(*) FROM chat_messages WHERE conversation_id=%s', [conversation]); self.assertEqual(c.fetchone()[0], 1)
+        self.assertEqual(self.post(self.clients[1], '/v1/conversations/' + conversation + '/archive', {}).status_code, 404)
+        page = a.get('/account/chat/', secure=True)                          # opens a fresh conversation, not the archived one
+        self.assertNotContains(page, 'hello')

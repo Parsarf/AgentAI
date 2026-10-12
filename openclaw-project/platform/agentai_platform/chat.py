@@ -81,7 +81,7 @@ class ChatService:
             self.store._authorize(con, principal)
             if not con.execute('SELECT 1 FROM projects WHERE account_id=? AND id=?', (principal.account_id, project_id)).fetchone():
                 raise NotFound('unavailable')
-            count = con.execute('SELECT count(*) FROM conversations WHERE account_id=? AND project_id=?',
+            count = con.execute('SELECT count(*) FROM conversations WHERE account_id=? AND project_id=? AND archived_epoch IS NULL',
                                 (principal.account_id, project_id)).fetchone()[0]
             if count >= self.max_conversations_per_project:
                 raise Conflict('conversation limit reached')
@@ -98,13 +98,25 @@ class ChatService:
     def conversations(self, principal: Principal, project_id: str | None = None):
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            sql = 'SELECT c.id,c.project_id,c.created_at FROM conversations c WHERE c.account_id=?'
+            sql = 'SELECT c.id,c.project_id,c.created_at FROM conversations c WHERE c.account_id=? AND c.archived_epoch IS NULL'
             args: list = [principal.account_id]
             if project_id is not None:
                 identifier(project_id)
                 sql += ' AND c.project_id=?'
                 args.append(project_id)
             return [dict(row) for row in con.execute(sql + ' ORDER BY c.created_at,c.id LIMIT 100', args).fetchall()]
+
+    def archive_conversation(self, principal: Principal, conversation_id: str):
+        """Hide a conversation (history, tasks and ledger rows stay). Idempotent."""
+        identifier(conversation_id)
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            if not con.execute('SELECT 1 FROM conversations WHERE account_id=? AND id=?', (principal.account_id, conversation_id)).fetchone():
+                raise NotFound('unavailable')
+            con.execute('UPDATE conversations SET archived_epoch=coalesce(archived_epoch,?) WHERE account_id=? AND id=?',
+                        (int(self.clock()), principal.account_id, conversation_id))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, conversation_id, 'chat.conversation_archive', 'completed')
+            return {'id': conversation_id, 'archived': True}
 
     def conversation(self, principal: Principal, conversation_id: str):
         with self.store.connect() as con:

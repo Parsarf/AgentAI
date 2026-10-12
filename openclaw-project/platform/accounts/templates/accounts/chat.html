@@ -20,6 +20,7 @@
 {% empty %}<p class="hint">No conversations in this project yet.</p>{% endfor %}
 </div>
 <form class="stack" method="post" action="/v1/conversations">{% csrf_token %}<input type="hidden" name="project_id" value="{{ project_id }}"><button class="ghost small">New conversation</button></form>
+{% if conversation_id %}<form class="stack" method="post" action="/v1/conversations/{{ conversation_id }}/archive">{% csrf_token %}<button class="ghost small">Clear this conversation</button></form>{% endif %}
 </section>
 {% endif %}
 </aside>

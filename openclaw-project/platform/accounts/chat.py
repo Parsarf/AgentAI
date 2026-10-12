@@ -59,6 +59,19 @@ def _error_redirect(request, conversation_id, error, category=None):
     request.form_redirect = target
 
 
+@endpoint(['POST'], [])
+def chat_archive(request, conversation_id):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        result = service().archive_conversation(principal(request), conversation_id)
+        request.form_redirect = '/account/chat/'
+        return JsonResponse({'conversation': result})
+    except NotFound:
+        raise Denied()
+
+
 @endpoint(['GET', 'POST'], ['project_id'])
 def chat_conversations(request, conversation_id=None):
     denied = customer(request)
@@ -187,7 +200,8 @@ def chat_page(request):
         events_service = EventService(AccountStore(connection.settings_dict['NAME']))
         for task in transcript['tasks'][:3]:
             try:
-                task['events'] = events_service.events(p, task['id'], after=0, limit=50)['events']
+                task['events'] = [e for e in events_service.events(p, task['id'], after=0, limit=50)['events']
+                                  if 'transcript update' not in str((e.get('payload') or {}).get('summary', ''))]
             except Exception:
                 task['events'] = []
     if project_id:
