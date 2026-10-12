@@ -37,8 +37,8 @@ class InstallChecks(unittest.TestCase):
         paths, steps = bi.apply_steps({'key': '/tmp/k', 'secret': '/tmp/s', 'plan': '/tmp/p'}, 'price_x', '2025-09-30.clover')
         flat = ' '.join(' '.join(step[1:]) for step in steps)
         self.assertNotIn('sk_test', flat); self.assertNotIn('whsec_', flat)
-        self.assertIn('install -d -m750 -o root -g agentai-platform', flat); self.assertIn('install -m640', flat); self.assertIn('shred -u', flat)
-        self.assertEqual(steps[0][0], 'ssh'); self.assertTrue(all(p.startswith('/etc/agentai-platform/billing/') for p in paths.values()))
+        self.assertIn('install -d -m700 -o agentai-platform', flat); self.assertIn('install -m600 -o agentai-platform', flat); self.assertIn('shred -u', flat)
+        self.assertEqual(steps[0][0], 'ssh'); self.assertFalse(any(p.startswith('/etc/agentai-platform') for p in paths.values()))   # root-only directory
     def test_generated_merge_script_updates_settings_and_facts_in_place(self):
         import json, os, subprocess, sys, tempfile
         with tempfile.TemporaryDirectory() as d:

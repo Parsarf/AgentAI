@@ -5,17 +5,18 @@
   "base_revision": "85c83a4",
   "build_result": "READY",
   "acceptance": "NOT_RUN (Phase 15)",
-  "deployed": false,
+  "deployed": true,
   "provider_account_used": false,
   "keys_used": false,
   "live_mode_possible": false,
   "checks": {
-    "platform_tests": "350 pass, 2 skipped (Linux-only)",
-    "django_tests": "75 pass",
+    "platform_tests": "357 pass, 2 skipped",
+    "django_tests": "76 pass",
     "dashboard_tests": "35 pass",
     "billing_scenarios": 45,
     "installer_checks": 6,
-    "django_billing_routes": 8
+    "django_billing_routes": 8,
+    "open_access_scenarios": 8
   },
   "docs_verified": [
     "https://docs.stripe.com/webhooks",
@@ -47,5 +48,21 @@
     "platform/tests/test_billing_install.py": "8ef35ef6ecc6056efefd3e63f27b916786d0f00d94d4c4dd090c5ab4491a246a",
     "platform/accounts/test_billing.py": "0eeffedc928e79ec58c7f63743570ba22575d51573e3a5ac1ac9d4ab561403b5",
     "platform/BILLING.md": "44fa5371a4b79964e9725c2590ebb5213e1ebbe0d5ddb1861915a66c9f3936ee"
+  },
+  "deployment": {
+    "at": "2026-10-12T01:38Z",
+    "release": "20261012T0230Z-billing",
+    "migrations_applied": [
+      "0009",
+      "0010",
+      "0011",
+      "0012",
+      "0013"
+    ],
+    "backup": "backup-20261012T013633Z-premigrate-billing.sqlite3",
+    "stripe_configured": false,
+    "open_access_switch": "on (owner request)",
+    "billing_checkout_switch": "off",
+    "accounts_granted": 1
   }
 }

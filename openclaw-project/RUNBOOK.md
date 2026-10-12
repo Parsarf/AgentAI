@@ -844,3 +844,5 @@ Reference: `platform/BILLING.md`, `plans/product/phase-13.md`. Nothing here is o
 Check: `manage.py billing_worker --check` (inbox counts only). A growing `dead` count means events that need a person (unknown customer
 or session); `billing_worker --reconcile` compares every subscription with Stripe and reports drift. Turn the switch off to hide the
 buttons at any time; webhooks keep being stored and applied so no paid state is lost.
+
+**Free access (live since 2026-10-12):** the dashboard switch *Free access for every account* is ON; every active account has an `open` entitlement with the plan allowance. To start charging: finish the Stripe test setup, then turn on *Require payment*; free access ends within about 30 seconds and unsubscribed accounts are paused. To stop all use immediately: turn *Free access* off. Check what the worker did: `journalctl -u agentai-billing-worker -n 3`.

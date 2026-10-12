@@ -61,18 +61,21 @@ def merge_env(text, updates):
     return '\n'.join(out) + '\n'
 
 
-REMOTE_DIR = '/etc/agentai-platform/billing'
+REMOTE_DIR = '/var/lib/agentai-platform/billing'   # /etc/agentai-platform is root-only (0700), the app user cannot reach it
+PLAN_PATH = '/opt/agentai-platform/billing-plan.json'
 ENV_FILE = '/etc/agentai-platform/accounts.env'
 FACTS_FILE = '/opt/openclaw-production/feature-switches/facts.json'
 
 
 def apply_steps(local, price, version):
     """Ordered remote steps. `local` maps names to local temp files holding the secrets; nothing secret is in argv."""
-    paths = {'key': REMOTE_DIR + '/secret_key', 'secret': REMOTE_DIR + '/webhook_secrets', 'plan': REMOTE_DIR + '/plan.json'}
-    steps = [('ssh', f'install -d -m750 -o root -g agentai-platform {REMOTE_DIR}')]
-    for name in ('key', 'secret', 'plan'):
+    paths = {'key': REMOTE_DIR + '/secret_key', 'secret': REMOTE_DIR + '/webhook_secrets', 'plan': PLAN_PATH}
+    steps = [('ssh', f'install -d -m700 -o agentai-platform -g agentai-platform {REMOTE_DIR}')]
+    for name in ('key', 'secret'):   # secrets: readable by the app user only
         steps.append(('scp', local[name], f'/root/.billing-{name}.tmp'))
-        steps.append(('ssh', f'install -m640 -o root -g agentai-platform /root/.billing-{name}.tmp {paths[name]} && shred -u /root/.billing-{name}.tmp'))
+        steps.append(('ssh', f'install -m600 -o agentai-platform -g agentai-platform /root/.billing-{name}.tmp {paths[name]} && shred -u /root/.billing-{name}.tmp'))
+    steps.append(('scp', local['plan'], '/root/.billing-plan.tmp'))   # the approved plan is not secret
+    steps.append(('ssh', f'install -m644 -o root -g root /root/.billing-plan.tmp {paths["plan"]} && rm -f /root/.billing-plan.tmp'))
     return paths, steps
 
 

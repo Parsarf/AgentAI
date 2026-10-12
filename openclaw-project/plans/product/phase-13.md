@@ -83,3 +83,18 @@ No network call, key or Stripe account was used.
 - **Unknowns:** the account's API version string; real event payload shapes beyond documentation; portal configuration defaults; Smart Retries timing vs the 72 h grace; tax and refund terms (open legal items).
 - **Blockers for live proof:** Stripe test account, price, webhook; migration 0013 and the billing worker timer not yet deployed; Phase 15 runs the live test-mode scenarios.
 - **Rollback:** nothing deployed. To remove after deployment: turn the switch off, disable `agentai-billing-worker.timer`, revert settings; billing tables are append-only records and are kept.
+
+## Addendum 2026-10-12 — free access until payments are switched on (requested by the owner)
+
+The owner asked to keep Stripe disabled for now and let any account use the service until payments are turned on. Built and deployed:
+
+- New owner switch **Free access for every account (no payment needed) until payments are turned on** (`open_access`); the Stripe switch is now
+  **Require payment**, needs two confirmations (test mode; accounts without a paid plan are paused) and takes precedence. One toggle flips the service between free and paid.
+- `BillingService.sync_open_access` (runs in `billing_worker` every ~30 s, no Stripe needed). 7 platform and 1 end-to-end Django scenario cover grant, idempotence, refresh, switch-off, TTL lapse,
+  paid-wins, fall-back after expiry, dispute-hold, and the full free → paid-required → free cycle. A real defect was found and fixed on the way: superseded entitlement rows kept a later `valid_until`
+  and made the usage summary show the wrong (expired) row; expired rows now have `valid_until` pulled back to the moment they expired.
+- **Deployed to the server (2026-10-12 ~01:38 UTC):** database backed up, migrations 0009–0013 applied, release `20261012T0230Z-billing` live (automatic rollback was armed; not needed), billing worker timer
+  enabled, owner dashboard updated, `open_access` turned ON with the cost confirmation recorded as the owner's request. The one existing account now has an active `open` entitlement; its 7-day invitation-trial row was superseded.
+- Findings: `/etc/agentai-platform` is root-only, so billing secrets and the plan file live in `/var/lib/agentai-platform/billing` (app-private, 0600) and `/opt/agentai-platform/billing-plan.json` (not secret); the installer was corrected.
+- Cost: each active account may consume up to $25 of provider cost per month (invitation-only, so bounded by how many accounts you invite); you pay it. This only passes the payment gate: tasks still queue until customer cells and the per-account model route are switched on (Phase 4 follow-ups).
+- Rollback: turn **Free access** off (access ends within ~30 s), or `ln -sfn` the previous release (recorded in `/root/p13-previous-release`) and restart `agentai-platform-app`; the pre-migration database backup is `backup-20261012T013633Z-premigrate-billing.sqlite3`.

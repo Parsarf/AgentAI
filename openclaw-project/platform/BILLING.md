@@ -6,6 +6,17 @@ reservation to start, so billing can never be bypassed by a redirect, a client f
 Card details stay with Stripe's hosted pages. Live mode is refused in code unless the owner explicitly
 authorizes it (`AGENTAI_BILLING_ALLOW_LIVE=1`, not set anywhere).
 
+## Access modes (two owner switches on the dashboard)
+
+| `billing_checkout` ("Require payment") | `open_access` ("Free access") | Result |
+|---|---|---|
+| off | **on** (current setting) | Every active account gets a rolling `open` entitlement with the plan limits ($25/month, $5/day, $5/task, 3 queued; allowance resets each calendar month). Subscribe buttons stay hidden. |
+| off | off | Invitation-only as before: only trial/paid entitlements grant access. |
+| **on** | any | Payment required: the worker ends every `open` entitlement within one pass (about 30 s); accounts without a paid plan are paused. Payment wins over free access, so there is no state where both apply. |
+
+Free access never overrides paid access or a dispute hold, supersedes an invitation-trial row while it lasts, and lapses on its own after
+3 days if the worker stops refreshing it (fail closed). `billing_worker` applies it on every run and needs no Stripe configuration.
+
 ## Access policy (one pure function: `derive_access`)
 
 | Provider/ledger state | Entitlement | New tasks | Running/reserved work |

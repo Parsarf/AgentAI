@@ -1576,3 +1576,7 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   billing page, reconciliation, owner switch `billing_checkout` (off), installer, worker units (not installed). Docs verified
   against docs.stripe.com. 350 platform / 75 Django / 35 dashboard tests pass. Not deployed; no keys; acceptance in Phase 15.
 - Open: Stripe test account/price/webhook from the owner, API version pin, tax/refund terms, deployment of migration 0013.
+
+## 2026-10-12 — Free access mode, Phase 13 code deployed
+
+- Owner asked for no payment until Stripe is on: added `open_access` switch + `sync_open_access`; payments switch now means "require payment" and wins. Deployed release 20261012T0230Z-billing (migrations 0009-0013, worker timer, dashboard update); free access ON; Stripe not configured. 357 platform / 76 Django / 35 dashboard tests pass.
