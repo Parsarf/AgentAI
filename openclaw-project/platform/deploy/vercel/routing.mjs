@@ -18,7 +18,7 @@ export function configuration(origin = '') {
       host.endsWith('.test') || host.endsWith('.example') || host === 'example.com') {
     throw new Error('BACKEND_ORIGIN must be a public HTTPS DNS hostname without credentials, path or port');
   }
-  config.rewrites = [{ source: '/', destination: url.origin + '/account/' },
+  config.rewrites = [{ source: '/', destination: url.origin + '/app/' },
     ...['account', 'auth', 'v1', 'app'].map(prefix => ({
       source: '/' + prefix + '/:path*', destination: url.origin + '/' + prefix + '/:path*'
     }))];
