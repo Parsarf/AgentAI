@@ -10,6 +10,7 @@ native message identity, never by predicted positions.
 from __future__ import annotations
 import hashlib
 import json
+import os
 import time
 import uuid
 from .adapters import CapabilityUnavailable
@@ -388,7 +389,7 @@ class ChatDriver:
     """
 
     def __init__(self, store, *, ledger: BudgetLedger, gateway_factory, clock=time.time,
-                 events: EventService | None = None, sleep=None, poll_interval=1.5, run_timeout=900, usage_wait=45, heartbeat=None, genui=None, browse_factory=None):
+                 events: EventService | None = None, sleep=None, poll_interval=1.5, run_timeout=900, usage_wait=45, heartbeat=None, genui=None, browse_factory=None, artifacts=None):
         self.browse_factory = browse_factory   # callable(account_id) -> BrowseRpc; None = browse requests are refused
         self.genui = genui   # GenUiRuntime: plan/execute prompts and plan-reply handling; None keeps plain chat behaviour
         self.heartbeat = heartbeat   # callable(claim): keeps the queue lease alive during long runs
@@ -398,6 +399,7 @@ class ChatDriver:
         self.ledger = ledger
         self.gateway_factory = gateway_factory
         self.events = events
+        self.artifacts = artifacts
         self.clock = clock
         self.coordinator = Coordinator(store, clock=clock)
 
@@ -561,6 +563,7 @@ class ChatDriver:
         intent, context = self.genui.request_info(claim) if self.genui else ('chat', {})
         outgoing = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
         seen_activity = self._baseline_activity(gateway, session)
+        started_at = int(time.time()) - 5          # file times come from the host clock, not the (possibly fake) driver clock
         before = self._usage_before(gateway)
         if before is not None:
             with self.coordinator.transaction() as con:
@@ -606,6 +609,7 @@ class ChatDriver:
                 self._emit(claim, 'progress', {'summary': 'Plan drafted and ready to edit.'}, 'gateway')
             else:
                 self._emit(claim, 'progress', {'summary': 'The reply could not be shown as a plan; showing it as text.'}, 'gateway')
+        self._capture_files(claim, gateway, started_at)
         if self.genui is not None and intent != 'plan':
             try:
                 self.genui.blocks.attach_cards(claim.account_id, claim.conversation_id, claim.request_id)
@@ -718,6 +722,40 @@ class ChatDriver:
             for e in polled['events']:
                 con.execute('INSERT OR IGNORE INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)',
                             (claim.account_id, claim.request_id, e['n'], e['kind'], json.dumps({k: v for k, v in e.items() if k not in ('n', 'kind')}), now))
+
+    MEDIA = {'.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv', '.json': 'application/json', '.py': 'text/x-python',
+             '.js': 'text/javascript', '.ts': 'text/plain', '.tsx': 'text/plain', '.jsx': 'text/plain', '.html': 'text/html', '.css': 'text/css',
+             '.sql': 'text/plain', '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
+
+    def _capture_files(self, claim, gateway, since):
+        """Save the files the assistant wrote during this task as versioned downloads. Best-effort: never fails the task."""
+        collect = getattr(gateway, 'workspace_files', None)
+        if self.artifacts is None or collect is None:
+            return
+        try:
+            with self.store.connect() as con:
+                row = con.execute('SELECT project_id FROM conversations WHERE account_id=? AND id=?', (claim.account_id, claim.conversation_id)).fetchone()
+            if row is None:
+                return
+            from .files import ALLOWLIST, sniff
+            for path, data in collect(since):
+                ext = os.path.splitext(path)[1].lower()
+                kinds = ALLOWLIST.get(ext)
+                kind = sniff(data)
+                if not kinds or (kind not in kinds and not (kind == 'text' and 'json' in kinds)):
+                    continue
+                if 'json' in kinds:
+                    try:
+                        json.loads(data.decode('utf-8'))
+                    except ValueError:
+                        continue
+                saved = self.artifacts.capture_or_version(account_id=claim.account_id, project_id=row['project_id'], task_id=claim.request_id,
+                                                          name=path.replace('/', '_')[:128], media_type=self.MEDIA.get(ext, 'application/octet-stream'), data=data)
+                if saved:
+                    self._emit(claim, 'artifact', {'artifact_id': saved['artifact_id'], 'version': saved['version'], 'name': path.replace('/', '_')[:128],
+                                                   'sha256': saved['sha256']}, 'gateway')
+        except Exception:
+            pass
 
     def _baseline_activity(self, gateway, session):
         """Tool calls already in the session before this request, so only this request's work is shown."""

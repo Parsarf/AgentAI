@@ -93,3 +93,20 @@ class StatusChecks(unittest.TestCase):
                        probe=lambda tenant: False)
         self.assertEqual(b.call('acct', 'cell.status', {}), {'running': False})
         with self.assertRaises(BridgeError): b.call('nobody', 'cell.status', {})
+
+
+class WorkspaceCollectChecks(unittest.TestCase):
+    def test_bridge_collects_only_from_the_accounts_own_workspace(self):
+        import tempfile, base64, time
+        from pathlib import Path
+        from agentai_platform.lifecycle.cell_bridge import CellBridge, BridgeError
+        with tempfile.TemporaryDirectory() as tmp:
+            for tenant in ('tnt-a', 'tnt-b'):
+                (Path(tmp) / tenant / 'workspace').mkdir(parents=True)
+                (Path(tmp) / tenant / 'workspace' / 'x.txt').write_text(tenant)
+            b = CellBridge(lambda a: None, None, None, binding=lambda a: {'acct': 'tnt-a'}.get(a), workspace_root=tmp)
+            got = b.call('acct', 'workspace.collect', {'since': 0})
+            self.assertEqual([(f['path'], base64.b64decode(f['data_b64'])) for f in got['files']], [('x.txt', b'tnt-a')])
+            with self.assertRaises(BridgeError): b.call('nobody', 'workspace.collect', {'since': 0})
+            with self.assertRaises(BridgeError): b.call('acct', 'workspace.collect', {'since': '0'})
+            with self.assertRaises(BridgeError): b.call('acct', 'workspace.collect', {'since': -1})

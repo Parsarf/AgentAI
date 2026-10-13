@@ -9,12 +9,14 @@ import ActivityPanel from '../components/ActivityPanel';
 import TaskStrip, { type ThreadTask } from '../components/TaskStrip';
 import BlockView from '../components/genui/BlockView';
 import { api } from '../lib/api';
+import { download } from './Files';
+import { humanSize, type ArtifactRow } from '../lib/files';
 import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 
 export default function Chat() {
-  const { id } = useParams(); const nav = useNavigate(); const { refresh, chats, refreshChats } = useData();
+  const { id } = useParams(); const nav = useNavigate(); const { refresh, chats, refreshChats, app } = useData();
   const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]); const [err, setErr] = useState(''); const [loaded, setLoaded] = useState(false);
   const [detail, setDetail] = useState<ChatSummary | null>(null);
@@ -54,6 +56,15 @@ export default function Chat() {
   useEffect(() => { setActivityId(null); }, [id]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); toggleActivity(); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [toggleActivity]);
   const shown = tasks.find(t => t.id === activityId);
+  const [made, setMade] = useState<ArtifactRow[]>([]);
+  useEffect(() => {                                    // files Lumina wrote during each answer, shown under that answer
+    if (!id || !app?.features.files || working || !msgs.length) return; let stop = false;
+    api<{ projects: { id: string }[] }>('GET', '/v1/projects').then(async ({ projects }) => {
+      const r = await Promise.all(projects.map(p => api<{ artifacts: ArtifactRow[] }>('GET', `/v1/projects/${p.id}/files`)));
+      if (!stop) setMade(r.flatMap(x => x.artifacts));
+    }).catch(() => { /* chips are optional */ });
+    return () => { stop = true; };
+  }, [id, app?.features.files, working, msgs.length]);
   const cancel = async (taskId: string) => { try { await api('POST', `/v1/requests/${taskId}/cancel`, {}); } finally { reload(); } };
   const [renaming, setRenaming] = useState(false);
   const rename = async (title: string) => { setRenaming(false); const t = title.trim(); if (t && t !== current?.title && id) { try { await api('POST', `/v1/conversations/${id}/rename`, { title: t }); await loadList(); } catch { /* keep old name */ } } };
@@ -80,6 +91,8 @@ export default function Chat() {
             <div key={m.id} className="turn">
               <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : m.content}</div>
               {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <TaskStrip task={byRequest.get(m.request_id)!} onCancel={() => cancel(m.request_id!)} onActivity={() => setActivityId(m.request_id!)} />}
+              {m.provenance === 'agent' && m.request_id && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
+                <div className="filechips" aria-label="Files from this answer">{mine.map(a => <button key={a.display_name} className="chip small" title={humanSize(a.size_bytes)} onClick={() => download(a.id, a.version).catch(() => undefined)}>⬇ {a.display_name}</button>)}</div>); })()}
               {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
               {m === lastAgent && !working && m.id > 0 && m.content.length > 160 && !blocks.some(b => b.anchor_message_id === m.id) && (
                 <div className="quick" aria-label="Show this differently">

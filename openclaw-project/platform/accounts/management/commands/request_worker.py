@@ -22,7 +22,13 @@ from accounts.lifecycle import AccountStore
 def build_worker(store):
     queue = RequestQueue(store, require_cell=True)
     factory = lambda claim: NativeGateway(BridgeRpc(claim.account_id, settings.CELL_BRIDGE_SOCKET))
-    driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store),
+    artifacts = None
+    if settings.STORAGE_DIR and settings.STORAGE_READY:
+        from agentai_platform.artifacts import ArtifactService
+        from agentai_platform.storage import RootStore
+        key = settings.ARTIFACT_SIGNING_KEY
+        artifacts = ArtifactService(store, storage=RootStore(settings.STORAGE_DIR), signing_key=key.encode() if isinstance(key, str) else key)
+    driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store), artifacts=artifacts,
                         sleep=time.sleep, heartbeat=queue.heartbeat, genui=GenUiRuntime(store, BlockStore(store)),
                         browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET))
     from agentai_platform.routing.shadow import ShadowRouter

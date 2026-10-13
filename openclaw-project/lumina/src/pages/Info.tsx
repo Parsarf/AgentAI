@@ -14,12 +14,6 @@ function Soon({ name, what, needs }: { name: string; what: string; needs: string
 export const Calendar = () => <Soon name="Calendar" what="Your events and scheduled tasks in one place." needs="a calendar connection (Google/Microsoft sign-in is not registered yet) and recurring task scheduling." />;
 export const Automations = () => <Soon name="Automations" what="Recurring tasks, triggers and approval gates." needs="the schedule engine to be switched on for customers; it is built but locked until the safety checks for unattended work pass." />;
 
-export function Files() {
-  const { app } = useData();
-  if (!app?.features.files) return <Soon name="Files" what="Uploads, generated documents and saved outputs." needs="file storage to be enabled on the server (it is built but switched off)." />;
-  return <Soon name="Files" what="File storage is on. The Lumina file browser is the next screen to build; the classic page works today." needs={'the new file screen. Use the classic page at /account/chat/ for now.'} />;
-}
-
 export function Integrations() {
   const { app } = useData();
   const [items, setItems] = useState<any[] | null>(null);

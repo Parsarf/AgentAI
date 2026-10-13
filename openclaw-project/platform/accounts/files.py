@@ -81,9 +81,6 @@ def upload(request, project_id):
         return JsonResponse({'error': 'invalid_request'}, status=400)
     if len(request.FILES) > 10:
         return JsonResponse({'error': 'rejected', 'reason': 'batch must contain 1 to 10 files'}, status=422)
-    Path('/tmp/dbg2.json').write_text(__import__('json').dumps(
-        {'files': {k: [type(f).__name__ for f in v] for k, v in request.FILES.items()},
-         'ctype': request.content_type}))
     import json as _json
     try:
         hints = _json.loads(request.POST.get('filenames', '[]'))

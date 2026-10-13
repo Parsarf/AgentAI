@@ -47,6 +47,10 @@ class ActivityChecks(unittest.TestCase):
         items = activity.extract(rows)
         self.assertEqual([(i['ref'], i['category'], i['detail'], i['status']) for i in items], [('a2', 'search', 'iceland', 'done')])
 
+    def test_workspace_paths_are_shortened(self):
+        self.assertEqual(activity.describe('exec', {'command': 'cd /home/node/.openclaw/workspace && python3 -m unittest'})[2], 'python3 -m unittest')
+        self.assertEqual(activity.describe('write', {'path': '/home/node/.openclaw/workspace/app/page.tsx'})[2], 'app/page.tsx')
+
     def test_garbage_is_ignored(self):
         self.assertEqual(activity.extract(None), [])
         self.assertEqual(activity.extract([1, 'x', {'role': 'assistant', 'content': [{'type': 'toolCall', 'id': '../x', 'name': 'exec'}]}]), [])

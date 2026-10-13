@@ -29,6 +29,7 @@ LABELS = {
     'search': 'Searched the web', 'read': 'Opened a page', 'command': 'Ran a command', 'browse': 'Used the browser',
     'file': 'Worked with a file', 'other': 'Used a tool',
 }
+WORKSPACE = '/home/node/.openclaw/workspace/'
 HIDDEN = {'tool_search', 'tool_describe'}                  # runtime housekeeping, not customer-relevant work
 FILE_VERBS = {'write': 'Wrote', 'edit': 'Edited', 'apply_patch': 'Edited', 'read': 'Read'}
 
@@ -84,9 +85,9 @@ def describe(name, args):
     if category == 'read':
         return category, 'Opened a page', clean(_page(_first(args, 'url', 'uri')) or _first(args, 'url'), MAX_DETAIL)
     if category == 'command':
-        return category, 'Ran a command', clean(_first(args, 'command', 'cmd', 'script'), MAX_DETAIL)
+        return category, 'Ran a command', clean(re.sub(r'^cd /home/node/\.openclaw/workspace\s*&&\s*', '', _first(args, 'command', 'cmd', 'script')).replace(WORKSPACE, ''), MAX_DETAIL)
     if category == 'file':
-        path = _first(args, 'path', 'file', 'file_path', 'filename')
+        path = _first(args, 'path', 'file', 'file_path', 'filename').replace(WORKSPACE, '')
         return category, f'{FILE_VERBS.get(tool, "Worked with")} a file', clean(path, MAX_DETAIL)
     if category == 'browse':
         return category, 'Used the browser', clean(_first(args, 'action', 'url'), MAX_DETAIL)

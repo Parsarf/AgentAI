@@ -18,11 +18,12 @@ import struct
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 PROTOCOL = 4
 SESSION_KEY = re.compile(r'^agent:main:[A-Za-z0-9_.:-]{1,120}$')
 TOKEN_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
-ALLOWED = ('hello', 'sessions.create', 'chat.send', 'chat.history', 'chat.abort', 'usage.snapshot', 'cell.status')
+ALLOWED = ('hello', 'sessions.create', 'chat.send', 'chat.history', 'chat.abort', 'usage.snapshot', 'cell.status', 'workspace.collect')
 MAX_MESSAGE = 20000
 
 RELAY_JS = r"""
@@ -109,9 +110,10 @@ class DockerRelay:
 
 
 class CellBridge:
-    def __init__(self, lookup, spawn, spend, *, binding=None, probe=None, ready_timeout=120, call_timeout=60, idle_seconds=300, clock=time.monotonic):
+    def __init__(self, lookup, spawn, spend, *, binding=None, probe=None, workspace_root=None, ready_timeout=120, call_timeout=60, idle_seconds=300, clock=time.monotonic):
         """lookup(account)->(tenant, token) or None; spawn(tenant, token)->relay; spend(tenant)->microusd."""
         self.lookup, self.spawn, self.spend = lookup, spawn, spend
+        self.workspace_root = workspace_root
         self.binding, self.probe = binding, probe   # binding(account)->tenant regardless of state; probe(tenant)->container running
         self.ready_timeout, self.call_timeout, self.idle_seconds, self.clock = ready_timeout, call_timeout, idle_seconds, clock
         self._conns = {}
@@ -124,6 +126,11 @@ class CellBridge:
             raise BridgeError('method not allowed')
         if method in ('hello', 'usage.snapshot', 'cell.status'):
             return {}
+        if method == 'workspace.collect':
+            since = params.get('since')
+            if type(since) is not int or since < 0:
+                raise BridgeError('invalid since')
+            return {'since': since}
         if method == 'sessions.create':
             label = params.get('label')
             if not isinstance(label, str) or not TOKEN_ID.fullmatch(label):
@@ -187,6 +194,14 @@ class CellBridge:
             if tenant is None or self.probe is None:
                 raise BridgeError('no cell')
             return {'running': bool(self.probe(tenant))}
+        if method == 'workspace.collect':
+            tenant = self.binding(account) if self.binding else None
+            if tenant is None or self.workspace_root is None or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):
+                raise BridgeError('no cell')
+            import base64
+            from .workspace import collect
+            files = collect(Path(self.workspace_root) / tenant / 'workspace', clean['since'])
+            return {'files': [{'path': name, 'data_b64': base64.b64encode(data).decode()} for name, data in files]}
         if method == 'usage.snapshot':
             tenant = self.binding(account) if self.binding else None
             if tenant is None:

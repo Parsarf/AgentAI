@@ -167,6 +167,33 @@ class ChatChecks(unittest.TestCase):
         rows = [e['payload'] for e in events.events(self.a, claim.request_id)['events'] if e['kind'] == 'activity']
         self.assertEqual([(r['ref'], r['status']) for r in rows], [('new1', 'running'), ('new1', 'done')])
 
+    def test_files_the_assistant_wrote_become_versioned_downloads(self):
+        from agentai_platform.artifacts import ArtifactService
+        from agentai_platform.events import EventService
+        from agentai_platform.storage import RootStore
+        storage = RootStore(Path(self.tmp.name) / 'storage')
+        artifacts = ArtifactService(self.store, storage=storage, signing_key=b'k' * 32, clock=lambda: self.now)
+        files = [[('slug.py', b'print(1)\n'), ('sub/page.html', b'<p>hi</p>'), ('evil.exe', b'MZ\x00\x00'), ('data.json', b'not json {')]]
+        class Writes(SyntheticGateway):
+            def workspace_files(self, since): return files[0]
+        events = EventService(self.store, clock=lambda: self.now)
+        gw = Writes()
+        def run(key):
+            self.send(key=key)
+            claim = self.queue.claim(owner='w', capacity=CAPACITY)
+            driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(gw), clock=lambda: self.now,
+                                sleep=lambda s: None, events=events, artifacts=artifacts)
+            self.queue.finish(claim, driver.execute(claim))
+            return claim
+        run('f1')
+        listed = {a['display_name']: a for a in artifacts.list_artifacts(self.a, 'p-a')}
+        self.assertEqual(sorted(listed), ['slug.py', 'sub_page.html'])              # .exe and invalid json refused
+        files[0] = [('slug.py', b'print(1)\n'), ('sub/page.html', b'<p>changed</p>')]
+        claim = run('f2')
+        rows = artifacts.list_artifacts(self.a, 'p-a')
+        self.assertEqual(sorted((a['display_name'], a['version']) for a in rows), [('slug.py', 1), ('sub_page.html', 1), ('sub_page.html', 2)])
+        self.assertEqual([e['payload']['name'] for e in events.events(self.a, claim.request_id)['events'] if e['kind'] == 'artifact'], ['sub_page.html'])
+
     def test_usage_is_reconciled_from_provider_spend_delta(self):
         class Metered(SyntheticGateway):
             spend = [1000, 1000, 1700, 1700, 1700]

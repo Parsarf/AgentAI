@@ -62,7 +62,7 @@ def main():
 
     app = pwd.getpwnam(args.app_user)
     bridge = CellBridge(lookup, lambda tenant, token: DockerRelay(tenant, token, docker_host=docker_host), spend,
-                        binding=binding, probe=probe, ready_timeout=100)
+                        binding=binding, probe=probe, ready_timeout=100, workspace_root=wiring.get('cell_state_root'))
     server = serve(bridge, str(args.socket), allowed_uids={app.pw_uid}, group_gid=grp.getgrnam(args.app_user).gr_gid)
     try:
         server.serve_forever()

@@ -329,3 +329,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .chat-rename > div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .archived-chat { display: flex; gap: 20px; align-items: center; justify-content: space-between; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-2); }
 .jump-latest { position: sticky; bottom: 180px; align-self: center; z-index: 3; background: var(--bg-2); box-shadow: var(--shadow); }
+
+/* Files */
+.filerow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); } .filerow:first-of-type { margin-top: 10px; }
+.filechips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }

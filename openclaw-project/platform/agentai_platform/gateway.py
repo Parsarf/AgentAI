@@ -249,7 +249,7 @@ class NativeGateway:
     docker handle). Shapes follow the live protocol-4 probe of 2026-10-12.
     Raises CapabilityUnavailable for any refusal or malformed reply.
     """
-    METHODS = ('hello', 'sessions.create', 'chat.send', 'chat.history', 'chat.abort', 'usage.snapshot')
+    METHODS = ('hello', 'sessions.create', 'chat.send', 'chat.history', 'chat.abort', 'usage.snapshot', 'workspace.collect')
 
     def __init__(self, rpc):
         self._rpc = rpc
@@ -331,6 +331,15 @@ class NativeGateway:
 
     def usage_snapshot(self):
         return int(self._call('usage.snapshot')['spend_microusd'])
+
+    def workspace_files(self, since):
+        """Files the assistant wrote since `since` (epoch seconds): [(relative path, bytes)]."""
+        import base64
+        out = []
+        for item in self._call('workspace.collect', {'since': int(since)}).get('files') or []:
+            if isinstance(item, dict) and isinstance(item.get('path'), str) and isinstance(item.get('data_b64'), str):
+                out.append((item['path'], base64.b64decode(item['data_b64'])))
+        return out
 
     def abort(self, session, run_id):
         self.require('abort')

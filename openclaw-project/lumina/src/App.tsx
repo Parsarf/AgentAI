@@ -6,7 +6,8 @@ import History from './pages/History';
 import Tasks from './pages/Tasks';
 import Login from './pages/Login';
 import Browser from './pages/Browser';
-import { Automations, Calendar, Files, Integrations, Settings } from './pages/Info';
+import { Automations, Calendar, Integrations, Settings } from './pages/Info';
+import Files from './pages/Files';
 import { useData } from './state/data';
 
 export default function App() {

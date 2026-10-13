@@ -27,6 +27,8 @@ ASSETS = (
     Asset('tenant-cells', 'Per-customer cell state, workspaces, auth profiles, artifacts', '/var/lib/agentai-fleet/.openclaw/fleet (per-tenant capped volumes)',
           'owner', 'Fleet backup of each stopped cell by the lifecycle worker; newest archive per tenant packaged and encrypted separately',
           'Quarantined restore (separate cell, egress dropped); promote only after review', backed_up_by='tenant-cells'),
+    Asset('customer-files', 'Files customers uploaded and files assistants made for them (immutable versions)', '/var/lib/agentai-platform/storage', 'owner',
+          'Tar of the storage directory inside the encrypted set; metadata and hashes are in app-db', 'Extract beside the restored app-db with the app stopped; downloads verify against the stored hashes', backed_up_by='customer-files'),
     Asset('tenant-secrets', 'Per-tenant gateway tokens and provider key references', '/var/lib/agentai-supervisor-secrets', 'owner',
           'Tar of the custody directory inside the encrypted set (never plain, never in a tenant manifest)', 'Restore with the supervisor stopped; rotate keys after any host compromise', backed_up_by='tenant-secrets'),
     Asset('litellm-spend', 'Model proxy budget and spend database (virtual keys, spend history)', 'postgres volume (openclaw-production)', 'owner',
@@ -49,4 +51,4 @@ BACKED_UP = tuple(a.backed_up_by for a in ASSETS if a.backed_up_by)
 def gaps(manifest):
     """Assets the newest complete set did not cover."""
     covered = {a.get('asset') for a in manifest.get('artifacts', [])}
-    return [a.id for a in ASSETS if a.backed_up_by and a.backed_up_by not in covered and (a.backed_up_by != 'tenant-cells' or covered & {'tenant-cells'})]
+    return [a.id for a in ASSETS if a.backed_up_by and a.backed_up_by not in covered and (a.backed_up_by not in ('tenant-cells', 'customer-files') or covered & {a.backed_up_by})]
