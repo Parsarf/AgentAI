@@ -94,6 +94,19 @@ export class Runner {
         await this.settle();
         return { ok: true, url: this.page.url(), navigated: this.page.url() !== before, new_tab: this.context.pages().length > pagesBefore };
       }
+      case 'xy': {   // takeover: coordinates come from the user's own click on the screenshot; the host has already range-checked them
+        const { x, y, action, text } = msg;
+        if (action === 'click' && (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 1280 || y > 800)) return { ok: false, error: 'bad_coordinates' };
+        try {
+          if (action === 'click') await this.page.mouse.click(x, y);
+          else if (action === 'type') { if (typeof text !== 'string' || text.length > MAX_VALUE) return { ok: false, error: 'bad_value' }; await this.page.keyboard.type(text, { delay: 5 }); }
+          else if (action === 'key') { if (!KEYS.has(text) && !['Backspace', 'ArrowDown', 'ArrowUp'].includes(text)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(text); }
+          else if (action === 'scroll') await this.page.mouse.wheel(0, Number(text) > 0 ? 500 : -500);
+          else return { ok: false, error: 'bad_action' };
+        } catch (e) { return { ok: false, error: 'action_failed' }; }
+        await this.page.waitForTimeout(300); await this.settle();
+        return { ok: true, url: this.page.url() };
+      }
       case 'screenshot': {
         const file = `shot-${String(++this.shots).padStart(3, '0')}.jpg`;
         await this.page.screenshot({ path: join(OUT, file), type: 'jpeg', quality: 60, fullPage: false });

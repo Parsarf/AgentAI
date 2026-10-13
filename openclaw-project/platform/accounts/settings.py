@@ -111,6 +111,7 @@ SERVICE_ALLOCATION_MICROUSD = int(os.environ.get('AGENTAI_SERVICE_ALLOCATION_MIC
 ROUTING_CONFIG_FILE = os.environ.get('AGENTAI_ROUTING_CONFIG_FILE', '/var/lib/agentai-platform/routing/routing.json')
 TYPESAFE_KEY_FILE = os.environ.get('AGENTAI_TYPESAFE_KEY_FILE', '/var/lib/agentai-platform/routing/typesafe.key')
 UI_BUNDLE_DIR = os.environ.get('AGENTAI_UI_BUNDLE_DIR', '/var/lib/agentai-platform/ui')
+BROWSE_SOCKET = os.environ.get('AGENTAI_BROWSE_SOCKET', '/run/agentai-browse/browse.sock')
 CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
 
 # Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.

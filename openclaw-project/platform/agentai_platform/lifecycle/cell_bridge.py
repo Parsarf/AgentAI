@@ -188,10 +188,13 @@ class CellBridge:
                 raise BridgeError('no cell')
             return {'running': bool(self.probe(tenant))}
         if method == 'usage.snapshot':
-            found = self.lookup(account)
-            if not found:
+            tenant = self.binding(account) if self.binding else None
+            if tenant is None:
+                found = self.lookup(account)
+                tenant = found[0] if found else None
+            if tenant is None:
                 raise BridgeError('no cell')
-            return {'spend_microusd': self.spend(found[0])}
+            return {'spend_microusd': self.spend(tenant)}
         with self._lock(account):
             conn = self._connection(account)
             conn['used'] = self.clock()

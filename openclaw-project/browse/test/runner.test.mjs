@@ -76,3 +76,17 @@ test('new tabs are tracked, screenshots are written, back works', async () => {
   assert.equal(a.ok, true); assert.equal(a.new_tab, true);
   const shot = await r.handle({ cmd: 'screenshot' }); assert.equal(shot.ok, true); assert.ok(existsSync(join(process.env.BROWSE_OUT, shot.file)));
 });
+
+test('takeover commands click, type and scroll by coordinates with strict bounds', async () => {
+  await r.handle({ cmd: 'open', url: base + '/checkout' });
+  const box = await r.page.locator('input[name=addr]').boundingBox();
+  assert.equal((await r.handle({ cmd: 'xy', action: 'click', x: box.x + 5, y: box.y + 5 })).ok, true);
+  assert.equal((await r.handle({ cmd: 'xy', action: 'type', text: 'Hello' })).ok, true);
+  assert.equal(await r.page.inputValue('input[name=addr]'), 'Hello');
+  assert.equal((await r.handle({ cmd: 'xy', action: 'key', text: 'Backspace' })).ok, true); assert.equal(await r.page.inputValue('input[name=addr]'), 'Hell');
+  assert.equal((await r.handle({ cmd: 'xy', action: 'click', x: -1, y: 5 })).error, 'bad_coordinates');
+  assert.equal((await r.handle({ cmd: 'xy', action: 'click', x: 5000, y: 5 })).error, 'bad_coordinates');
+  assert.equal((await r.handle({ cmd: 'xy', action: 'key', text: 'Control+W' })).error, 'key_not_allowed');
+  assert.equal((await r.handle({ cmd: 'xy', action: 'exec', x: 1, y: 1 })).error, 'bad_action');
+  assert.equal((await r.handle({ cmd: 'xy', action: 'type', text: 'x'.repeat(501) })).error, 'bad_value');
+});

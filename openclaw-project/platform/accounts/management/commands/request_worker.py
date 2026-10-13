@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection
 from agentai_platform.bridge_client import BridgeRpc
+from agentai_platform.browse.client import BrowseRpc
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat import ChatDriver
 from agentai_platform.events import EventService
@@ -22,7 +23,8 @@ def build_worker(store):
     queue = RequestQueue(store, require_cell=True)
     factory = lambda claim: NativeGateway(BridgeRpc(claim.account_id, settings.CELL_BRIDGE_SOCKET))
     driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store),
-                        sleep=time.sleep, heartbeat=queue.heartbeat, genui=GenUiRuntime(store, BlockStore(store)))
+                        sleep=time.sleep, heartbeat=queue.heartbeat, genui=GenUiRuntime(store, BlockStore(store)),
+                        browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET))
     from agentai_platform.routing.shadow import ShadowRouter
     from agentai_platform.switches import SwitchStore
     switches = SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None)

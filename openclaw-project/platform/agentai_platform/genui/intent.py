@@ -13,13 +13,21 @@ HEAVY = re.compile(r'\b(complete|full|end[- ]to[- ]end|from scratch|migrat\w+|ro
 QUESTION = re.compile(r'^\s*(what|who|when|where|why|how|is|are|can|does|do|explain|define|tell me)\b', re.I)
 
 
-def detect(message: str, *, mode: str = 'auto') -> str:
-    """'text' | 'requirements' | 'plan'. mode 'text' forces plain text; 'plan' forces a plan."""
+ACT_ON_SITE = re.compile(r'\b(order|reorder|book|reserve|purchase|buy|add .{1,60} to (?:my |the )?(?:cart|basket)|fill (?:out|in)|sign up for|go to|open|visit|navigate to|log ?in to)\b', re.I)
+SITE_HINT = re.compile(r'(https?://|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|app)\b|\b(pizza|food|dinner|lunch|delivery|takeout|restaurant|hotel|flight|ticket|table|cart|basket|amazon|walmart|ebay|doordash|ubereats|grubhub|opentable|booking)\b)', re.I)
+
+
+def detect(message: str, *, mode: str = 'auto', browse: bool = False) -> str:
+    """'text' | 'requirements' | 'plan' | 'browse'. mode 'text' forces plain text, 'plan' a plan, 'browse' a browser run (when enabled)."""
     if mode == 'text':
         return 'text'
     if mode == 'plan':
         return 'plan'
+    if mode == 'browse':
+        return 'browse' if browse else 'text'
     text = message.strip()
+    if browse and len(text) >= 12 and ACT_ON_SITE.search(text) and SITE_HINT.search(text) and not re.match(r'^\s*(what|who|why|how (?:do|does|to)|explain)\b', text, re.I):
+        return 'browse'
     if len(text) < 12 or (QUESTION.search(text) and not BUILD.search(text)):
         return 'text'
     if BUILD.search(text) and WEBSITE.search(text):

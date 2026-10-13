@@ -21,12 +21,13 @@ def csrf(request):
 
 def features(request):
     from .billing import access_mode
-    from .chat import execution_on
+    from .chat import browse_on, execution_on
     from .connections import switch_on as connectors_on
     storage = bool(settings.STORAGE_DIR) and settings.STORAGE_READY
     return {
         'chat': True,
-        'execution': execution_on(),                      # false: messages are saved and wait; true: the assistant answers
+        'execution': execution_on(),
+        'browse': browse_on(),                            # the browser agent may be chosen for interactive goals                      # false: messages are saved and wait; true: the assistant answers
         'files': storage,
         'uploads': storage and settings.UPLOADS_ENABLED,
         'telegram': bool(settings.TELEGRAM_ENABLED),

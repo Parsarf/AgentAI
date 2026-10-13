@@ -99,7 +99,7 @@ class LifecycleWorker:
         queued = 0
         with self.store.connect() as con:
             due = [(r['account_id'], r['generation'], r['request_id']) for r in con.execute(
-                "SELECT c.account_id,d.generation,(SELECT id FROM customer_requests q WHERE q.account_id=c.account_id AND q.state='waiting' "
+                "SELECT c.account_id,d.generation,(SELECT id FROM customer_requests q WHERE q.account_id=c.account_id AND q.state='waiting' AND q.intent!='browse' "
                 "ORDER BY q.sequence LIMIT 1) AS request_id FROM lifecycle_cells c JOIN deployments d "
                 "ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.observed_state='stopped'").fetchall() if r['request_id']]
         for account, generation, request in due:

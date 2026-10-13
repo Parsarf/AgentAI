@@ -42,7 +42,7 @@ class RequestQueue:
     def submit(self,principal,*,message,key,conversation_id=None,intent='chat',context=None):
         identifier(key)
         if not isinstance(message,str) or not message.strip() or len(message)>16000 or '\x00' in message:raise ValueError('invalid message')
-        if intent not in ('chat','plan','execute','phase'):raise ValueError('invalid intent')
+        if intent not in ('chat','plan','execute','phase','browse'):raise ValueError('invalid intent')
         context_json=json.dumps(context,sort_keys=True,separators=(',',':')) if context else None
         digest=hashlib.sha256(message.encode()).hexdigest() if intent=='chat' and not context_json else hashlib.sha256((message+'|'+intent+'|'+(context_json or '')).encode()).hexdigest()
         with self.coordinator.transaction() as c:
@@ -102,7 +102,7 @@ class RequestQueue:
                 self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_revoked','completed')
             cell_slot=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
             if cell_slot and (cell_slot['account_id']!=row['account_id'] or cell_slot['state']!='active'):return None
-            if self.require_cell and not cell_slot:return None
+            if self.require_cell and not cell_slot and row['intent']!='browse':return None     # a browse run uses its own sandbox, not the assistant's cell
             c.execute('INSERT INTO request_slot VALUES (1,?,?)',(row['account_id'],row['id']))
             fence=row['fence']+1
             c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=? WHERE account_id=? AND id=?",(fence,owner,int(self.clock())+lease_seconds,row['account_id'],row['id']))

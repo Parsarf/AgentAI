@@ -1,0 +1,30 @@
+[Unit]
+Description=AgentAI browse service (sandboxed browser jobs for customer tasks; root, one stage at a time)
+After=agentai-cells-docker.service
+Requires=agentai-cells-docker.service
+
+[Service]
+User=root
+Group=agentai-platform
+WorkingDirectory=/opt/agentai-supervisor/current
+ExecStart=/usr/bin/python3 -m agentai_platform.browse.service_main
+UMask=0077
+RuntimeDirectory=agentai-browse
+RuntimeDirectoryMode=0750
+StateDirectory=agentai-browse
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+MemoryMax=384M
+MemorySwapMax=0
+CPUQuota=50%
+TasksMax=128
+TimeoutStopSec=15
+# Stages are docker containers on the cell engine; do not add mount-namespace sandboxing here (docker needs the host view).
+
+[Install]
+WantedBy=multi-user.target

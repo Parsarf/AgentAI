@@ -25,6 +25,7 @@ class Decision:
     answer: str | None = None
     confidence: float | None = None
     cost_microusd: int = 0
+    meta: dict = field(default_factory=dict)
 
 
 class Refused(Exception):
@@ -118,6 +119,7 @@ class Ladder:
     jev: JevChooser | None = None
     automatic: float = 0.85                  # provisional, calibrate on real outcomes
     max_sonnet: int = 2
+    shadow: bool = False                     # JEV is asked too and compared, but never decides (calibration before trust)
     sonnet_used: int = field(default=0, init=False)
 
     def _ask(self, tier, goal, history, page, candidates):
@@ -136,9 +138,23 @@ class Ladder:
             raise ValueError('no value')
         return d.action['value'], d.cost_microusd
 
+    def _shadow(self, d, goal, page, candidates):
+        """Record what JEV would have chosen next to the real decision. Costs ~$0.00003; never changes anything."""
+        if not (self.shadow and self.jev and candidates and d.kind == 'act' and d.action and d.action.get('ref') is not None):
+            return d
+        try:
+            if self.admit('jev'):
+                choice, prob, cost = self.jev.choose(goal, page.get('text', ''), candidates)
+                mine = next((c['id'] for c in candidates if c['ref'] == d.action['ref']), None)
+                d.meta = {'jev_choice': choice, 'jev_prob': round(prob, 3), 'agree': choice == mine}
+                d.cost_microusd += cost
+        except Exception:
+            d.meta = {'jev_choice': None}
+        return d
+
     def decide(self, goal, history, page, candidates, *, force_escalate=False, failures=0):
         # No candidates: only a reader can say whether the page already answers the goal.
-        if self.jev and candidates and not force_escalate and failures == 0:
+        if self.jev and not self.shadow and candidates and not force_escalate and failures == 0:
             try:
                 if not self.admit('jev'):
                     raise Refused('jev')
@@ -164,7 +180,7 @@ class Ladder:
             try:
                 if tier == 'sonnet':
                     self.sonnet_used += 1
-                return self._ask(tier, goal, history, page, candidates)
+                return self._shadow(self._ask(tier, goal, history, page, candidates), goal, page, candidates)
             except Refused:
                 raise
             except Exception as exc:       # invalid answer from that tier: try the next one, then give up

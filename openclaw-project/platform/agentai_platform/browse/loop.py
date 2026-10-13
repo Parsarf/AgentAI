@@ -95,7 +95,7 @@ class BrowseRunner:
             out = self.s.act(a['action'], a['ref'], a.get('value'), a.get('label'))
             entry = {'step': step, 'by': d.by, 'action': a['action'], 'label': a['label'], 'result': 'ok' if out.get('ok') else out.get('error', 'failed')}
             history.append(entry)
-            self.on_event('step', {**entry, 'url': out.get('url', url), 'confidence': d.confidence})
+            self.on_event('step', {**entry, 'url': out.get('url', url), 'confidence': d.confidence, **d.meta})
             if not out.get('ok'):
                 failures += 1
                 if failures >= 4:

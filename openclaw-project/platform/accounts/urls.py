@@ -6,6 +6,7 @@ from . import streams as st
 from . import api as api
 from . import uishell as shell
 from . import genui as gen
+from . import browse as br
 urlpatterns=[
  path('healthz',v.health),path('readyz',v.ready),path('',v.account_page),path('account/',v.account_page),
  path('account/ui',v.assets),path('account/ui/',v.assets),path('account/chat/',ch.chat_page),path('account/<str:page>/',v.account_page),path('auth/login',v.signin),path('auth/logout',v.signout),
@@ -51,6 +52,8 @@ urlpatterns += [
  path('v1/blocks/<str:block_id>/state',gen.block_state),path('v1/blocks/<str:block_id>/submit',gen.block_submit),path('v1/blocks/<str:block_id>/launch',gen.block_launch),
  path('v1/blocks/<str:block_id>/live',gen.block_live),path('v1/blocks/<str:block_id>/phase',gen.block_phase),path('v1/blocks/<str:block_id>/stop',gen.block_stop),
  path('v1/conversations/<str:conversation_id>/rename',ch.chat_rename),
+ path('v1/browse',br.runs),path('v1/browse/<str:request_id>',br.run),path('v1/browse/<str:request_id>/control',br.control),
+ path('v1/browse/<str:request_id>/release',br.release),path('v1/browse/<str:request_id>/shot/<str:name>',br.shot),
  path('v1/tasks/<str:request_id>',ch.chat_task),path('v1/tasks/<str:request_id>/cancel',ch.chat_cancel),
  path('v1/account/telegram/link',tg.link),path('v1/account/telegram/unlink',tg.unlink),
  path('v1/account/telegram',tg.bindings),path('v1/telegram/webhook',tg.webhook),

@@ -69,7 +69,8 @@ def denial_category(error: BudgetDenied) -> str:
 
 class ChatService:
     def __init__(self, store, *, queue: RequestQueue, ledger: BudgetLedger, pricer=UnmeasuredRoute(),
-                 clock=time.time, max_conversations_per_project=MAX_CONVERSATIONS_PER_PROJECT, execution=False):
+                 clock=time.time, max_conversations_per_project=MAX_CONVERSATIONS_PER_PROJECT, execution=False, browse=False):
+        self.browse = bool(browse)   # owner switch browse_tasks: the browser agent may be chosen for interactive goals
         self.execution = bool(execution)   # owner switch state, shown to the customer UI
         self.store = store
         self.queue = queue
@@ -196,17 +197,17 @@ class ChatService:
         identifier(key)
         if not isinstance(message, str) or not message.strip() or len(message) > 16000 or '\x00' in message:
             raise ValueError('invalid message')
-        if mode not in ('auto', 'text', 'plan'):
+        if mode not in ('auto', 'text', 'plan', 'browse'):
             raise ValueError('invalid mode')
         self.conversation(principal, conversation_id)
-        kind = gen_intent.detect(message, mode=mode) if provenance == 'customer' else 'text'
+        kind = gen_intent.detect(message, mode=mode, browse=self.browse) if provenance == 'customer' else 'text'
         if kind == 'requirements':
             template = gen_intent.requirements_template(message)
             if template:
                 return self._local_form(principal, conversation_id, message, key, template)
             kind = 'plan'
         result = self.queue.submit(principal, message=message, key=key, conversation_id=conversation_id,
-                                   intent='plan' if kind == 'plan' else 'chat')
+                                   intent=kind if kind in ('plan', 'browse') else 'chat')
         with self.coordinator.transaction() as con:
             row = con.execute('SELECT project_id FROM customer_requests WHERE account_id=? AND id=?',
                               (principal.account_id, result['id'])).fetchone()
@@ -224,7 +225,7 @@ class ChatService:
         except CapabilityUnavailable:
             # No verified route: the request waits unfunded, execution stays off.
             return {**result, 'conversation_id': conversation_id, 'execution_enabled': False,
-                    'admission': 'route_unconfigured', 'price_version': None, 'response_type': 'plan' if kind == 'plan' else 'text'}
+                    'admission': 'route_unconfigured', 'price_version': None, 'response_type': kind if kind in ('plan', 'browse') else 'text'}
         try:
             self.ledger.admit(principal, task=result['id'], project=project_id, conversation=conversation_id,
                               key=key, amount_microusd=amount, upper_bound_verified=True)
@@ -234,7 +235,7 @@ class ChatService:
             self.queue.cancel(principal, result['id'])
             raise
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,
-                'admission': 'reserved', 'price_version': price_version, 'response_type': 'plan' if kind == 'plan' else 'text'}
+                'admission': 'reserved', 'price_version': price_version, 'response_type': kind if kind in ('plan', 'browse') else 'text'}
 
     # -- generative UI operations (the only things a block button can do) -------------------------------------------
     def _spawn(self, principal, conversation_id, *, message, key, intent, context, shown):
@@ -362,7 +363,8 @@ class ChatDriver:
     """
 
     def __init__(self, store, *, ledger: BudgetLedger, gateway_factory, clock=time.time,
-                 events: EventService | None = None, sleep=None, poll_interval=1.5, run_timeout=900, usage_wait=45, heartbeat=None, genui=None):
+                 events: EventService | None = None, sleep=None, poll_interval=1.5, run_timeout=900, usage_wait=45, heartbeat=None, genui=None, browse_factory=None):
+        self.browse_factory = browse_factory   # callable(account_id) -> BrowseRpc; None = browse requests are refused
         self.genui = genui   # GenUiRuntime: plan/execute prompts and plan-reply handling; None keeps plain chat behaviour
         self.heartbeat = heartbeat   # callable(claim): keeps the queue lease alive during long runs
         self.sleep = sleep if sleep is not None else (lambda seconds: None)
@@ -512,15 +514,23 @@ class ChatDriver:
             session = conversation[0]
             pre_cancelled = bool(con.execute('SELECT cancel_requested FROM customer_requests WHERE account_id=? AND id=?',
                                              (claim.account_id, claim.request_id)).fetchone()[0])
+            is_browse = bool(self.genui and self.genui.request_info(claim)[0] == 'browse')
+            if is_browse and not pre_cancelled:
+                con.execute("UPDATE tasks SET state='running' WHERE account_id=? AND id=?", (claim.account_id, claim.request_id))
+            elif pre_cancelled:
+                attempt, _operation_id = self._start_delivery(con, claim)
+                self._set_delivery(con, claim, attempt, 'aborted')
             if pre_cancelled:
                 attempt, _operation_id = self._start_delivery(con, claim)
                 self._set_delivery(con, claim, attempt, 'aborted')
-            else:
+            elif not is_browse:
                 con.execute("UPDATE tasks SET state='running' WHERE account_id=? AND id=?", (claim.account_id, claim.request_id))
                 attempt, operation_id = self._start_delivery(con, claim)
         if pre_cancelled:
             # Aborted before any native effect; recorded, settled, no retry.
             return self._close(claim, 'cancelled', 'Cancelled before execution')
+        if is_browse:
+            return self._execute_browse(claim, gateway)
         self._emit(claim, 'task_started', {'summary': 'Dispatched to the isolated runtime.'})
         intent, context = self.genui.request_info(claim) if self.genui else ('chat', {})
         outgoing = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
@@ -574,6 +584,107 @@ class ChatDriver:
         public = last if last else 'Completed without an agent transcript row; reconcile history before relying on this result.'
         self._emit(claim, 'result', {'summary': public[:500]})
         return self._close(claim, 'completed', public, gateway, before)
+
+    def _execute_browse(self, claim, gateway):
+        """Run a browser job on the host browse service and mirror its steps into the task timeline and browse_steps.
+
+        The assistant's cell is not involved. Money: the run's model calls spend on the account's own key, reconciled exactly
+        like a chat turn (spend delta). A hand-off at a payment step completes the request; the takeover window continues
+        in the service and is read through the browse endpoints.
+        """
+        if self.browse_factory is None:
+            return self._close(claim, 'failed', 'Browsing is not available right now. Nothing was charged.')
+        rpc = self.browse_factory(claim.account_id)
+        before = self._usage_before(gateway)
+        with self.store.connect() as con:
+            reserved = con.execute('SELECT amount_microusd FROM task_reservations WHERE account_id=? AND task_id=?', (claim.account_id, claim.request_id)).fetchone()
+        now = int(self.clock())
+        with self.coordinator.transaction() as con:
+            con.execute('INSERT OR IGNORE INTO browse_runs(account_id,request_id,goal,status,created_epoch,updated_epoch) VALUES (?,?,?,?,?,?)',
+                        (claim.account_id, claim.request_id, claim.message, 'queued', now, now))
+        self._emit(claim, 'task_started', {'summary': 'Opening a browser for this task.'})
+        rpc('start', request_id=claim.request_id, goal=claim.message, max_cost_microusd=int(reserved[0]) if reserved else 1_000_000)
+        since, deadline, final = 0, self.clock() + self.run_timeout, None
+        finals = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
+        while True:
+            with self.coordinator.transaction() as con:
+                cancelled = bool(con.execute('SELECT cancel_requested FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()[0])
+            if cancelled:
+                try:
+                    rpc('cancel', request_id=claim.request_id)
+                except Exception:
+                    pass
+            if self.heartbeat is not None:
+                self.heartbeat(claim)
+            try:
+                polled = rpc('poll', request_id=claim.request_id, since=since)
+            except CapabilityUnavailable:
+                polled = None
+            if polled is not None:
+                self._mirror_browse(claim, polled)
+                for e in polled['events']:
+                    since = max(since, e['n'])
+                    summary = self._browse_summary(e)
+                    if summary:
+                        self._emit(claim, 'progress', {'summary': summary}, 'browser')
+                if polled['state'] in finals:
+                    final = polled
+                    break
+            if self.clock() >= deadline:
+                try:
+                    rpc('cancel', request_id=claim.request_id)
+                except Exception:
+                    pass
+                return self._close(claim, 'failed', 'The browser task took too long and was stopped.', gateway, before)
+            self.sleep(self.poll_interval)
+        status = final['state']
+        if status == 'cancelled':
+            return self._close(claim, 'cancelled', 'Cancelled during browsing', gateway, before)
+        text = self._browse_message(final)
+        with self.coordinator.transaction() as con:
+            con.execute("INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content) VALUES (?,?,?,'agent',?)",
+                        (claim.account_id, claim.conversation_id, claim.request_id, text[:MAX_TRANSCRIPT_CHARS]))
+        self._emit(claim, 'result', {'summary': text[:500]})
+        return self._close(claim, 'completed' if status in ('done', 'handoff') else 'failed', text, gateway, before)
+
+    @staticmethod
+    def _browse_summary(e):
+        if e['kind'] == 'opened':
+            return f'Opened {e.get("url", "")}'
+        if e['kind'] == 'step':
+            who = {'jev': 'JEV', 'haiku': 'Haiku', 'sonnet': 'Sonnet'}.get(e.get('by'), e.get('by', ''))
+            verb = {'click': 'Clicked', 'type': 'Typed into', 'select': 'Chose in', 'press': 'Pressed', 'scroll': 'Scrolled', 'back': 'Went back'}.get(e.get('action'), e.get('action', ''))
+            tail = '' if e.get('result') == 'ok' else f' (failed: {e.get("result")})'
+            label = f' “{e.get("label")}”' if e.get('label') else ''
+            return f'{verb}{label} · {who}{tail}'
+        return None
+
+    @staticmethod
+    def _browse_message(final):
+        status, reason, answer = final['state'], final.get('reason') or '', final.get('answer') or ''
+        if status == 'done':
+            return answer or 'Done.'
+        if status == 'handoff':
+            where = f' I stopped at {final.get("url")}.' if final.get('url') else ''
+            return ('I got as far as I safely can: ' + (reason or 'the next step needs you') + '.' + where +
+                    ' Open the Browser page to see the screen and take over; nothing was purchased or submitted.')
+        notes = {'blocked': 'I did not open that site because it is not allowed.', 'budget': 'I stopped because the spending limit for this task was reached.',
+                 'stuck': 'I got stuck repeating the same step and stopped.', 'deadline': 'I ran out of time.', 'max_steps': 'I reached the step limit.',
+                 'error': 'The browser run failed.', 'stopped': 'I could not complete this.'}
+        return (notes.get(status, 'The browser run ended.') + (f' ({reason})' if reason else '')).strip()
+
+    def _mirror_browse(self, claim, polled):
+        now = int(self.clock())
+        jev = polled.get('jev') or {}
+        with self.coordinator.transaction() as con:
+            con.execute('''UPDATE browse_runs SET status=?,url=?,answer=?,reason=?,pending_json=?,jev_asked=?,jev_agree=?,estimated_cost_microusd=?,updated_epoch=?,
+                takeover_until=CASE WHEN ? THEN ? ELSE takeover_until END WHERE account_id=? AND request_id=?''',
+                        (polled['state'], polled.get('url'), polled.get('answer'), polled.get('reason'),
+                         json.dumps(polled['pending_action']) if polled.get('pending_action') else None, jev.get('jev_asked', 0), jev.get('jev_agree', 0),
+                         int(polled.get('cost_microusd') or 0), now, 1 if polled.get('takeover') else 0, now + 600, claim.account_id, claim.request_id))
+            for e in polled['events']:
+                con.execute('INSERT OR IGNORE INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)',
+                            (claim.account_id, claim.request_id, e['n'], e['kind'], json.dumps({k: v for k, v in e.items() if k not in ('n', 'kind')}), now))
 
     def _poll(self, claim, gateway, session, ack, attempt, before, poll):
         """Wait for the run to finish. Returns 'done', or a RequestReceipt when the request was closed (cancel or timeout)."""
@@ -637,6 +748,14 @@ class ChatDriver:
     def reconcile(self, claim: RequestClaim):
         if claim.conversation_id is None:
             raise ValueError('chat driver requires a conversation binding')
+        if self.genui is not None and self.genui.request_info(claim)[0] == 'browse':
+            # A browse run interrupted by a crash: the browser job is bounded and stops by itself; settle at the reserved upper bound.
+            if self.browse_factory is not None:
+                try:
+                    self.browse_factory(claim.account_id)('cancel', request_id=claim.request_id)
+                except Exception:
+                    pass
+            return self._close(claim, 'failed', 'The browser task was interrupted and stopped. Please try again.', self.gateway_factory(claim), None)
         with self.store.connect() as con:
             row = con.execute('''SELECT attempt,state,native_run_id,usage_before_microusd FROM chat_deliveries WHERE account_id=? AND request_id=?
                 ORDER BY attempt DESC LIMIT 1''', (claim.account_id, claim.request_id)).fetchone()

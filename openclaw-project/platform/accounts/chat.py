@@ -33,15 +33,22 @@ def execution_on():
     return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('customer_execution')
 
 
+def browse_on():
+    from django.conf import settings
+    from agentai_platform.switches import SwitchStore
+    return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('browse_tasks')
+
+
 def service():
     from django.conf import settings
     from agentai_platform.chat import FixedRoute
     store = AccountStore(connection.settings_dict['NAME'])
     live = execution_on()
+    browse = browse_on()
     # Without the owner switch no route is priced, so a send waits unfunded exactly as before.
     kwargs = {'pricer': FixedRoute(settings.CUSTOMER_RESERVATION_MICROUSD, 'plan-reservation-v1')} if live else {}
     return ChatService(store, queue=RequestQueue(store, require_cell=live), ledger=BudgetLedger(store, service_limit_microusd=settings.SERVICE_ALLOCATION_MICROUSD if live else None),
-                       execution=live, **kwargs)
+                       execution=live, browse=browse, **kwargs)
 
 
 def principal(request):

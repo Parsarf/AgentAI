@@ -219,7 +219,7 @@ class UiContractChecks(ChatHTTPChecks):
         self.assertEqual(anon.get('/v1/app', secure=True).status_code, 401)
         app = self.clients[0].get('/v1/app', secure=True).json()
         self.assertEqual(app['user']['email'], 'chatter@example.invalid')
-        self.assertEqual(set(app['features']), {'chat', 'execution', 'files', 'uploads', 'telegram', 'connectors', 'billing_mode', 'requests', 'usage'})
+        self.assertEqual(set(app['features']), {'chat', 'execution', 'browse', 'files', 'uploads', 'telegram', 'connectors', 'billing_mode', 'requests', 'usage'})
         self.assertNotIn('account_id', json.dumps(app))                     # the shell never needs, and is never handed, internal ids
         d = tempfile.mkdtemp()
         with override_settings(UI_BUNDLE_DIR=d):
@@ -332,3 +332,28 @@ class PlanRunHttpChecks(ChatHTTPChecks):
         self.assertEqual(titles, ['Store build'])
         self.assertEqual(self.post(a, '/v1/conversations/' + conversation + '/rename', {'title': ''}).status_code, 400)
         self.assertEqual(self.post(b, '/v1/conversations/' + conversation + '/rename', {'title': 'x'}).status_code, 404)
+
+
+class BrowseHttpChecks(ChatHTTPChecks):
+    def seed(self, status='completed'):
+        with connection.cursor() as c:
+            c.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch) VALUES (%s,'br1','a',%s,'k','h','find a paddle','completed',1)", [self.account_ids[0], self.project()])
+            c.execute("INSERT INTO browse_runs(account_id,request_id,goal,status,url,answer,created_epoch,updated_epoch) VALUES (%s,'br1','find a paddle',%s,'https://shop.test/','done',1,1)", [self.account_ids[0], status])
+            c.execute("INSERT INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (%s,'br1',1,'step','{\"summary\":\"opened\"}',1)", [self.account_ids[0]])
+
+    def test_runs_are_listed_and_scoped_to_the_owner(self):
+        self.seed()
+        a, b = self.clients
+        self.assertEqual([r['request_id'] for r in a.get('/v1/browse', secure=True).json()['runs']], ['br1'])
+        self.assertEqual(b.get('/v1/browse', secure=True).json()['runs'], [])
+        self.assertEqual(b.get('/v1/browse/br1', secure=True).status_code, 404)
+        detail = a.get('/v1/browse/br1', secure=True).json()
+        self.assertEqual((detail['status'], detail['takeover'], detail['events'][0]['n']), ('completed', False, 1))
+
+    def test_control_validates_input_and_needs_the_service(self):
+        self.seed('handoff')
+        a, b = self.clients
+        for bad in [{'action': 'click'}, {'action': 'click', 'x': 2000, 'y': 1}, {'action': 'type'}, {'action': 'nope'}, {'action': 'type', 'text': 'x' * 501}]:
+            self.assertEqual(self.post(a, '/v1/browse/br1/control', bad).status_code, 400, bad)
+        self.assertEqual(self.post(b, '/v1/browse/br1/control', {'action': 'scroll', 'text': 'down'}).status_code, 404)
+        self.assertIn(self.post(a, '/v1/browse/br1/control', {'action': 'scroll', 'text': 'down'}).status_code, (409, 503))   # no browse service in tests
