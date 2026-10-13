@@ -14,11 +14,21 @@ Plan: see the approved plan "Lumina browsing and ordering" (phases P0–P7). **S
 | Tests | `platform/tests/test_browse.py` (12 incl. a real-Chrome run against the mock shop: add to cart, then handoff at Checkout, never reaching Place order) | |
 | Stage check | server, 2026-10-13 | the runner runs in the existing `openclaw-sandbox-browser:phase4-2026.9.6` stage under gVisor (read-only root, no caps, 1.5 GiB, bind-mounted ro, no new image needed): opened example.com, produced a host-format snapshot and a screenshot, refused `http://10.0.0.5/`. One real bug found and fixed there (EOF closed the browser before queued work finished) |
 
+## Built and live on the server (2026-10-13, switch `browse_tasks` OFF)
+| Piece | Where | Notes |
+|---|---|---|
+| Browse service | `agentai_platform/browse/service.py`, `service_main.py`, unit `deploy/agentai-browse.service` | root service on `/run/agentai-browse/browse.sock` (peer-uid checked, group `agentai-platform`); one stage at a time; per-account model key from custody; JEV key at `/var/lib/agentai-supervisor-secrets/_shared/typesafe-key`; JEV runs in **shadow** (asked beside the real decision, agreement recorded); runner bundle read-only at `/opt/agentai-browse/runner`; jobs in `/var/lib/agentai-browse/jobs` |
+| Request path | `chat.py` `_execute_browse`, `request_queue.py`, `lifecycle/worker.py` | mode `browse` / auto-detected interactive goals (only when the switch is on); no cell wake; steps mirrored to `browse_runs`/`browse_steps` (migration 0019) and the task timeline; usage reconciled from key spend; stop = cancel |
+| Endpoints | `accounts/browse.py` | `GET /v1/browse`, `GET /v1/browse/{id}?since=`, `GET …/shot/{file}`, `POST …/control` (click/type/key/scroll, only after a hand-off, 10-minute window), `POST …/release` |
+| UI | `lumina/src/pages/Browser.tsx` | live steps + screenshot, click-to-act takeover mapped to 1280×800, "Watch live" on the task strip, "Browse" mode chip when enabled |
+| Switch | `switches.py` `browse_tasks` (needs fact `browse_ready`, confirmation `browse_cost`) | `browse_ready` fact is set on the server |
+
+Live check (real stage, public read-only site `books.toscrape.com`): direct service call and a full chat request both returned the correct cheapest book (£13.99) in about 15 seconds; estimated model cost 0.28 cents per task. Bug found by the live run: the chat driver probed the assistant cell's gateway even for browser tasks (the cell is stopped) and failed; fixed. Not yet done: a run that reaches a payment hand-off on a real site, and real takeover clicks (covered by tests and mock shop only).
+
 ## Not built yet (next, in order)
-1. **Root `agentai-browse` service** (new unix socket like the cell bridge): starts the stage through `WorkerBroker`, owns the per-account model key and the TypeSafe key, runs `BrowseRunner`, stores run state/screenshots; the app-user request worker only submits a job and polls (the app user cannot reach docker or tenant keys).
-2. Real LLM client (LiteLLM with the account's virtual key) and ledger admission/receipts for each paid call.
-3. Chat integration: `intent='browse'`, task-strip events, screenshots, a real Browser page, `approval` block, owner switch `browse_tasks`.
-4. Takeover (screenshot relay with validated clicks), calibration/benchmark (needs go for paid runs), guarded ordering, hardening — as in the plan.
+1. Calibration/benchmark (P5): Haiku-only vs JEV→Haiku→Sonnet vs Claude-first on identical fixtures (needs the owner's go; tens of dollars). JEV is in shadow only until then.
+2. Guarded ordering (P6) behind the locked `credentialed_browsing` switch: takeover-login profile, approval cards, hard spend limit, real purchases only in the owner's test account.
+3. Hardening (P7): prompt-injection corpus, log redaction, capacity test, monitor checks.
 
 ## Decisions still open (from the plan)
 Captcha policy (stop and hand over, never defeat), first release = stop at checkout, ordering via takeover login rather than stored passwords, browse spend caps, a dedicated customer Brave key.

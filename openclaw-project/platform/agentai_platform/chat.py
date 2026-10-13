@@ -493,10 +493,11 @@ class ChatDriver:
         if claim.conversation_id is None:
             raise ValueError('chat driver requires a conversation binding')
         gateway = self.gateway_factory(claim)
-        caps = gateway.capabilities()
-        for operation in ('send', 'history'):
-            if not getattr(caps, operation):
-                raise CapabilityUnavailable('gateway probe did not verify ' + operation)
+        if not (self.genui and self.genui.request_info(claim)[0] == 'browse'):      # browser tasks do not use the assistant's cell
+            caps = gateway.capabilities()
+            for operation in ('send', 'history'):
+                if not getattr(caps, operation):
+                    raise CapabilityUnavailable('gateway probe did not verify ' + operation)
         with self.coordinator.transaction() as con:
             self.store._authorize(con, Principal(claim.account_id, claim.actor_id, 'customer'))
             reservation = con.execute('SELECT state FROM task_reservations WHERE account_id=? AND task_id=?',

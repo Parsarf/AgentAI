@@ -32,7 +32,7 @@ class BrowseRpc:
         except ValueError as exc:
             raise CapabilityUnavailable('browse service reply invalid') from exc
         if not reply.get('ok'):
-            raise CapabilityUnavailable('browse service refused')
+            raise CapabilityUnavailable('browse service refused: ' + str(reply.get('error', ''))[:80])
         return reply.get('result') or {}
 
     def shot(self, request_id, name):
