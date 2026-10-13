@@ -35,7 +35,7 @@ export type PhaseState = 'pending' | 'running' | 'awaiting_approval' | 'complete
 export interface PhaseRun { state: PhaseState; attempts: number; request_id: string | null; summary: string | null; approved: boolean; started_epoch: number | null; finished_epoch: number | null }
 
 export interface Block {
-  id: string; conversation_id: string; anchor_message_id: number | null; kind: 'form' | 'task_plan'; schema_version: string;
-  spec: unknown; state: any; version: number; status: 'draft' | 'submitted' | 'launched' | 'superseded'; launched_request_id: string | null;
+  id: string; conversation_id: string; anchor_message_id: number | null; kind: 'form' | 'task_plan' | 'table' | 'chart' | 'comparison'; schema_version: string;
+  spec: unknown; state: any; version: number; status: 'draft' | 'submitted' | 'launched' | 'superseded' | 'final'; launched_request_id: string | null;
   run?: Record<string, PhaseRun>; run_status?: 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'stopped';
 }

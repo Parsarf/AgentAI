@@ -40,6 +40,8 @@ export default function Chat() {
   const byRequest = new Map(tasks.map(t => [t.id, t]));
   const current = chats.find(c => c.id === id);
 
+  const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text' }); } finally { reload(); } };
+  const lastAgent = [...msgs].reverse().find(m => m.provenance === 'agent');
   const fresh = !id || (loaded && !msgs.length && !err);          // nothing said yet: the composer floats in the middle, then settles at the bottom
   const sent = (r: any) => {
     if (id) { reload(); return; }
@@ -59,6 +61,12 @@ export default function Chat() {
               <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.content}</div>
               {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <TaskStrip task={byRequest.get(m.request_id)!} onCancel={() => cancel(m.request_id!)} />}
               {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
+              {m === lastAgent && !working && m.id > 0 && m.content.length > 160 && !blocks.some(b => b.anchor_message_id === m.id) && (
+                <div className="quick" aria-label="Show this differently">
+                  <button className="chip small" onClick={() => askAgain('Show your last answer as a table.')}>Show as table</button>
+                  <button className="chip small" onClick={() => askAgain('Show your last answer as a chart.')}>Show as chart</button>
+                  <button className="chip small" onClick={() => askAgain('Compare the options from your last answer side by side.')}>Compare side by side</button>
+                </div>)}
             </div>))}
           {drafting && <div className="bubble agent"><span className="muted">Drafting your plan…</span></div>}
           {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}

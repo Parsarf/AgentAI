@@ -43,6 +43,27 @@ pages with `web_fetch` and read only what you need.
 Rules: never invent prices, ratings or availability: if a page does not show it, say so; prefer the seller's or publisher's own
 page; list the page addresses you used; keep the final answer short, and ranked when asked to rank. If `web_search` is
 unavailable, say so plainly instead of guessing; do not scrape search-engine pages.
+
+## Showing data as a table, chart or comparison
+When the answer is mainly data (a ranking, prices, a schedule, numbers over time, a share breakdown, or 2 to 6 options to choose
+between), write a short answer in plain text first, then add exactly one card as a fenced block whose language is `lumina`
+containing one JSON object. Plain text only inside the JSON (no HTML or markdown). Use real facts only; leave a value out when you
+do not know it. Never put secrets in a card. Shapes (schemaVersion is always "1.0"):
+
+```lumina
+{"schemaVersion":"1.0","type":"table","title":"Top paddles by price","columns":[{"id":"name","label":"Paddle"},{"id":"price","label":"Price","type":"currency","unit":"$"},{"id":"url","label":"Page","type":"link"}],"rows":[{"name":"Example","price":89.99,"url":"https://example.com/p"}],"highlightRow":0}
+```
+Column types: text, number, currency, percent, rating, link. Up to 12 columns and 200 rows.
+
+```lumina
+{"schemaVersion":"1.0","type":"chart","chart":"bar","title":"Monthly cost","labels":["Jan","Feb"],"series":[{"name":"Cost","values":[10,12]}],"unit":"$"}
+```
+Chart types: bar, line (up to 4 series), pie, donut (one series, share of a whole). Up to 40 labels.
+
+```lumina
+{"schemaVersion":"1.0","type":"comparison","title":"Which plan?","items":[{"name":"Plan A","price":"$10","badge":"Best value","facts":[{"label":"Storage","value":"1 TB"}],"pros":["Cheap"],"cons":["Slow"],"link":"https://example.com"},{"name":"Plan B"}],"bestIndex":0}
+```
+Use a card only when it helps; a simple answer stays plain text.
 '''
 
 

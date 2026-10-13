@@ -25,6 +25,15 @@ const events = [
   { kind: 'progress', payload: { summary: 'Runtime accepted the request.' }, created_at: '2026-10-12T20:26:02Z' },
   { kind: 'progress', payload: { summary: '3 transcript update(s) recorded.' }, created_at: '2026-10-12T20:26:09Z' },
 ];
+
+const card = (id, kind, spec) => ({ id, conversation_id: 'c1', anchor_message_id: 2, kind, schema_version: '1.0', spec: { schemaVersion: '1.0', type: kind, ...spec }, state: {}, version: 1, status: 'final', launched_request_id: null });
+const CARDS = [
+  card('t1', 'table', { title: 'Cheapest carbon paddles', caption: 'Prices from seller pages, checked today.', highlightRow: 0, columns: [{ id: 'name', label: 'Paddle', type: 'text' }, { id: 'price', label: 'Price', type: 'currency' }, { id: 'rating', label: 'Rating', type: 'rating' }, { id: 'url', label: 'Page', type: 'link' }],
+    rows: [{ name: 'Selkirk Vanguard', price: 89.99, rating: 4.6, url: 'https://example.com/a' }, { name: 'JOOLA Ben Johns', price: 129, rating: 4.8, url: 'https://example.com/b' }, { name: 'Paddletek Bantam', price: 99.5, rating: 4.4, url: 'https://example.com/c' }, { name: 'Engage Pursuit', price: 149, rating: 4.7, url: 'https://example.com/d' }, { name: 'CRBN 1', price: 199.95, rating: 4.9, url: 'https://example.com/e' }, { name: 'Gearbox CX14', price: 179, rating: 4.5 }, { name: 'Onix Z5', price: 74.99, rating: 4.1, url: 'https://example.com/g' }] }),
+  card('c1', 'chart', { chart: 'bar', title: 'Monthly spend', unit: '$', labels: ['May', 'Jun', 'Jul', 'Aug', 'Sep'], series: [{ name: 'Models', values: [12, 18, 25, 22, 31] }, { name: 'Search', values: [3, 4, 6, 5, 8] }] }),
+  card('c2', 'chart', { chart: 'donut', title: 'Where the budget goes', labels: ['Haiku', 'Sonnet', 'Search', 'Browser'], series: [{ name: 'Share', values: [52, 28, 12, 8] }], unit: '$' }),
+  card('p1', 'comparison', { title: 'Which paddle fits you?', bestIndex: 0, items: [{ name: 'Selkirk Vanguard', price: '$89.99', badge: 'Best value', facts: [{ label: 'Weight', value: '7.9 oz' }, { label: 'Core', value: 'Polypropylene' }], pros: ['Great control', 'Cheap'], cons: ['Less power'], link: 'https://example.com/a' }, { name: 'JOOLA Ben Johns', price: '$129', facts: [{ label: 'Weight', value: '8.2 oz' }, { label: 'Core', value: 'Carbon' }], pros: ['Power'], cons: ['Pricey'], link: 'https://example.com/b' }, { name: 'CRBN 1', price: '$199.95', facts: [{ label: 'Weight', value: '8.0 oz' }], pros: ['Spin'], cons: ['Expensive', 'Stiff'] }] }),
+];
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
 const body = req => new Promise(r => { let d = ''; req.on('data', c => d += c); req.on('end', () => { try { r(JSON.parse(d || '{}')); } catch { r({}); } }); });
 
@@ -56,7 +65,7 @@ http.createServer(async (req, res) => {
           { id: 'catalog', type: 'slider', label: 'Products in the first catalog', min: 1, max: 500, step: 1, default: 40, unit: 'items', showIf: { field: 'kind', equals: 'ecommerce' } }] },
         state: { answers: {} } },
       { id: 'b2', conversation_id: 'c1', anchor_message_id: 2, kind: 'task_plan', schema_version: '1.0', version: 2, status: 'draft', launched_request_id: null,
-        spec: PLAN, state: { plan: PLAN, requirements: {}, revision: 1 } }] });
+        spec: PLAN, state: { plan: PLAN, requirements: {}, revision: 1 } }, ...CARDS] });
     if (p.endsWith('/state')) { const b = await body(req); return json(res, 200, { block: { version: (b.version || 1) + 1 } }); }
     if (p.endsWith('/messages')) return json(res, 200, { messages: [{ id: 1, request_id: 'r4', provenance: 'customer', content: 'Search for the best cheap carbon pickleball rackets for me and rank the top 10', created_at: 'x' }, { id: 2, request_id: 'r4', provenance: 'agent', content: 'I\'ll start by searching the web for current options.', created_at: 'x' }], tasks: [{ id: 'r4', state: 'running', created_epoch: now() - 140 }] });
     if (p.endsWith('/send')) { const b = await body(req); requests.unshift({ id: 'n' + Date.now(), message: b.message, state: 'waiting', cancel_requested: 0, result: null, created_epoch: now() }); return json(res, 202, { request: { admission: 'reserved' } }); }

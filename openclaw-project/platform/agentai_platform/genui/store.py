@@ -8,7 +8,7 @@ from agentai_platform.lifecycle.coordinator import Coordinator, identifier
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import NotFound, Principal
 
-from . import schema
+from . import data as datacards, schema
 
 
 def _public(row, con=None) -> dict:
@@ -43,6 +43,12 @@ def _public_base(row) -> dict:
             'schema_version': row['schema_version'], 'spec': json.loads(row['spec_json']), 'state': json.loads(row['state_json']),
             'version': row['version'], 'status': row['status'], 'launched_request_id': row['launched_request_id'],
             'created_epoch': row['created_epoch'], 'updated_epoch': row['updated_epoch']}
+
+
+def _card(row) -> dict:
+    return {'id': row['id'], 'conversation_id': row['conversation_id'], 'anchor_message_id': row['anchor_message_id'], 'kind': row['kind'],
+            'schema_version': '1.0', 'spec': json.loads(row['spec_json']), 'state': {}, 'version': 1, 'status': 'final', 'launched_request_id': None,
+            'created_epoch': row['created_epoch'], 'updated_epoch': row['created_epoch']}
 
 
 class BlockStore:
@@ -89,7 +95,10 @@ class BlockStore:
                 raise NotFound('unavailable')
             rows = con.execute('SELECT * FROM ui_blocks WHERE account_id=? AND conversation_id=? ORDER BY created_epoch,rowid LIMIT 100',
                                (principal.account_id, conversation_id)).fetchall()
-            return [_public(r, con) for r in rows]
+            out = [_public(r, con) for r in rows]
+            cards = con.execute('SELECT * FROM data_blocks WHERE account_id=? AND conversation_id=? ORDER BY created_epoch,position LIMIT 100',
+                                (principal.account_id, conversation_id)).fetchall()
+            return out + [_card(c) for c in cards]
 
     def get(self, principal: Principal, block_id: str, con=None) -> dict:
         identifier(block_id)
@@ -131,3 +140,20 @@ class BlockStore:
     def set_status(self, con, account_id, block_id, status, *, request_id=None):
         con.execute('UPDATE ui_blocks SET status=?,launched_request_id=coalesce(?,launched_request_id),version=version+1,updated_epoch=? '
                     'WHERE account_id=? AND id=?', (status, request_id, int(self.clock()), account_id, block_id))
+
+    # -- read-only data cards extracted from an assistant answer (server code only) ----------------------------------
+    def attach_cards(self, account_id, conversation_id, request_id) -> int:
+        """Move ```lumina fences out of this request's agent messages into validated cards. Returns how many cards were stored."""
+        made = 0
+        with self.coordinator.transaction() as con:
+            rows = con.execute("SELECT id,content FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance='agent' "
+                               "AND content LIKE '%```lumina%' ORDER BY id", (account_id, conversation_id, request_id)).fetchall()
+            for row in rows:
+                clean, specs = datacards.extract(row['content'])
+                for spec in specs:
+                    cur = con.execute('SELECT coalesce(max(position),-1)+1 FROM data_blocks WHERE account_id=? AND source_request_id=?', (account_id, request_id)).fetchone()[0]
+                    con.execute('INSERT OR IGNORE INTO data_blocks(account_id,id,conversation_id,anchor_message_id,kind,spec_json,source_request_id,position,created_epoch) '
+                                'VALUES (?,?,?,?,?,?,?,?,?)', (account_id, uuid.uuid4().hex, conversation_id, row['id'], spec['type'], json.dumps(spec), request_id, cur, int(self.clock())))
+                    made += 1
+                con.execute('UPDATE chat_messages SET content=? WHERE account_id=? AND id=?', (clean or 'Here is what I found.', account_id, row['id']))
+        return made

@@ -7,7 +7,7 @@ from agentai_platform.budget import BudgetLedger
 from agentai_platform.capacity import CapacityResult
 from agentai_platform.chat import ChatDriver, ChatService, FixedRoute, synthetic_gateway_factory
 from agentai_platform.gateway import SyntheticGateway
-from agentai_platform.genui import intent, prompts, schema
+from agentai_platform.genui import data as cards, intent, prompts, schema
 from agentai_platform.genui.runtime import GenUiRuntime, extract_json
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.request_queue import RequestQueue
@@ -298,3 +298,48 @@ class FlowChecks(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+TABLE = {'schemaVersion': '1.0', 'type': 'table', 'title': 'Paddles', 'columns': [{'id': 'name', 'label': 'Paddle'}, {'id': 'price', 'label': 'Price', 'type': 'currency', 'unit': '$'}, {'id': 'url', 'label': 'Page', 'type': 'link'}],
+         'rows': [{'name': 'A', 'price': 89.5, 'url': 'https://example.com/a'}, {'name': 'B', 'price': 120}], 'highlightRow': 0}
+CHART = {'schemaVersion': '1.0', 'type': 'chart', 'chart': 'donut', 'title': 'Share', 'labels': ['x', 'y'], 'series': [{'name': 's', 'values': [3, 1]}]}
+COMPARE = {'schemaVersion': '1.0', 'type': 'comparison', 'title': 'Pick', 'items': [{'name': 'A', 'pros': ['cheap'], 'facts': [{'label': 'k', 'value': 'v'}]}, {'name': 'B', 'link': 'https://example.com'}], 'bestIndex': 0}
+
+
+class CardChecks(unittest.TestCase):
+    def test_valid_cards_pass_and_unsafe_ones_are_rejected(self):
+        for spec in (TABLE, CHART, COMPARE):
+            self.assertEqual(cards.validate_data(spec)['type'], spec['type'])
+        def bad(base, mutate):
+            f = copy.deepcopy(base); mutate(f)
+            with self.assertRaises(schema.SpecError): cards.validate_data(f)
+        bad(TABLE, lambda f: f['rows'][0].update(url='javascript:alert(1)'))
+        bad(TABLE, lambda f: f['rows'][0].update(ghost=1))
+        bad(TABLE, lambda f: f.update(onclick='x'))
+        bad(TABLE, lambda f: f['rows'][0].update(name='<img src=x onerror=alert(1)>'))
+        bad(TABLE, lambda f: f.update(highlightRow=9))
+        bad(CHART, lambda f: f['series'][0].update(values=[1]))
+        bad(CHART, lambda f: f['series'][0].update(values=[-1, 2]))
+        bad(CHART, lambda f: f['series'].append({'name': 'z', 'values': [1, 1]}))
+        bad(COMPARE, lambda f: f['items'].pop())
+        bad(COMPARE, lambda f: f['items'][1].update(link='ftp://x'))
+        bad(TABLE, lambda f: f.update(rows=[{'name': 'r'}] * 201))
+
+    def test_extract_strips_fences_and_drops_invalid_or_unfinished_ones(self):
+        text = 'Top picks below.\n```lumina\n' + json.dumps(TABLE) + '\n```\nMore text.\n```lumina\n{"type":"table"}\n```\n```lumina\n{"schemaVersion":'
+        clean, specs = cards.extract(text)
+        self.assertEqual([x['type'] for x in specs], ['table'])
+        self.assertNotIn('lumina', clean); self.assertIn('Top picks below.', clean); self.assertIn('More text.', clean)
+
+
+class CardFlowChecks(FlowChecks):
+    def test_assistant_fence_becomes_a_card_and_the_text_stays_clean(self):
+        self.chat.send(self.a, conversation_id='c-a', message='Rank the five cheapest paddles please', key='t1', mode='text')
+        self.gw.replies = ['Cheapest first.\n```lumina\n' + json.dumps(TABLE) + '\n```']
+        self.assertEqual(self.worker().tick(), {'ran': 1, 'finished': True})
+        blocks = self.chat.blocks.list(self.a, 'c-a')
+        card = [b for b in blocks if b['kind'] == 'table'][0]
+        self.assertEqual((card['status'], card['spec']['rows'][0]['name']), ('final', 'A'))
+        agent = [m for m in self.chat.messages(self.a, 'c-a')['messages'] if m['provenance'] == 'agent'][-1]
+        self.assertEqual(agent['content'], 'Cheapest first.'); self.assertEqual(card['anchor_message_id'], agent['id'])
+        self.assertEqual(self.chat.blocks.list(self.b, 'c-b'), [])                                                   # scoped to the account

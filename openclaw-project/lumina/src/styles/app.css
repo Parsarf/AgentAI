@@ -240,3 +240,30 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .thread-col.fresh .greeting { opacity: 1; }
 .thread-col.fresh .dock { transform: translateY(calc(-50vh + 110px)); background: none; }
 @media (prefers-reduced-motion: reduce) { .dock, .greeting { transition: none; } }
+
+/* data cards: table, chart, comparison */
+.gcard { padding: 16px 18px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: rgba(16,17,21,.72); backdrop-filter: blur(14px); animation: gin .35s var(--ease) both; }
+@keyframes gin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.gcard-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; } .gcard-h h3 { font-size: 15.5px; font-weight: 600; }
+.gcard-tools { display: flex; gap: 8px; align-items: center; } .gfilter { width: 150px; padding: 5px 10px; border-radius: 9px; border: 1px solid var(--line-2); background: rgba(255,255,255,.04); color: inherit; font: inherit; font-size: 13px; outline: 0; } .gfilter:focus { border-color: var(--neon); }
+.gcard-cap { margin-top: 10px; color: var(--ink-3); font-size: 12.5px; }
+.gtable-wrap { max-height: 440px; overflow: auto; border-radius: 12px; border: 1px solid var(--line); } .gtable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.gtable th { position: sticky; top: 0; background: #14151a; text-align: left; font-weight: 500; color: var(--ink-2); z-index: 1; } .gtable th button { all: unset; cursor: pointer; padding: 9px 12px; display: inline-flex; gap: 4px; width: 100%; box-sizing: border-box; } .gtable th button:hover { color: var(--ink); }
+.gtable th.num button { justify-content: flex-end; } .gtable .arrow { width: 10px; color: var(--neon); }
+.gtable td { padding: 9px 12px; border-top: 1px solid var(--line); } .gtable td.num { text-align: right; font-variant-numeric: tabular-nums; } .gtable tbody tr:hover { background: rgba(255,255,255,.03); }
+.gtable tr.best td { background: rgba(104,101,255,.12); } .gtable tr.best td:first-child { box-shadow: inset 3px 0 var(--neon); }
+.gread { color: var(--ink-2); font-size: 12.5px; min-height: 1.2em; }
+.gplot { width: 100%; height: auto; display: block; } .gt-axis { fill: var(--ink-3); font-size: 11px; } .gt-sub { fill: var(--ink-3); font-size: 11px; } .gt-big { fill: var(--ink); font-size: 18px; font-weight: 600; }
+.gbar { transform-box: fill-box; transform-origin: bottom; animation: grow .6s var(--ease) both; animation-delay: calc(var(--i) * 25ms); } @keyframes grow { from { transform: scaleY(0); } to { transform: none; } }
+.gline { stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw .9s var(--ease) both; } @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.gpie { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; gap: 18px; align-items: center; } .gpie svg { width: 100%; height: auto; }
+.glegend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; padding: 0; } .glegend.col { flex-direction: column; flex-wrap: nowrap; gap: 8px; margin: 0; }
+.glegend li, .glegend button { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); background: none; border: 0; cursor: pointer; padding: 2px 0; font: inherit; font-size: 13px; } .glegend li b { margin-left: auto; color: var(--ink); font-weight: 500; padding-left: 14px; } .glegend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.gcompare { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 12px; }
+.gopt { position: relative; padding: 14px; border-radius: 14px; border: 1px solid var(--line-2); background: rgba(255,255,255,.025); cursor: pointer; outline: 0; transition: border-color .15s, background .15s, transform .15s; } .gopt:hover { transform: translateY(-2px); } .gopt:focus-visible, .gopt.on { border-color: var(--neon); background: rgba(104,101,255,.1); }
+.gopt h4 { font-size: 15px; font-weight: 600; margin: 4px 0 2px; } .gprice { font-size: 20px; font-weight: 600; margin: 6px 0; } .gbadge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--neon); color: #fff; }
+.gopt dl { margin: 8px 0; display: grid; gap: 4px; font-size: 13px; } .gopt dl div { display: flex; justify-content: space-between; gap: 10px; } .gopt dt { color: var(--ink-3); } .gopt dd { margin: 0; text-align: right; }
+.gopt ul { margin: 6px 0 0; padding: 0; list-style: none; font-size: 13px; display: grid; gap: 3px; } .pros li::before { content: '+ '; color: #5fd49a; } .cons li::before { content: '– '; color: #ff8a8a; }
+@media (max-width: 720px) { .gcompare { grid-template-columns: minmax(0, 1fr); } .gpie { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .gcard, .gbar, .gline { animation: none; } }
+.quick { display: flex; gap: 8px; flex-wrap: wrap; } .quick .chip { opacity: .75; } .quick .chip:hover { opacity: 1; }

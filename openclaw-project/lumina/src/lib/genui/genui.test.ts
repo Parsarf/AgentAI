@@ -82,3 +82,25 @@ describe('plan editing', () => {
     expect(h.redo()).toBe(3); h.push(9); expect(h.canRedo).toBe(false);
   });
 });
+
+import { chartSpec, filterRows, niceMax, shares, sortRows, tableSpec, toCsv } from './data';
+describe('data cards', () => {
+  const table = tableSpec.parse({ schemaVersion: '1.0', type: 'table', title: 'T', columns: [{ id: 'name', label: 'Name', type: 'text' }, { id: 'price', label: 'Price', type: 'currency' }],
+    rows: [{ name: 'b', price: 20 }, { name: 'a', price: 5 }, { name: '=HYPERLINK("x")' }] });
+  it('sorts numbers numerically with empty values last, and filters', () => {
+    expect(sortRows(table.rows, 'price', 1).map(r => r.price)).toEqual([5, 20, undefined]);
+    expect(sortRows(table.rows, 'price', -1).map(r => r.price)).toEqual([20, 5, undefined]);
+    expect(filterRows(table.rows, 'A').map(r => r.name)).toEqual(['a']);
+  });
+  it('exports csv that cannot become a spreadsheet formula', () => {
+    expect(toCsv(table).split('\n')[3]).toBe(`"'=HYPERLINK(""x"")",`);
+  });
+  it('rejects unsafe or malformed cards', () => {
+    expect(chartSpec.safeParse({ schemaVersion: '1.0', type: 'chart', chart: 'bar', title: 'x', labels: ['a', 'b'], series: [{ name: 's', values: [1] }] }).success).toBe(false);
+    expect(tableSpec.safeParse({ ...table, onclick: 'x' }).success).toBe(false);
+  });
+  it('computes pie shares and friendly axis maxima', () => {
+    expect(shares([1, 3])).toEqual([0.25, 0.75]); expect(shares([0, 0])).toEqual([0, 0]);
+    expect([niceMax(0), niceMax(3.2), niceMax(87), niceMax(1200)]).toEqual([1, 4, 100, 2000]);
+  });
+});

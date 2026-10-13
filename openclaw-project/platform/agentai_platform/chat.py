@@ -580,6 +580,11 @@ class ChatDriver:
                 self._emit(claim, 'progress', {'summary': 'Plan drafted and ready to edit.'}, 'gateway')
             else:
                 self._emit(claim, 'progress', {'summary': 'The reply could not be shown as a plan; showing it as text.'}, 'gateway')
+        if self.genui is not None and intent != 'plan':
+            try:
+                self.genui.blocks.attach_cards(claim.account_id, claim.conversation_id, claim.request_id)
+            except Exception:
+                pass                        # a card that cannot be stored never fails the answer; the text stays
         with self.store.connect() as con:
             last = self._last_agent_message(con, claim.account_id, claim.conversation_id)
         public = last if last else 'Completed without an agent transcript row; reconcile history before relying on this result.'

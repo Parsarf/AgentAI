@@ -18,7 +18,7 @@ from .crypto import AgeCrypto
 
 # Backup wins on conflict; rows created after the backup are kept.
 RESTORE = ['projects', 'conversations', 'project_files', 'artifacts', 'memory_entries', 'memory_terms', 'skills', 'skill_versions',
-           'ui_blocks', 'plan_revisions', 'plan_phase_runs', 'watchers', 'schedules', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts']
+           'ui_blocks', 'data_blocks', 'plan_revisions', 'plan_phase_runs', 'watchers', 'schedules', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts']
 # Live wins; only rows missing live are added (then neutralized).
 MERGE = ['browse_runs', 'browse_steps', 'tasks', 'customer_requests', 'chat_messages', 'chat_deliveries', 'events', 'browser_profiles']
 # Append-only history: add what is missing, never change or remove anything.
