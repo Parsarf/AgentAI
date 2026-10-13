@@ -49,7 +49,7 @@ describe('requirements form', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(900); });
     expect(saves()).toHaveLength(1);
     expect(saves()[0].body).toEqual({ version: 1, state: { answers: { kind: 'ecommerce', payments: 'paypal', accounts: false } } });
-    expect(calls.some(c => /conversations|messages|send/.test(c.url))).toBe(false);
+    expect(calls.some(c => /\/send|\/messages|\/launch|\/submit/.test(c.url))).toBe(false);
   });
   it('drops hidden answers and submits the saved version', async () => {
     const changed = vi.fn(); view(mk('form', formSpec, { answers: { kind: 'ecommerce', payments: 'paypal' } }), changed);

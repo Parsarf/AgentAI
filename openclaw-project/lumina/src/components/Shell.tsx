@@ -2,17 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Rail from './Rail';
 import * as I from './Icons';
+import Sidebar, { NAV } from './Sidebar';
+import ChatList from './ChatList';
 import Backdrop from './Backdrop';
 import { useData } from '../state/data';
 import { useSettings } from '../state/settings';
-import { displayName, title } from '../lib/format';
+import { title } from '../lib/format';
 import { phase } from '../lib/tasks';
-
-export const NAV = [
-  { to: '/', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/tasks', label: 'Tasks', icon: I.Tasks },
-  { to: '/browser', label: 'Browser', icon: I.Browser }, { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
-  { to: '/automations', label: 'Automations', icon: I.Bolt }, { to: '/integrations', label: 'Integrations', icon: I.Cube }, { to: '/settings', label: 'Settings', icon: I.Gear },
-];
 
 function Command({ onClose }: { onClose(): void }) {
   const { requests } = useData(); const nav = useNavigate();
@@ -45,31 +41,25 @@ function Command({ onClose }: { onClose(): void }) {
 export default function Shell() {
   const { pathname } = useLocation();
   const rail = pathname === '/' || pathname.startsWith('/tasks');
-  const { app, requests, signOut } = useData(); const { reducedMotion, setReducedMotion } = useSettings();
+  const { requests, chats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
   const [cmd, setCmd] = useState(false); const [bell, setBell] = useState(false);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmd(true); } };
+    const h = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmd(true); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); setSidebarOpen(!sidebarOpen); }
+    };
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
-  }, []);
-  const name = displayName(app?.user.email ?? '');
+  }, [sidebarOpen, setSidebarOpen]);
   const attention = requests.filter(r => phase(r.state) === 'failed').slice(0, 5);
   const nav = useNavigate();
   return (
-    <div className={`shell${rail ? '' : ' no-right'}`}>
+    <div className={`shell${rail ? '' : ' no-right'}${sidebarOpen ? '' : ' side-collapsed'}`}>
       <Backdrop />
-      <aside className="panel side">
-        <div className="brand"><I.Spark /> LUMINA</div>
-        <nav className="nav" aria-label="Primary">
-          {NAV.map(n => <NavLink key={n.to} to={n.to} end={n.end}><n.icon /><span>{n.label}</span></NavLink>)}
-        </nav>
-        <div className="who">
-          <div className="avatar" aria-hidden>{name[0]}</div>
-          <div className="grow"><div>{name}</div><small>{app?.features.billing_mode === 'paid_required' ? 'Subscriber' : app?.features.billing_mode === 'open' ? 'Free access' : 'Private beta'}</small></div>
-          <button onClick={signOut} aria-label="Sign out" title="Sign out"><I.Out width={18} height={18} /></button>
-        </div>
-      </aside>
+      <Sidebar />
       <main className="main">
         <div className="topbar">
+          <button className="iconbtn only-mobile" aria-label="Chats" onClick={() => setDrawer(true)}><I.Chat /></button>
+          <span className="spacer" />
           <button className="iconbtn" aria-label="Search (Ctrl+K)" onClick={() => setCmd(true)}><I.Search /></button>
           <div style={{ position: 'relative' }}>
             <button className="iconbtn" aria-label="Notifications" aria-expanded={bell} onClick={() => setBell(b => !b)}><I.Bell />{attention.length > 0 && <span className="dot" />}</button>
@@ -85,5 +75,12 @@ export default function Shell() {
       </main>
       {rail && <aside className="rail" aria-label="Activity"><Rail /></aside>}
       {cmd && <Command onClose={() => setCmd(false)} />}
+      {drawer && (
+        <div className="drawer-back left" onMouseDown={() => setDrawer(false)} role="presentation">
+          <aside className="drawer" role="dialog" aria-label="Chats" onMouseDown={e => e.stopPropagation()}>
+            <button className="btn primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => { setDrawer(false); nav('/chat'); }}>New chat</button>
+            <ChatList chats={chats} onPick={() => setDrawer(false)} />
+          </aside>
+        </div>)}
     </div>);
 }

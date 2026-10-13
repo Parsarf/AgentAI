@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import ChatList from '../components/ChatList';
 import Composer from '../components/Composer';
 import TaskStrip, { type ThreadTask } from '../components/TaskStrip';
 import BlockView from '../components/genui/BlockView';
 import { api } from '../lib/api';
-import type { ChatSummary } from '../lib/chats';
 import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
@@ -13,14 +11,12 @@ import { useData } from '../state/data';
 interface Msg { id: number; request_id: string | null; provenance: string; content: string; created_at: string }
 
 export default function Chat() {
-  const { id } = useParams(); const nav = useNavigate(); const { refresh } = useData();
-  const [chats, setChats] = useState<ChatSummary[]>([]); const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
+  const { id } = useParams(); const nav = useNavigate(); const { refresh, chats, refreshChats } = useData();
+  const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]); const [err, setErr] = useState(''); const [loaded, setLoaded] = useState(false);
   const bottom = useRef<HTMLDivElement>(null); const lastCount = useRef(0);
 
-  const loadList = useCallback(async () => {
-    try { setChats((await api<{ conversations: ChatSummary[] }>('GET', '/v1/conversations')).conversations); } catch { /* keep the old list */ }
-  }, []);
+  const loadList = refreshChats;
   const loadThread = useCallback(async () => {
     if (!id) { setMsgs([]); setTasks([]); setBlocks([]); setLoaded(true); return; }
     try {
@@ -46,7 +42,6 @@ export default function Chat() {
 
   return (
     <div className="chatpage">
-      <ChatList chats={chats} current={id} />
       <section className="thread-col">
         {!id ? (
           <div className="newchat-view">

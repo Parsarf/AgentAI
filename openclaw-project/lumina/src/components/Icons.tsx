@@ -26,3 +26,5 @@ export const Check = make(<path d="M5 12.5l4.5 4.5L19 7.5" strokeWidth="2.4" />)
 export const Out = make(<path d="M15 4h5v5M20 4l-9 9M10 6H5v13h13v-5" />);
 export const Spark = (p: SVGProps<SVGSVGElement>) => (
   <svg width="30" height="30" viewBox="0 0 32 32" fill="currentColor" aria-hidden {...p}><path d="M16 1c1 8 3 12 15 15-12 3-14 7-15 15-1-8-3-12-15-15C13 13 15 9 16 1z" /></svg>);
+export const Panel = make(<><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9.5 4.5v15" /></>);
+export const Edit = make(<><path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16v4z" /></>);

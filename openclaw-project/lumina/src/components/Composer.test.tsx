@@ -35,7 +35,7 @@ describe('Composer', () => {
     const send = calls.find(c => c.url.endsWith('/send'))!;
     expect(send.method).toBe('POST'); expect(send.csrf).toBe('tok'); expect(send.body.message).toBe('What is 17 times 3?'); expect(send.body.key).toMatch(/^[0-9a-f]{32}$/);
     await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(''));
-    expect(calls.findIndex(c => c.url === '/v1/conversations')).toBeLessThan(calls.findIndex(c => c.url.endsWith('/send')));   // chat created first
+    expect(calls.findIndex(c => c.url === '/v1/conversations' && c.body !== undefined)).toBeLessThan(calls.findIndex(c => c.url.endsWith('/send')));   // chat created first
     expect(sent.mock.calls[0][0].conversation_id).toBe('c1');
   });
   it('follows up inside an existing chat without creating a new one', async () => {
@@ -44,7 +44,7 @@ describe('Composer', () => {
     fireEvent.change(box, { target: { value: 'and what about 18?' } });
     fireEvent.click(screen.getByRole('button', { name: /send message/i }));
     await waitFor(() => expect(calls.some(c => c.url === '/v1/conversations/c9/send')).toBe(true));
-    expect(calls.some(c => c.url === '/v1/conversations')).toBe(false);
+    expect(calls.some(c => c.url === '/v1/conversations' && c.body !== undefined)).toBe(false);   // no chat was created (listing chats is fine)
   });
   it('turns a budget refusal into a plain sentence and keeps the text', async () => {
     mockFetch(402, { error: 'budget_denied' }); setup();
