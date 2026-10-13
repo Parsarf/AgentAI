@@ -32,9 +32,10 @@ class VolumeSpec:
             raise ValueError('invalid volume size')
 
 
-def default_run(argv, env=None):
+def default_run(argv, env=None, input_text=None):
     import os
-    done = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=120, env={**os.environ, **env} if env else None)
+    done = subprocess.run(argv, stdin=subprocess.DEVNULL if input_text is None else None, input=None if input_text is None else input_text.encode(),
+                          capture_output=True, timeout=180, env={**os.environ, **env} if env else None)
     return done.returncode, done.stdout.decode('utf-8', 'replace')
 
 

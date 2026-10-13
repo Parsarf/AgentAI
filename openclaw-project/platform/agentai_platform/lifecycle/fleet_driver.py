@@ -182,6 +182,8 @@ class FleetCliDriver:
         if claim.kind=='start' and self.provisioner is not None:
             try: self.provisioner.after_start(binding)
             except Exception: pass   # name lookups may fail until fixed; the cell itself is proven running, so the start stands
+            try: self.provisioner.setup_search(binding)
+            except Exception: pass   # search is an add-on: a failure leaves the cell running without it and is retried at the next start
         if claim.kind=='backup':
             self._verify_archive(binding,claim.operation_id)
             backup_ref=claim.operation_id

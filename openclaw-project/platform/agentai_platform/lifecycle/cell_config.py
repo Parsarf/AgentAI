@@ -7,6 +7,7 @@ virtual key; owner credentials are never used.
 import json
 import os
 from pathlib import Path
+import time
 
 MODELS = ('claude-sonnet-4-6', 'claude-haiku-4-5')
 DEFAULT_MODEL = 'litellm/claude-haiku-4-5'
@@ -28,22 +29,20 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL)
 
 
 RESOLVERS = ('1.1.1.1', '9.9.9.9')
+SEARCH_PLUGIN_VERSION = '2026.9.6'   # must match the pinned runtime image
 
 # Read by the assistant at the start of every session (OpenClaw loads AGENTS.md from the workspace). Search needs no paid
 # provider: the cell can reach public search pages, and the assistant is told how to use them frugally and honestly.
 WORKSPACE_RULES = '''# How you work (Lumina)
 
 ## Searching the web
-You have no paid search API. To search, use the shell:
+Use the `web_search` tool for anything that needs current information (it returns titles, links and snippets). If tools are
+listed as deferred, load `web_search` first with `tool_search`, then call it with `tool_call`. Then open the best 3 to 5 result
+pages with `web_fetch` and read only what you need.
 
-    curl -sL -m 20 -A 'Mozilla/5.0' 'https://html.duckduckgo.com/html/?q=URL+ENCODED+QUERY'
-
-Result links have class `result__a`; the real address is the URL-decoded `uddg=` parameter. Then open the most relevant pages
-(shell `curl`, or the web_fetch tool if it is available) and read only what you need.
-
-Rules: open at most 5 pages per question; prefer the retailer's or publisher's own page; never invent prices, ratings or
-availability: if a page does not show it, say so; list the page addresses you used; if a site blocks you, try a different one;
-keep the final answer short and ranked when asked to rank.
+Rules: never invent prices, ratings or availability: if a page does not show it, say so; prefer the seller's or publisher's own
+page; list the page addresses you used; keep the final answer short, and ranked when asked to rank. If `web_search` is
+unavailable, say so plainly instead of guessing; do not scrape search-engine pages.
 '''
 
 
@@ -51,9 +50,11 @@ class CellProvisioner:
     """prepare(binding)->extra create argv (issues the key); finish(binding) patches the config;
     after_start(binding) gives the running cell working DNS."""
 
-    def __init__(self, keys, secrets, cell_state_root, *, max_budget_usd=25, duration_days=35, chown=os.chown, run=None):
+    def __init__(self, keys, secrets, cell_state_root, *, max_budget_usd=25, duration_days=35, chown=os.chown, run=None, search_key_file=None,
+                 sleep=time.sleep):
         self.keys, self.secrets, self.root = keys, secrets, Path(cell_state_root)
         self.max_budget_usd, self.duration_days, self.chown, self.run = max_budget_usd, duration_days, chown, run
+        self.search_key_file, self.sleep = (Path(search_key_file) if search_key_file else None), sleep
 
     def after_start(self, binding):
         """Docker's embedded resolver (127.0.0.11) does not answer inside a gVisor sandbox, so every name lookup in
@@ -82,6 +83,39 @@ class CellProvisioner:
         if key is None:
             raise RuntimeError('provider key missing after issuance')
         return ['--env', 'LITELLM_API_KEY=' + key]
+
+    def setup_search(self, binding, *, attempts=20):
+        """Install the official Brave search plugin (pinned to the runtime's version) and give the cell the search key.
+
+        Idempotent via a marker in the cell's own volume. The key travels on stdin, never on a command line. Needs the
+        Gateway to be up, so it retries while the cell finishes starting."""
+        if self.run is None or self.search_key_file is None:
+            return False
+        marker = self.root / binding.tenant_ref / 'workspace' / f'.search-{SEARCH_PLUGIN_VERSION}'
+        if marker.exists():
+            return True
+        key = self.search_key_file.read_text().strip()
+        if not key:
+            return False
+        name = f'openclaw-cell-{binding.tenant_ref}'
+        cli = ['docker', 'exec', name, 'node', '/app/openclaw.mjs']
+        for _ in range(attempts):
+            code, _out = self.run(cli + ['plugins', 'install', f'@openclaw/brave-plugin@{SEARCH_PLUGIN_VERSION}', '--force'])
+            if code == 0:
+                break
+            self.sleep(3)
+        else:
+            return False
+        steps = [['config', 'set', 'tools.web.search.enabled', 'true'], ['config', 'set', 'tools.web.search.provider', 'brave']]
+        for step in steps:
+            if self.run(cli + step)[0] != 0:
+                return False
+        stdin_cmd = ['docker', 'exec', '-i', name, 'sh', '-c', 'cd /app && node openclaw.mjs config set plugins.entries.brave.config.webSearch.apiKey "$(cat | tr -d \'\\n\')"']
+        if self.run(stdin_cmd, input_text=key + '\n')[0] != 0:
+            return False
+        marker.write_text('ok\n')
+        self.chown(marker, CELL_UID, CELL_GID)
+        return True
 
     def write_rules(self, binding):
         """Idempotent: (re)write the assistant's working rules into its workspace (the volume must be mounted)."""

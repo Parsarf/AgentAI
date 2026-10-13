@@ -37,7 +37,7 @@ def http_health(port, *, timeout=90, interval=2, opener=urllib.request.urlopen):
 def build_native_backend(wiring_path):
     path = Path(wiring_path)
     wiring = json.loads(path.read_text())
-    if type(wiring) is not dict or set(wiring) - {'litellm_env'} != KEYS:
+    if type(wiring) is not dict or set(wiring) - {'litellm_env', 'search_key_file'} != KEYS:
         raise ValueError('unsupported wiring file')
     for name in KEYS - {'cell_pool', 'bridge_gateway', 'model_proxy_port'}:
         if type(wiring[name]) is not str or not Path(wiring[name]).is_absolute():
@@ -47,16 +47,18 @@ def build_native_backend(wiring_path):
     run = default_run
     cells_docker = custody.env.get('DOCKER_HOST')
 
-    def isolation_run(argv):
+    def isolation_run(argv, input_text=None):
         # Every docker call made for isolation targets the CELL engine explicitly, never whatever the service environment holds.
-        return default_run(argv, {'DOCKER_HOST': cells_docker} if argv and argv[0] == 'docker' and cells_docker else None)
+        env = {'DOCKER_HOST': cells_docker} if argv and argv[0] == 'docker' and cells_docker else None
+        return default_run(argv, env) if input_text is None else default_run(argv, env, input_text)
     secrets = SecretStore(wiring['secrets_dir'])
     provisioner = None
     if wiring.get('litellm_env'):
         # Optional: with it, every created cell gets its own capped model key and the Gateway model route.
         if type(wiring['litellm_env']) is not str or not Path(wiring['litellm_env']).is_absolute():
             raise ValueError('wiring paths must be absolute')
-        provisioner = CellProvisioner(ProviderKeys(LiteLLMAdmin(wiring['litellm_env']).http, secrets), secrets, wiring['cell_state_root'], run=isolation_run)
+        provisioner = CellProvisioner(ProviderKeys(LiteLLMAdmin(wiring['litellm_env']).http, secrets), secrets, wiring['cell_state_root'], run=isolation_run,
+                                      search_key_file=wiring.get('search_key_file'))
     driver = FleetCliDriver(
         custody,
         secrets=secrets,

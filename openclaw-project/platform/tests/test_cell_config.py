@@ -98,5 +98,43 @@ class RulesChecks(unittest.TestCase):
         binding = SimpleNamespace(tenant_ref=TENANT)
         prov.write_rules(binding); prov.write_rules(binding)
         text = (Path(tmp.name) / TENANT / 'workspace' / 'AGENTS.md').read_text()
-        self.assertIn('html.duckduckgo.com', text); self.assertIn('never invent prices', text); self.assertIn('at most 5 pages', text)
+        self.assertIn('web_search', text); self.assertIn('never invent prices', text); self.assertIn('do not scrape search-engine pages', text)
         self.assertEqual({o[1:] for o in owners}, {(1000, 1000)})
+
+
+class SearchSetupChecks(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup); self.root = Path(self.tmp.name)
+        (self.root / TENANT / 'workspace').mkdir(parents=True)
+        self.key = self.root / 'brave.key'; self.key.write_text('BSA-secret-search-key\n')
+        self.calls = []
+
+    def prov(self, fail_installs=0):
+        left = [fail_installs]
+        def run(argv, input_text=None):
+            self.calls.append((list(argv), input_text))
+            if 'install' in argv and left[0] > 0:
+                left[0] -= 1; return 1, 'gateway not ready'
+            return 0, ''
+        return CellProvisioner(None, None, self.root, run=run, search_key_file=self.key, chown=lambda *a: None, sleep=lambda s: None)
+
+    def test_installs_the_pinned_plugin_enables_it_and_passes_the_key_only_on_stdin(self):
+        binding = SimpleNamespace(tenant_ref=TENANT)
+        self.assertTrue(self.prov().setup_search(binding))
+        flat = [' '.join(a) for a, _ in self.calls]
+        self.assertTrue(any('plugins install @openclaw/brave-plugin@2026.9.6 --force' in c for c in flat))
+        self.assertTrue(any('config set tools.web.search.provider brave' in c for c in flat))
+        self.assertNotIn('BSA-secret-search-key', ' '.join(flat))                                  # never on a command line
+        self.assertEqual([i for _, i in self.calls if i], ['BSA-secret-search-key\n'])
+        self.assertTrue(all(f'openclaw-cell-{TENANT}' in c for c in flat))
+        self.calls.clear()
+        self.assertTrue(self.prov().setup_search(binding)); self.assertEqual(self.calls, [])      # marker: second start does nothing
+
+    def test_waits_for_the_gateway_then_gives_up_without_leaving_a_marker(self):
+        binding = SimpleNamespace(tenant_ref=TENANT)
+        self.assertTrue(self.prov(fail_installs=3).setup_search(binding))                           # retried until the gateway answered
+        for f in (self.root / TENANT / 'workspace').glob('.search-*'): f.unlink()
+        self.assertFalse(self.prov(fail_installs=99).setup_search(binding, attempts=3))
+        self.assertEqual(list((self.root / TENANT / 'workspace').glob('.search-*')), [])
+        self.key.write_text('\n')
+        self.assertFalse(self.prov().setup_search(binding))                                         # no key: nothing is installed

@@ -159,3 +159,10 @@ The lifecycle worker then creates the cell (capped volume, gateway token, its ow
 ## 13. Smart routing (JEV, shadow mode)
 
 Dashboard → **Routing**: status, what JEV recommended over 30 days, settings, and *Emergency rollback*. It needs the `jev_routing` switch (data-terms tick) and the key at `/var/lib/agentai-platform/routing/typesafe.key` (owner `agentai-platform`, mode 0600). In this version it **only records**; requests run exactly as before. Each request costs about $0.00003 for the classification. Details and limits: `plans/product/routing.md`. Re-run the classification benchmark with `python3 -m agentai_platform.routing.bench --key-file <key> --out <file>`.
+
+
+## 14. Web search for customer assistants (2026-10-13)
+
+Every assistant gets web search from the official `@openclaw/brave-plugin` pinned to the runtime version (`SEARCH_PLUGIN_VERSION` in `lifecycle/cell_config.py`), installed by the supervisor after a cell starts (it waits for the Gateway, then marks the cell so it only happens once). The key is a single shared Brave key kept root-only in `/var/lib/agentai-supervisor-secrets/_shared/brave-api-key` (wired through `search_key_file` in `native-wiring.json`) and passed to the cell over stdin, never on a command line. Because it sits inside each cell's own config, a prompt-injected assistant could read it: **use a dedicated customer key with its own cap, and rotate it (it is currently the owner key from `/opt/openclaw-production/integrations/brave/`).** Each cell also gets `workspace/AGENTS.md` (working rules: use `web_search` then `web_fetch`, never invent prices, cite pages, do not scrape search engines), rewritten on every start.
+
+Measured on the real assistant (Haiku): "find and rank the 5 cheapest carbon pickleball paddles" returned a ranked, sourced answer for about $0.12 and roughly one minute; the same request without the plugin (scraping search pages) cost $0.20 and produced no ranking. Brave itself bills per search (about half a cent).
