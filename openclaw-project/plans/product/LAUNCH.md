@@ -15,8 +15,11 @@ Sign-in and accounts, isolated per-customer assistants, chat with history, plans
 7. **Google / GitHub connectors**: register the OAuth apps if they should be offered at launch (otherwise leave off).
 8. **Support**: a support email address and who answers it.
 
+## Phase 15 status
+Partial (21 live cases PASS, 2 BLOCKED, 7 NOT_RUN): see `plans/product/phase-15.md`. Blocked/not-run items need the owner: a second cell (operator enrollment), the off-server backup key for the restore drill, and an independent review.
+
 ## Needs a "go" from the owner
-- Phase 15 acceptance run, Phase 17 invite-only beta (2 trial accounts), then launch review.
+- Phase 17 invite-only beta (2 trial accounts), then launch review.
 - Browse benchmark with paid runs (tens of dollars) before JEV is allowed to choose actions.
 
 ## Not built yet (decide whether launch needs them)

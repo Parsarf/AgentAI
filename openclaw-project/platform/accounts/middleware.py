@@ -65,3 +65,14 @@ class AccountMiddleware:
                 rate(scope,str(request.user.pk)+'|'+request.client_ip,limit,60)
             except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'60'})
         return self.get_response(request)
+
+    def process_exception(self, request, exception):
+        """Views outside the endpoint() wrapper (SSE stream, downloads) must refuse cross-account access like every other route."""
+        if isinstance(exception, Denied):
+            try:
+                from .services import audit
+                audit(request.user.pk if request.user.is_authenticated else 'anonymous', getattr(request, 'account_id', None), 'route', 'access.denied', 'denied', request.request_id)
+            except Exception:
+                pass
+            return JsonResponse({'error': 'unavailable'}, status=404)
+        return None

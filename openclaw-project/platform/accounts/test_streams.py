@@ -30,6 +30,12 @@ class StreamHTTPChecks(TestCase):
         self.assertEqual(a.get('/v1/tasks/task-a/events?after=bad', secure=True).status_code, 400)
         self.assertEqual(a.get('/v1/tasks/task-b/events', secure=True).status_code, 404)
 
+    def test_cross_account_stream_is_a_clean_404_not_a_server_error(self):
+        a, b = self.signed('a'), self.signed('b')
+        self._service().append('a', 'task-a', 'task_started', {'summary': 'go'})
+        self.assertEqual(b.get('/v1/tasks/task-a/stream', secure=True).status_code, 404)
+        self.assertEqual(b.get('/v1/tasks/nope/stream', secure=True).status_code, 404)
+
     def test_sse_stream_auth_cap_and_events(self):
         a = self.signed()
         self.assertEqual(a.post('/v1/tasks/task-a/stream', '{}', content_type='application/json', secure=True).status_code, 405)

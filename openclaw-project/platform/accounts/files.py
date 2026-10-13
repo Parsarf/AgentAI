@@ -66,6 +66,8 @@ def _mapped(fn):
     except NotFound:
         # Same public shape on both endpoint-decorated and plain views.
         return JsonResponse({'error': 'unavailable'}, status=404)
+    except ValueError:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
 
 
 @csrf_exempt
