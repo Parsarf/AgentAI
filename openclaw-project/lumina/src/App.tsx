@@ -4,7 +4,8 @@ import Home from './pages/Home';
 import Chat from './pages/Chat';
 import Tasks from './pages/Tasks';
 import Login from './pages/Login';
-import { Automations, Browser, Calendar, Files, Integrations, Settings } from './pages/Info';
+import Browser from './pages/Browser';
+import { Automations, Calendar, Files, Integrations, Settings } from './pages/Info';
 import { useData } from './state/data';
 
 export default function App() {
@@ -18,7 +19,7 @@ export default function App() {
         <Route element={<Shell />}>
           <Route index element={<Home />} /><Route path="chat" element={<Chat />} /><Route path="chat/:id" element={<Chat />} />
           <Route path="tasks" element={<Tasks />} /><Route path="tasks/:id" element={<Tasks />} />
-          <Route path="browser" element={<Browser />} /><Route path="files" element={<Files />} /><Route path="calendar" element={<Calendar />} />
+          <Route path="browser" element={<Browser />} /><Route path="browser/:id" element={<Browser />} /><Route path="files" element={<Files />} /><Route path="calendar" element={<Calendar />} />
           <Route path="automations" element={<Automations />} /><Route path="integrations" element={<Integrations />} /><Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

@@ -35,7 +35,7 @@ export interface AppInfo {
   api_version: string;
   user: { email: string; role: string };
   assistant: { state: string };
-  features: { chat: boolean; execution: boolean; files: boolean; uploads: boolean; telegram: boolean; connectors: boolean; billing_mode: string; requests: boolean; usage: boolean };
+  features: { chat: boolean; execution: boolean; files: boolean; uploads: boolean; telegram: boolean; connectors: boolean; billing_mode: string; requests: boolean; usage: boolean; browse?: boolean };
   limits: { max_message_chars: number; max_projects: number; max_conversations_per_project: number };
 }
 export interface RequestRow { id: string; message: string; state: string; cancel_requested: number; result: string | null; created_epoch: number }

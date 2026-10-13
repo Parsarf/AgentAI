@@ -23,7 +23,7 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
   const { app, refresh } = useData();
   const [text, setText] = useState(''); const [mode, setMode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [listening, setListening] = useState(false);
-  const [respond, setRespond] = useState<'auto' | 'text' | 'plan'>('auto');
+  const [respond, setRespond] = useState<'auto' | 'text' | 'plan' | 'browse'>('auto');
   const box = useRef<HTMLTextAreaElement>(null); const rec = useRef<any>(null);
   const max = app?.limits.max_message_chars ?? 16000;
   useEffect(() => { if (seed) { setText(seed.text); setTimeout(() => { box.current?.focus(); box.current?.setSelectionRange(seed.text.length, seed.text.length); }, 0); } }, [seed]);
@@ -70,7 +70,7 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
           <button type="button" className="chip" disabled title={app?.features.uploads ? '' : 'File uploads are not enabled yet'}><I.Clip width={16} height={16} />Use Files</button>
           <span className="spacer" />
           <span className="respond" role="group" aria-label="How should Lumina respond">
-            {(['auto', 'text', 'plan'] as const).map(m => <button type="button" key={m} className="chip small" aria-pressed={respond === m} onClick={() => setRespond(m)} title={m === 'auto' ? 'Lumina chooses: text, a short form, or an editable plan' : m === 'text' ? 'Answer in plain text only' : 'Always draft an editable plan first'}>{m === 'auto' ? 'Auto' : m === 'text' ? 'Text' : 'Plan'}</button>)}
+            {((app?.features.browse ? ['auto', 'text', 'plan', 'browse'] : ['auto', 'text', 'plan']) as ('auto' | 'text' | 'plan' | 'browse')[]).map(m => <button type="button" key={m} className="chip small" aria-pressed={respond === m} onClick={() => setRespond(m)} title={m === 'auto' ? 'Lumina chooses: text, a short form, or an editable plan' : m === 'text' ? 'Answer in plain text only' : m === 'browse' ? 'Use a browser on websites; stops before any payment' : 'Always draft an editable plan first'}>{m === 'auto' ? 'Auto' : m === 'text' ? 'Text' : m === 'plan' ? 'Plan' : 'Browse'}</button>)}
           </span>
           <span className="actions">
           {speech && <button type="button" className="iconbtn" aria-label={listening ? 'Stop dictation' : 'Dictate'} aria-pressed={listening} style={{ width: 44, height: 44, borderRadius: '50%' }} onClick={toggleVoice}><I.Mic /></button>}

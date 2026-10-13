@@ -11,7 +11,6 @@ function Soon({ name, what, needs }: { name: string; what: string; needs: string
         <p className="faint" style={{ marginTop: 10 }}>What it needs: {needs}</p>
         <p style={{ marginTop: 16 }}><Link className="btn" to="/">Back to Home</Link></p></section></div>);
 }
-export const Browser = () => <Soon name="Browser" what="A live view of the pages Lumina is working on, with the option to take over." needs="a connected live browser session for tasks (the isolated browser runs today, but is not yet streamed to this page)." />;
 export const Calendar = () => <Soon name="Calendar" what="Your events and scheduled tasks in one place." needs="a calendar connection (Google/Microsoft sign-in is not registered yet) and recurring task scheduling." />;
 export const Automations = () => <Soon name="Automations" what="Recurring tasks, triggers and approval gates." needs="the schedule engine to be switched on for customers; it is built but locked until the safety checks for unattended work pass." />;
 
