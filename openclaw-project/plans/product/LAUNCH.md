@@ -9,7 +9,7 @@ Sign-in and accounts, isolated per-customer assistants, chat with history, plans
 1. **Merge to `main`** via the PR (publishes the website).
 2. **Stripe**: create the account/product, give the keys, turn on `billing_checkout`; test one real payment and one refund.
 3. **Legal pages**: terms, privacy, refund policy (the app links to them; text is not written).
-4. **Off-server backup copy**: backups live only on the VPS today; a disk loss loses them.
+4. **Off-server backup copy**: backups live only on the VPS today; a disk loss loses them. Tracked as item F1 in `phase-prompts/openclaw/final_phase.md` (still a launch blocker until done).
 5. **SSH**: key-only login (root password login is still allowed).
 6. **Brave search key**: every assistant uses the owner's key; replace with a dedicated key and set a spend alert.
 7. **Google / GitHub connectors**: register the OAuth apps if they should be offered at launch (otherwise leave off).
@@ -24,3 +24,6 @@ Guarded ordering/payments by the browser agent (locked `credentialed_browsing`),
 
 ## Rollback
 Switch the feature off in the owner switches (`browse_tasks`, `customer_execution`, `open_access`); app release rollback is `release.py` previous release (binary rollback compatible).
+
+## Deferred features
+Everything left out of launch is written down in `phase-prompts/openclaw/final_phase.md` (items F1–F13).
