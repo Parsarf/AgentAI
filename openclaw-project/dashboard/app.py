@@ -561,6 +561,7 @@ def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
                "<a href=/approvals>Approvals</a><a href=/schedules>Schedules</a>"
                "<a href=/memory>Memory</a><a href=/integrations>Integrations</a>"
                "<a href=/customers>Customers</a><a href=/switches>Feature switches</a><a href=/routing>Routing</a>"
+               "<a href=http://127.0.0.1:18790/ title='Owner console: switch between every owner view'>Owner console</a>"
                "<a href=/costs>Costs</a><a href=/audit>Audit</a></nav>")
         logout = (f"<form method=post action=/logout class=inline>"
                   f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"

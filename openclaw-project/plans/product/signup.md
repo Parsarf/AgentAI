@@ -27,3 +27,6 @@ Offline: sign-up → confirm → wait → approve (real coordinator queues a cre
 ## Notes
 - The release containing this schema cannot be rolled back to an older binary (new table and trigger); a database backup was taken before the migration.
 - Billing: while `open_access` is on, approved accounts get their allowance from the billing worker; in invite-only mode approval seeds the $1 7-day trial; with `billing_checkout` on they must subscribe.
+
+## Owner console (one-click switching between owner views)
+`python3 openclaw-project/bin/owner-console.py` (or double-click `bin/Owner Console.command`) opens one SSH tunnel and a private launcher page at `http://127.0.0.1:18790/` with a button for Customers, Feature switches, Overview, Live, Costs, Audit, Routing, the OpenClaw Control UI, the Lumina app and Stripe test mode, plus status lights and a "Copy dashboard password" button (clipboard only, never shown). Every port is loopback-only; the dashboard header has an "Owner console" link back to it. `--stop` closes the tunnel.
