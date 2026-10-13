@@ -40,34 +40,31 @@ export default function Chat() {
   const byRequest = new Map(tasks.map(t => [t.id, t]));
   const current = chats.find(c => c.id === id);
 
+  const fresh = !id || (loaded && !msgs.length && !err);          // nothing said yet: the composer floats in the middle, then settles at the bottom
+  const sent = (r: any) => {
+    if (id) { reload(); return; }
+    setMsgs([{ id: -1, request_id: r.id ?? null, provenance: 'customer', content: r.message ?? '', created_at: '' }]); setLoaded(true);   // show the message at once while the chat opens
+    nav(`/chat/${r.conversation_id}`);
+  };
+
   return (
     <div className="chatpage">
-      <section className="thread-col">
-        {!id ? (
-          <div className="newchat-view">
-            <h1 className="page-title" style={{ padding: '8px 0 6px' }}>New chat</h1>
-            <p className="muted" style={{ marginBottom: 18 }}>Ask a question, or describe a task. You can keep chatting while it runs, and every chat is saved on the left.</p>
-            <Composer autoFocus onSent={r => nav(`/chat/${r.conversation_id}`)} />
-          </div>
-        ) : (
-          <>
-            <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{msgs.length > 0 && <button className="btn small" onClick={clear}>Clear chat</button>}</header>
-            {err && <p className="err" role="alert">{err}</p>}
-            <div className="thread" aria-live="polite">
-              {!loaded && <p className="muted">Loading…</p>}
-              {msgs.map(m => (
-                <div key={m.id} className="turn">
-                  <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}><small>{m.provenance === 'agent' ? 'Lumina' : 'You'}</small>{m.content}</div>
-                  {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <TaskStrip task={byRequest.get(m.request_id)!} onCancel={() => cancel(m.request_id!)} />}
-                  {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
-                </div>))}
-              {drafting && <div className="bubble agent"><small>Lumina</small><span className="muted">Drafting your plan…</span></div>}
-              {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
-              {loaded && !msgs.length && !err && <div className="empty">Nothing here yet. Send a message below.</div>}
-              <div ref={bottom} />
-            </div>
-            <div className="thread-composer"><Composer conversationId={id} autoFocus onSent={() => reload()} /></div>
-          </>)}
+      <section className={`thread-col${fresh ? ' fresh' : ''}`}>
+        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{msgs.length > 0 && <button className="btn small" onClick={clear}>Clear chat</button>}</header>}
+        {err && <p className="err" role="alert">{err}</p>}
+        <div className="thread" aria-live="polite">
+          {id && !loaded && <p className="muted">Loading…</p>}
+          {msgs.map(m => (
+            <div key={m.id} className="turn">
+              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.content}</div>
+              {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <TaskStrip task={byRequest.get(m.request_id)!} onCancel={() => cancel(m.request_id!)} />}
+              {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
+            </div>))}
+          {drafting && <div className="bubble agent"><span className="muted">Drafting your plan…</span></div>}
+          {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
+          <div ref={bottom} />
+        </div>
+        <div className="dock"><h1 className="greeting" aria-hidden={!fresh}>What should we work on?</h1><Composer conversationId={id} autoFocus onSent={sent} /></div>
       </section>
     </div>);
 }
