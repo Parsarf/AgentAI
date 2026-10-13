@@ -48,11 +48,37 @@ def active_count():
         return c.fetchone()[0]
 
 
+def overview():
+    """Aggregate numbers for the owner home page: counts, queue, spend. Never message content."""
+    now = int(time.time())
+    out = {'limit': max_cells(), 'assistants': active_count(), 'generated_epoch': now}
+    with connection.cursor() as c:
+        c.execute('''SELECT CASE WHEN s.state IS NOT NULL AND s.state!='approved' THEN s.state ELSE a.status END, count(*)
+            FROM accounts a JOIN accounts_identity i ON i.account_id=a.id AND i.role='customer' LEFT JOIN signups s ON s.account_id=a.id
+            WHERE a.status!='deleted' GROUP BY 1''')
+        out['customers'] = {k: v for k, v in c.fetchall()}
+        c.execute("SELECT observed_state,count(*) FROM lifecycle_cells GROUP BY 1")
+        out['cells'] = {k: v for k, v in c.fetchall()}
+        c.execute("SELECT state,count(*) FROM customer_requests WHERE created_epoch>=%s GROUP BY 1", [now - 7 * 86400])
+        out['tasks_7d'] = {k: v for k, v in c.fetchall()}
+        c.execute("SELECT count(*) FROM customer_requests WHERE state IN ('waiting','starting','running','uncertain')")
+        out['tasks_active'] = c.fetchone()[0]
+        for key, since in (('today', now - now % 86400), ('d30', now - 30 * 86400)):
+            c.execute("SELECT coalesce(sum(amount_microusd),0) FROM provider_receipts WHERE observed_epoch>=%s", [since])
+            out['spend_' + key] = c.fetchone()[0]
+        c.execute('''SELECT u.email,coalesce(sum(r.amount_microusd),0) FROM provider_receipts r JOIN accounts_identity i ON i.account_id=r.account_id AND i.role='customer'
+            JOIN auth_user u ON u.id=i.user_id WHERE r.observed_epoch>=%s GROUP BY u.email ORDER BY 2 DESC LIMIT 5''', [now - 30 * 86400])
+        out['top_spenders'] = [{'email': e, 'microusd': v} for e, v in c.fetchall()]
+    from accounts.billing import access_mode
+    out['billing_mode'] = access_mode()
+    return out
+
+
 class Command(BaseCommand):
     help = 'Owner controls for sign-ups and customers.'
 
     def add_arguments(self, p):
-        p.add_argument('action', choices=['list', 'approve', 'decline', 'suspend', 'resume', 'limit'])
+        p.add_argument('action', choices=['list', 'overview', 'approve', 'decline', 'suspend', 'resume', 'limit'])
         p.add_argument('--account')
         p.add_argument('--count', type=int)
 
@@ -60,6 +86,9 @@ class Command(BaseCommand):
         action, account = o['action'], o.get('account')
         if action == 'list':
             self.stdout.write(json.dumps({'limit': max_cells(), 'assistants': active_count(), 'customers': customers()}))
+            return
+        if action == 'overview':
+            self.stdout.write(json.dumps(overview()))
             return
         if action == 'limit':
             try:

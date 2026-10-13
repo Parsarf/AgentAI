@@ -377,7 +377,7 @@ class FeatureSwitchesOverHttp(FeatureSwitches):
 
     def test_page_post_flow_through_the_real_handler(self):
         csrf, page_html = self.login()
-        self.assertIn("Feature switches", page_html)
+        self.assertIn("Turn parts of Lumina on or off", page_html)
         self.assertEqual(self.call("/switch", {"csrf": "wrong", "name": "research_optimization", "value": "off"})[0], 403)
         status, _, headers = self.call("/switch", {"csrf": csrf, "name": "research_optimization", "value": "on"})
         self.assertEqual(status, 303)
@@ -430,10 +430,10 @@ class CustomersPage(unittest.TestCase):
         self.assertIn("wait@example.test", html_page)
         self.assertIn("Waiting for your approval (1)", html_page)
         self.assertIn("value='approve'", html_page); self.assertIn("value='decline'", html_page)
-        self.assertIn("Assistants: <b>1 of 2</b>", html_page)
+        self.assertIn("<div class=num>1<small> of 2</small></div>", html_page)
         self.assertIn("email not confirmed", html_page)
         self.assertEqual(html_page.count("value='suspend'"), 1)             # only the active customer can be suspended
-        self.assertNotIn("<b>OPEN</b>", html_page)
+        self.assertIn(">Closed</div>", html_page)
 
     def test_actions_use_fixed_words_and_validated_ids_only(self):
         ok, msg = app.customer_action("approve", "su1")

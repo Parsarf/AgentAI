@@ -149,3 +149,13 @@ class SignupChecks(TestCase):
         data = json.loads(out.getvalue())
         self.assertTrue(any(x['email'] == 'fresh@example.invalid' and x['signup'] == 'unverified' for x in data['customers']))
         self.assertEqual(set(data['customers'][0]), {'account', 'status', 'email', 'signup', 'created_epoch', 'decided_epoch', 'assistant'})
+
+    def test_overview_has_only_aggregates_and_emails(self):
+        self.open_door()
+        self.signup(email='ov@example.invalid'); self.post(self.new_client(), '/auth/signup/verify', {'code': self.code_from_mail()})
+        import io
+        out = io.StringIO(); call_command('signup_admin', 'overview', stdout=out)
+        data = json.loads(out.getvalue())
+        self.assertEqual(data['customers'].get('pending'), 1)
+        self.assertEqual(data['limit'], 2); self.assertIn('spend_today', data); self.assertIn(data['billing_mode'], ('invite_only', 'open', 'paid_required'))
+        self.assertNotIn('message', json.dumps(data).lower().replace('message_', ''))
