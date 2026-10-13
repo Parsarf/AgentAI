@@ -90,6 +90,18 @@ class ServiceChecks(unittest.TestCase):
         with self.assertRaises(svc.BrowseError): s.start('acct', 'not-hex', 'goal here')
         with self.assertRaises(svc.BrowseError): s.start('acct', 'b' * 32, 'x')
 
+    def test_old_screenshots_are_deleted_but_live_tasks_are_kept(self):
+        s = self.make([])
+        old, fresh, live, other = (Path(self.tmp.name) / n for n in ('1' * 32, '2' * 32, '3' * 32, 'notes'))
+        for d in (old, fresh, live, other): (d / 'out').mkdir(parents=True); (d / 'out' / 'shot-001.jpg').write_bytes(b'x')
+        job = svc.Job('acct', live.name, 'goal', None, 1, 1, 1); job.state = 'handoff'; s.jobs[live.name] = job
+        later = time.time() + 2 * 24 * 3600
+        removed = s.purge(max_age=24 * 3600, now=lambda: later)
+        self.assertEqual(removed, 1 + 1)                       # old and fresh are both >24h at `later`; live and non-job folders stay
+        self.assertTrue(live.exists() and other.exists()); self.assertFalse(old.exists())
+        fresh2 = Path(self.tmp.name) / ('4' * 32); (fresh2 / 'out').mkdir(parents=True)
+        self.assertEqual(s.purge(), 0); self.assertTrue(fresh2.exists())
+
     def test_takeover_only_after_handoff_one_action_at_a_time_and_expires(self):
         s = self.make(['{"action":"click","ref":2}', '{"action":"click","ref":1}'], takeover_seconds=1); s.start('acct', RID, 'goal at https://shop.example/')
         with self.assertRaises(svc.BrowseError): s.control('acct', RID, 'click', x=5, y=5)                          # still running or not yet handed over

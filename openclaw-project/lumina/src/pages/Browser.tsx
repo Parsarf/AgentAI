@@ -63,7 +63,7 @@ function Run({ id }: { id: string }) {
       <section className="panel card">
         <div className="card-h"><h2>{LABEL[run.status] ?? run.status}</h2><span className="faint">{run.url ? new URL(run.url, 'http://x').hostname : ''}</span></div>
         {last
-          ? <img ref={img} alt="The page Lumina is working on" src={`/v1/browse/${id}/shot/${last.file as string}?t=${stamp}`} onClick={control ? click : undefined}
+          ? <img ref={img} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} alt="The page Lumina is working on" src={`/v1/browse/${id}/shot/${last.file as string}?t=${stamp}`} onClick={control ? click : undefined}
               style={{ width: '100%', borderRadius: 10, cursor: control ? 'crosshair' : 'default', border: '1px solid var(--line)' }} />
           : <p className="faint">{live ? 'Waiting for the first view of the page…' : 'No screenshots were saved for this task.'}</p>}
         {run.status === 'handoff' && <p className="muted" style={{ marginTop: 12 }}>{run.pending_action?.label ? `Lumina stopped before: ${run.pending_action.label}. ` : 'Lumina stopped at a step that needs you. '}

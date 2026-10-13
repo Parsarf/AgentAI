@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import socket
 import socketserver
 import struct
@@ -25,6 +26,7 @@ URL_IN_TEXT = re.compile(r'https?://[^\s<>"\')]+', re.I)
 FILE = re.compile(r'^shot-\d{3}\.jpg$')
 FINAL = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
 TAKEOVER_SECONDS = 600
+SCREENSHOT_RETENTION_SECONDS = 24 * 3600    # pages can show personal data: screenshots are deleted a day after the task
 MAX_CALLS = 60
 
 
@@ -117,6 +119,24 @@ class BrowseService:
         job.takeover_until = 0
         return {'ok': True}
 
+    def purge(self, max_age=SCREENSHOT_RETENTION_SECONDS, now=time.time):
+        """Delete screenshot folders of finished tasks older than max_age. Never touches a task that is still live."""
+        removed = 0
+        try:
+            entries = list(self.root.iterdir())
+        except OSError:
+            return 0
+        for path in entries:
+            job = self.jobs.get(path.name)
+            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in ('queued', 'running', 'handoff')):
+                continue
+            try:
+                if now() - path.stat().st_mtime > max_age:
+                    shutil.rmtree(path, ignore_errors=True); removed += 1
+            except OSError:
+                continue
+        return removed
+
     # ------------------------------------------------------------------ job thread
     def _admit(self, job):
         def admit(kind):
@@ -203,6 +223,7 @@ class BrowseService:
                 stage.close()
             job.session = None
             self._slot.release()
+            self.purge()
 
 
 # ---------------------------------------------------------------------- unix socket server

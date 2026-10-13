@@ -72,6 +72,7 @@ def main():
         return ProcessTransport(argv, env={**os.environ, 'DOCKER_HOST': docker_host})
 
     service = BrowseService(spawn=spawn, llm_for=llm_for, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode)
+    service.purge()                                  # screenshots left from before a restart
     app = pwd.getpwnam(args.app_user)
     server = serve(service, str(args.socket), allowed_uids={app.pw_uid}, group_gid=grp.getgrnam(args.app_user).gr_gid)
     server.serve_forever()

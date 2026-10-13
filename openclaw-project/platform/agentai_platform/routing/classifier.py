@@ -5,6 +5,7 @@ import re
 import time
 import urllib.request
 
+from ..privacy import scrub
 from .decision import (COMPLEXITY_CRITERIA, RISK_CRITERIA, ROUTE_CRITERIA, Decision, Rejected, parse)
 
 MAX_CHARS = 2000
@@ -18,7 +19,7 @@ class ClassifierUnavailable(Exception):
 
 def sanitize(text: str) -> str:
     """Strip obvious credentials, card-like numbers and email addresses; cap the length."""
-    return SECRET.sub('[redacted]', text or '')[:MAX_CHARS]
+    return scrub(text, MAX_CHARS)
 
 
 def http_post(endpoint: str, body: dict, credential: str, deadline_s: float) -> str:
