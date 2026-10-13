@@ -333,3 +333,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 /* Files */
 .filerow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); } .filerow:first-of-type { margin-top: 10px; }
 .filechips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+
+/* Sign-up */
+.login .trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.linkish { background: none; border: 0; padding: 0; color: var(--neon); cursor: pointer; font: inherit; text-align: left; } .linkish:hover { text-decoration: underline; }

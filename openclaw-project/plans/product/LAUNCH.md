@@ -28,5 +28,8 @@ Guarded ordering/payments by the browser agent (locked `credentialed_browsing`),
 ## Rollback
 Switch the feature off in the owner switches (`browse_tasks`, `customer_execution`, `open_access`); app release rollback is `release.py` previous release (binary rollback compatible).
 
+## Sign-ups (ready; owner switch OFF)
+Self-service sign-up with your approval is built and live behind the `open_signups` switch (Feature switches page). To open the door: turn it on, then approve people in the dashboard Customers page. Details: `plans/product/signup.md`. Set the customer limit to what the server can carry.
+
 ## Deferred features
 Everything left out of launch is written down in `phase-prompts/openclaw/final_phase.md` (items F1–F13).

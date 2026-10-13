@@ -3,7 +3,7 @@
  "info": {
   "title": "AgentAI private account API",
   "version": "0.8.0",
-  "description": "Invite-only account API. Everything a replacement front end needs: /v1/csrf, /auth/*, /v1/app, then the resource endpoints. See UI_CONTRACT.md. Customer execution is live when features.execution is true."
+  "description": "Account API (invite-only, or self-sign-up with owner approval when the owner opens it). Everything a replacement front end needs: /v1/csrf, /auth/*, /v1/app, then the resource endpoints. See UI_CONTRACT.md. Customer execution is live when features.execution is true."
  },
  "servers": [
   {
@@ -3452,6 +3452,119 @@
       }
      }
     }
+   }
+  },
+  "/auth/signup": {
+   "post": {
+    "summary": "Create a waiting account (email + password). The email is confirmed by a link; the owner then approves. Public; only when the owner switch open_signups is on.",
+    "responses": {
+     "202": {
+      "description": "Accepted (the same answer whether or not the address is already registered)"
+     },
+     "400": {
+      "description": "Invalid email or weak password"
+     },
+     "403": {
+      "description": "Sign-ups are closed, or CSRF failed"
+     },
+     "429": {
+      "description": "Rate limit (per address and per source)"
+     },
+     "503": {
+      "description": "Too many sign-ups are waiting"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         },
+         "website": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Honeypot: leave empty"
+         }
+        },
+        "required": [
+         "email",
+         "password"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/signup/verify": {
+   "post": {
+    "summary": "Confirm the email with the single-use code from the emailed link. The account then waits for owner approval. Public.",
+    "responses": {
+     "200": {
+      "description": "{state: pending}"
+     },
+     "404": {
+      "description": "Code unknown, expired or already used"
+     },
+     "403": {
+      "description": "CSRF failed"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 128
+         }
+        },
+        "required": [
+         "code"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/signup/config": {
+   "get": {
+    "summary": "Whether new sign-ups are open ({open: boolean}). Public.",
+    "responses": {
+     "200": {
+      "description": "Successful result"
+     }
+    },
+    "security": []
    }
   }
  },

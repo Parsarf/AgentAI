@@ -65,3 +65,10 @@ Nothing in the customer area; the only HTML-only flows are the CSRF-protected si
 `/app/` and `/app/chat` are the new-chat surface. `/app/history` searches titles and transcript text, pages through saved chats, and includes an Archived view. `/app/chat/{id}` restores the complete transcript and continues the same native session. Old `/app/tasks/{id}` links redirect to the owning conversation when one exists; unlinked legacy tasks keep their activity view. Request summaries now include `conversation_id`. `/app/home` retains the dashboard. Archive preserves tasks, messages, and runtime session; it does not cancel work. Restore is required before sending to an archived chat.
 
 Drafts are session-local and scoped by signed-in account and conversation; they are cleared on logout or authorization loss. Failed sends retain their newly created conversation and retry key. Chat responses are rendered as Markdown. Activity remains available within the conversation.
+
+## Self-service sign-up (owner approves each account)
+Public, only while the owner switch `open_signups` is on (`GET /v1/signup/config` -> `{open}`):
+- `POST /auth/signup {email, password, website=""}` -> always `202 {accepted:true}` (same answer for an address that already exists); `400 invalid_email|weak_password`, `403 signups_closed`, `429`, `503 signups_full`. Sends a 15-minute single-use link `…/app/verify?code=…`.
+- `POST /auth/signup/verify {code}` -> `{state:"pending"}`; `404` for an unknown, expired or used code.
+- `POST /auth/login` for a confirmed account that is not yet approved -> `403 pending_approval` (only after the correct password); `403 not_approved` if declined.
+The owner approves, declines, suspends and resumes in the dashboard Customers page (`signup_admin`); approval activates the account, seeds its allowance, creates its assistant and emails the person.

@@ -136,6 +136,10 @@ def signin(request):
         try: customer_scope(authenticated,identity.epoch)
         except Denied:
             audit('anonymous',None,'identity','identity.login','denied',request.request_id)
+            with connection.cursor() as c:                  # the password was right: say honestly why they cannot come in yet
+                c.execute('SELECT state FROM signups WHERE account_id=%s',[identity.account_id]); waiting=c.fetchone()
+            if waiting and waiting[0]=='pending': return JsonResponse({'error':'pending_approval'},status=403)
+            if waiting and waiting[0]=='declined': return JsonResponse({'error':'not_approved'},status=403)
             return JsonResponse({'error':'invalid_credentials'},status=401)
     with transaction.atomic():
         op=uuid.uuid4(); audit(user.pk,identity.account_id,user.pk,'identity.login','pending',request.request_id,op)

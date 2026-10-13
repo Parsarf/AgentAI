@@ -560,7 +560,7 @@ def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
                "<a href=/sessions>Sessions</a><a href=/files>Files</a>"
                "<a href=/approvals>Approvals</a><a href=/schedules>Schedules</a>"
                "<a href=/memory>Memory</a><a href=/integrations>Integrations</a>"
-               "<a href=/switches>Feature switches</a><a href=/routing>Routing</a>"
+               "<a href=/customers>Customers</a><a href=/switches>Feature switches</a><a href=/routing>Routing</a>"
                "<a href=/costs>Costs</a><a href=/audit>Audit</a></nav>")
         logout = (f"<form method=post action=/logout class=inline>"
                   f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
@@ -781,6 +781,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/routing":
             flash = q.get("msg", [""])[0][:200]
             return self._send(200, page("routing", routing_page(rec), rec, flash))
+
+        if path == "/customers":
+            flash = q.get("msg", [""])[0][:200]
+            return self._send(200, page("customers", customers_page(rec), rec, flash))
 
         if path == "/sessions":
             s = sessions_data()
@@ -1093,6 +1097,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(400, "unsupported layer or value")
             ok, message = apply_switch("research_optimization", value == "on")
             return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+        if path == "/customer-action":
+            ok, message = customer_action(form.get("action", ""), form.get("account", ""))
+            if not audit("customer-" + form.get("action", "?"), form.get("account", "?")[:64], "ok" if ok else "refused"):
+                return self._deny(500, "audit write failed")
+            return self._redirect("/customers?msg=" + urllib.parse.quote(message))
+        if path == "/customer-limit":
+            ok, message = customer_limit(form.get("count", ""))
+            if not audit("customer-limit", form.get("count", "?")[:8], "ok" if ok else "refused"):
+                return self._deny(500, "audit write failed")
+            return self._redirect("/customers?msg=" + urllib.parse.quote(message))
         if path == "/routing-save":
             ok, message = routing_save(form)
             return self._redirect("/routing?msg=" + urllib.parse.quote(message))
@@ -1345,6 +1359,87 @@ def routing_page(rec: dict) -> str:
             f"<div class=card><b>Status: {esc(state)}</b><div class=small>Owner switch: {esc(sw['status'])}"
             + ("" if sw["effective_on"] else " — set it on the <a href=/switches>Feature switches</a> page (needs the data-terms tick and the key installed)")
             + f".</div>{form}{rollback}</div><h3>What JEV recommended (last 30 days)</h3>" + stats)
+
+
+APP_ENV = "/etc/agentai-platform/accounts.env"
+APP_DIR = "/opt/agentai-platform/current"
+ACCOUNT_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+CUSTOMER_ACTIONS = ("approve", "decline", "suspend", "resume")
+
+
+def signup_admin(*args: str) -> tuple[int, str]:
+    """Run the host-only `signup_admin` command as the app user. Arguments are fixed words or validated ids, never shell text."""
+    script = ('set -a; . "$1"; set +a; cd "$2" || exit 1; shift 2; '
+              'exec runuser -u agentai-platform -m -- ./.venv/bin/python manage.py signup_admin "$@"')
+    return run(["/bin/sh", "-c", script, "_", APP_ENV, APP_DIR, *args], timeout=90)
+
+
+def customers_data() -> dict | None:
+    rc, out = signup_admin("list")
+    if rc != 0:
+        return None
+    for line in reversed(out.splitlines()):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return None
+
+
+def customer_action(action: str, account: str) -> tuple[bool, str]:
+    if action not in CUSTOMER_ACTIONS or not ACCOUNT_RE.match(account or ""):
+        return False, "unknown action or customer"
+    rc, out = signup_admin(action, "--account", account)
+    tail = redact(out.splitlines()[-1] if out else "")[:160]
+    if rc != 0:
+        return False, f"{action} refused: {tail}"
+    return True, {"approve": "Approved: their assistant is being created and they were emailed.",
+                  "decline": "Declined.", "suspend": "Suspended: they are signed out now.", "resume": "Resumed."}[action]
+
+
+def customer_limit(raw: str) -> tuple[bool, str]:
+    if not raw.isdecimal() or not 1 <= int(raw) <= 200:
+        return False, "the limit must be a whole number from 1 to 200"
+    rc, out = signup_admin("limit", "--count", raw)
+    return (rc == 0, f"Customer limit is now {int(raw)}." if rc == 0 else "could not save the limit")
+
+
+def when(epoch) -> str:
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%d %H:%M") if epoch else "—"
+
+
+def customers_page(rec: dict) -> str:
+    csrf = f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+    data = customers_data()
+    if data is None:
+        return "<h2>Customers</h2>" + gate("Could not read the customer list from the app. Nothing was changed.")
+    try:
+        door = switch_store().is_on("open_signups")
+    except Exception:  # noqa: BLE001
+        door = False
+
+    def btn(action, account, label, cls=""):
+        return (f"<form method=post action=/customer-action class=inline>{csrf}<input type=hidden name=account value='{esc(account)}'>"
+                f"<input type=hidden name=action value='{action}'><button type=submit class='small {cls}'>{label}</button></form>")
+    waiting = [c for c in data["customers"] if c["signup"] == "pending"]
+    rows = [[esc(c["email"]), esc(when(c["created_epoch"])), btn("approve", c["account"], "Approve") + " " + btn("decline", c["account"], "Decline", "danger")] for c in waiting]
+    others = []
+    for c in data["customers"]:
+        if c["signup"] == "pending":
+            continue
+        state = {"unverified": "email not confirmed", "declined": "declined"}.get(c["signup"] or "", "")
+        state = state or ("active" if c["status"] == "active" else c["status"])
+        act = (btn("suspend", c["account"], "Suspend", "danger") if c["status"] == "active"
+               else btn("resume", c["account"], "Resume") if c["status"] == "suspended" and c["signup"] in (None, "approved") else "")
+        others.append([esc(c["email"]), pill("ok" if state == "active" else "warn") + " " + esc(state), esc(c["assistant"] or "—"), esc(when(c["created_epoch"])), act])
+    head = (f"<div class=card><b>Sign-ups are {'OPEN' if door else 'CLOSED'}</b> "
+            f"<span class=small>(turn them on or off on the <a href=/switches>Feature switches</a> page).</span>"
+            f"<div class=small>Assistants: <b>{data['assistants']} of {data['limit']}</b> allowed on this server. "
+            f"<form method=post action=/customer-limit class=inline>{csrf}Limit <input name=count value='{data['limit']}' size=3> "
+            f"<button type=submit class=small>Save limit</button></form></div></div>")
+    return ("<h2>Customers</h2>" + head + f"<h3>Waiting for your approval ({len(waiting)})</h3>"
+            + table(["Email", "Signed up (UTC)", ""], rows, "Nobody is waiting.")
+            + "<h3>All customers</h3>" + table(["Email", "State", "Assistant", "Since (UTC)", ""], others, "No customers yet."))
 
 
 def jev_research_enabled() -> bool | None:

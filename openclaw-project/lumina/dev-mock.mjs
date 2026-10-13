@@ -47,6 +47,9 @@ http.createServer(async (req, res) => {
   if (p === '/') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(await readFile(join(DIST, 'index.html'))); }   // mimics the edge showing the app at the site root
   if (p === '/v1/csrf') return json(res, 200, { csrf_token: 'mock', api_version: 'mock' });
   if (p === '/readyz') return json(res, 200, { foundation_ready: true });
+  if (p === '/v1/signup/config') return json(res, 200, { open: true });
+  if (p === '/auth/signup') return json(res, 202, { accepted: true });
+  if (p === '/auth/signup/verify') return json(res, 200, { state: 'pending' });
   if (p === '/auth/login') { signedIn = true; return json(res, 200, { ok: true }); }
   if (p === '/auth/logout') { signedIn = false; return json(res, 200, { ok: true }); }
   if (p.startsWith('/v1/')) {

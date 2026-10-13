@@ -403,3 +403,55 @@ class FeatureSwitchesOverHttp(FeatureSwitches):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class CustomersPage(unittest.TestCase):
+    """Approving people is the owner's call: only fixed actions and validated ids ever reach the host command."""
+
+    def setUp(self):
+        self.saved = app.run
+        self.calls = []
+        self.listing = {"limit": 2, "assistants": 1, "customers": [
+            {"account": "su1", "status": "suspended", "email": "wait@example.test", "signup": "pending", "created_epoch": 1791900000, "decided_epoch": None, "assistant": None},
+            {"account": "acc2", "status": "active", "email": "cust@example.test", "signup": "approved", "created_epoch": 1791800000, "decided_epoch": 1791800500, "assistant": "ready"},
+            {"account": "su3", "status": "suspended", "email": "new@example.test", "signup": "unverified", "created_epoch": 1791900100, "decided_epoch": None, "assistant": None}]}
+
+        def fake(argv, timeout=25):
+            self.calls.append(argv)
+            if argv[-1] == "list":
+                return 0, "noise\n" + json.dumps(self.listing)
+            return 0, json.dumps({"ok": True})
+        app.run = fake
+        self.addCleanup(lambda: setattr(app, "run", self.saved))
+        self.rec = {"csrf": "CSRF123"}
+
+    def test_page_lists_waiting_people_with_approve_and_decline(self):
+        html_page = app.customers_page(self.rec)
+        self.assertIn("wait@example.test", html_page)
+        self.assertIn("Waiting for your approval (1)", html_page)
+        self.assertIn("value='approve'", html_page); self.assertIn("value='decline'", html_page)
+        self.assertIn("Assistants: <b>1 of 2</b>", html_page)
+        self.assertIn("email not confirmed", html_page)
+        self.assertEqual(html_page.count("value='suspend'"), 1)             # only the active customer can be suspended
+        self.assertNotIn("<b>OPEN</b>", html_page)
+
+    def test_actions_use_fixed_words_and_validated_ids_only(self):
+        ok, msg = app.customer_action("approve", "su1")
+        self.assertTrue(ok); self.assertEqual(self.calls[-1][-3:], ["approve", "--account", "su1"])
+        self.assertTrue(all(isinstance(a, str) for a in self.calls[-1]))
+        for action, account in (("delete", "su1"), ("approve", "x; rm -rf /"), ("approve", ""), ("approve", "a" * 65), ("resume", "../../etc")):
+            before = len(self.calls)
+            ok, _ = app.customer_action(action, account)
+            self.assertFalse(ok); self.assertEqual(len(self.calls), before)  # nothing reached the host
+
+    def test_limit_validation_and_failed_listing_is_honest(self):
+        self.assertTrue(app.customer_limit("5")[0]); self.assertEqual(self.calls[-1][-3:], ["limit", "--count", "5"])
+        for bad in ("0", "201", "-1", "ten", "5; ls"):
+            self.assertFalse(app.customer_limit(bad)[0])
+        app.run = lambda argv, timeout=25: (1, "boom")
+        self.assertIn("Could not read the customer list", app.customers_page(self.rec))
+
+    def test_a_refusal_is_reported_not_hidden(self):
+        app.run = lambda argv, timeout=25: (1, "CommandError: Customer limit reached (2). Raise the limit first.")
+        ok, msg = app.customer_action("approve", "su1")
+        self.assertFalse(ok); self.assertIn("limit reached", msg)
