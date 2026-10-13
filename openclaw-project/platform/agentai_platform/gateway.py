@@ -31,6 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 import uuid
+from . import activity
 from .adapters import CapabilityUnavailable, GatewayCapabilities
 
 SUPPORTED_PROTOCOL_VERSION = 4   # installed 2026.9.6 negotiated protocol 4 in the 2026-10-12 live probe
@@ -326,7 +327,7 @@ class NativeGateway:
         pending = result.get('pendingInputs')
         queued = pending.get('total') if isinstance(pending, dict) else (len(pending) if isinstance(pending, list) else 0)
         active = bool(info.get('hasActiveRun')) or (type(queued) is int and queued > 0)
-        return {'kind': kind, 'messages': rows, 'cursor': None, 'active_run': active}
+        return {'kind': kind, 'messages': rows, 'cursor': None, 'active_run': active, 'activity': activity.extract(result.get('messages'))}
 
     def usage_snapshot(self):
         return int(self._call('usage.snapshot')['spend_microusd'])

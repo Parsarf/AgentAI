@@ -24,6 +24,10 @@ const events = [
   { kind: 'task_started', payload: { summary: 'Dispatched to the isolated runtime.' }, created_at: '2026-10-12T20:26:00Z' },
   { kind: 'progress', payload: { summary: 'Runtime accepted the request.' }, created_at: '2026-10-12T20:26:02Z' },
   { kind: 'progress', payload: { summary: '3 transcript update(s) recorded.' }, created_at: '2026-10-12T20:26:09Z' },
+  { sequence: 4, kind: 'activity', payload: { ref: 'c1', tool: 'web_search', category: 'search', label: 'Searched the web', detail: 'best cheap carbon pickleball paddles', output: '', status: 'done' }, created_at: '2026-10-12T20:26:12Z' },
+  { sequence: 5, kind: 'activity', payload: { ref: 'c2', tool: 'web_fetch', category: 'read', label: 'Opened a page', detail: 'shop.example/paddles/vanguard', output: '', status: 'done' }, created_at: '2026-10-12T20:26:15Z' },
+  { sequence: 6, kind: 'activity', payload: { ref: 'c3', tool: 'exec', category: 'command', label: 'Ran a command', detail: 'python3 rank.py --top 10', output: 'ranked 10 paddles\nwrote results.csv', status: 'done' }, created_at: '2026-10-12T20:26:20Z' },
+  { sequence: 7, kind: 'activity', payload: { ref: 'c4', tool: 'write', category: 'file', label: 'Wrote a file', detail: 'results.csv', output: '', status: 'running' }, created_at: '2026-10-12T20:26:22Z' },
 ];
 
 const card = (id, kind, spec) => ({ id, conversation_id: 'c1', anchor_message_id: 2, kind, schema_version: '1.0', spec: { schemaVersion: '1.0', type: kind, ...spec }, state: {}, version: 1, status: 'final', launched_request_id: null });

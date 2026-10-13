@@ -85,17 +85,22 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
 export function ComparisonCard({ spec }: { spec: ComparisonSpec }) {
   const [pick, setPick] = useState<number | null>(spec.bestIndex ?? null);
   return (
-    <section className="gcard" aria-label={spec.title}>
-      <header className="gcard-h"><h3>{spec.title}</h3></header>
-      <div className="gcompare" style={{ ['--n' as any]: Math.min(spec.items.length, 3) }}>
+    <section className="gcard gcard-comparison" aria-label={spec.title}>
+      <header className="gcard-h"><h3>{spec.title}</h3><span className="gcompare-count">{spec.items.length} options</span></header>
+      <div className="gcompare" data-count={spec.items.length}>
         {spec.items.map((it, i) => (
-          <article key={i} className={`gopt${pick === i ? ' on' : ''}`} tabIndex={0} aria-pressed={pick === i} onClick={() => setPick(pick === i ? null : i)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPick(pick === i ? null : i); } }}>
-            {(it.badge || spec.bestIndex === i) && <span className="gbadge">{it.badge ?? 'Best pick'}</span>}
-            <h4>{it.name}</h4>{it.subtitle && <p className="faint">{it.subtitle}</p>}{it.price && <p className="gprice">{it.price}</p>}
+          <article key={i} className={`gopt${pick === i ? ' on' : ''}`}>
+            <div className="gopt-heading">
+              {(it.badge || spec.bestIndex === i) && <span className="gbadge">{it.badge ?? 'Best pick'}</span>}
+              <h4>{it.name}</h4>{it.subtitle && <p className="gopt-subtitle">{it.subtitle}</p>}{it.price && <p className="gprice">{it.price}</p>}
+            </div>
             {it.facts.length > 0 && <dl>{it.facts.map((f, k) => <div key={k}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}</dl>}
-            {it.pros.length > 0 && <ul className="pros">{it.pros.map((p, k) => <li key={k}>{p}</li>)}</ul>}
-            {it.cons.length > 0 && <ul className="cons">{it.cons.map((p, k) => <li key={k}>{p}</li>)}</ul>}
-            {it.link && <p onClick={e => e.stopPropagation()}>{link(it.link, 'View')}</p>}
+            {it.pros.length > 0 && <ul className="pros" aria-label="Advantages">{it.pros.map((p, k) => <li key={k}>{p}</li>)}</ul>}
+            {it.cons.length > 0 && <ul className="cons" aria-label="Tradeoffs">{it.cons.map((p, k) => <li key={k}>{p}</li>)}</ul>}
+            <footer className="gopt-actions">
+              <button className="gopt-pick" aria-pressed={pick === i} aria-label={`Select ${it.name}`} onClick={() => setPick(pick === i ? null : i)}>{pick === i ? 'Selected' : 'Select option'}</button>
+              {it.link && link(it.link, 'View details')}
+            </footer>
           </article>))}
       </div>
       {spec.caption && <p className="gcard-cap">{spec.caption}</p>}

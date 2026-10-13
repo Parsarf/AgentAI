@@ -40,6 +40,7 @@ EVENT_KINDS = {
     'budget': {'remaining_microusd', 'held_microusd', 'note'},
     'artifact': {'artifact_id', 'version', 'name', 'sha256'},
     'result': {'summary'},
+    'activity': {'ref', 'tool', 'category', 'label', 'detail', 'output', 'status'},
 }
 
 SECRET_PATTERNS = [

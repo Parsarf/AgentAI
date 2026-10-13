@@ -8,7 +8,7 @@ import { isActive, phase, visibleEvents } from '../lib/tasks';
 export interface ThreadTask { id: string; state: string; created_epoch: number; result?: string | null }
 
 /** Shown inline under the message that started a task: what it is doing, for how long, and a way to stop it. */
-export default function TaskStrip({ task, onCancel }: { task: ThreadTask; onCancel(): void }) {
+export default function TaskStrip({ task, onCancel, onActivity }: { task: ThreadTask; onCancel(): void; onActivity?(): void }) {
   const { app } = useData(); const [browsing, setBrowsing] = useState(false);
   const active = isActive(task.state);
   useEffect(() => { if (active && app?.features.browse) api('GET', `/v1/browse/${task.id}`).then(() => setBrowsing(true)).catch(() => setBrowsing(false)); }, [task.id, active, app?.features.browse]); const [events, setEvents] = useState<EventRow[]>([]); const [now, setNow] = useState(Date.now());
@@ -26,8 +26,8 @@ export default function TaskStrip({ task, onCancel }: { task: ThreadTask; onCanc
   return (
     <div className="taskstrip" role="status" aria-live="polite">
       <div className="ts-head"><span className="dot-s running" /><b>{p === 'queued' ? 'Queued' : 'Working'}</b><span className="faint">· {elapsed(task.created_epoch, now)}</span>
-        {browsing && <Link className="btn small" to={`/browser/${task.id}`}>Watch live</Link>}<button className="btn small danger" onClick={onCancel}>Stop</button></div>
-      {events.length > 0 && <ul className="ts-steps">{events.slice(-3).map((e, n) => <li key={n}>{e.payload?.summary ?? e.kind}</li>)}</ul>}
+        {onActivity && <button className="btn small" onClick={onActivity}>See activity</button>}{browsing && <Link className="btn small" to={`/browser/${task.id}`}>Watch live</Link>}<button className="btn small danger" onClick={onCancel}>Stop</button></div>
+      {events.length > 0 && <ul className="ts-steps">{events.slice(-3).map((e, n) => { const q = e.payload as { summary?: string; label?: string; detail?: string } | undefined; return <li key={n}>{q?.summary ?? (q?.label ? `${q.label}${q.detail ? ': ' + q.detail.slice(0, 60) : ''}` : e.kind)}</li>; })}</ul>}
       {p === 'queued' && <p className="faint small">Waiting for your assistant to start. The first message after a pause takes about 30–40 seconds.</p>}
     </div>);
 }

@@ -143,6 +143,30 @@ class ChatChecks(unittest.TestCase):
         return ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(gateway),
                           clock=lambda: self.now, sleep=lambda s: None, **kw)
 
+    def test_assistant_tool_use_becomes_activity_events_for_this_request_only(self):
+        from agentai_platform.events import EventService
+        old = {'ref': 'old1', 'tool': 'exec', 'category': 'command', 'label': 'Ran a command', 'detail': 'ls', 'output': '', 'status': 'done'}
+        new_run = {'ref': 'new1', 'tool': 'web_search', 'category': 'search', 'label': 'Searched the web', 'detail': 'pickleball', 'output': '', 'status': 'running'}
+        class Tools(SyntheticGateway):
+            reads = 0
+            def history(self, session, cursor):
+                page = super().history(session, cursor)
+                Tools.reads += 1
+                page['activity'] = [old] if Tools.reads == 1 else [old, new_run, {**new_run, 'status': 'done'}][:3]
+                return page
+        self.send()
+        tools = Tools()
+        key, _, _ = tools.open_session('op', 'chat-x')                  # an existing session with an earlier turn's tool use
+        with self.store.connect() as con:
+            con.execute("UPDATE conversations SET native_session_ref=? WHERE account_id='a' AND id='c-a'", (key,))
+        claim = self.queue.claim(owner='w', capacity=CAPACITY)
+        events = EventService(self.store, clock=lambda: self.now)
+        driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(tools),
+                            clock=lambda: self.now, sleep=lambda s: None, events=events)
+        self.queue.finish(claim, driver.execute(claim))
+        rows = [e['payload'] for e in events.events(self.a, claim.request_id)['events'] if e['kind'] == 'activity']
+        self.assertEqual([(r['ref'], r['status']) for r in rows], [('new1', 'running'), ('new1', 'done')])
+
     def test_usage_is_reconciled_from_provider_spend_delta(self):
         class Metered(SyntheticGateway):
             spend = [1000, 1000, 1700, 1700, 1700]

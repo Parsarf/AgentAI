@@ -535,6 +535,7 @@ class ChatDriver:
         self._emit(claim, 'task_started', {'summary': 'Dispatched to the isolated runtime.'})
         intent, context = self.genui.request_info(claim) if self.genui else ('chat', {})
         outgoing = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
+        seen_activity = self._baseline_activity(gateway, session)
         before = self._usage_before(gateway)
         if before is not None:
             with self.coordinator.transaction() as con:
@@ -555,7 +556,7 @@ class ChatDriver:
             with self.coordinator.transaction() as con:
                 self._set_delivery(con, claim, attempt, 'uncertain')
             raise
-        poll = {'cursor': None, 'new_agent_rows': 0, 'idle_reads': 0}
+        poll = {'cursor': None, 'new_agent_rows': 0, 'idle_reads': 0, 'seen_activity': seen_activity}
         outcome = self._poll(claim, gateway, session, ack, attempt, before, poll)
         if isinstance(outcome, RequestReceipt):
             return outcome
@@ -692,6 +693,27 @@ class ChatDriver:
                 con.execute('INSERT OR IGNORE INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)',
                             (claim.account_id, claim.request_id, e['n'], e['kind'], json.dumps({k: v for k, v in e.items() if k not in ('n', 'kind')}), now))
 
+    def _baseline_activity(self, gateway, session):
+        """Tool calls already in the session before this request, so only this request's work is shown."""
+        if session is None:
+            return set()
+        try:
+            return {(a['ref'], a['status']) for a in gateway.history(session, None).get('activity') or []}
+        except Exception:
+            return set()
+
+    def _emit_activity(self, claim, items, poll):
+        seen = poll.setdefault('seen_activity', set())
+        for item in items or []:
+            key = (item['ref'], item['status'])
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                self._emit(claim, 'activity', item, 'gateway')
+            except Exception:
+                pass                        # the activity view is best-effort; it never fails the task
+
     def _poll(self, claim, gateway, session, ack, attempt, before, poll):
         """Wait for the run to finish. Returns 'done', or a RequestReceipt when the request was closed (cancel or timeout)."""
         deadline = self.clock() + self.run_timeout
@@ -711,6 +733,7 @@ class ChatDriver:
             if self.heartbeat is not None:
                 self.heartbeat(claim)
             page = gateway.history(session, poll['cursor'])
+            self._emit_activity(claim, page.get('activity'), poll)
             if page['kind'] == 'reset':
                 poll['cursor'] = None
                 continue
