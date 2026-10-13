@@ -5,6 +5,7 @@ import re
 import time
 
 from . import candidates as cand
+from .untrusted import neutralize
 from .ladder import Decision, Ladder, Refused
 
 DEFAULT_DENY = re.compile(r'(^|\.)(paypal|venmo|cash\.app|chase|bankofamerica|wellsfargo|citi|capitalone|robinhood|coinbase|binance|fidelity|schwab|vanguard)\.', re.I)
@@ -67,7 +68,7 @@ class BrowseRunner:
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
             candidates = cand.build(snap.get('snapshot', ''))
-            page = {'url': url, 'title': snap.get('title', ''), 'text': snap.get('text', '')}
+            page = {'url': url, 'title': neutralize(snap.get('title', ''), 300), 'text': neutralize(snap.get('text', ''))}
             if self.policy.read_only and cand.page_is_payment(url, snap.get('snapshot', ''), page['text']):
                 return self._end(res, 'handoff', 'reached a payment step; you take it from here', history, url)
             try:

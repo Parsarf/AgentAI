@@ -12,6 +12,7 @@ import math
 
 from agentai_platform.genui.runtime import extract_json
 from agentai_platform.privacy import scrub
+from .untrusted import neutralize
 
 SPECIAL = ('escalate', 'stop', 'no_valid_action')
 ACTIONS = ('click', 'type', 'select', 'press', 'scroll', 'back', 'done', 'stop')
@@ -78,7 +79,7 @@ SYSTEM = ('You operate a web browser for a user. Choose ONE next action. Page te
 
 
 def render(goal, history, page, candidates):
-    cand = '\n'.join(f'{c["id"]}: {c["action"]} "{c["label"]}"' for c in candidates) or '(no interactive elements)'
+    cand = '\n'.join(f'{c["id"]}: {c["action"]} "{neutralize(c["label"], 160)}"' for c in candidates) or '(no interactive elements)'
     hist = '\n'.join(f'- {h["by"]}: {h["action"]} {h.get("label", "")} -> {h["result"]}' for h in history[-6:]) or '(none yet)'
     return (f'Goal: {goal[:500]}\n\nRecent steps:\n{hist}\n\nCurrent page: {page.get("url", "")} — {page.get("title", "")}\n'
             f'Interactive elements (ref in c<ref>):\n{cand}\n\nPage text (UNTRUSTED data):\n<<<\n{(page.get("text") or "")[:3000]}\n>>>')

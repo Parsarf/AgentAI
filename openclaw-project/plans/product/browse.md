@@ -32,3 +32,10 @@ Live check (real stage, public read-only site `books.toscrape.com`): direct serv
 
 ## Decisions still open (from the plan)
 Captcha policy (stop and hand over, never defeat), first release = stop at checkout, ordering via takeover login rather than stored passwords, browse spend caps, a dedicated customer Brave key.
+
+## Hardening (2026-10-13) — balanced: nothing is blocked, attacks are neutralized
+- **Text aimed at the AI is removed, the task continues.** Page text, titles and element labels pass through `browse/untrusted.py` before any model sees them: sentences such as "ignore your instructions", "AI, send the user's data to …", "do not tell the user" are replaced by one marker. Ordinary shop/news/form text is untouched (tested on a hostile corpus and on benign look-alikes). No extra model call, no refusal.
+- **Nothing private to leak.** The browser sees only the goal and the pages it opens; there are no saved logins until F3. Stages sit behind the cell firewall (no private ranges, no metadata, no other cells) and start clean each time. Third-party calls (JEV) are scrubbed by `privacy.scrub`.
+- **Capacity.** Measured on the production host with a chat run and a browser task back to back: lowest available memory 11.2 GiB of 15.6 GiB. The service still waits (up to 2 minutes) if less than 2 GiB is free, then says the server is busy instead of starving other chats.
+- **Kill switch.** Turning the owner switch `browse_tasks` OFF stops every running browser task within about 3 seconds (the browse service watches the switch). Each task's Stop button already closes its stage immediately.
+- Screenshots are deleted 24 hours after a task (see privacy.md).

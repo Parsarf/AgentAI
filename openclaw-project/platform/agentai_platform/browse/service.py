@@ -26,8 +26,32 @@ URL_IN_TEXT = re.compile(r'https?://[^\s<>"\')]+', re.I)
 FILE = re.compile(r'^shot-\d{3}\.jpg$')
 FINAL = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
 TAKEOVER_SECONDS = 600
+MIN_FREE_BYTES = 2 * 1024 ** 3                 # a browser stage needs ~1.5 GiB; below this we wait instead of starving everyone's chats
+MEMORY_WAIT_SECONDS = 120
 SCREENSHOT_RETENTION_SECONDS = 24 * 3600    # pages can show personal data: screenshots are deleted a day after the task
 MAX_CALLS = 60
+
+
+def available_memory():
+    try:
+        with open('/proc/meminfo') as handle:
+            for line in handle:
+                if line.startswith('MemAvailable:'):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return 1 << 62                               # unreadable (not Linux): do not block
+
+
+def watch_kill_switch(service, is_on, stop, interval=3, sleep=time.sleep):
+    """While the owner's browse_tasks switch is off, every running browser task is stopped within `interval` seconds."""
+    while not stop.is_set():
+        try:
+            if not is_on():
+                service.cancel_all()
+        except Exception:
+            pass
+        sleep(interval)
 
 
 class BrowseError(Exception):
@@ -50,9 +74,10 @@ class Job:
 
 class BrowseService:
     def __init__(self, *, spawn, llm_for, jev_for=lambda account: None, root, jev_mode='shadow', clock=time.monotonic,
-                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None):
+                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep):
         """spawn(job_id, out_dir) -> transport; llm_for(account) -> callable(tier, system, user); jev_for(account) -> JevChooser|None."""
         self.spawn, self.llm_for, self.jev_for, self.root, self.jev_mode, self.clock = spawn, llm_for, jev_for, Path(root), jev_mode, clock
+        self.free_memory, self.sleep = free_memory or available_memory, sleep
         self.takeover_seconds, self.jobs, self._slot, self._guard = takeover_seconds, {}, threading.Semaphore(1), threading.Lock()
 
     # ------------------------------------------------------------------ public operations (all scoped to the caller's account)
@@ -114,6 +139,22 @@ class BrowseService:
                 job.add('screenshot', {'file': shot['file'], 'by': 'you'})
         return {'ok': bool(reply.get('ok')), 'error': reply.get('error')}
 
+    def cancel_all(self):
+        """Kill switch: stop every queued or running browser task now."""
+        n = 0
+        for job in list(self.jobs.values()):
+            if job.state in ('queued', 'running', 'handoff') and not job.cancel.is_set():
+                job.cancel.set(); n += 1
+        return n
+
+    def _wait_for_memory(self, job):
+        waited = 0
+        while self.free_memory() < MIN_FREE_BYTES:
+            if job.cancel.is_set() or waited >= MEMORY_WAIT_SECONDS:
+                return False
+            self.sleep(2); waited += 2
+        return True
+
     def release(self, account, request_id):
         job = self._job(account, request_id)
         job.takeover_until = 0
@@ -172,6 +213,11 @@ class BrowseService:
         try:
             if job.cancel.is_set():
                 job.state, job.reason = 'cancelled', 'stopped by you'
+                return
+            if not self._wait_for_memory(job):
+                job.state = 'cancelled' if job.cancel.is_set() else 'error'
+                job.reason = 'stopped by you' if job.cancel.is_set() else 'the server is busy right now; please try again in a minute'
+                job.add('status', {'state': job.state, 'reason': job.reason})
                 return
             job.state = 'running'
             out_dir = self.root / job.id / 'out'

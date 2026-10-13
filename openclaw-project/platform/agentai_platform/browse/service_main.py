@@ -25,6 +25,8 @@ def main():
     parser.add_argument('--wiring', type=Path, default=Path('/etc/agentai-supervisor/native-wiring.json'))
     parser.add_argument('--state-dir', type=Path, default=Path('/var/lib/agentai-supervisor'))
     parser.add_argument('--runner-dir', type=Path, default=Path('/opt/agentai-browse/runner'))
+    parser.add_argument('--switches', default='/opt/openclaw-production/feature-switches/switches.json')
+    parser.add_argument('--switch-facts', default='/opt/openclaw-production/feature-switches/facts.json')
     parser.add_argument('--jobs', type=Path, default=Path('/var/lib/agentai-browse/jobs'))
     parser.add_argument('--socket', type=Path, default=Path('/run/agentai-browse/browse.sock'))
     parser.add_argument('--image', default='openclaw-sandbox-browser:phase4-2026.9.6')
@@ -72,6 +74,11 @@ def main():
         return ProcessTransport(argv, env={**os.environ, 'DOCKER_HOST': docker_host})
 
     service = BrowseService(spawn=spawn, llm_for=llm_for, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode)
+    import threading
+    from ..switches import SwitchStore
+    from .service import watch_kill_switch
+    switches = SwitchStore(args.switches, facts_path=args.switch_facts)
+    threading.Thread(target=watch_kill_switch, args=(service, lambda: switches.is_on('browse_tasks'), threading.Event()), daemon=True).start()
     service.purge()                                  # screenshots left from before a restart
     app = pwd.getpwnam(args.app_user)
     server = serve(service, str(args.socket), allowed_uids={app.pw_uid}, group_gid=grp.getgrnam(args.app_user).gr_gid)
