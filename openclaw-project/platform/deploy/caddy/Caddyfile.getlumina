@@ -10,6 +10,14 @@ backend.getlumina.pro {
             header_up -Forwarded
         }
     }
+    # Live view frames: exactly one path shape, to the frame gateway inside the browse service (never the web app's single worker).
+    @liveframe path_regexp liveframe ^/live/[a-f0-9]{32}/frame$
+    handle @liveframe {
+        reverse_proxy 127.0.0.1:18801 {
+            flush_interval -1
+            header_up -Forwarded
+        }
+    }
     handle {
         respond "Not found" 404
     }

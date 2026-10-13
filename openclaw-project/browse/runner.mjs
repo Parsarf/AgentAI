@@ -3,7 +3,7 @@
 // opens pages, describes them, and performs one already-validated action at a time.
 import { chromium } from 'playwright-core';
 import { createInterface } from 'node:readline';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 
 const CHROME = process.env.BROWSE_CHROME || '/usr/bin/chromium';
@@ -11,6 +11,9 @@ const OUT = process.env.BROWSE_OUT || '/tmp/out';
 const ALLOW_LOOPBACK = process.env.BROWSE_ALLOW_LOOPBACK === '1';   // tests only; never set in the stage
 const MAX_ELEMENTS = 80, MAX_TEXT = 6000, MAX_PAGES = 3, MAX_VALUE = 500;
 const KEYS = new Set(['Enter', 'Tab', 'Escape']);
+// Live view: Chrome pushes JPEG frames only when the page changes; we keep ONLY the newest one (live.jpg, replaced atomically) and only
+// while the host has recently touched OUT/watching. Nobody watching = no screencast, no CPU, no disk writes.
+const LIVE = { fps: 8, quality: 50, width: 960, height: 600, watchSeconds: 6, pollMs: 1000 };
 
 export function urlAllowed(raw, allowLoopback = false) {
   let u; try { u = new URL(raw); } catch { return false; }
@@ -48,7 +51,7 @@ function describe(max) {
 }
 
 export class Runner {
-  constructor() { this.browser = null; this.context = null; this.page = null; this.shots = 0; }
+  constructor() { this.browser = null; this.context = null; this.page = null; this.shots = 0; this.live = null; this.liveTimer = null; this.lastFrame = 0; }
   async start() {
     mkdirSync(OUT, { recursive: true });
     this.browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--disable-crash-reporter', '--no-first-run'] });
@@ -56,8 +59,32 @@ export class Runner {
     await this.context.route('**/*', route => { const u = route.request().url(); if (urlAllowed(u, ALLOW_LOOPBACK)) return route.continue(); console.error('blocked', u.slice(0, 120)); return route.abort('blockedbyclient'); });
     this.context.on('page', p => { if (this.context.pages().length > MAX_PAGES) { p.close().catch(() => {}); return; } this.page = p; });
     this.page = await this.context.newPage(); this.page.setDefaultTimeout(8000); this.page.setDefaultNavigationTimeout(20000);
+    this.liveTimer = setInterval(() => this.liveSync().catch(() => {}), LIVE.pollMs); this.liveTimer.unref?.();
   }
-  async stop() { try { await this.browser?.close(); } catch { /* already gone */ } }
+  async stop() { clearInterval(this.liveTimer); await this.liveOff(); try { await this.browser?.close(); } catch { /* already gone */ } }
+
+  watched() { try { return Date.now() - statSync(join(OUT, 'watching')).mtimeMs < LIVE.watchSeconds * 1000; } catch { return false; } }
+  async liveSync() {
+    const want = this.watched();
+    if (want && (!this.live || this.live.page !== this.page)) await this.liveOn();
+    else if (!want && this.live) await this.liveOff();
+  }
+  async liveOn() {
+    await this.liveOff();
+    const page = this.page; const cdp = await this.context.newCDPSession(page); const tmp = join(OUT, 'live.tmp'); const dest = join(OUT, 'live.jpg');
+    cdp.on('Page.screencastFrame', async ev => {
+      cdp.send('Page.screencastFrameAck', { sessionId: ev.sessionId }).catch(() => {});
+      const now = Date.now(); if (now - this.lastFrame < 1000 / LIVE.fps) return;     // newest frame wins; extra frames are dropped
+      this.lastFrame = now;
+      try { writeFileSync(tmp, Buffer.from(ev.data, 'base64')); renameSync(tmp, dest); } catch { /* disk full or folder gone: skip this frame */ }
+    });
+    await cdp.send('Page.startScreencast', { format: 'jpeg', quality: LIVE.quality, maxWidth: LIVE.width, maxHeight: LIVE.height, everyNthFrame: 1 });
+    this.live = { cdp, page };
+  }
+  async liveOff() {
+    const l = this.live; this.live = null; if (!l) return;
+    try { await l.cdp.send('Page.stopScreencast'); await l.cdp.detach(); } catch { /* page already closed */ }
+  }
   info() { return { url: this.page.url(), title: '' }; }
   async settle() { try { await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }); await this.page.waitForLoadState('networkidle', { timeout: 2500 }); } catch { /* slow pages are fine */ } }
 

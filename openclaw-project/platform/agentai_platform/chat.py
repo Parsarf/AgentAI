@@ -658,6 +658,8 @@ class ChatDriver:
             except CapabilityUnavailable:
                 polled = None
             if polled is not None:
+                if polled.get('state') == 'paused':
+                    deadline += self.poll_interval          # the customer has the wheel: their time does not count against the task
                 self._mirror_browse(claim, polled)
                 for e in polled['events']:
                     since = max(since, e['n'])
@@ -704,7 +706,7 @@ class ChatDriver:
         if status == 'handoff':
             where = f' I stopped at {final.get("url")}.' if final.get('url') else ''
             return ('I got as far as I safely can: ' + (reason or 'the next step needs you') + '.' + where +
-                    ' Open the Browser page to see the screen and take over; nothing was purchased or submitted.')
+                    ' Open Live view to see the screen and take over; nothing was purchased or submitted.')
         notes = {'blocked': 'I did not open that site because it is not allowed.', 'budget': 'I stopped because the spending limit for this task was reached.',
                  'stuck': 'I got stuck repeating the same step and stopped.', 'deadline': 'I ran out of time.', 'max_steps': 'I reached the step limit.',
                  'error': 'The browser run failed.', 'stopped': 'I could not complete this.'}

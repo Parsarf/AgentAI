@@ -55,7 +55,7 @@ urlpatterns += [
  path('v1/blocks/<str:block_id>/live',gen.block_live),path('v1/blocks/<str:block_id>/phase',gen.block_phase),path('v1/blocks/<str:block_id>/stop',gen.block_stop),
  path('v1/conversations/<str:conversation_id>/rename',ch.chat_rename),
  path('v1/browse',br.runs),path('v1/browse/<str:request_id>',br.run),path('v1/browse/<str:request_id>/control',br.control),
- path('v1/browse/<str:request_id>/release',br.release),path('v1/browse/<str:request_id>/shot/<str:name>',br.shot),
+ path('v1/browse/<str:request_id>/release',br.release),path('v1/browse/<str:request_id>/pause',br.pause),path('v1/browse/<str:request_id>/resume',br.resume),path('v1/browse/<str:request_id>/live',br.live),path('v1/browse/<str:request_id>/shot/<str:name>',br.shot),
  path('v1/tasks/<str:request_id>',ch.chat_task),path('v1/tasks/<str:request_id>/cancel',ch.chat_cancel),
  path('v1/account/telegram/link',tg.link),path('v1/account/telegram/unlink',tg.unlink),
  path('v1/account/telegram',tg.bindings),path('v1/telegram/webhook',tg.webhook),

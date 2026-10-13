@@ -7,7 +7,7 @@ import { displayName } from '../lib/format';
 
 export const NAV = [
   { to: '/home', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/history', label: 'Chat history', icon: I.Search }, { to: '/tasks', label: 'Task activity', icon: I.Tasks },
-  { to: '/browser', label: 'Browser', icon: I.Browser }, { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
+  { to: '/live', label: 'Live view', icon: I.Browser }, { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
   { to: '/automations', label: 'Automations', icon: I.Bolt }, { to: '/integrations', label: 'Integrations', icon: I.Cube }, { to: '/settings', label: 'Settings', icon: I.Gear },
 ];
 
