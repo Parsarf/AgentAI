@@ -43,6 +43,23 @@ class ChatHTTPChecks(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         return response.json()['conversation']['id']
 
+    def test_history_search_paging_and_archive_restore(self):
+        conversation = self.conversation()
+        a, b = self.clients
+        self.post(a, '/v1/conversations/' + conversation + '/send', {'message': 'unique narwhal discussion', 'key': 'search-key'})
+        listed = a.get('/v1/conversations?q=narwhal&limit=1', secure=True).json()
+        self.assertEqual([c['id'] for c in listed['conversations']], [conversation])
+        self.assertFalse(listed['has_more'])
+        self.assertEqual(b.get('/v1/conversations?q=narwhal', secure=True).json()['conversations'], [])
+        self.assertEqual(a.get('/v1/conversations?limit=-1', secure=True).status_code, 400)
+        self.assertEqual(a.get('/v1/conversations?archived=maybe', secure=True).status_code, 400)
+        self.assertEqual(self.post(a, '/v1/conversations/' + conversation + '/archive', {}).status_code, 200)
+        self.assertEqual(a.get('/v1/conversations', secure=True).json()['conversations'], [])
+        self.assertEqual(a.get('/v1/conversations?archived=1', secure=True).json()['conversations'][0]['id'], conversation)
+        self.assertEqual(self.post(b, '/v1/conversations/' + conversation + '/restore', {}).status_code, 404)
+        self.assertEqual(self.post(a, '/v1/conversations/' + conversation + '/restore', {}).status_code, 200)
+        self.assertEqual(len(a.get('/v1/conversations', secure=True).json()['conversations']), 1)
+
     def test_project_creation_quota_and_validation(self):
         a = self.clients[0]
         created = self.post(a, '/v1/projects', {'name': 'My second project'})

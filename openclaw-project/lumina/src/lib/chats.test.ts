@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chatTitle, groupLabel, sortRecent, type ChatSummary } from './chats';
+import { chatPreview, chatTitle, groupLabel, sortRecent, type ChatSummary } from './chats';
 
 const c = (id: string, last: string | null, created = '2026-10-01T00:00:00Z', title: string | null = 't'): ChatSummary => ({ id, project_id: 'p', created_at: created, title, last_activity: last, active: 0 });
 
@@ -17,3 +17,5 @@ describe('chats', () => {
   });
   it('titles an empty chat as New chat', () => { expect(chatTitle(c('a', null, undefined, null))).toBe('New chat'); expect(chatTitle(c('a', null, undefined, 'Hello'))).toBe('Hello'); });
 });
+
+it('cleans formatting markers from history previews', () => { expect(chatPreview('## Compare\n**Pressure sensor** and [heads](https://example.com)')).toBe('Compare Pressure sensor and heads'); });

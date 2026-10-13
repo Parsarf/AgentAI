@@ -1,4 +1,4 @@
-export interface ChatSummary { id: string; project_id: string; created_at: string; title: string | null; last_activity: string | null; active: number }
+export interface ChatSummary { id: string; project_id: string; created_at: string; title: string | null; last_activity: string | null; active: number; preview?: string | null; archived_epoch?: number | null }
 
 const stamp = (c: ChatSummary) => c.last_activity || c.created_at || '';
 export const sortRecent = (list: ChatSummary[]) => [...list].sort((a, b) => stamp(b).localeCompare(stamp(a)));
@@ -13,3 +13,12 @@ export function groupLabel(c: ChatSummary, now = new Date()): 'Today' | 'Yesterd
 }
 
 export const chatTitle = (c: ChatSummary) => (c.title && c.title.trim()) || 'New chat';
+
+/** Compact readable text for history previews; the full response keeps its Markdown. */
+export const chatPreview = (value?: string | null) => (value || '')
+  .replace(/```[\s\S]*?(?:```|$)/g, '')
+  .replace(/!?\[([^\]]+)\]\([^)]*\)/g, '$1')
+  .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+  .replace(/^\s*[-*+>]\s+/gm, '')
+  .replace(/\*\*|__|~~|`/g, '')
+  .replace(/\s+/g, ' ').trim();

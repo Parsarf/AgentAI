@@ -48,6 +48,7 @@ urlpatterns += [
  path('v1/conversations',ch.chat_conversations),path('v1/conversations/<str:conversation_id>',ch.chat_conversations),
  path('v1/conversations/<str:conversation_id>/messages',ch.chat_messages),path('v1/conversations/<str:conversation_id>/archive',ch.chat_archive),
  path('v1/conversations/<str:conversation_id>/send',ch.chat_send),
+ path('v1/conversations/<str:conversation_id>/restore',ch.chat_restore),
  path('v1/conversations/<str:conversation_id>/blocks',gen.blocks),
  path('v1/blocks/<str:block_id>/state',gen.block_state),path('v1/blocks/<str:block_id>/submit',gen.block_submit),path('v1/blocks/<str:block_id>/launch',gen.block_launch),
  path('v1/blocks/<str:block_id>/live',gen.block_live),path('v1/blocks/<str:block_id>/phase',gen.block_phase),path('v1/blocks/<str:block_id>/stop',gen.block_stop),

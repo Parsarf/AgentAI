@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Composer from '../components/Composer';
+import ChatActions from '../components/ChatActions';
+import { loadMessages, type Message as Msg } from '../lib/conversations';
+import type { ChatSummary } from '../lib/chats';
 import AgentResponse from '../components/response/AgentResponse';
 import ActivityPanel from '../components/ActivityPanel';
 import TaskStrip, { type ThreadTask } from '../components/TaskStrip';
@@ -10,30 +13,40 @@ import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 
-interface Msg { id: number; request_id: string | null; provenance: string; content: string; created_at: string }
-
 export default function Chat() {
   const { id } = useParams(); const nav = useNavigate(); const { refresh, chats, refreshChats } = useData();
   const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]); const [err, setErr] = useState(''); const [loaded, setLoaded] = useState(false);
+  const [detail, setDetail] = useState<ChatSummary | null>(null);
+  const threadId = useRef(id); threadId.current = id; const loadVersion = useRef(0); const cachedMessages = useRef<Msg[]>([]);
+  const stick = useRef(true); const [newBelow, setNewBelow] = useState(false);
+  useEffect(() => { const onScroll = () => { stick.current = document.documentElement.scrollHeight - window.innerHeight - window.scrollY < 260; if (stick.current) setNewBelow(false); }; window.addEventListener('scroll', onScroll, { passive: true }); return () => window.removeEventListener('scroll', onScroll); }, []);
   const bottom = useRef<HTMLDivElement>(null); const lastCount = useRef(0);
 
   const loadList = refreshChats;
   const loadThread = useCallback(async () => {
-    if (!id) { setMsgs([]); setTasks([]); setBlocks([]); setLoaded(true); return; }
+    const version = ++loadVersion.current;
+    const currentLoad = () => threadId.current === id && loadVersion.current === version;
+    if (!id) { setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(true); return; }
     try {
-      const [m, b] = await Promise.all([api<{ messages: Msg[]; tasks: ThreadTask[] }>('GET', `/v1/conversations/${id}/messages`), api<{ blocks: Block[] }>('GET', `/v1/conversations/${id}/blocks`)]);
-      setMsgs(m.messages); setTasks(m.tasks); setBlocks(b.blocks); setErr(''); setLoaded(true);
-    } catch { setErr('This chat is not available.'); setLoaded(true); }
+      const [m, b, c] = await Promise.all([
+        loadMessages(id, cachedMessages.current.at(-1)?.id ?? 0, currentLoad),
+        api<{ blocks: Block[] }>('GET', `/v1/conversations/${id}/blocks`),
+        api<{ conversation: ChatSummary }>('GET', `/v1/conversations/${id}`),
+      ]);
+      if (!currentLoad()) return;
+      cachedMessages.current = [...cachedMessages.current, ...m.messages];
+      setMsgs(cachedMessages.current); setTasks([...m.tasks].sort((a, b) => a.created_epoch - b.created_epoch)); setBlocks(b.blocks); setDetail(c.conversation); setErr(''); setLoaded(true);
+    } catch { if (currentLoad()) { setErr('This chat could not be loaded. Please try again.'); setLoaded(true); } }
   }, [id]);
   const reload = useCallback(() => { loadThread(); loadList(); refresh(); }, [loadThread, loadList, refresh]);
 
-  useEffect(() => { setLoaded(false); lastCount.current = 0; loadThread(); }, [loadThread]);
+  useEffect(() => { cachedMessages.current = []; setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
   useEffect(() => { loadList(); }, [loadList]);
   const drafting = blocks.some(b => b.status === 'submitted');
   const working = tasks.some(t => isActive(t.state)) || drafting || blocks.some(b => b.run_status === 'running');
   useEffect(() => { if (!working) return; const t = setInterval(() => { loadThread(); loadList(); }, 2500); return () => clearInterval(t); }, [working, loadThread, loadList]);
-  useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); } }, [msgs.length, tasks.length]);
+  useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; if (stick.current) bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); else setNewBelow(true); } }, [msgs.length, tasks.length]);
 
   const [activityId, setActivityId] = useState<string | null>(null);
   const latest = [...tasks].reverse().find(t => isActive(t.state)) ?? tasks[tasks.length - 1];
@@ -44,9 +57,8 @@ export default function Chat() {
   const cancel = async (taskId: string) => { try { await api('POST', `/v1/requests/${taskId}/cancel`, {}); } finally { reload(); } };
   const [renaming, setRenaming] = useState(false);
   const rename = async (title: string) => { setRenaming(false); const t = title.trim(); if (t && t !== current?.title && id) { try { await api('POST', `/v1/conversations/${id}/rename`, { title: t }); await loadList(); } catch { /* keep old name */ } } };
-  const clear = async () => { if (id) { await api('POST', `/v1/conversations/${id}/archive`, {}); await loadList(); nav('/chat'); } };
   const byRequest = new Map(tasks.map(t => [t.id, t]));
-  const current = chats.find(c => c.id === id);
+  const current = chats.find(c => c.id === id) ?? detail;
 
   const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text' }); } finally { reload(); } };
   const lastAgent = [...msgs].reverse().find(m => m.provenance === 'agent');
@@ -60,8 +72,8 @@ export default function Chat() {
   return (
     <div className="chatpage">
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
-        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{msgs.length > 0 && <button className="btn small" onClick={clear}>Clear chat</button>}</header>}
-        {err && <p className="err" role="alert">{err}</p>}
+        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{current && <ChatActions chat={current} onChanged={action => { loadList(); if (action === 'archive') nav('/history'); else loadThread(); }} />}</header>}
+        {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}
           {msgs.map(m => (
@@ -80,7 +92,8 @@ export default function Chat() {
           {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
           <div ref={bottom} />
         </div>
-        <div className="dock"><h1 className="greeting" aria-hidden={!fresh}>What should we work on?</h1><Composer conversationId={id} autoFocus onSent={sent} /></div>
+        {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }}>Jump to latest ↓</button>}
+        <div className="dock"><h1 className="greeting" aria-hidden={!fresh}>What should we work on?</h1>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
       </section>
     {shown && <ActivityPanel taskId={shown.id} active={isActive(shown.state)} startedAt={shown.created_epoch} onStop={() => cancel(shown.id)} onClose={() => setActivityId(null)} />}
     </div>);

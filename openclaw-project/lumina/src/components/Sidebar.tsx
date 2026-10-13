@@ -6,14 +6,14 @@ import { useSettings } from '../state/settings';
 import { displayName } from '../lib/format';
 
 export const NAV = [
-  { to: '/', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/tasks', label: 'Tasks', icon: I.Tasks },
+  { to: '/home', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/history', label: 'Chat history', icon: I.Search }, { to: '/tasks', label: 'Task activity', icon: I.Tasks },
   { to: '/browser', label: 'Browser', icon: I.Browser }, { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
   { to: '/automations', label: 'Automations', icon: I.Bolt }, { to: '/integrations', label: 'Integrations', icon: I.Cube }, { to: '/settings', label: 'Settings', icon: I.Gear },
 ];
 
 /** Left sidebar: menu on top, chat history below, one toggle to fold it to an icon rail (like ChatGPT and Claude). */
 export default function Sidebar() {
-  const { app, chats, signOut } = useData(); const { sidebarOpen, setSidebarOpen } = useSettings(); const nav = useNavigate();
+  const { app, chats, signOut, refreshChats } = useData(); const { sidebarOpen, setSidebarOpen } = useSettings(); const nav = useNavigate();
   const match = useMatch('/chat/:id'); const name = displayName(app?.user.email ?? '');
   const toggle = () => setSidebarOpen(!sidebarOpen);
   return (
@@ -26,7 +26,7 @@ export default function Sidebar() {
       <nav className="nav" aria-label="Primary">
         {NAV.map(n => <NavLink key={n.to} to={n.to} end={n.end} title={n.label}><n.icon width={20} height={20} /><span className="lbl">{n.label}</span></NavLink>)}
       </nav>
-      {sidebarOpen && <div className="side-chats"><ChatList chats={chats} current={match?.params.id} /></div>}
+      {sidebarOpen && <div className="side-chats"><ChatList chats={chats} current={match?.params.id} onChanged={() => refreshChats()} /></div>}
       <div className="who">
         <div className="avatar" aria-hidden>{name[0]}</div>
         <div className="grow lbl"><div>{name}</div><small>{app?.features.billing_mode === 'paid_required' ? 'Subscriber' : app?.features.billing_mode === 'open' ? 'Free access' : 'Private beta'}</small></div>

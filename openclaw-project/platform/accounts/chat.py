@@ -90,6 +90,19 @@ def chat_archive(request, conversation_id):
         raise Denied()
 
 
+@endpoint(['POST'], [])
+def chat_restore(request, conversation_id):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        return JsonResponse({'conversation': service().restore_conversation(principal(request), conversation_id)})
+    except NotFound:
+        raise Denied()
+    except Conflict:
+        return JsonResponse({'error': 'conversation_conflict'}, status=409)
+
+
 @endpoint(['GET', 'POST'], ['project_id'])
 def chat_conversations(request, conversation_id=None):
     denied = customer(request)
@@ -110,9 +123,14 @@ def chat_conversations(request, conversation_id=None):
             found = s.conversation(p, conversation_id)
             request.form_redirect = '/account/chat/?conversation=' + conversation_id
             return JsonResponse({'conversation': found})
-        listed = s.conversations(p, request.GET.get('project_id') or None)
+        raw_limit, raw_offset = request.GET.get('limit', '100'), request.GET.get('offset', '0')
+        archived = request.GET.get('archived', '0')
+        if not raw_limit.isdecimal() or not raw_offset.isdecimal() or archived not in ('0', '1') or not 1 <= int(raw_limit) <= 500:
+            raise ValueError('invalid pagination')
+        limit = int(raw_limit)
+        listed = s.conversations(p, request.GET.get('project_id') or None, query=request.GET.get('q', ''), archived=archived == '1', limit=limit + 1, offset=int(raw_offset))
         request.form_redirect = '/account/chat/'
-        return JsonResponse({'conversations': listed})
+        return JsonResponse({'conversations': listed[:limit], 'has_more': len(listed) > limit, 'next_offset': int(raw_offset) + min(len(listed), limit)})
     except NotFound:
         raise Denied()
     except Conflict:
@@ -127,8 +145,10 @@ def chat_messages(request, conversation_id):
         return denied
     raw = request.GET.get('after', '0')
     after = int(raw) if raw.isdecimal() else -1
+    raw_limit = request.GET.get('limit', '100')
+    limit = int(raw_limit) if raw_limit.isdecimal() else -1
     try:
-        return JsonResponse(service().messages(principal(request), conversation_id, after=after))
+        return JsonResponse(service().messages(principal(request), conversation_id, after=after, limit=limit))
     except (ValueError,):
         return JsonResponse({'error': 'invalid_request'}, status=400)
     except NotFound:

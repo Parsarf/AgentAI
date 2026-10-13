@@ -102,22 +102,30 @@ class ChatService:
             self.coordinator._audit(con, principal.account_id, principal.actor_id, conversation, 'chat.conversation_create', 'completed')
             return {'id': conversation, 'project_id': project_id}
 
-    def conversations(self, principal: Principal, project_id: str | None = None):
+    def conversations(self, principal: Principal, project_id: str | None = None, *, query: str = '', archived: bool = False, limit: int = 500, offset: int = 0):
+        if not isinstance(query, str) or len(query) > 200 or type(archived) is not bool or type(limit) is not int or not 1 <= limit <= 501 or type(offset) is not int or not 0 <= offset <= 100000:
+            raise ValueError('invalid pagination')
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            sql = '''SELECT c.id,c.project_id,c.created_at,
+            sql = """SELECT c.id,c.project_id,c.created_at,c.archived_epoch,
                 coalesce(c.title,(SELECT substr(m.content,1,90) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id
                     AND m.provenance IN ('customer','telegram') ORDER BY m.id LIMIT 1)) AS title,
                 (SELECT max(m.created_at) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id) AS last_activity,
+                (SELECT substr(m.content,1,240) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) AS preview,
                 (SELECT count(*) FROM customer_requests r WHERE r.account_id=c.account_id AND r.conversation_id=c.id
                     AND r.state IN ('waiting','starting','running','uncertain')) AS active
-                FROM conversations c WHERE c.account_id=? AND c.archived_epoch IS NULL'''
+                FROM conversations c WHERE c.account_id=?"""
             args: list = [principal.account_id]
+            sql += ' AND c.archived_epoch IS ' + ('NOT NULL' if archived else 'NULL')
             if project_id is not None:
                 identifier(project_id)
                 sql += ' AND c.project_id=?'
                 args.append(project_id)
-            return [dict(row) for row in con.execute(sql + ' ORDER BY c.created_at,c.id LIMIT 500', args).fetchall()]
+            if query.strip():
+                sql += " AND (instr(lower(coalesce(c.title,'')),lower(?))>0 OR EXISTS (SELECT 1 FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id AND instr(lower(m.content),lower(?))>0))"
+                args.extend([query.strip(), query.strip()])
+            args.extend([limit, offset])
+            return [dict(row) for row in con.execute(sql + ' ORDER BY coalesce(last_activity,c.created_at) DESC,c.id DESC LIMIT ? OFFSET ?', args).fetchall()]
 
     def archive_conversation(self, principal: Principal, conversation_id: str):
         """Hide a conversation (history, tasks and ledger rows stay). Idempotent."""
@@ -131,10 +139,25 @@ class ChatService:
             self.coordinator._audit(con, principal.account_id, principal.actor_id, conversation_id, 'chat.conversation_archive', 'completed')
             return {'id': conversation_id, 'archived': True}
 
+    def restore_conversation(self, principal: Principal, conversation_id: str):
+        identifier(conversation_id)
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            row = con.execute('SELECT project_id,archived_epoch FROM conversations WHERE account_id=? AND id=?', (principal.account_id, conversation_id)).fetchone()
+            if not row:
+                raise NotFound('unavailable')
+            if row['archived_epoch'] is not None:
+                count = con.execute('SELECT count(*) FROM conversations WHERE account_id=? AND project_id=? AND archived_epoch IS NULL', (principal.account_id, row['project_id'])).fetchone()[0]
+                if count >= self.max_conversations_per_project:
+                    raise Conflict('conversation limit reached')
+                con.execute('UPDATE conversations SET archived_epoch=NULL WHERE account_id=? AND id=?', (principal.account_id, conversation_id))
+                self.coordinator._audit(con, principal.account_id, principal.actor_id, conversation_id, 'chat.conversation_restore', 'completed')
+            return {'id': conversation_id, 'archived': False}
+
     def conversation(self, principal: Principal, conversation_id: str):
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            row = con.execute('SELECT id,project_id,created_at FROM conversations WHERE account_id=? AND id=?',
+            row = con.execute('SELECT id,project_id,created_at,title,archived_epoch FROM conversations WHERE account_id=? AND id=?',
                               (principal.account_id, conversation_id)).fetchone()
             if not row:
                 raise NotFound('unavailable')
@@ -199,7 +222,8 @@ class ChatService:
             raise ValueError('invalid message')
         if mode not in ('auto', 'text', 'plan', 'browse'):
             raise ValueError('invalid mode')
-        self.conversation(principal, conversation_id)
+        if self.conversation(principal, conversation_id)['archived_epoch'] is not None:
+            raise Conflict('restore the archived conversation first')
         kind = gen_intent.detect(message, mode=mode, browse=self.browse) if provenance == 'customer' else 'text'
         if kind == 'requirements':
             template = gen_intent.requirements_template(message)
@@ -325,7 +349,7 @@ class ChatService:
             self.store._authorize(con, principal)
             rows = con.execute('''SELECT id,request_id,provenance,content,created_at FROM chat_messages
                 WHERE account_id=? AND conversation_id=? AND id>? ORDER BY id LIMIT ?''',
-                (principal.account_id, conversation_id, after, limit)).fetchall()
+                (principal.account_id, conversation_id, after, limit + 1)).fetchall()
             tasks = con.execute('''SELECT r.id,r.state,r.cancel_requested,r.result,r.created_epoch,t.state AS task_state,
                     t.budget_microusd,v.state AS reservation_state
                 FROM customer_requests r LEFT JOIN tasks t ON t.account_id=r.account_id AND t.id=r.id
@@ -333,7 +357,8 @@ class ChatService:
                 WHERE r.account_id=? AND r.conversation_id=? ORDER BY r.sequence DESC LIMIT 20''',
                 (principal.account_id, conversation_id)).fetchall()
             return {'conversation_id': conversation_id,
-                    'messages': [dict(row) for row in rows], 'tasks': [dict(row) for row in tasks],
+                    'messages': [dict(row) for row in rows[:limit]], 'has_more': len(rows) > limit,
+                    'next_after': rows[min(limit, len(rows)) - 1]['id'] if rows else after, 'tasks': [dict(row) for row in tasks],
                     'execution_enabled': self.execution}
 
     def task(self, principal: Principal, request_id: str):
@@ -610,7 +635,8 @@ class ChatDriver:
             con.execute('INSERT OR IGNORE INTO browse_runs(account_id,request_id,goal,status,created_epoch,updated_epoch) VALUES (?,?,?,?,?,?)',
                         (claim.account_id, claim.request_id, claim.message, 'queued', now, now))
         self._emit(claim, 'task_started', {'summary': 'Opening a browser for this task.'})
-        rpc('start', request_id=claim.request_id, goal=claim.message, max_cost_microusd=int(reserved[0]) if reserved else 1_000_000)
+        goal = self.genui.with_conversation_context(claim, claim.message) if self.genui else claim.message
+        rpc('start', request_id=claim.request_id, goal=goal, max_cost_microusd=int(reserved[0]) if reserved else 1_000_000)
         since, deadline, final = 0, self.clock() + self.run_timeout, None
         finals = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
         while True:

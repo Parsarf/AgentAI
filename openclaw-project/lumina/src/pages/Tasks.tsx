@@ -20,6 +20,8 @@ function Detail({ id, onClose }: { id: string; onClose(): void }) {
   }, [id]);
   useEffect(() => { const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   const cancel = async () => { try { await api('POST', `/v1/requests/${id}/cancel`, {}); await refresh(); } catch { setErr('Could not cancel this task.'); } };
+  const [conversation, setConversation] = useState<string | null>(null); const nav = useNavigate();
+  useEffect(() => { let stop = false; setConversation(null); api<{ task: { conversation_id: string | null } }>('GET', `/v1/tasks/${id}`).then(r => { if (!stop) { setConversation(r.task.conversation_id); if (r.task.conversation_id) nav(`/chat/${r.task.conversation_id}`, { replace: true }); } }).catch(() => {}); return () => { stop = true; }; }, [id, nav]);
   const p = row ? phase(row.state) : null;
   return (
     <div className="drawer-back" onMouseDown={onClose} role="presentation">
@@ -34,7 +36,7 @@ function Detail({ id, onClose }: { id: string; onClose(): void }) {
           {err && <p className="err" role="alert">{err}</p>}
           <p style={{ marginTop: 22, display: 'flex', gap: 10 }}>
             {(p === 'running' || p === 'queued') && <button className="btn danger" onClick={cancel}>Cancel task</button>}
-            <button className="btn" onClick={onClose}>Close</button>
+            <button className="btn" onClick={onClose}>Close</button>{conversation && <button className="btn primary" onClick={() => nav(`/chat/${conversation}`)}>Continue chat</button>}
           </p></>)}
       </aside>
     </div>);
@@ -48,7 +50,7 @@ export default function Tasks() {
     <div className="center">
       <h1 className="page-title">Tasks</h1>
       <div className="filters" role="group" aria-label="Filter tasks">{FILTERS.map(f => <button key={f.key} className="chip" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>)}</div>
-      {rows.length ? <div className="tasks">{rows.map(r => <TaskRow key={r.id} r={r} onOpen={() => nav(`/tasks/${r.id}`)} />)}</div> : <div className="empty">No tasks here yet.</div>}
+      {rows.length ? <div className="tasks">{rows.map(r => <TaskRow key={r.id} r={r} onOpen={() => nav(r.conversation_id ? `/chat/${r.conversation_id}` : `/tasks/${r.id}`)} />)}</div> : <div className="empty">No tasks here yet.</div>}
       {id && <Detail id={id} onClose={() => nav('/tasks')} />}
     </div>);
 }

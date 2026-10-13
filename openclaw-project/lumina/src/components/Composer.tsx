@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as I from './Icons';
 import { api, ApiError } from '../lib/api';
 import { useData } from '../state/data';
+import { draftKey, readDraft, saveDraft } from '../lib/drafts';
 
 export const TEMPLATES: Record<string, string> = {
   Web: 'Search the web and summarize: ', Code: 'Build or fix this in code: ', Data: 'Analyze this data and explain the key findings: ', Automate: 'Set up a recurring task that: ',
@@ -21,10 +22,14 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
   conversationId?: string | null; seed?: { text: string; n: number } | null; onSent?: (result: any) => void; autoFocus?: boolean;
 }) {
   const { app, refresh } = useData();
-  const [text, setText] = useState(''); const [mode, setMode] = useState<string | null>(null);
+  const storageKey = draftKey(app?.user.email ?? '', conversationId);
+  const [text, setText] = useState(() => readDraft(storageKey));
+  const pending = useRef<{ conversation?: string; message: string; mode: string; key: string } | null>(null); const [mode, setMode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [listening, setListening] = useState(false);
   const [respond, setRespond] = useState<'auto' | 'text' | 'plan' | 'browse'>('auto');
   const box = useRef<HTMLTextAreaElement>(null); const rec = useRef<any>(null);
+  useEffect(() => { saveDraft(storageKey, text); }, [storageKey, text]);
+  useEffect(() => () => rec.current?.stop(), []);
   const max = app?.limits.max_message_chars ?? 16000;
   useEffect(() => { if (seed) { setText(seed.text); setTimeout(() => { box.current?.focus(); box.current?.setSelectionRange(seed.text.length, seed.text.length); }, 0); } }, [seed]);
   useEffect(() => { if (autoFocus) box.current?.focus(); }, [autoFocus, conversationId]);
@@ -45,9 +50,12 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
     const message = text.trim(); if (!message || busy) return;
     setBusy(true); setErr('');
     try {
-      const id = conversationId || await createChat();
-      const r = await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: respond });
-      setText(''); setMode(null); await refresh(); onSent?.({ ...r.request, conversation_id: id });
+      if (!pending.current || pending.current.message !== message || pending.current.mode !== respond) pending.current = { conversation: conversationId || pending.current?.conversation, message, mode: respond, key: crypto.randomUUID().replace(/-/g, '') };
+      const attempt = pending.current;
+      const id = attempt.conversation || await createChat();
+      attempt.conversation = id;
+      const r = await api('POST', `/v1/conversations/${id}/send`, { message, key: attempt.key, mode: respond });
+      saveDraft(storageKey, ''); setText(''); setMode(null); pending.current = null; onSent?.({ ...r.request, message, conversation_id: id }); await refresh();
     } catch (e) {
       const code = e instanceof ApiError ? e.code : 'unknown';
       setErr(ERRORS[code] ?? 'Could not send that. Please try again.');

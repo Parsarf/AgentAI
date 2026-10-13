@@ -1075,10 +1075,10 @@
   },
   "/v1/conversations": {
    "get": {
-    "summary": "List own conversations (optionally by project)",
+    "summary": "Search own conversation titles and message contents, with recent-first pagination and archived view",
     "responses": {
      "200": {
-      "description": "Conversation list"
+      "description": "Conversations with title, preview, last_activity, active, archived_epoch; has_more and next_offset"
      },
      "401": {
       "description": "Identity required"
@@ -1086,7 +1086,56 @@
      "404": {
       "description": "Unavailable"
      }
-    }
+    },
+    "parameters": [
+     {
+      "name": "project_id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "maxLength": 200
+      }
+     },
+     {
+      "name": "archived",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "0",
+        "1"
+       ],
+       "default": "0"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 500,
+       "default": 100
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 100000,
+       "default": 0
+      }
+     }
+    ]
    },
    "post": {
     "summary": "Create a conversation in an own project (10 per project)",
@@ -1924,11 +1973,21 @@
        "type": "integer",
        "minimum": 0
       }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 100,
+       "default": 100
+      }
      }
     ],
     "responses": {
      "200": {
-      "description": "Messages and conversation task states; execution_enabled false"
+      "description": "Messages, conversation task states, execution_enabled, has_more and next_after. Follow next_after while has_more is true."
      },
      "401": {
       "description": "Identity required"
@@ -3346,6 +3405,51 @@
      },
      "429": {
       "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/restore": {
+   "post": {
+    "summary": "Restore an archived conversation without losing its transcript or native session. Idempotent.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "409": {
+      "description": "Active conversation quota reached"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
      }
     }
    }

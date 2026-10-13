@@ -11,20 +11,21 @@ import { title } from '../lib/format';
 import { phase } from '../lib/tasks';
 
 function Command({ onClose }: { onClose(): void }) {
-  const { requests } = useData(); const nav = useNavigate();
+  const { requests, chats } = useData(); const nav = useNavigate();
   const [q, setQ] = useState(''); const [i, setI] = useState(0); const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
   const items = useMemo(() => {
     const all = [...NAV.map(n => ({ label: n.label, hint: 'Go to', to: n.to })),
-      ...requests.slice(0, 40).map(r => ({ label: title(r.message, 70), hint: phase(r.state), to: `/tasks/${r.id}` }))];
+      ...chats.map(c => ({ label: c.title || 'New chat', hint: 'Chat', to: `/chat/${c.id}` })),
+      ...requests.filter(r => !r.conversation_id).slice(0, 40).map(r => ({ label: title(r.message, 70), hint: phase(r.state), to: `/tasks/${r.id}` }))];
     const t = q.trim().toLowerCase();
-    return (t ? all.filter(a => a.label.toLowerCase().includes(t)) : all).slice(0, 12);
-  }, [q, requests]);
+    return (t ? [{ label: `Search all chats for “${q.trim()}”`, hint: 'Titles and messages', to: `/history?q=${encodeURIComponent(q.trim())}` }, ...all.filter(a => a.label.toLowerCase().includes(t))] : all).slice(0, 12);
+  }, [q, requests, chats]);
   const go = (to: string) => { nav(to); onClose(); };
   return (
     <div className="cmd-back" onMouseDown={onClose} role="presentation">
       <div className="cmd" role="dialog" aria-label="Search" onMouseDown={e => e.stopPropagation()}>
-        <input ref={input} value={q} placeholder="Search pages and tasks…" aria-label="Search pages and tasks"
+        <input ref={input} value={q} placeholder="Search chats and pages…" aria-label="Search chats and pages"
           onChange={e => { setQ(e.target.value); setI(0); }}
           onKeyDown={e => {
             if (e.key === 'Escape') onClose();
@@ -40,8 +41,8 @@ function Command({ onClose }: { onClose(): void }) {
 
 export default function Shell() {
   const { pathname } = useLocation();
-  const rail = pathname === '/' || pathname.startsWith('/tasks');
-  const { requests, chats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
+  const rail = pathname === '/home' || pathname.startsWith('/tasks');
+  const { requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
   const [cmd, setCmd] = useState(false); const [bell, setBell] = useState(false);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -65,7 +66,7 @@ export default function Shell() {
             <button className="iconbtn" aria-label="Notifications" aria-expanded={bell} onClick={() => setBell(b => !b)}><I.Bell />{attention.length > 0 && <span className="dot" />}</button>
             {bell && (
               <div className="panel" style={{ position: 'absolute', right: 0, top: 54, width: 300, padding: 12, zIndex: 20, background: 'var(--bg-2)' }}>
-                {attention.length ? attention.map(r => <button key={r.id} className="btn" style={{ width: '100%', marginBottom: 6, textAlign: 'left' }} onClick={() => { setBell(false); nav(`/tasks/${r.id}`); }}>Failed: {title(r.message, 40)}</button>)
+                {attention.length ? attention.map(r => <button key={r.id} className="btn" style={{ width: '100%', marginBottom: 6, textAlign: 'left' }} onClick={() => { setBell(false); nav(r.conversation_id ? `/chat/${r.conversation_id}` : `/tasks/${r.id}`); }}>Failed: {title(r.message, 40)}</button>)
                   : <p className="muted" style={{ padding: 6 }}>Nothing needs your attention.</p>}
               </div>)}
           </div>
@@ -79,7 +80,7 @@ export default function Shell() {
         <div className="drawer-back left" onMouseDown={() => setDrawer(false)} role="presentation">
           <aside className="drawer" role="dialog" aria-label="Chats" onMouseDown={e => e.stopPropagation()}>
             <button className="btn primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => { setDrawer(false); nav('/chat'); }}>New chat</button>
-            <ChatList chats={chats} onPick={() => setDrawer(false)} />
+            <ChatList chats={chats} onChanged={() => refreshChats()} onPick={() => setDrawer(false)} />
           </aside>
         </div>)}
     </div>);

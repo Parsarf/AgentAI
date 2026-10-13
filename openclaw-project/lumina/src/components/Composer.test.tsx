@@ -23,7 +23,7 @@ function mockFetch(sendStatus = 202, sendBody: any = { request: {} }) {
   return calls;
 }
 const setup = (props: any = {}) => render(<DataProvider><Composer {...props} /></DataProvider>);
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); });
 
 describe('Composer', () => {
   it('starts a new chat for the first message, sends with a CSRF token and a unique key, reports the chat id, then clears', async () => {
@@ -37,6 +37,17 @@ describe('Composer', () => {
     await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(''));
     expect(calls.findIndex(c => c.url === '/v1/conversations' && c.body !== undefined)).toBeLessThan(calls.findIndex(c => c.url.endsWith('/send')));   // chat created first
     expect(sent.mock.calls[0][0].conversation_id).toBe('c1');
+  });
+  it('reuses the created chat and idempotency key when retrying a failed send', async () => {
+    const calls = mockFetch(500, { error: 'temporary' }); setup();
+    const box = await screen.findByLabelText(/message lumina/i);
+    fireEvent.change(box, { target: { value: 'Retry this' } });
+    fireEvent.click(screen.getByRole('button', { name: /send message/i })); await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: /send message/i }));
+    await waitFor(() => expect(calls.filter(c => c.url.endsWith('/send')).length).toBe(2));
+    expect(calls.filter(c => c.url === '/v1/conversations' && c.method === 'POST')).toHaveLength(1);
+    const sends = calls.filter(c => c.url.endsWith('/send'));
+    expect(sends[0].body.key).toBe(sends[1].body.key);
   });
   it('follows up inside an existing chat without creating a new one', async () => {
     const calls = mockFetch(); setup({ conversationId: 'c9' });

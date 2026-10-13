@@ -43,6 +43,6 @@ export default function Home() {
       <div className="sect"><h2>Recent Tasks</h2><Link to="/tasks">View all →</Link></div>
       {requests.length === 0
         ? <div className="empty">No tasks yet. Describe what you need above and Lumina will get to work.</div>
-        : <div className="tasks">{requests.slice(0, 5).map(r => <TaskRow key={r.id} r={r} onOpen={() => nav(`/tasks/${r.id}`)} />)}</div>}
+        : <div className="tasks">{requests.slice(0, 5).map(r => <TaskRow key={r.id} r={r} onOpen={() => nav(r.conversation_id ? `/chat/${r.conversation_id}` : `/tasks/${r.id}`)} />)}</div>}
     </div>);
 }

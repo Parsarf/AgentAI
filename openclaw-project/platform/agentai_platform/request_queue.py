@@ -49,7 +49,7 @@ class RequestQueue:
             self.store._authorize(c,principal)
             old=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND idempotency_key=?',(principal.account_id,key)).fetchone()
             if old:
-                if old['payload_hash']!=digest:raise Conflict('request payload changed')
+                if old['payload_hash']!=digest or old['conversation_id']!=conversation_id:raise Conflict('request payload changed')
                 return self._public(old)
             if c.execute("SELECT count(*) FROM customer_requests WHERE account_id=? AND state='waiting'",(principal.account_id,)).fetchone()[0]>=3:raise Conflict('queue full')
             if conversation_id is not None:
@@ -65,7 +65,7 @@ class RequestQueue:
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_submit','completed')
             return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
     def _public(self,row):
-        return {k:row[k] for k in ['id','message','state','cancel_requested','result','created_epoch']}
+        return {k:row[k] for k in ['id','message','state','cancel_requested','result','created_epoch','conversation_id']}
     def get(self,principal,request=None):
         with self.store.connect() as c:
             self.store._authorize(c,principal)

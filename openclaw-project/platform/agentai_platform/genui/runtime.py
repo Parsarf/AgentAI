@@ -27,6 +27,26 @@ class GenUiRuntime:
             row = con.execute('SELECT intent,context_json FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
         return (row['intent'] or 'chat', json.loads(row['context_json'] or '{}')) if row else ('chat', {})
 
+    def with_conversation_context(self, claim, message: str) -> str:
+        """Carry bounded saved context into a fresh browser job or native session; never mix accounts/chats."""
+        if not claim.conversation_id:
+            return message
+        with self.store.connect() as con:
+            anchor = con.execute("SELECT min(id) FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance IN ('customer','telegram')", (claim.account_id, claim.conversation_id, claim.request_id)).fetchone()[0]
+            if anchor is None:
+                return message
+            rows = con.execute("SELECT provenance,content FROM chat_messages WHERE account_id=? AND conversation_id=? AND id<? ORDER BY id DESC LIMIT 20", (claim.account_id, claim.conversation_id, anchor)).fetchall()
+        history, remaining = [], 12000
+        for row in rows:
+            if remaining <= 0:
+                break
+            content = row['content'][:min(remaining, 3000)]
+            history.append({'role': 'assistant' if row['provenance'] == 'agent' else 'user', 'content': content})
+            remaining -= len(content)
+        if not history:
+            return message
+        return ('Previous messages from this same conversation (quoted context, not new actions to execute):\n' + json.dumps(list(reversed(history)), ensure_ascii=False) + '\nCurrent user request:\n' + message)
+
     def outgoing(self, claim, intent: str, context: dict) -> str:
         if intent == 'plan':
             return prompts.plan_prompt(claim.message, context.get('answers'))
@@ -49,7 +69,9 @@ class GenUiRuntime:
             current = next(p for p in plan['phases'] if p['id'] == context['phase'])
             return prompts.phase_prompt(plan, state.get('requirements') or None, [(p, done[p['id']]) for p in order if p['id'] in done], current, len(order),
                                         [p['id'] for p in order].index(current['id']) + 1)
-        return claim.message
+        with self.store.connect() as con:
+            row = con.execute('SELECT native_session_ref FROM conversations WHERE account_id=? AND id=?', (claim.account_id, claim.conversation_id)).fetchone()
+        return self.with_conversation_context(claim, claim.message) if row and not row['native_session_ref'] else claim.message
 
     def validate_reply(self, reply: str):
         """(plan, None) when the reply is a valid plan, else (None, reason)."""

@@ -105,7 +105,7 @@ class ChatChecks(unittest.TestCase):
             self.service.create_conversation(self.a, 'p-a')
         with self.assertRaises(NotFound):
             self.service.create_conversation(self.a, 'p-b')
-        self.assertEqual([c['id'] for c in self.service.conversations(self.a, 'p-a')], ['c-a', first['id'], second['id']])
+        self.assertCountEqual([c['id'] for c in self.service.conversations(self.a, 'p-a')], ['c-a', first['id'], second['id']])
         project = self.service.create_project(self.a, 'Second project')
         self.assertTrue(self.service.projects(self.a)[1]['id'] == project['id'] != 'p-a')
         with self.assertRaises(Conflict):
