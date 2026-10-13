@@ -29,6 +29,23 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL)
 
 RESOLVERS = ('1.1.1.1', '9.9.9.9')
 
+# Read by the assistant at the start of every session (OpenClaw loads AGENTS.md from the workspace). Search needs no paid
+# provider: the cell can reach public search pages, and the assistant is told how to use them frugally and honestly.
+WORKSPACE_RULES = '''# How you work (Lumina)
+
+## Searching the web
+You have no paid search API. To search, use the shell:
+
+    curl -sL -m 20 -A 'Mozilla/5.0' 'https://html.duckduckgo.com/html/?q=URL+ENCODED+QUERY'
+
+Result links have class `result__a`; the real address is the URL-decoded `uddg=` parameter. Then open the most relevant pages
+(shell `curl`, or the web_fetch tool if it is available) and read only what you need.
+
+Rules: open at most 5 pages per question; prefer the retailer's or publisher's own page; never invent prices, ratings or
+availability: if a page does not show it, say so; list the page addresses you used; if a site blocks you, try a different one;
+keep the final answer short and ranked when asked to rank.
+'''
+
 
 class CellProvisioner:
     """prepare(binding)->extra create argv (issues the key); finish(binding) patches the config;
@@ -43,6 +60,10 @@ class CellProvisioner:
         a cell fails. Write public resolvers into the container's resolv.conf in place (the sandbox sees the same
         inode); the file is regenerated at each container start, so this runs after every start. Cell egress to
         private ranges stays dropped by the host firewall, so public resolvers do not widen what a cell can reach."""
+        try:
+            self.write_rules(binding)
+        except OSError:
+            pass   # rules are a convenience; a cell without them still works
         if self.run is None:
             return
         code, out = self.run(['docker', 'inspect', '-f', '{{.ResolvConfPath}}', f'openclaw-cell-{binding.tenant_ref}'])
@@ -62,7 +83,18 @@ class CellProvisioner:
             raise RuntimeError('provider key missing after issuance')
         return ['--env', 'LITELLM_API_KEY=' + key]
 
+    def write_rules(self, binding):
+        """Idempotent: (re)write the assistant's working rules into its workspace (the volume must be mounted)."""
+        workspace = self.root / binding.tenant_ref / 'workspace'
+        workspace.mkdir(exist_ok=True)
+        target = workspace / 'AGENTS.md'
+        if not target.exists() or target.read_text() != WORKSPACE_RULES:
+            target.write_text(WORKSPACE_RULES)
+        for path in (workspace, target):
+            self.chown(path, CELL_UID, CELL_GID)
+
     def finish(self, binding):
+        self.write_rules(binding)
         path = self.root / binding.tenant_ref / 'openclaw.json'
         config = patch(json.loads(path.read_text()))
         tmp = path.with_suffix('.tmp')

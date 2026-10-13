@@ -46,7 +46,7 @@ class CellConfigChecks(unittest.TestCase):
         self.assertEqual(calls[0][2]['max_budget'], 25); self.assertIn('claude-haiku-4-5', calls[0][2]['models'])
         prov.finish(binding)
         cfg = json.loads((cells / TENANT / 'openclaw.json').read_text())
-        self.assertIn('litellm', cfg['models']['providers']); self.assertEqual(owners, [(1000, 1000)])
+        self.assertIn('litellm', cfg['models']['providers']); self.assertEqual(set(owners), {(1000, 1000)})
         self.assertNotIn('sk-testkey', json.dumps(cfg))
 
     def test_admin_reads_master_key_at_call_time_and_converts_spend(self):
@@ -87,3 +87,16 @@ class ResolverChecks(unittest.TestCase):
         self.assertEqual(conf.stat().st_ino, inode)
         with self.assertRaises(RuntimeError):
             CellProvisioner(None, None, tmp.name, run=lambda argv: (0, '/etc/passwd\n')).after_start(SimpleNamespace(tenant_ref=TENANT))
+
+
+class RulesChecks(unittest.TestCase):
+    def test_workspace_rules_are_written_idempotently_with_the_cell_owner(self):
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        (Path(tmp.name) / TENANT).mkdir(parents=True)
+        owners = []
+        prov = CellProvisioner(None, None, tmp.name, chown=lambda p, u, g: owners.append((str(p).split('/')[-1], u, g)))
+        binding = SimpleNamespace(tenant_ref=TENANT)
+        prov.write_rules(binding); prov.write_rules(binding)
+        text = (Path(tmp.name) / TENANT / 'workspace' / 'AGENTS.md').read_text()
+        self.assertIn('html.duckduckgo.com', text); self.assertIn('never invent prices', text); self.assertIn('at most 5 pages', text)
+        self.assertEqual({o[1:] for o in owners}, {(1000, 1000)})
