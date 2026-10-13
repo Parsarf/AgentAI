@@ -16,7 +16,7 @@ h1, h2, h3, p { margin: 0; }
 .globe-frame { position: absolute; top: -26vh; right: 8vw; width: min(78vw, 1100px); aspect-ratio: 1; }
 .globe-fallback { position: absolute; top: -34vh; right: 8vw; width: min(66vw, 880px); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 30% 40%, #0c0c0e, #040405 70%);
   box-shadow: inset -2px 0 14px rgba(255,255,255,.5), inset -26px 6px 60px rgba(255,255,255,.07); }
-.panel { background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015)); border: 1px solid var(--line); border-radius: var(--r-lg); backdrop-filter: blur(14px); }
+.panel { background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015)), rgba(11,12,16,.86); border: 1px solid var(--line); border-radius: var(--r-lg); }   /* no backdrop blur: it was re-computed whenever anything behind it changed */
 
 /* sidebar */
 .side { display: flex; flex-direction: column; padding: 22px 14px 14px; position: sticky; top: var(--gap); height: calc(100vh - 2 * var(--gap)); }
@@ -45,7 +45,7 @@ h1, h2, h3, p { margin: 0; }
 .center { max-width: 860px; }
 
 /* composer */
-.composer { padding: 18px 18px 14px; border-radius: var(--r-lg); background: rgba(16,17,21,.72); border: 1px solid var(--line-2); backdrop-filter: blur(18px); box-shadow: var(--shadow); }
+.composer { padding: 18px 18px 14px; border-radius: var(--r-lg); background: rgba(16,17,21,.94); border: 1px solid var(--line-2); box-shadow: var(--shadow); }   /* no backdrop blur: it was re-computed on every scroll frame; a denser tint keeps the text behind unreadable */
 .composer textarea { width: 100%; min-height: 56px; max-height: 260px; resize: none; background: none; border: 0; outline: 0; font-size: 16px; line-height: 1.5; padding: 6px 4px; }
 .composer textarea::placeholder { color: var(--ink-3); }
 .composer .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -138,7 +138,7 @@ h1, h2, h3, p { margin: 0; }
 }
 
 /* generative UI blocks */
-.gblock { margin: 10px 0 18px 4%; padding: 18px; border-radius: var(--r); border: 1px solid var(--line-2); background: rgba(16,17,21,.78); backdrop-filter: blur(12px); }
+.gblock { margin: 10px 0 18px 4%; padding: 18px; border-radius: var(--r); border: 1px solid var(--line-2); background: rgba(16,17,21,.92); }
 .gblock h3 { font-size: 17px; font-weight: 600; } .gblock header { margin-bottom: 12px; display: grid; gap: 6px; }
 .gblock footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
 .fields { display: grid; gap: 16px; } .field { display: grid; gap: 7px; } .field label { color: var(--ink-2); font-size: 13px; }
@@ -242,7 +242,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 @media (prefers-reduced-motion: reduce) { .dock, .greeting { transition: none; } }
 
 /* data cards: table, chart, comparison */
-.gcard { padding: 16px 18px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: rgba(16,17,21,.72); backdrop-filter: blur(14px); animation: gin .35s var(--ease) both; }
+.gcard { padding: 16px 18px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: rgba(16,17,21,.9); animation: gin .35s var(--ease) both; }
 @keyframes gin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .gcard-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; } .gcard-h h3 { font-size: 15.5px; font-weight: 600; }
 .gcard-tools { display: flex; gap: 8px; align-items: center; } .gfilter { width: 150px; padding: 5px 10px; border-radius: 9px; border: 1px solid var(--line-2); background: rgba(255,255,255,.04); color: inherit; font: inherit; font-size: 13px; outline: 0; } .gfilter:focus { border-color: var(--neon); }
@@ -374,3 +374,6 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
   .hero h1 { font-size: clamp(30px, 8vw, 40px); }
   .greeting { font-size: 24px; }
 }
+
+/* Scroll performance: messages far from the viewport skip layout and paint until they get near it (sizes are remembered once seen). */
+.chatpage .turn { content-visibility: auto; contain-intrinsic-size: auto 220px; }
