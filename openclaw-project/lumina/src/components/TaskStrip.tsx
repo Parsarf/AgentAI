@@ -4,6 +4,8 @@ import { useData } from '../state/data';
 import { api, type EventRow } from '../lib/api';
 import { elapsed } from '../lib/format';
 import { isActive, phase, visibleEvents } from '../lib/tasks';
+import { latestCategory, orbStateFor } from '../lib/orbs';
+import Orb from './Orb';
 
 export interface ThreadTask { id: string; state: string; created_epoch: number; result?: string | null }
 
@@ -25,7 +27,7 @@ export default function TaskStrip({ task, onCancel, onActivity }: { task: Thread
   if (p === 'failed' || p === 'cancelled') return <div className="taskstrip bad" role="status">{p === 'failed' ? 'This task failed. Nothing more is running.' : 'Cancelled.'}</div>;
   return (
     <div className="taskstrip" role="status" aria-live="polite">
-      <div className="ts-head"><span className="dot-s running" /><b>{p === 'queued' ? 'Queued' : 'Working'}</b><span className="faint">· {elapsed(task.created_epoch, now)}</span>
+      <div className="ts-head"><Orb state={p === 'queued' ? 'breathing' : orbStateFor(latestCategory(events))} size={20} /><b>{p === 'queued' ? 'Queued' : 'Working'}</b><span className="faint">· {elapsed(task.created_epoch, now)}</span>
         {onActivity && <button className="btn small" onClick={onActivity}>See activity</button>}{browsing && <Link className="btn small" to={`/browser/${task.id}`}>Watch live</Link>}<button className="btn small danger" onClick={onCancel}>Stop</button></div>
       {events.length > 0 && <ul className="ts-steps">{events.slice(-3).map((e, n) => { const q = e.payload as { summary?: string; label?: string; detail?: string } | undefined; return <li key={n}>{q?.summary ?? (q?.label ? `${q.label}${q.detail ? ': ' + q.detail.slice(0, 60) : ''}` : e.kind)}</li>; })}</ul>}
       {p === 'queued' && <p className="faint small">Waiting for your assistant to start. The first message after a pause takes about 30–40 seconds.</p>}

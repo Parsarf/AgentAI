@@ -14,6 +14,7 @@ import { humanSize, type ArtifactRow } from '../lib/files';
 import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
+import Orb from '../components/Orb';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
 const same = <T,>(prev: T, next: T): T => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
@@ -105,12 +106,12 @@ export default function Chat() {
                   <button className="chip small" onClick={() => askAgain('Compare the options from your last answer side by side.')}>Compare side by side</button>
                 </div>)}
             </div>))}
-          {drafting && <div className="bubble agent"><span className="muted">Drafting your plan…</span></div>}
+          {drafting && <div className="bubble agent orb-row"><Orb state="weaving" size={20} /><span className="muted">Drafting your plan…</span></div>}
           {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
           <div ref={bottom} />
         </div>
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }}>Jump to latest ↓</button>}
-        <div className="dock"><h1 className="greeting" aria-hidden={!fresh}>What should we work on?</h1>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
+        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
       </section>
     {shown && <ActivityPanel taskId={shown.id} active={isActive(shown.state)} startedAt={shown.created_epoch} onStop={() => cancel(shown.id)} onClose={() => setActivityId(null)} />}
     </div>);

@@ -377,3 +377,10 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 
 /* Scroll performance: messages far from the viewport skip layout and paint until they get near it (sizes are remembered once seen). */
 .chatpage .turn { content-visibility: auto; contain-intrinsic-size: auto 220px; }
+
+/* Orbs (thinking-orbs): the "Lumina is thinking" indicator. Monochrome ink on the dark background. */
+.orb { flex: none; }
+.orb-row { display: flex; align-items: center; gap: 10px; }
+.greeting { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.greeting h1 { font: inherit; letter-spacing: inherit; margin: 0; }
+@media (max-height: 640px) { .greeting .orb { display: none; } }

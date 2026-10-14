@@ -5,6 +5,8 @@ import { api, type EventRow } from '../lib/api';
 import { activeTask, counts, phase, visibleEvents } from '../lib/tasks';
 import { elapsed, title } from '../lib/format';
 import { useData } from '../state/data';
+import { latestCategory, orbStateFor } from '../lib/orbs';
+import Orb from './Orb';
 
 function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
@@ -31,7 +33,7 @@ export function ActiveTask() {
         <>
           <Link to={`/tasks/${task.id}`} style={{ display: 'block' }}>{title(task.message, 70)}</Link>
           <div className="bar" style={{ margin: '12px 0 6px' }} aria-hidden><i /></div>
-          <p className="faint" style={{ fontSize: 12.5 }}>Working… {elapsed(task.created_epoch, now)}</p>
+          <p className="faint orb-row" style={{ fontSize: 12.5 }}><Orb state={orbStateFor(latestCategory(events))} size={20} />Working… {elapsed(task.created_epoch, now)}</p>
           <ul className="steps">
             {events.slice(-4).map((e, n, arr) => {
               const last = n === arr.length - 1;

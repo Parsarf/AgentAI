@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
+import { onFrame } from '../lib/frameClock';
 import { ShaderMaterial, TextureLoader, Vector3, SRGBColorSpace, type Mesh } from 'three';
 
 const REVOLUTION_SECONDS = 150;
 // One turn takes 150 s, so 15 frames a second looks identical to 60 and costs a quarter of the GPU. Frames are also skipped while the page is
 // scrolling, hidden or the planet is off screen: the planet must never compete with the interface for the GPU.
-const FPS = 15, SCROLL_QUIET_MS = 220;
 
 // Monochrome planet: near-black ocean, grey continents from NASA imagery, light from the upper right, thin bright limb.
 const vertex = /* glsl */ `
@@ -48,21 +48,10 @@ function Planet({ animate, lowPower }: { animate: boolean; lowPower: boolean }) 
   return <mesh ref={mesh} rotation={[0.35, 2.2, 0.1]} material={material}><sphereGeometry args={[1, lowPower ? 48 : 96, lowPower ? 36 : 72]} /></mesh>;
 }
 
-/** Asks for a new frame FPS times a second, unless something more important is happening. */
+/** Asks for a new frame on the shared frame clock (15 a second, together with the orbs; none while scrolling or hidden), when the planet is on screen. */
 function Pacer({ active, visible }: { active: boolean; visible: React.MutableRefObject<boolean> }) {
-  const invalidate = useThree(s => s.invalidate); const quietAt = useRef(0);
-  useEffect(() => {
-    const onScroll = () => { quietAt.current = performance.now() + SCROLL_QUIET_MS; };
-    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
-    document.addEventListener('wheel', onScroll, { capture: true, passive: true });
-    document.addEventListener('touchmove', onScroll, { capture: true, passive: true });
-    return () => { document.removeEventListener('scroll', onScroll, true); document.removeEventListener('wheel', onScroll, true); document.removeEventListener('touchmove', onScroll, true); };
-  }, []);
-  useEffect(() => {
-    if (!active) return;
-    const t = setInterval(() => { if (document.visibilityState === 'visible' && visible.current && performance.now() > quietAt.current) invalidate(); }, 1000 / FPS);
-    return () => clearInterval(t);
-  }, [active, invalidate, visible]);
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => (active ? onFrame(() => { if (visible.current) invalidate(); }) : undefined), [active, invalidate, visible]);
   return null;
 }
 
