@@ -17,7 +17,8 @@ import time
 import uuid
 
 from . import llm as llm_mod
-from .ladder import JevChooser, Ladder
+from .ladder import JevChooser, Ladder, Refused
+from .goals import goal_parts, instruction_text
 from .loop import BrowseRunner, Policy
 from .session import Session
 
@@ -30,6 +31,9 @@ MIN_FREE_BYTES = 2 * 1024 ** 3                 # a browser stage needs ~1.5 GiB;
 MEMORY_WAIT_SECONDS = 120
 SCREENSHOT_RETENTION_SECONDS = 24 * 3600    # pages can show personal data: screenshots are deleted a day after the task
 MAX_CALLS = 60
+# A 16k request plus 12k of saved context and JSON quoting overhead.
+MAX_GOAL_CHARS = 48_000
+MAX_RPC_BYTES = 1 << 20  # bounded wire size, including escaped Unicode
 
 
 def available_memory():
@@ -83,7 +87,7 @@ class BrowseService:
 
     # ------------------------------------------------------------------ public operations (all scoped to the caller's account)
     def start(self, account, request_id, goal, *, start_url=None, max_cost_microusd=1_000_000, max_steps=25, max_seconds=600):
-        if not REQUEST_ID.fullmatch(request_id or '') or not isinstance(goal, str) or not 3 <= len(goal) <= 2000:
+        if not REQUEST_ID.fullmatch(request_id or '') or not isinstance(goal, str) or not 3 <= len(goal) <= MAX_GOAL_CHARS:
             raise BrowseError('invalid job')
         max_cost = min(int(max_cost_microusd), 5_000_000)
         with self._guard:
@@ -233,19 +237,21 @@ class BrowseService:
         return admit
 
     def _pick_start(self, job, llm):
-        found = URL_IN_TEXT.search(job.goal)
+        found = URL_IN_TEXT.search(goal_parts(job.goal)[0])
         candidate = job.start_url or (found.group(0).rstrip('.,;') if found else None)
         if candidate:
             return candidate
+        if not self._admit(job)('haiku'):
+            raise Refused('haiku')
         try:
-            reply = llm('haiku', 'Reply with ONLY one https:// URL: the best well-known website to start this task. No other text.', job.goal[:500])
-            job.cost += reply.get('cost_microusd', 0); job.calls += 1
+            reply = llm('haiku', 'Reply with ONLY one https:// URL: the best well-known website to start this task. No other text.', instruction_text(job.goal, context_chars=2000))
+            job.cost += reply.get('cost_microusd', 0)
             m = URL_IN_TEXT.search(reply['text'])
             if m:
                 return m.group(0).rstrip('.,;')
         except Exception:
             pass
-        return 'https://www.bing.com/'
+        raise BrowseError('Could not choose a starting page. Please include the website URL in your request.')
 
     def _run(self, job):
         self._slot.acquire()
@@ -299,6 +305,10 @@ class BrowseService:
             job.add('status', {'state': job.state, 'reason': job.reason})
             while job.state == 'handoff' and self.clock() < job.takeover_until and not job.cancel.is_set():
                 time.sleep(0.2)                    # the user may take over; the stage stays up only for this window
+        except (BrowseError, Refused) as exc:
+            job.state = 'budget' if isinstance(exc, Refused) else 'error'
+            job.reason = 'The browser spending limit was reached before startup.' if isinstance(exc, Refused) else str(exc)
+            job.add('status', {'state': job.state, 'reason': job.reason})
         except Exception as exc:                   # a crash must never leave the shared stage slot held
             job.state, job.reason = 'error', f'the browser run failed ({type(exc).__name__})'
             job.add('status', {'state': 'error', 'reason': job.reason})
@@ -325,7 +335,10 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
             if peer_uid(self.request) not in allowed_uids:
                 return
             try:
-                req = json.loads(self.rfile.readline(65536))
+                line = self.rfile.readline(MAX_RPC_BYTES + 1)
+                if len(line) > MAX_RPC_BYTES:
+                    raise BrowseError('request too large')
+                req = json.loads(line)
                 account, op = req['account_id'], req['op']
                 if not isinstance(account, str):
                     raise BrowseError('invalid request')

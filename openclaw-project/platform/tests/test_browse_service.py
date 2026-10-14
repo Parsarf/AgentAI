@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.browse import service as svc
 from agentai_platform.browse.client import BrowseRpc
@@ -79,6 +80,15 @@ class ServiceChecks(unittest.TestCase):
         self.assertEqual(len(self.transports), 1)
         self.assertEqual([c['cmd'] for c in self.transports[0].log].count('act'), 1)                              # only "Add to cart" was clicked
         later = s.poll('acct', RID, p['events'][-1]['n']); self.assertEqual(later['events'], [])                  # polling is incremental
+
+    def test_goal_accepts_saved_conversation_context_but_remains_bounded(self):
+        s = self.make([])
+        # Startup admission only: no browser or model call runs in this test.
+        with patch.object(s, '_run'):
+            self.assertEqual(s.start('acct', RID, 'Prior conversation: ' + 'x' * 4200)['state'], 'queued')
+            s.start('acct', 'b' * 32, 'x' * svc.MAX_GOAL_CHARS)
+        with self.assertRaises(svc.BrowseError):
+            s.start('acct', 'c' * 32, 'x' * (svc.MAX_GOAL_CHARS + 1))
 
     def test_isolation_between_accounts_and_hard_input_checks(self):
         s = self.make(['{"action":"click","ref":2}', '{"action":"click","ref":1}']); s.start('acct', RID, 'goal at https://shop.example/'); wait(s, ('handoff',))
@@ -214,6 +224,17 @@ class ServiceChecks(unittest.TestCase):
         self.assertNotIn('--privileged', flat); self.assertNotIn('docker.sock', flat); self.assertNotIn('--network host', flat)
         with self.assertRaises(ValueError): svc.stage_argv('x; rm', '/o', '/r', 'img')
 
+    def test_socket_accepts_unicode_context_larger_than_the_old_wire_limit(self):
+        s = self.make([])
+        path = os.path.join(self.tmp.name, 'large-context.sock')
+        server = svc.serve(s, path, allowed_uids={os.getuid()}, peer_uid=lambda sock: os.getuid())
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close); self.addCleanup(server.shutdown)
+        goal = '😀' * svc.MAX_GOAL_CHARS
+        with patch.object(s, '_run'):
+            self.assertEqual(BrowseRpc('acct', path)('start', request_id=RID, goal=goal)['state'], 'queued')
+        self.assertEqual(s.jobs[RID].goal, goal)
+
     def test_socket_server_scopes_operations_to_the_peer_and_returns_screenshots(self):
         s = self.make(['{"action":"click","ref":2}', '{"action":"click","ref":1}'], takeover_seconds=20)
         path = os.path.join(self.tmp.name, 'b.sock'); server = svc.serve(s, path, allowed_uids={os.getuid()}, peer_uid=lambda sock: os.getuid())
@@ -281,6 +302,21 @@ class DriverChecks(unittest.TestCase):
 
     def rows(self, sql, args=()):
         with self.store.connect() as con: return [dict(r) for r in con.execute(sql, args).fetchall()]
+
+    def test_startup_rpc_failure_closes_the_browser_record_and_emits_a_reason(self):
+        self.chat.send(self.a, conversation_id='c-a', message='Use the browser to open https://shop.example/', key='start-failure', mode='browse')
+        original = self.rpc.__class__.__call__
+        def unavailable(rpc, op, **params):
+            if op == 'start': raise CapabilityUnavailable('browse service unavailable')
+            return original(rpc, op, **params)
+        self.gw.spend = [100, 101]
+        with patch.object(self.rpc.__class__, '__call__', unavailable):
+            result = self.worker.tick()
+        self.assertTrue(result['finished'])
+        self.assertEqual(self.rows('SELECT state FROM customer_requests')[0]['state'], 'failed')
+        self.assertEqual(self.rows('SELECT status FROM browse_runs')[0]['status'], 'failed')
+        self.assertIn('could not start', self.rows('SELECT result FROM customer_requests')[0]['result'])
+        self.assertTrue(self.rows("SELECT kind FROM events WHERE kind='error'"))
 
     def test_interactive_goal_runs_in_the_browser_without_the_cell_and_hands_off_at_checkout(self):
         sent = self.chat.send(self.a, conversation_id='c-a', message='Order me a large pepperoni pizza from dominos.com', key='b1')

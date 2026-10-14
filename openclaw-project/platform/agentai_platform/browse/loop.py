@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 import time
+from urllib.parse import urlsplit
 
 from . import candidates as cand
 from .untrusted import neutralize
@@ -18,8 +19,16 @@ class Policy:
     deny_domains: re.Pattern = DEFAULT_DENY
 
     def url_ok(self, url: str) -> bool:
-        m = re.match(r'^https?://([^/:]+)', url or '', re.I)
-        return bool(m) and not self.deny_domains.search(m.group(1) + '.')
+        try:
+            if any(ord(c) < 33 for c in url or ''):
+                return False
+            parsed = urlsplit(url or '')
+            host = (parsed.hostname or '').rstrip('.').encode('idna').decode('ascii')
+            if parsed.port is not None and not 1 <= parsed.port <= 65535:
+                return False
+            return parsed.scheme.lower() in ('http', 'https') and bool(host) and parsed.username is None and parsed.password is None and not self.deny_domains.search(host + '.')
+        except (ValueError, UnicodeError):
+            return False
 
     def gate(self, url, snapshot_text, page_text, chosen) -> str:
         """'ok' | 'handoff' (payment/consequential step: the user takes over) -- evaluated BEFORE any click."""

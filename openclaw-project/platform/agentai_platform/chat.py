@@ -640,7 +640,13 @@ class ChatDriver:
                         (claim.account_id, claim.request_id, claim.message, 'queued', now, now))
         self._emit(claim, 'task_started', {'summary': 'Opening a browser for this task.'})
         goal = self.genui.with_conversation_context(claim, claim.message) if self.genui else claim.message
-        rpc('start', request_id=claim.request_id, goal=goal, max_cost_microusd=int(reserved[0]) if reserved else 1_000_000)
+        try:
+            rpc('start', request_id=claim.request_id, goal=goal, max_cost_microusd=int(reserved[0]) if reserved else 1_000_000)
+        except CapabilityUnavailable:
+            message = 'The browser could not start. Please try again in a moment.'
+            self._mirror_browse(claim, {'state': 'failed', 'reason': message, 'events': []})
+            self._emit(claim, 'error', {'summary': message, 'category': 'browser'})
+            return self._close(claim, 'failed', message, gateway, before)
         since, deadline, final = 0, self.clock() + self.run_timeout, None
         finals = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
         while True:
