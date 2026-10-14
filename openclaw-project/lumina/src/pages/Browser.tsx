@@ -44,7 +44,7 @@ function Run({ id }: { id: string }) {
       setRun(r); setErr('');
     } catch (e) { setErr(e instanceof ApiError && e.status === 404 ? 'That browser task was not found.' : 'Could not load this browser task. Retrying…'); }
   }, [id]);
-  useEffect(() => { since.current = 0; setEvents([]); setRun(null); load(); }, [id, load]);
+  useEffect(() => { since.current = 0; setEvents([]); setRun(null); void load(); }, [id, load]);
   const live = !run || LIVE.includes(run.status);
   useEffect(() => { if (!live) return; const t = setInterval(load, 2000); return () => clearInterval(t); }, [live, load]);
 
@@ -52,7 +52,7 @@ function Run({ id }: { id: string }) {
     try { await api('POST', `/v1/browse/${id}/control`, body); setErr(''); await load(); }
     catch (e) { setErr(e instanceof ApiError && e.status === 409 ? 'Control is not open right now. It opens when Lumina hands the page over.' : 'That did not go through.'); }
   };
-  const click = (e: React.MouseEvent) => { const r = img.current!.getBoundingClientRect(); send({ action: 'click', ...toBrowser(e.clientX, e.clientY, r) }); };
+  const click = (e: React.MouseEvent) => { const r = img.current!.getBoundingClientRect(); void send({ action: 'click', ...toBrowser(e.clientX, e.clientY, r) }); };
   const shots = events.filter(e => e.kind === 'screenshot'); const last = shots[shots.length - 1];
   const steps = events.map(stepText).filter(Boolean) as string[];
   if (!run) return <div className="center"><h1 className="page-title">Browser</h1><p className={err ? 'err' : 'muted'} role={err ? 'alert' : 'status'}>{err || 'Loading…'}</p><p><Link to="/browser">All browser tasks</Link></p></div>;
@@ -69,7 +69,7 @@ function Run({ id }: { id: string }) {
         {run.status === 'handoff' && <p className="muted" style={{ marginTop: 12 }}>{run.pending_action?.label ? `Lumina stopped before: ${run.pending_action.label}. ` : 'Lumina stopped at a step that needs you. '}
           {control ? 'You can click on the page above or type below. Nothing is bought unless you do it yourself.' : 'The take-over window has closed.'}</p>}
         {control && (
-          <form style={{ display: 'flex', gap: 8, marginTop: 10 }} onSubmit={e => { e.preventDefault(); if (text) { send({ action: 'type', text }); setText(''); } }}>
+          <form style={{ display: 'flex', gap: 8, marginTop: 10 }} onSubmit={e => { e.preventDefault(); if (text) { void send({ action: 'type', text }); setText(''); } }}>
             <label className="sr" htmlFor="tk">Text to type into the page</label>
             <input id="tk" value={text} maxLength={500} onChange={e => setText(e.target.value)} placeholder="Type into the selected field" style={{ flex: 1 }} />
             <button className="btn" type="submit">Type</button>

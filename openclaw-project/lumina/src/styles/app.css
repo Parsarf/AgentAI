@@ -258,7 +258,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .gline { stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw .9s var(--ease) both; } @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .gpie { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; gap: 18px; align-items: center; } .gpie svg { width: 100%; height: auto; }
 .glegend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; padding: 0; } .glegend.col { flex-direction: column; flex-wrap: nowrap; gap: 8px; margin: 0; }
-.glegend li, .glegend button { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); background: none; border: 0; cursor: pointer; padding: 2px 0; font: inherit; font-size: 13px; } .glegend li b { margin-left: auto; color: var(--ink); font-weight: 500; padding-left: 14px; } .glegend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.glegend li, .glegend button { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); background: none; border: 0; cursor: pointer; padding: 2px 0; font: inherit; font-size: 13px; } .glegend li b { margin-left: auto; color: var(--ink); font-weight: 500; padding-left: 14px; } .glegend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 /* Balanced comparison rows: four options use 2 × 2; five use 3 + 2. */
 .gcard-comparison { container-type: inline-size; padding: 22px; background: rgba(14,15,19,.92); }
 .gcard-comparison .gcard-h { margin-bottom: 18px; }

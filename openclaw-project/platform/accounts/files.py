@@ -70,7 +70,6 @@ def _mapped(fn):
         return JsonResponse({'error': 'invalid_request'}, status=400)
 
 
-@csrf_exempt
 def upload(request, project_id):
     denial = _guard(request)
     if denial:
@@ -104,7 +103,6 @@ def upload(request, project_id):
     return _mapped(run)
 
 
-@csrf_exempt
 def files_route(request, project_id):
     if request.method == 'POST':
         return upload(request, project_id)
@@ -202,7 +200,6 @@ def ticket(request, artifact_id, version):
     return _mapped(run)
 
 
-@csrf_exempt
 def bundle(request, project_id):
     denial = _guard(request)
     if denial:

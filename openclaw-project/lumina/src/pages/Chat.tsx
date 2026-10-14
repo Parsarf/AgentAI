@@ -41,13 +41,13 @@ export default function Chat() {
       setMsgs(cachedMessages.current); setTasks([...m.tasks].sort((a, b) => a.created_epoch - b.created_epoch)); setBlocks(b.blocks); setDetail(c.conversation); setErr(''); setLoaded(true);
     } catch { if (currentLoad()) { setErr('This chat could not be loaded. Please try again.'); setLoaded(true); } }
   }, [id]);
-  const reload = useCallback(() => { loadThread(); loadList(); refresh(); }, [loadThread, loadList, refresh]);
+  const reload = useCallback(() => { void loadThread(); void loadList(); void refresh(); }, [loadThread, loadList, refresh]);
 
-  useEffect(() => { cachedMessages.current = []; setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
-  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => { cachedMessages.current = []; setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); void loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
+  useEffect(() => { void loadList(); }, [loadList]);
   const drafting = blocks.some(b => b.status === 'submitted');
   const working = tasks.some(t => isActive(t.state)) || drafting || blocks.some(b => b.run_status === 'running');
-  useEffect(() => { if (!working) return; const t = setInterval(() => { loadThread(); loadList(); }, 2500); return () => clearInterval(t); }, [working, loadThread, loadList]);
+  useEffect(() => { if (!working) return; const t = setInterval(() => { void loadThread(); void loadList(); }, 2500); return () => clearInterval(t); }, [working, loadThread, loadList]);
   useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; if (stick.current) bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); else setNewBelow(true); } }, [msgs.length, tasks.length]);
 
   const [activityId, setActivityId] = useState<string | null>(null);
@@ -77,13 +77,13 @@ export default function Chat() {
   const sent = (r: any) => {
     if (id) { reload(); return; }
     setMsgs([{ id: -1, request_id: r.id ?? null, provenance: 'customer', content: r.message ?? '', created_at: '' }]); setLoaded(true);   // show the message at once while the chat opens
-    nav(`/chat/${r.conversation_id}`);
+    void nav(`/chat/${r.conversation_id}`);
   };
 
   return (
     <div className="chatpage">
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
-        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{current && <ChatActions chat={current} onChanged={action => { loadList(); if (action === 'archive') nav('/history'); else loadThread(); }} />}</header>}
+        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</header>}
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}

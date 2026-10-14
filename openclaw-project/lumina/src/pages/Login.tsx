@@ -48,7 +48,7 @@ export default function Login() {
             <input id="password2" name="password2" type="password" autoComplete="new-password" required placeholder="Repeat password" value={pw2} onChange={e => setPw2(e.target.value)} />
             <input className="trap" tabIndex={-1} autoComplete="off" aria-hidden="true" name="website" value={trap} onChange={e => setTrap(e.target.value)} />
           </>}
-          <button className="btn primary" disabled={busy}>{mode === 'in' ? (busy ? 'Signing in…' : 'Sign in') : (busy ? 'Creating…' : 'Create account')}</button>
+          <button type="submit" className="btn primary" disabled={busy}>{mode === 'in' ? (busy ? 'Signing in…' : 'Sign in') : (busy ? 'Creating…' : 'Create account')}</button>
           {err && <p className="err" role="alert">{err}</p>}
           {mode === 'in' && <a className="faint" href="/account/recover/">Forgot your password?</a>}
           {open && <button type="button" className="linkish" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr(''); }}>{mode === 'in' ? 'New here? Create an account' : 'Have an account? Sign in'}</button>}

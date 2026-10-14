@@ -62,7 +62,8 @@ class FileHTTPChecks(TestCase):
 
     def test_routes_fail_closed_without_storage(self):
         a = self.signed()
-        self.assertEqual(a.post('/v1/projects/project-a/files', '{}', content_type='application/json', secure=True).status_code, 503)
+        self.assertEqual(self.post(a, '/v1/projects/project-a/files', {}).status_code, 503)
+        self.assertEqual(a.post('/v1/projects/project-a/files', '{}', content_type='application/json', secure=True).status_code, 403)
         self.assertEqual(a.get('/v1/projects/project-a/files', secure=True).status_code, 503)
         self.assertEqual(self.post(a, '/v1/artifacts/x/versions/1/ticket', {}).status_code, 503)
         self.assertEqual(a.get('/v1/artifacts/x/versions/1/download', secure=True).status_code, 503)

@@ -21,7 +21,7 @@ function Command({ onClose }: { onClose(): void }) {
     const t = q.trim().toLowerCase();
     return (t ? [{ label: `Search all chats for “${q.trim()}”`, hint: 'Titles and messages', to: `/history?q=${encodeURIComponent(q.trim())}` }, ...all.filter(a => a.label.toLowerCase().includes(t))] : all).slice(0, 12);
   }, [q, requests, chats]);
-  const go = (to: string) => { nav(to); onClose(); };
+  const go = (to: string) => { void nav(to); onClose(); };
   return (
     <div className="cmd-back" onMouseDown={onClose} role="presentation">
       <div className="cmd" role="dialog" aria-label="Search" onMouseDown={e => e.stopPropagation()}>
@@ -66,7 +66,7 @@ export default function Shell() {
             <button className="iconbtn" aria-label="Notifications" aria-expanded={bell} onClick={() => setBell(b => !b)}><I.Bell />{attention.length > 0 && <span className="dot" />}</button>
             {bell && (
               <div className="panel" style={{ position: 'absolute', right: 0, top: 54, width: 300, padding: 12, zIndex: 20, background: 'var(--bg-2)' }}>
-                {attention.length ? attention.map(r => <button key={r.id} className="btn" style={{ width: '100%', marginBottom: 6, textAlign: 'left' }} onClick={() => { setBell(false); nav(r.conversation_id ? `/chat/${r.conversation_id}` : `/tasks/${r.id}`); }}>Failed: {title(r.message, 40)}</button>)
+                {attention.length ? attention.map(r => <button key={r.id} className="btn" style={{ width: '100%', marginBottom: 6, textAlign: 'left' }} onClick={() => { setBell(false); void nav(r.conversation_id ? `/chat/${r.conversation_id}` : `/tasks/${r.id}`); }}>Failed: {title(r.message, 40)}</button>)
                   : <p className="muted" style={{ padding: 6 }}>Nothing needs your attention.</p>}
               </div>)}
           </div>
@@ -79,7 +79,7 @@ export default function Shell() {
       {drawer && (
         <div className="drawer-back left" onMouseDown={() => setDrawer(false)} role="presentation">
           <aside className="drawer" role="dialog" aria-label="Chats" onMouseDown={e => e.stopPropagation()}>
-            <button className="btn primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => { setDrawer(false); nav('/chat'); }}>New chat</button>
+            <button className="btn primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => { setDrawer(false); void nav('/chat'); }}>New chat</button>
             <ChatList chats={chats} onChanged={() => refreshChats()} onPick={() => setDrawer(false)} />
           </aside>
         </div>)}

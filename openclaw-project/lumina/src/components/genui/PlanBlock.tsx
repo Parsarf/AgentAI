@@ -72,7 +72,7 @@ function Card(props: {
           {asking && (
             <form className="inline" onSubmit={e => { e.preventDefault(); if (newTitle.trim()) { props.onChange(P.addPhase(plan, { [asking]: p.id } as any, newTitle)); setAsking(null); setNewTitle(''); } }}>
               <input autoFocus aria-label="New phase name" placeholder={`New phase ${asking} “${p.title}”`} value={newTitle} maxLength={80} onChange={e => setNewTitle(e.target.value)} />
-              <button className="btn small primary">Add</button><button type="button" className="btn small" onClick={() => setAsking(null)}>Cancel</button>
+              <button type="submit" className="btn small primary">Add</button><button type="button" className="btn small" onClick={() => setAsking(null)}>Cancel</button>
             </form>)}
           {removing && (
             <div className="confirm" role="alertdialog" aria-label="Remove phase">
@@ -159,7 +159,7 @@ export default function PlanBlock({ block, original, onChanged }: { block: Block
       {rows.some(r => r.length > 1) && <p className="faint small">Phases side by side can run independently. Moving a phase changes the order within its row; “Runs after” controls what must finish first.</p>}
       {!locked && (
         <form className="inline" onSubmit={e => { e.preventDefault(); if (newTitle.trim()) { commit(P.addPhase(plan, null, newTitle)); setNewTitle(''); } }}>
-          <input aria-label="Add a phase" placeholder="Add a phase at the end…" value={newTitle} maxLength={80} onChange={e => setNewTitle(e.target.value)} /><button className="btn small">Add phase</button>
+          <input aria-label="Add a phase" placeholder="Add a phase at the end…" value={newTitle} maxLength={80} onChange={e => setNewTitle(e.target.value)} /><button type="submit" className="btn small">Add phase</button>
         </form>)}
       {general.length > 0 && !locked && <ul className="issues" role="alert">{general.map((i, n) => <li key={n}>{i.message}</li>)}</ul>}
       <footer>

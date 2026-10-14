@@ -28,7 +28,7 @@ export default function History() {
     {err && <p role="alert" className="err">{err} <button className="btn small" onClick={() => setRevision(v => v + 1)}>Retry</button></p>}
     {(['Today', 'Yesterday', 'Earlier'] as const).map(label => {
       const group = rows.filter(c => groupLabel(c) === label); if (!group.length) return null;
-      return <section className="history-group" key={label}><h2>{label}</h2>{group.map(chat => <div className="history-row" key={chat.id}><Link to={`/chat/${chat.id}`}><strong>{chatTitle(chat)}</strong><p>{chatPreview(chat.preview) || 'No messages yet'}</p>{chat.active > 0 && <span className="muted small">Working</span>}</Link><ChatActions chat={chat} onChanged={() => { refreshChats(); setRevision(v => v + 1); }} /></div>)}</section>;
+      return <section className="history-group" key={label}><h2>{label}</h2>{group.map(chat => <div className="history-row" key={chat.id}><Link to={`/chat/${chat.id}`}><strong>{chatTitle(chat)}</strong><p>{chatPreview(chat.preview) || 'No messages yet'}</p>{chat.active > 0 && <span className="muted small">Working</span>}</Link><ChatActions chat={chat} onChanged={() => { void refreshChats(); setRevision(v => v + 1); }} /></div>)}</section>;
     })}
     {loading && <p className="muted" role="status">Loading chats…</p>}{!loading && !rows.length && !err && <div className="empty">{q ? 'No chats match your search.' : archived ? 'No archived chats.' : 'Your conversations will appear here after your first message.'}</div>}
     {more && <button className="btn" disabled={loading} onClick={loadMore}>Load more chats</button>}

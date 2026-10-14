@@ -29,7 +29,7 @@ function loginView(message) {
     el('div', { className: 'err', textContent: message || '' }));
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    try { await api('POST', '/auth/login', { email: email.value, password: password.value }); csrf = null; start(); }
+    try { await api('POST', '/auth/login', { email: email.value, password: password.value }); csrf = null; void start(); }
     catch (e) { loginView(e.status === 429 ? 'Too many attempts. Wait a few minutes.' : 'Those details did not work.'); }
   });
   show(form);
@@ -53,11 +53,11 @@ async function chatView(app) {
   const send = el('form', {}, box, el('button', { textContent: 'Send' }));
   send.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    try { await api('POST', '/v1/conversations/' + id + '/send', { message: box.value, key: crypto.randomUUID().replace(/-/g, '') }); chatView(app); }
+    try { await api('POST', '/v1/conversations/' + id + '/send', { message: box.value, key: crypto.randomUUID().replace(/-/g, '') }); void chatView(app); }
     catch (e) { alert(e.message); }          // a real UI would show budget_denied / queue_full as friendly text
   });
   const clear = el('button', { className: 'ghost', textContent: 'Clear conversation' });
-  clear.addEventListener('click', async () => { await api('POST', '/v1/conversations/' + id + '/archive', {}); state.conversation = null; chatView(app); });
+  clear.addEventListener('click', async () => { await api('POST', '/v1/conversations/' + id + '/archive', {}); state.conversation = null; void chatView(app); });
   show(header(app), el('p', { className: 'meta', textContent: live ? (working ? 'Working… this refreshes by itself.' : 'Your assistant is live.') : 'Execution is off: messages wait.' }),
     thread, send, clear);
   if (working) state.poll = setInterval(() => chatView(app), 4000);
@@ -65,12 +65,12 @@ async function chatView(app) {
 
 function header(app) {
   const out = el('button', { className: 'ghost', textContent: 'Sign out' });
-  out.addEventListener('click', async () => { await api('POST', '/auth/logout', {}); csrf = null; start(); });
+  out.addEventListener('click', async () => { await api('POST', '/auth/logout', {}); csrf = null; void start(); });
   return el('header', {}, el('strong', { textContent: 'Reference dashboard' }), el('span', { className: 'meta', textContent: app.user.email }), out);
 }
 
 async function start() {
-  try { chatView(await api('GET', '/v1/app')); }
+  try { void chatView(await api('GET', '/v1/app')); }
   catch (e) { if (e.status === 401) loginView(); else show(el('p', { className: 'err', textContent: 'Could not load (' + e.message + ').' })); }
 }
-start();
+void start();

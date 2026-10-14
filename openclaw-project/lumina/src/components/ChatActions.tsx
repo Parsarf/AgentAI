@@ -16,9 +16,9 @@ export default function ChatActions({ chat, onChanged }: { chat: ChatSummary; on
       <button disabled={busy} onClick={() => perform(chat.archived_epoch ? 'restore' : 'archive')}>{chat.archived_epoch ? 'Restore chat' : 'Archive chat'}</button>
       {err && <p className="err" role="alert">{err}</p>}
     </div></details>
-    {renaming && <div className="cmd-back" role="presentation" onMouseDown={() => setRenaming(false)}><form className="cmd chat-rename" role="dialog" aria-modal="true" aria-label="Rename chat" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); perform('rename'); }}>
+    {renaming && <div className="cmd-back" role="presentation" onMouseDown={() => setRenaming(false)}><form className="cmd chat-rename" role="dialog" aria-modal="true" aria-label="Rename chat" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); void perform('rename'); }}>
       <h2>Rename chat</h2><label htmlFor={`rename-${chat.id}`} className="sr">Chat name</label><input id={`rename-${chat.id}`} autoFocus value={name} maxLength={90} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setRenaming(false); }} />
-      {err && <p className="err" role="alert">{err}</p>}<div><button type="button" className="btn" onClick={() => setRenaming(false)}>Cancel</button><button className="btn primary" disabled={busy || !name.trim()}>Save</button></div>
+      {err && <p className="err" role="alert">{err}</p>}<div><button type="button" className="btn" onClick={() => setRenaming(false)}>Cancel</button><button type="submit" className="btn primary" disabled={busy || !name.trim()}>Save</button></div>
     </form></div>}
   </>;
 }

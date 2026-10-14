@@ -22,7 +22,7 @@ export function ActiveTask() {
     if (!id) { setEvents([]); return; }
     let stop = false;
     const load = async () => { try { const r = await api<{ events: EventRow[] }>('GET', `/v1/tasks/${id}/events?after=0&limit=50`); if (!stop) setEvents(visibleEvents(r.events)); } catch { /* keep last */ } };
-    load(); const t = setInterval(load, 3000); return () => { stop = true; clearInterval(t); };
+    void load(); const t = setInterval(load, 3000); return () => { stop = true; clearInterval(t); };
   }, [id]);
   return (
     <section className="panel card" aria-labelledby="at-h">

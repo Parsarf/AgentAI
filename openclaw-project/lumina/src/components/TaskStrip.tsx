@@ -18,7 +18,7 @@ export default function TaskStrip({ task, onCancel, onActivity }: { task: Thread
   useEffect(() => {
     if (!active) return; let stop = false;
     const load = async () => { try { const r = await api<{ events: EventRow[] }>('GET', `/v1/tasks/${task.id}/events?after=0&limit=50`); if (!stop) setEvents(visibleEvents(r.events)); } catch { /* keep last */ } };
-    load(); const t = setInterval(load, 3000); return () => { stop = true; clearInterval(t); };
+    void load(); const t = setInterval(load, 3000); return () => { stop = true; clearInterval(t); };
   }, [task.id, active]);
   const p = phase(task.state);
   if (p === 'completed') return null;

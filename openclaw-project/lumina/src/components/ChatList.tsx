@@ -16,7 +16,7 @@ export default function ChatList({ chats, current, onPick, onChanged }: { chats:
           {g.items.map(c => (
             <div key={c.id} className="sidebar-chat-row"><Link to={`/chat/${c.id}`} className="chatitem" aria-current={c.id === current ? 'page' : undefined} onClick={onPick}>
               <span className="ct">{chatTitle(c)}</span>{c.active > 0 && <span className="dot-s running" title="Working" />}
-            </Link><ChatActions chat={c} onChanged={action => { onChanged?.(action, c.id); if (action === 'archive' && current === c.id) nav('/history'); }} /></div>))}
+            </Link><ChatActions chat={c} onChanged={action => { onChanged?.(action, c.id); if (action === 'archive' && current === c.id) void nav('/history'); }} /></div>))}
         </div>))}
     </div>);
 }

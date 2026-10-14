@@ -5,7 +5,7 @@ export const sortRecent = (list: ChatSummary[]) => [...list].sort((a, b) => stam
 
 /** Sidebar grouping by local calendar day of the last activity. */
 export function groupLabel(c: ChatSummary, now = new Date()): 'Today' | 'Yesterday' | 'Earlier' {
-  const d = new Date(stamp(c).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(stamp(c)) ? '' : 'Z'));
+  const d = new Date(stamp(c).replace(' ', 'T') + (/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(stamp(c)) ? '' : 'Z'));
   if (isNaN(+d)) return 'Earlier';
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(now) - day(d)) / 86400000);

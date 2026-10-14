@@ -64,11 +64,11 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
   const live = app?.features.execution;
   return (
     <div>
-      <form className="composer" onSubmit={e => { e.preventDefault(); submit(); }}>
+      <form className="composer" onSubmit={e => { e.preventDefault(); void submit(); }}>
         <label className="sr" htmlFor="ask">Message Lumina</label>
         <textarea id="ask" ref={box} rows={2} value={text} maxLength={max} placeholder={conversationId ? 'Reply or ask a follow-up…' : 'Ask anything or give Lumina a task…'}
           onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || (!e.shiftKey && !e.nativeEvent.isComposing))) { e.preventDefault(); submit(); } }}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || (!e.shiftKey && !e.nativeEvent.isComposing))) { e.preventDefault(); void submit(); } }}
           onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); setErr('File attachments are not enabled yet; paste text instead.'); } }} />
         <div className="row">
           {!conversationId && Object.keys(TEMPLATES).map(k => (
@@ -82,7 +82,7 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
           </span>
           <span className="actions">
           {speech && <button type="button" className="iconbtn" aria-label={listening ? 'Stop dictation' : 'Dictate'} aria-pressed={listening} style={{ width: 44, height: 44, borderRadius: '50%' }} onClick={toggleVoice}><I.Mic /></button>}
-          <button className="send" disabled={!text.trim() || busy} aria-label="Send message"><I.Up /></button>
+          <button type="submit" className="send" disabled={!text.trim() || busy} aria-label="Send message"><I.Up /></button>
           </span>
         </div>
       </form>

@@ -20,7 +20,7 @@ export default function Files() {
       setProject(projects[0]?.id ?? ''); setRows(results.flatMap(r => r.artifacts)); setErr('');
     } catch { setErr('Could not load your files.'); setRows(prev => prev ?? []); }
   }, []);
-  useEffect(() => { if (app?.features.files) load(); }, [app?.features.files, load]);
+  useEffect(() => { if (app?.features.files) void load(); }, [app?.features.files, load]);
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); setErr(''); } catch { setErr('That did not work. Please try again.'); } finally { setBusy(false); } };
   const zip = () => run(async () => { const r = await api<{ bundle: { artifact_id: string; version: number } }>('POST', `/v1/projects/${project}/bundle`, {}); await download(r.bundle.artifact_id, r.bundle.version); });

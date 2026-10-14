@@ -8,7 +8,7 @@ from . import prompts, schema
 
 def extract_json(text: str):
     """The first JSON object in a model reply (tolerates a code fence or a short lead-in). Returns None if there is none."""
-    text = re.sub(r'^```[a-zA-Z]*\s*|\s*```$', '', text.strip())
+    text = re.sub(r'(?:^```[a-zA-Z]*\s*)|(?:\s*```$)', '', text.strip())
     start, end = text.find('{'), text.rfind('}')
     if start < 0 or end <= start:
         return None

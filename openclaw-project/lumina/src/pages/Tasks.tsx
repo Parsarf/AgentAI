@@ -16,12 +16,12 @@ function Detail({ id, onClose }: { id: string; onClose(): void }) {
   const [events, setEvents] = useState<EventRow[]>([]); const [err, setErr] = useState('');
   useEffect(() => {
     let stop = false; const load = async () => { try { const r = await api<{ events: EventRow[] }>('GET', `/v1/tasks/${id}/events?after=0&limit=100`); if (!stop) setEvents(visibleEvents(r.events)); } catch { /* keep */ } };
-    load(); const t = setInterval(load, 4000); return () => { stop = true; clearInterval(t); };
+    void load(); const t = setInterval(load, 4000); return () => { stop = true; clearInterval(t); };
   }, [id]);
   useEffect(() => { const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   const cancel = async () => { try { await api('POST', `/v1/requests/${id}/cancel`, {}); await refresh(); } catch { setErr('Could not cancel this task.'); } };
   const [conversation, setConversation] = useState<string | null>(null); const nav = useNavigate();
-  useEffect(() => { let stop = false; setConversation(null); api<{ task: { conversation_id: string | null } }>('GET', `/v1/tasks/${id}`).then(r => { if (!stop) { setConversation(r.task.conversation_id); if (r.task.conversation_id) nav(`/chat/${r.task.conversation_id}`, { replace: true }); } }).catch(() => {}); return () => { stop = true; }; }, [id, nav]);
+  useEffect(() => { let stop = false; setConversation(null); api<{ task: { conversation_id: string | null } }>('GET', `/v1/tasks/${id}`).then(r => { if (!stop) { setConversation(r.task.conversation_id); if (r.task.conversation_id) void nav(`/chat/${r.task.conversation_id}`, { replace: true }); } }).catch(() => {}); return () => { stop = true; }; }, [id, nav]);
   const p = row ? phase(row.state) : null;
   return (
     <div className="drawer-back" onMouseDown={onClose} role="presentation">

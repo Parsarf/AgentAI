@@ -26,7 +26,7 @@ export default function ActivityPanel({ taskId, active, startedAt, onStop, onClo
       } catch { if (!stop) setErr('Could not refresh. Retrying…'); }
       if (!stop && (active || cursor.current === 0)) timer = setTimeout(load, 1500);
     };
-    load(); return () => { stop = true; clearTimeout(timer); };
+    void load(); return () => { stop = true; clearTimeout(timer); };
   }, [taskId, active]);
   useEffect(() => { if (!active) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [active]);
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function ActivityPanel({ taskId, active, startedAt, onStop, onClo
         if (!stop && ['queued', 'running', 'handoff'].includes(r.status)) timer = setTimeout(look, 2000);
       } catch { /* not a browser task */ }
     };
-    look(); return () => { stop = true; clearTimeout(timer); };
+    void look(); return () => { stop = true; clearTimeout(timer); };
   }, [taskId, app?.features.browse]);
 
   const rows = useMemo(() => toActivity(events), [events]);
