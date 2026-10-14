@@ -13,7 +13,7 @@ const MAX_ELEMENTS = 80, MAX_TEXT = 6000, MAX_PAGES = 3, MAX_VALUE = 500;
 const KEYS = new Set(['Enter', 'Tab', 'Escape']);
 // Live view: Chrome pushes JPEG frames only when the page changes; we keep ONLY the newest one (live.jpg, replaced atomically) and only
 // while the host has recently touched OUT/watching. Nobody watching = no screencast, no CPU, no disk writes.
-const LIVE = { fps: 8, quality: 50, width: 960, height: 600, watchSeconds: 6, pollMs: 1000 };
+const LIVE = { fps: 15, quality: 60, width: 1280, height: 800, watchSeconds: 6, pollMs: 250 };
 
 export function urlAllowed(raw, allowLoopback = false) {
   let u; try { u = new URL(raw); } catch { return false; }
@@ -72,17 +72,20 @@ export class Runner {
   async liveOn() {
     await this.liveOff();
     const page = this.page; const cdp = await this.context.newCDPSession(page); const tmp = join(OUT, 'live.tmp'); const dest = join(OUT, 'live.jpg');
-    cdp.on('Page.screencastFrame', async ev => {
+    const write = data => { this.lastFrame = Date.now(); try { writeFileSync(tmp, Buffer.from(data, 'base64')); renameSync(tmp, dest); } catch { /* disk full or folder gone: skip this frame */ } };
+    cdp.on('Page.screencastFrame', ev => {
       cdp.send('Page.screencastFrameAck', { sessionId: ev.sessionId }).catch(() => {});
-      const now = Date.now(); if (now - this.lastFrame < 1000 / LIVE.fps) return;     // newest frame wins; extra frames are dropped
-      this.lastFrame = now;
-      try { writeFileSync(tmp, Buffer.from(ev.data, 'base64')); renameSync(tmp, dest); } catch { /* disk full or folder gone: skip this frame */ }
+      const wait = 1000 / LIVE.fps - (Date.now() - this.lastFrame);
+      clearTimeout(this.pendingFrame);
+      // Newest frame wins. One that arrives too soon is held and written when the rate allows, never dropped: the last frame of a change
+      // (a spinner stopping, a checkbox ticking) must always reach the screen.
+      if (wait <= 0) write(ev.data); else this.pendingFrame = setTimeout(() => write(ev.data), wait);
     });
     await cdp.send('Page.startScreencast', { format: 'jpeg', quality: LIVE.quality, maxWidth: LIVE.width, maxHeight: LIVE.height, everyNthFrame: 1 });
     this.live = { cdp, page };
   }
   async liveOff() {
-    const l = this.live; this.live = null; if (!l) return;
+    const l = this.live; this.live = null; clearTimeout(this.pendingFrame); if (!l) return;
     try { await l.cdp.send('Page.stopScreencast'); await l.cdp.detach(); } catch { /* page already closed */ }
   }
   info() { return { url: this.page.url(), title: '' }; }
@@ -125,14 +128,13 @@ export class Runner {
         const { x, y, action, text } = msg;
         if (action === 'click' && (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 1280 || y > 800)) return { ok: false, error: 'bad_coordinates' };
         try {
-          if (action === 'click') await this.page.mouse.click(x, y);
+          if (action === 'click') { await this.page.mouse.move(x, y, { steps: 4 }); await this.page.mouse.click(x, y, { delay: 40 }); }
           else if (action === 'type') { if (typeof text !== 'string' || text.length > MAX_VALUE) return { ok: false, error: 'bad_value' }; await this.page.keyboard.type(text, { delay: 5 }); }
           else if (action === 'key') { if (!KEYS.has(text) && !['Backspace', 'ArrowDown', 'ArrowUp'].includes(text)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(text); }
           else if (action === 'scroll') await this.page.mouse.wheel(0, Number(text) > 0 ? 500 : -500);
           else return { ok: false, error: 'bad_action' };
         } catch (e) { return { ok: false, error: 'action_failed' }; }
-        await this.page.waitForTimeout(300); await this.settle();
-        return { ok: true, url: this.page.url() };
+        return { ok: true, url: this.page.url() };     // no waiting for the page to settle: the next input must not queue behind a slow load
       }
       case 'screenshot': {
         const file = `shot-${String(++this.shots).padStart(3, '0')}.jpg`;

@@ -9,6 +9,7 @@ from . import candidates as cand
 from .untrusted import neutralize
 from .ladder import Decision, Ladder, Refused
 
+WALL_REASON = 'the site is asking to verify you are human, which I cannot pass for you'
 DEFAULT_DENY = re.compile(r'(^|\.)(paypal|venmo|cash\.app|chase|bankofamerica|wellsfargo|citi|capitalone|robinhood|coinbase|binance|fidelity|schwab|vanguard)\.', re.I)
 
 
@@ -90,7 +91,7 @@ class BrowseRunner:
                     break
                 snap = again
             if cand.page_is_bot_check(snap.get('title', ''), snap.get('text', '')):
-                return self._end(res, 'handoff', 'the site is asking to verify you are human, which I cannot pass for you', history, snap.get('url', ''))
+                return self._end(res, 'handoff', WALL_REASON, history, snap.get('url', ''))
             url = snap.get('url', '')
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)

@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from agentai_platform.adapters import CapabilityUnavailable
+from agentai_platform.browse.loop import WALL_REASON
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.capacity import CapacityResult
 from agentai_platform.chat import ChatDriver, ChatService, FixedRoute, synthetic_gateway_factory
@@ -154,6 +155,31 @@ class Handoff(unittest.TestCase):
         agent = [m['content'] for m in self.chat.messages(self.a, 'c-a')['messages'] if m['provenance'] == 'agent'][-1]
         self.assertIn('nothing was purchased', agent)
         self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0]['state'], 'aborted')
+
+    WALL = {'state': 'handoff', 'reason': WALL_REASON, 'answer': None, 'url': 'https://www.doordash.com/', 'takeover': True, 'cost_microusd': 1000, 'pending_action': None, 'events': []}
+
+    def test_a_human_verification_wall_hands_over_to_the_assistant_instead_of_ending_the_request(self):
+        self.rpc.script = [dict(self.WALL)]
+        self.run_message('find the best burgers near me and rank them')
+        got = self.assistant_got(); self.assertEqual(len(got), 1)
+        self.assertIn('human-verification page', got[0]); self.assertIn('www.doordash.com', got[0]); self.assertIn('web_search', got[0])
+        self.assertIn('Never say or imply that anything was ordered', got[0])
+        self.assertEqual(self.state(), 'completed')
+        self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0]['state'] != 'aborted', True)
+
+    def test_a_browser_only_request_blocked_by_a_wall_also_gets_the_assistants_help(self):
+        self.rpc.script = [dict(self.WALL)]
+        self.chat.send(self.a, conversation_id='c-a', message='order me burgers from doordash.com', key='kw')
+        self.assertEqual(self.rows('SELECT intent FROM customer_requests')[0]['intent'], 'browse')
+        self.worker.tick()
+        got = self.assistant_got(); self.assertEqual(len(got), 1)
+        self.assertIn('human-verification page', got[0]); self.assertTrue(got[0].rstrip().endswith('order me burgers from doordash.com'))
+        self.assertEqual(self.state(), 'completed')
+
+    def test_a_payment_handoff_is_still_the_customers_to_finish_even_with_a_wall_shaped_reason(self):
+        self.rpc.script = [{**self.WALL, 'pending_action': {'label': 'Checkout'}}]
+        self.run_message('find me the best burgers and get it ready for checkout')
+        self.assertEqual(self.assistant_got(), [])
 
     def test_cancelling_during_the_browser_stops_the_request_before_the_assistant(self):
         self.chat.send(self.a, conversation_id='c-a', message='search for the spiciest food around me', key='k9')

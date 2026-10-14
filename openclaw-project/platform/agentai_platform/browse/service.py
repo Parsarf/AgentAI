@@ -29,6 +29,7 @@ FINAL = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled'
 TAKEOVER_SECONDS = 600
 MIN_FREE_BYTES = 2 * 1024 ** 3                 # a browser stage needs ~1.5 GiB; below this we wait instead of starving everyone's chats
 MEMORY_WAIT_SECONDS = 120
+SNAPSHOT_EVERY_SECONDS = 4
 SCREENSHOT_RETENTION_SECONDS = 24 * 3600    # pages can show personal data: screenshots are deleted a day after the task
 MAX_CALLS = 60
 # A 16k request plus 12k of saved context and JSON quoting overhead.
@@ -69,6 +70,7 @@ class Job:
         self.state, self.reason, self.answer, self.url, self.pending = 'queued', '', None, '', None
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
+        self.last_shot = 0.0
         self.pause_req = threading.Event()          # the user asked for the wheel; the loop acknowledges at the next step boundary (state -> 'paused')
         self.stats = {'jev_asked': 0, 'jev_agree': 0}
 
@@ -177,7 +179,10 @@ class BrowseService:
             job.takeover_until = self.clock() + self.takeover_seconds
             if job.state == 'paused':
                 job.add('control', {'action': action, 'by': 'you'})        # the live view shows the result; the record keeps what kind of input, never the text typed
-            else:
+            elif self.clock() - job.last_shot >= SNAPSHOT_EVERY_SECONDS:
+                # The live picture shows the result at once; this stored snapshot is only the fallback for a viewer without live frames, so
+                # it is taken at most every few seconds instead of after every click (each one used to hold up the next input).
+                job.last_shot = self.clock()
                 shot = job.session.screenshot()
                 if shot.get('ok'):
                     job.add('screenshot', {'file': shot['file'], 'by': 'you'})
