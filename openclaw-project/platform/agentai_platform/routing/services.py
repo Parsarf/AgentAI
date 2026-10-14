@@ -22,10 +22,14 @@ from .classifier import ClassifierUnavailable, http_post
 from .decision import Rejected, _choice
 
 SERVICES = ('browser', 'web', 'direct')
+# Wording matters: measured against the live JEV, "places, prices, reviews" under web search made "search for the spiciest food around me" a 59% vote for
+# web search; defining the browser as "finding listings / near me / menus / prices / ordering" makes every browsing-type request a 99-100% browser vote.
 SERVICE_CRITERIA = {
-    'browser': ('Needs a real website to be visited and used: open a site, search or filter on it, compare live listings or prices, order, book or '
-                'reserve something, read a page that needs scrolling or clicking, fill a cart or form. Lumina stops before any payment.'),
-    'web': 'Needs current facts from the web that a plain search can answer without using a site interactively: news, prices, places, reviews, how-to, who or what or when.',
+    'browser': ('Needs a real website to be visited and used, or live listings to be looked at: finding restaurants, shops, products, hotels, flights or events '
+                '(especially "near me" or "around me"), reading menus, hours, prices, ratings or availability, comparing options across sites, opening a specific '
+                'site, ordering, booking or reserving, filling a cart or form. Lumina stops before any payment.'),
+    'web': ('Needs facts or explanations from the web that a plain search answers directly, without opening listings or using a site: news, definitions, how-to '
+            'guides, history, who or what or when or why, documentation.'),
     'direct': 'Answerable from the conversation or general knowledge: writing, code, planning, maths, explaining, chit-chat, or a follow-up that needs no live information.',
 }
 REQUEST_CHARS, PREVIOUS_CHARS = 1500, 500
