@@ -75,12 +75,12 @@ Web app and browser service run the same code (`/opt/agentai-platform/current` a
   Database backups from before each release: `/var/lib/agentai-platform/backup-*-premigrate-liveN.sqlite3` (the old release can still read the new schema).
 - **Browser service:** point `/opt/agentai-supervisor/current` at the previous release and `systemctl restart agentai-browse`.
 - **Frontend:** `mv /var/lib/agentai-platform/ui.prev /var/lib/agentai-platform/ui` (one step back only).
-- **Smart services:** switch it off in the owner dashboard (Feature switches); no confirmations are needed to turn off and old behaviour returns at once.
+- **Smart services:** switch it off in the owner dashboard (Feature switches).
 - **Live view only:** remove `AGENTAI_LIVE_SECRET_FILE` from `accounts.env` and restart the app; the page falls back to snapshots.
 
 ## Where the code is kept (GitHub is suspended)
 - The repository on the owner's Mac (`/Users/parsa/AgentAI`), branch `product-phases-6-11`, with the release tags above.
-- Verified full backups: `/Users/parsa/AgentAI-backups/*.bundle` (restore with `git clone <file>.bundle <folder>`) and a copy on the server under `/var/backups/agentai-code/`.
+- Verified full backups: `/Users/parsa/AgentAI-backups/*.bundle` (restore with `git clone <file>.bundle <folder>`) (copy it off this Mac too; no copy is on the server yet).
 - Not yet on GitHub: every commit since `d21e6b5` (13 Oct). When the account is restored: `gh auth login`, then `git push --all && git push --tags`.
 
 ## Known limits and open items
