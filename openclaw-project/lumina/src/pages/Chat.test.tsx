@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import Chat from './Chat';
 const data = { app: { user: { email: 'test@example.com' }, limits: { max_message_chars: 16000 }, features: { execution: true } }, chats: [], refreshChats: vi.fn(async () => {}), refresh: vi.fn(async () => {}) };
 vi.mock('../state/data', () => ({ useData: () => data }));
+vi.mock('../components/Orb', () => ({ default: () => <span data-testid="thinking-orb" /> }));
 const Switch = () => { const nav = useNavigate(); return <><button onClick={() => nav('/chat/a')}>Open A</button><button onClick={() => nav('/chat/b')}>Open B</button><Chat /></>; };
 const msg = (id: number, content: string, provenance = 'agent') => ({ id, content, provenance, request_id: null, created_at: '' });
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
@@ -54,5 +55,28 @@ describe('resuming conversations', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open B' })); await screen.findByText('Current answer B');
     release(ok({ messages: [msg(1, 'Stale answer A')], tasks: [] }));
     await waitFor(() => expect(screen.queryByText('Stale answer A')).toBeNull());
+  });
+});
+
+describe('pending assistant reply', () => {
+  it('shows the orb on the assistant side and keeps Stop in the header', async () => {
+    let cancelled = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/v1/csrf') return ok({ csrf_token: 't' });
+      if (url.endsWith('/cancel')) { cancelled = true; return ok({}); }
+      if (url.endsWith('/blocks')) return ok({ blocks: [] });
+      if (url.includes('/events?')) return ok({ events: [{ sequence: 1, kind: 'activity', payload: { ref: 'tool', category: 'search', status: 'running' } }] });
+      if (url.includes('/messages')) return ok({ messages: url.includes('after=') ? [] : [{ ...msg(1, 'hey', 'customer'), request_id: 'r' }], tasks: [{ id: 'r', state: cancelled ? 'cancelled' : 'running', created_epoch: 0 }] });
+      return ok({ conversation: { id: 'a', title: 'Saved' } });
+    }));
+    const { container } = mount();
+    await screen.findByText('Searching…');
+    expect(container.querySelector('.agent-thinking')).toBeTruthy();
+    expect(container.querySelector('.taskstrip')).toBeNull();
+    const stop = screen.getByRole('button', { name: /^Stop$/ });
+    expect(stop.closest('.thread-head')).toBeTruthy();
+    fireEvent.click(stop);
+    await screen.findByText('Stopped.');
+    expect(screen.queryByTestId('thinking-orb')).toBeNull();
   });
 });

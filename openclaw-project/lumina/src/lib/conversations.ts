@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { ThreadTask } from '../components/TaskStrip';
+import type { ThreadTask } from '../components/AgentThinking';
 export interface Message { id: number; request_id: string | null; provenance: string; content: string; created_at: string }
 interface Page { messages: Message[]; tasks: ThreadTask[]; has_more?: boolean; next_after?: number }
 /** Read every persisted page; never silently truncate a resumed conversation. */

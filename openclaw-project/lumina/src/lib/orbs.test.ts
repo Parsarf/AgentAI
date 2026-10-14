@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_ANIMATED_ORBS, latestCategory, orbStateFor } from './orbs';
+import { MAX_ANIMATED_ORBS, latestCategory, orbStateFor, agentActivityFor, ORB_LABELS } from './orbs';
 type Loop = typeof import('./orbLoop');
 type Clock = typeof import('./frameClock');
 
@@ -81,5 +81,35 @@ describe('shared orb loop', () => {
     hidden.mockReturnValue('visible'); document.dispatchEvent(new Event('visibilitychange'));
     vi.advanceTimersByTime(300); expect(draw).toHaveBeenCalled();
     hidden.mockRestore(); stop();
+  });
+});
+
+describe('assistant activity lifecycle', () => {
+  it('defines a visible label and mapping for every library state', () => {
+    for (const state of Object.keys(ORB_LABELS)) {
+      expect(orbStateFor(state)).toBe(state);
+      expect(ORB_LABELS[state as keyof typeof ORB_LABELS].length).toBeGreaterThan(0);
+    }
+  });
+  it('separates queue, startup, reconnection, thinking, and terminal states', () => {
+    expect(agentActivityFor('waiting', [])?.label).toBe('Queued');
+    expect(agentActivityFor('starting', [])?.label).toBe('Getting ready');
+    expect(agentActivityFor('uncertain', [])?.label).toBe('Reconnecting');
+    expect(agentActivityFor('running', [])?.label).toBe('Thinking');
+    for (const state of ['completed', 'failed', 'cancelled']) expect(agentActivityFor(state, [])).toBeNull();
+  });
+  it('returns to thinking after a tool finishes instead of showing stale searching', () => {
+    const events = [{ kind: 'activity', payload: { ref: 'a', category: 'search', status: 'running' } }, { kind: 'activity', payload: { ref: 'a', category: 'search', status: 'done' } }];
+    expect(agentActivityFor('running', events)?.orb).toBe('breathing');
+  });
+  it('preserves another concurrent running tool when one finishes', () => {
+    const events = [{ kind: 'activity', payload: { ref: 'a', category: 'search', status: 'running' } }, { kind: 'activity', payload: { ref: 'b', category: 'command', status: 'running' } }, { kind: 'activity', payload: { ref: 'b', category: 'command', status: 'done' } }];
+    expect(agentActivityFor('running', events)?.orb).toBe('searching');
+  });
+  it('shows meaningful states for plans, approval, reading, and browsing', () => {
+    expect(agentActivityFor('running', [{ kind: 'plan' }])?.orb).toBe('weaving');
+    expect(agentActivityFor('running', [{ kind: 'approval_request' }])?.orb).toBe('listening');
+    expect(agentActivityFor('running', [{ kind: 'activity', payload: { category: 'file', tool: 'read' } }])?.label).toBe('Reading');
+    expect(agentActivityFor('running', [{ kind: 'activity', payload: { category: 'browse' } }])?.label).toBe('Browsing');
   });
 });

@@ -39,4 +39,4 @@ export interface AppInfo {
   limits: { max_message_chars: number; max_projects: number; max_conversations_per_project: number };
 }
 export interface RequestRow { id: string; message: string; state: string; cancel_requested: number; result: string | null; created_epoch: number; conversation_id?: string | null }
-export interface EventRow { id?: number; kind: string; payload?: { summary?: string; category?: string }; created_at: string }
+export interface EventRow { sequence?: number; id?: number; kind: string; payload?: { summary?: string; category?: string; status?: string; tool?: string; ref?: string }; created_at: string }

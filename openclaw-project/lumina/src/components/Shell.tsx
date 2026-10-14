@@ -55,7 +55,7 @@ export default function Shell() {
   const nav = useNavigate();
   return (
     <div className={`shell${rail ? '' : ' no-right'}${sidebarOpen ? '' : ' side-collapsed'}`}>
-      <Backdrop />
+      {!pathname.startsWith('/chat/') && <Backdrop />}
       <Sidebar />
       <main className="main">
         <div className="topbar">

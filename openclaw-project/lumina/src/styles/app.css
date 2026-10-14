@@ -186,11 +186,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .thread-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 4px 14px; } .thread-head h1 { font-size: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread-col .thread { flex: 1; } .turn { display: grid; gap: 8px; }
 .thread-composer { position: sticky; bottom: 0; padding: 10px 0 6px; background: linear-gradient(180deg, transparent, var(--bg) 35%); }
-.taskstrip { margin: 0 8% 0 15%; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(104,101,255,.3); background: rgba(104,101,255,.07); }
-.taskstrip.bad { border-color: rgba(239,96,96,.4); background: rgba(239,96,96,.06); color: var(--ink-2); }
-.ts-head { display: flex; align-items: center; gap: 8px; } .ts-head .faint { margin-right: auto; }
-.ts-steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; color: var(--ink-2); font-size: 13px; }
-@media (max-width: 960px) { .chatpage { grid-template-columns: minmax(0, 1fr); } .chatlist { position: static; max-height: 180px; } .taskstrip { margin: 0; } }
+@media (max-width: 960px) { .chatpage { grid-template-columns: minmax(0, 1fr); } .chatlist { position: static; max-height: 180px; } }
 .badge.run-running { border-color: rgba(104,101,255,.6); color: #cfcdff; background: rgba(104,101,255,.18); }
 .badge.run-completed { border-color: rgba(45,212,191,.45); color: var(--ok); background: rgba(45,212,191,.08); }
 .badge.run-awaiting_approval { border-color: rgba(245,185,66,.5); color: var(--warn); background: rgba(245,185,66,.08); }
@@ -230,11 +226,13 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 
 /* chat layout: the composer floats mid-page on a new chat, then settles at the bottom once a message is sent */
 .chatpage { min-height: calc(100vh - 56px); } .chatpage .thread-col { margin: 0 auto; max-width: 860px; min-height: calc(100vh - 56px); position: relative; }
-.chatpage .thread { padding: 8px 0 24px; gap: 22px; } .chatpage .thread-col .thread { flex: 1; }
+/* Fill the pane without distributing spare height into message rows. */
+.chatpage .thread { padding: 8px 0 24px; gap: 22px; align-content: start; } .chatpage .thread-col .thread { flex: 1; }
 .chatpage .bubble { border: 0; background: none; padding: 0; border-radius: 0; line-height: 1.65; font-size: 15.5px; }
 .chatpage .bubble.agent { margin: 0; max-width: 100%; }
 .chatpage .bubble.you { margin: 0 0 0 auto; width: fit-content; max-width: 78%; padding: 10px 18px; border-radius: 22px; background: rgba(104,101,255,.2); }
-.chatpage .turn { display: grid; gap: 14px; }
+.chatpage .turn { display: grid; gap: 14px; align-content: start; align-items: start; }
+.chatpage
 .dock { position: sticky; bottom: 0; z-index: 2; padding: 10px 0 8px; background: linear-gradient(180deg, transparent, var(--bg) 30%); transition: transform .6s var(--ease), background .3s; will-change: transform; }
 .greeting { position: absolute; left: 0; right: 0; bottom: 100%; padding-bottom: 14px; text-align: center; font-size: 30px; font-weight: 600; letter-spacing: -.01em; margin: 0; opacity: 0; pointer-events: none; transition: opacity .35s var(--ease); }
 .thread-col.fresh .greeting { opacity: 1; }
@@ -384,3 +382,9 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .greeting { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .greeting h1 { font: inherit; letter-spacing: inherit; margin: 0; }
 @media (max-height: 640px) { .greeting .orb { display: none; } }
+
+/* Pending replies occupy the assistant's left edge, sized to their content. */
+.agent-thinking { display: flex; align-items: center; gap: 10px; width: fit-content; min-height: 48px; color: var(--ink-2); font-size: 14px; }
+.agent-status-error { color: var(--ink-2); font-size: 14px; }
+.thread-head { flex-wrap: wrap; }
+.thread-head h1 { margin-right: auto; }
