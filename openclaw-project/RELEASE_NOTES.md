@@ -1,5 +1,7 @@
 # Release notes: 13-14 October 2026
 
+Latest: **live6** (14 Oct, evening). Sections marked *(live5)* and *(live6)* below are newer than the live1-live4 table.
+
 Everything below is **live** (verified: the server's 260 backend files and the live site's 4,509 frontend files are byte-identical to the committed code).
 GitHub suspended the owner's account on 14 Oct 2026 (after 00:51), so none of this has reached GitHub; see "Where the code is kept".
 
@@ -44,6 +46,18 @@ GitHub suspended the owner's account on 14 Oct 2026 (after 00:51), so none of th
   measured against the live JEV: "search for the spiciest food around me" went from 59% web to 100% browser. JEV adds about 6 s to web-related messages.
 - Every routed turn tells the assistant not to use its built-in browser tool (it fails inside the customer cell with `rename without replacement: Invalid argument`; not fixed, routed around).
 
+### Faster Live view and sites that block browsers *(live5, live6)*
+- **Thinking label** hangs lower-left of the orb on a small curved branch (frontend only).
+- **Clicks in Live view are immediate.** Before, every click you made while driving waited for the page to finish loading (up to about 8 seconds) before the next
+  input was accepted, and each click also triggered a screenshot. Now input returns the moment it is delivered, the pointer moves to the spot before it clicks, and a
+  ring appears under your cursor straight away. The saved snapshot (used only when live frames are unavailable) is taken at most every 4 seconds.
+- **A steadier, sharper picture.** 15 frames per second (was 8) at full size 1280x800 (was 960x600), and watching is noticed in a quarter of a second (was one second).
+  A frame that arrived too soon used to be discarded, which could freeze the picture on an old state (a spinner, a ticked box); it is now held and shown.
+- **Sites that ask "verify you are human"** (for example DoorDash): the browser waits a few seconds in case the check clears, then stops without guessing, and the
+  assistant takes over: it finds and ranks options from other sources, gives links, and tells you to finish the order on the site yourself. Nothing is claimed as
+  ordered. Lumina does not try to disguise its browser to get past such checks. Payment steps still end with you finishing them.
+- Failed model replies in the browser agent now say why ("the assistant gave no usable next step (...)") instead of "no valid decision (ValueError)".
+
 ### Security and quality
 - SonarQube cleanups; **CSRF is now enforced on file upload and download-ticket POSTs** (Lumina already sends the token).
 - A test that failed on busy machines (and blocked deploys) now waits longer.
@@ -59,8 +73,11 @@ GitHub suspended the owner's account on 14 Oct 2026 (after 00:51), so none of th
 | live1 | `5d8664b` | Live view (backend, browser runner, proxy route, frontend) |
 | live2 | `3b2fdbb` | Browser hardening, Live view polish, inline JSON cards |
 | live3 | `7dcc3fe` | OpenMoji emoji, JSON-card defaults fix, JEV service routing |
-| live4 | `d67d15e` | Sharper JEV service wording (now the running release) |
-Web app and browser service run the same code (`/opt/agentai-platform/current` and `/opt/agentai-supervisor/current`). Frontend files live in `/var/lib/agentai-platform/ui`.
+| live4 | `d67d15e` | Sharper JEV service wording |
+| live5 | `84d7ec6` | Verification-wall handoff in the browser agent; thinking-label branch (frontend `acfd9f8`) |
+| live6 | `f8658ee` | Instant takeover clicks, faster frames, verification-wall handover to the assistant (now the running release) |
+Up to live4 the web app and browser service ran the same code. live5 and live6 changed only the browser service and request worker (`/opt/agentai-supervisor/current`);
+the web app (`/opt/agentai-platform/current`) is still on live4, which is fine because nothing it runs changed. Release tags: `release/live5` (frontend), `release/live5-browse`, `release/live6`. Frontend files live in `/var/lib/agentai-platform/ui`.
 
 ## Changes made by hand on the server (not in git)
 - `/etc/agentai-platform/live.secret` (root:agentai-platform, 0640): the live-view ticket secret. `AGENTAI_LIVE_SECRET_FILE` added to `/etc/agentai-platform/accounts.env` (backup `accounts.env.bak-live1`).
@@ -68,24 +85,26 @@ Web app and browser service run the same code (`/opt/agentai-platform/current` a
 - `/opt/agentai-browse/runner/runner.mjs` updated for live frames (backup `runner.mjs.bak-live1`).
 - `/etc/systemd/system/openclaw-dashboard.service.d/feature-switches.conf`: lets the dashboard write `/opt/openclaw-production/feature-switches` only.
 - Owner switch `jev_services` turned ON with both confirmations recorded as given by the owner in chat on 2026-10-14 (`switches.json.bak-*` in the same folder).
+- `/opt/agentai-browse/runner/runner.mjs` replaced again for live6 (previous copy: `runner.mjs.bak-live5`; the one before: `runner.mjs.bak-live1`).
 - Dashboard files refreshed (backup `/opt/openclaw-production/dashboard.bak-20261014T081251Z`).
 
 ## How to roll back
 - **Web app + request worker:** point `/opt/agentai-platform/current` at the previous release (`releases/live3` etc.) and `systemctl restart agentai-platform-app agentai-request-worker`.
   Database backups from before each release: `/var/lib/agentai-platform/backup-*-premigrate-liveN.sqlite3` (the old release can still read the new schema).
-- **Browser service:** point `/opt/agentai-supervisor/current` at the previous release and `systemctl restart agentai-browse`.
+- **Browser service and request worker:** point `/opt/agentai-supervisor/current` at the previous release (`releases/live5`, then `live4`) and `systemctl restart agentai-browse agentai-request-worker`. Also restore `runner.mjs.bak-live5` over `runner.mjs`.
 - **Frontend:** `mv /var/lib/agentai-platform/ui.prev /var/lib/agentai-platform/ui` (one step back only).
 - **Smart services:** switch it off in the owner dashboard (Feature switches).
 - **Live view only:** remove `AGENTAI_LIVE_SECRET_FILE` from `accounts.env` and restart the app; the page falls back to snapshots.
 
 ## Where the code is kept (GitHub is suspended)
 - The repository on the owner's Mac (`/Users/parsa/AgentAI`), branch `product-phases-6-11`, with the release tags above.
-- Verified full backups: `/Users/parsa/AgentAI-backups/*.bundle` (restore with `git clone <file>.bundle <folder>`) (copy it off this Mac too; no copy is on the server yet).
+- Verified full backups (a copy of each also sits in `/root/` on the server, root-only): `/Users/parsa/AgentAI-backups/*.bundle` (restore with `git clone <file>.bundle <folder>`) (copy one off this Mac too).
 - Not yet on GitHub: every commit since `d21e6b5` (13 Oct). When the account is restored: `gh auth login`, then `git push --all && git push --tags`.
 
 ## Known limits and open items
 - GitHub account suspended; appeal at support.github.com.
 - Hop-in works on browser tasks only; coding tasks get the Terminal and Files views about 1.5 s behind their activity.
-- The thinking label as a branch off the orb is designed but not built.
+- Sites that block automated browsers (DoorDash and similar) cannot be ordered from by Lumina; it ranks options and you order on the site.
+- The web app release is behind the browser service by design (see releases table).
 - Two stale `queued` rows from earlier failed browser runs remain in `browse_runs` (harmless).
 - `accounts.test_streams` and `tests.test_chat_history` fail on a clean checkout (older issues, unrelated to the above).
