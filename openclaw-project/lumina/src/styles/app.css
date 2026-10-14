@@ -384,7 +384,11 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 @media (max-height: 640px) { .greeting .orb { display: none; } }
 
 /* Pending replies occupy the assistant's left edge, sized to their content. */
-.agent-thinking { display: flex; align-items: center; gap: 10px; width: fit-content; min-height: 48px; color: var(--ink-2); font-size: 14px; }
+.agent-thinking { display: grid; grid-template-columns: 48px auto; grid-template-rows: 48px auto; width: fit-content; color: var(--ink-2); font-size: 14px; }
+/* The label hangs lower-left of the orb on a small curved branch. */
+.agent-thinking > :first-child { grid-column: 1; grid-row: 1; }
+.agent-thinking > span { grid-column: 1 / -1; grid-row: 2; position: relative; margin: 2px 0 0 24px; padding: 6px 0 0 18px; line-height: 1.3; }
+.agent-thinking > span::before { content: ''; position: absolute; left: 0; top: -2px; width: 14px; height: 18px; border-left: 1.5px solid var(--ink-3, currentColor); border-bottom: 1.5px solid var(--ink-3, currentColor); border-bottom-left-radius: 12px; opacity: .55; }
 .agent-status-error { color: var(--ink-2); font-size: 14px; }
 .thread-head { flex-wrap: wrap; }
 .thread-head h1 { margin-right: auto; }
