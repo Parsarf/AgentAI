@@ -1,4 +1,5 @@
-import Markdown from 'react-markdown';
+import { memo } from 'react';
+import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Root, PhrasingContent } from 'mdast';
 import './response.css';
@@ -25,11 +26,16 @@ function sourceLinks() {
     }
   };
 }
-export default function AgentResponse({ content }: { content: string }) {
-  return <div className="agent-response"><Markdown remarkPlugins={[remarkGfm, sourceLinks]} skipHtml components={{
+const PLUGINS = [remarkGfm, sourceLinks];
+const COMPONENTS: Components = {
     a: ({ href, children }) => { const url = href && safeResponseUrl(href); return url ? <a href={url} target="_blank" rel="noopener noreferrer">{children}<span className="sr"> (opens in a new tab)</span></a> : <span>{children}</span>; },
     p: ({ node, children }) => <p className={node?.children.some(c => c.type === 'text' && /^Sources?:/i.test(c.value.trim())) ? 'answer-sources' : undefined}>{children}</p>,
     img: ({ alt, src }) => <span>{alt || 'Image'}{src && safeResponseUrl(src) && <> — <a href={safeResponseUrl(src)} target="_blank" rel="noopener noreferrer">View image ↗</a></>}</span>,
     table: ({ children }) => <div className="answer-table" role="region" aria-label="Response table" tabIndex={0}><table>{children}</table></div>,
-  }}>{content}</Markdown></div>;
+  };
+
+/** Parsed once per message: it only re-renders when its text changes, not on every chat refresh (that re-parse froze scrolling). */
+function AgentResponse({ content }: { content: string }) {
+  return <div className="agent-response"><Markdown remarkPlugins={PLUGINS} skipHtml components={COMPONENTS}>{content}</Markdown></div>;
 }
+export default memo(AgentResponse);

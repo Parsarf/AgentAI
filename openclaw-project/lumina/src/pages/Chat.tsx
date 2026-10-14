@@ -15,6 +15,9 @@ import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 
+/** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
+const same = <T,>(prev: T, next: T): T => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
+
 export default function Chat() {
   const { id } = useParams(); const nav = useNavigate(); const { refresh, chats, refreshChats, app } = useData();
   const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
@@ -37,8 +40,9 @@ export default function Chat() {
         api<{ conversation: ChatSummary }>('GET', `/v1/conversations/${id}`),
       ]);
       if (!currentLoad()) return;
-      cachedMessages.current = [...cachedMessages.current, ...m.messages];
-      setMsgs(cachedMessages.current); setTasks([...m.tasks].sort((a, b) => a.created_epoch - b.created_epoch)); setBlocks(b.blocks); setDetail(c.conversation); setErr(''); setLoaded(true);
+      // A refresh while a task runs usually changes nothing: keep the same objects so the thread does not re-render (that froze scrolling).
+      if (m.messages.length) { cachedMessages.current = [...cachedMessages.current, ...m.messages]; setMsgs(cachedMessages.current); }
+      setTasks(prev => same(prev, [...m.tasks].sort((a, b) => a.created_epoch - b.created_epoch))); setBlocks(prev => same(prev, b.blocks)); setDetail(prev => same(prev, c.conversation)); setErr(''); setLoaded(true);
     } catch { if (currentLoad()) { setErr('This chat could not be loaded. Please try again.'); setLoaded(true); } }
   }, [id]);
   const reload = useCallback(() => { void loadThread(); void loadList(); void refresh(); }, [loadThread, loadList, refresh]);
