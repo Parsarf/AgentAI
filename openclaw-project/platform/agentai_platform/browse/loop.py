@@ -90,7 +90,7 @@ class BrowseRunner:
                     break
                 snap = again
             if cand.page_is_bot_check(snap.get('title', ''), snap.get('text', '')):
-                return self._end(res, 'handoff', 'the site is asking to verify you are human; use Take control to pass the check, then return the browser to me', history, snap.get('url', ''))
+                return self._end(res, 'handoff', 'the site is asking to verify you are human, which I cannot pass for you', history, snap.get('url', ''))
             url = snap.get('url', '')
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
