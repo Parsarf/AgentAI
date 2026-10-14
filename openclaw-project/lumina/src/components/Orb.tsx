@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { MODE_DRAWS, resolvePreset, type OrbState } from '../vendor/thinking-orbs';
-import { useReducedMotion } from '../vendor/thinking-orbs/theme';
 import { addOrb } from '../lib/orbLoop';
 import { MAX_ANIMATED_ORBS } from '../lib/orbs';
 import { useSettings } from '../state/settings';
@@ -16,17 +15,18 @@ function register(id: string) {
 }
 
 /**
- * Lumina's "thinking" indicator: the thinking-orbs drawing engine, driven by one shared 24 fps loop (lib/orbLoop.ts) instead of a 60 fps loop
- * per orb. Drawn only while on screen and never while the page scrolls; a still frame when Lumina's reduced-motion setting or the system's is
- * on; at most MAX_ANIMATED_ORBS animate at once. Lumina is always dark, so the light-ink palette is fixed (no page-wide theme observers).
+ * Lumina's "thinking" indicator: the thinking-orbs drawing engine, driven by one shared 15 fps clock (lib/frameClock.ts) instead of a 60 fps loop
+ * per orb. Drawn only while on screen and never while the page scrolls or you type; a still frame when Lumina's Reduce motion setting is on
+ * (that setting starts from the system's and is the one switch for the planet and the orbs alike, so turning animations on in Lumina turns
+ * them on everywhere); at most MAX_ANIMATED_ORBS animate at once. Lumina is always dark, so the light-ink palette is fixed.
  * Decorative by default: put the meaning in the text beside it, or pass `label` to make it an image with a name.
  */
 export default function Orb({ state = 'breathing', size = 20, label, still = false }: { state?: OrbState; size?: 20 | 64; label?: string; still?: boolean }) {
-  const id = useId(); const { reducedMotion } = useSettings(); const systemReduced = useReducedMotion();
+  const id = useId(); const { reducedMotion } = useSettings();
   const order = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => register(id), [id]);
   const rank = order.indexOf(id);
-  const animate = !reducedMotion && !systemReduced && !still && rank >= 0 && rank < MAX_ANIMATED_ORBS;
+  const animate = !reducedMotion && !still && rank >= 0 && rank < MAX_ANIMATED_ORBS;
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
