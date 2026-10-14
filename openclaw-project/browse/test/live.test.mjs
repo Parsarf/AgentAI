@@ -28,3 +28,18 @@ test('live view: frames are written only while the host marks the stage as watch
   rmSync(mark, { force: true }); await sleep(6500); await r.liveSync();
   assert.equal(r.live, null, 'screencast stops when the marker goes stale');
 });
+
+test('takeover input returns at once: a click that starts a slow page load does not hold up the next input', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  await r.page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<a id=s href=/slow style="position:fixed;left:0;top:0;width:200px;height:50px;background:#f00">go</a>'));
+  const began = Date.now();
+  const res = await r.handle({ cmd: 'xy', action: 'click', x: 50, y: 25 });
+  const took = Date.now() - began;
+  assert.equal(res.ok, true);
+  assert.ok(took < 900, `the click took ${took} ms; it must not wait for the page to settle (the page needs ~1500 ms)`);
+  const next = Date.now(); const key = await r.handle({ cmd: 'xy', action: 'key', text: 'Tab' });
+  assert.equal(key.ok, true); assert.ok(Date.now() - next < 900, 'the next input is not queued behind a load');
+  const title = async () => { try { return await r.page.title(); } catch { return ''; } };   // mid-navigation reads throw
+  for (let i = 0; i < 40 && (await title()) !== 'Slow'; i++) await sleep(100);
+  assert.equal(await title(), 'Slow', 'the click really happened');
+});
