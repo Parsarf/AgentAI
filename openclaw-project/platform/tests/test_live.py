@@ -98,14 +98,15 @@ class GatewayTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
             conn = http.client.HTTPConnection('127.0.0.1', server.server_address[1], timeout=5)
-            conn.request('GET', f'/live/{RID}/frame?t={self.t}&after=0')
+            conn.request('GET', f'/v1/live/{RID}/frame?t={self.t}&after=0')
             r = conn.getresponse(); body = r.read()
             self.assertEqual((r.status, body), (200, b'\xff\xd8http'))
             self.assertEqual(r.getheader('Cache-Control'), 'no-store'); self.assertEqual(r.getheader('X-Content-Type-Options'), 'nosniff')
             conn.request('GET', f'/live/{RID}/frame?t={self.t}&after={r.getheader("X-Seq")}')   # same connection: keep-alive works
             r = conn.getresponse(); r.read(); self.assertEqual(r.status, 204)
-            for method, path, want in (('GET', '/live/xyz/frame?t=1', 404), ('GET', f'/live/{RID}/other', 404), ('POST', f'/live/{RID}/frame', 405),
-                                       ('GET', f'/live/{RID}/frame?t=bad', 403), ('GET', '/' + 'a' * 700, 414)):
+            for method, path, want in (('GET', '/v1/live/xyz/frame?t=1', 404), ('GET', f'/v1/live/{RID}/other', 404), ('POST', f'/v1/live/{RID}/frame', 405),
+                                       ('GET', f'/live/{RID}/frame?t={self.t}&after={r.getheader("X-Seq")}', 204), ('GET', f'/v2/live/{RID}/frame?t={self.t}', 404),
+                                       ('GET', f'/v1/live/{RID}/frame?t=bad', 403), ('GET', '/' + 'a' * 700, 414)):
                 conn.request(method, path); r = conn.getresponse(); r.read(); self.assertEqual(r.status, want, (method, path))
         finally:
             conn.close(); server.shutdown(); server.server_close()

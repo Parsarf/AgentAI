@@ -1,6 +1,6 @@
 """Frame gateway: a small server, separate from the web app, that serves the newest frame of a running browser task.
 
-  GET /live/<task>/frame?t=<ticket>&after=<seq>
+  GET /v1/live/<task>/frame?t=<ticket>&after=<seq>        (also /live/<task>/frame)
 
 Returns the newest frame (200, image/jpeg, X-Seq) as soon as it differs from `after`, or 204 after a short hold when nothing changed.
 A client loops on this, so it always shows the latest picture and a slow client simply skips frames; no video connection is held open,
@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .ticket import REQUEST_ID, TicketError, verify
 
-PATH = re.compile(r'^/live/([a-f0-9]{32})/frame$')
+PATH = re.compile(r'^(?:/v1)?/live/([a-f0-9]{32})/frame$')      # /v1/... travels the same proxy route as the rest of the API
 HOLD_SECONDS = 2.5
 STEP_SECONDS = 0.04
 MAX_WAITERS = 12                  # a single small server: more viewers than this get "try again" instead of slowing everyone

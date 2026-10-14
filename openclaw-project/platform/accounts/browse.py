@@ -163,7 +163,7 @@ def live(request, request_id):
         raise Denied()                                           # live view is not set up on this server: the page falls back to snapshots
     if row['status'] not in LIVE:
         return JsonResponse({'error': 'not_available'}, status=409)
-    base = getattr(settings, 'LIVE_PATH', '/live').rstrip('/')
+    base = getattr(settings, 'LIVE_PATH', '/v1/live').rstrip('/')
     try:
         minted = live_ticket.mint(secret, request.account_id, request_id)
     except live_ticket.TicketError:

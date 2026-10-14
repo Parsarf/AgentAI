@@ -396,7 +396,7 @@ class BrowseHttpChecks(ChatHTTPChecks):
                 got = self.post(a, f'/v1/browse/{rid}/live', {})
                 self.assertEqual(got.status_code, 200)
                 body = got.json()
-                self.assertEqual(body['path'], f'/live/{rid}/frame')
+                self.assertEqual(body['path'], f'/v1/live/{rid}/frame')
                 self.assertEqual(ticket.verify(b'k' * 48, body['ticket'], rid), self.account_ids[0])    # bound to the owner and this one task
                 with connection.cursor() as c:
                     c.execute("UPDATE browse_runs SET status='done' WHERE request_id=%s", [rid])

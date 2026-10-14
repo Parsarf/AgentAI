@@ -1,5 +1,14 @@
 # Customer HTTPS edge only. Owner Gateway and internal operator API stay private.
 backend.getlumina.pro {
+    # Live view frames: exactly one path shape, to the frame gateway inside the browse service (never the web app's single worker).
+    # It must come before the general /v1 rule below, and it rides the /v1 route Vercel already forwards.
+    @liveframe path_regexp liveframe ^/v1/live/[a-f0-9]{32}/frame$
+    handle @liveframe {
+        reverse_proxy 127.0.0.1:18801 {
+            flush_interval -1
+            header_up -Forwarded
+        }
+    }
     @customer path /account /account/* /auth /auth/* /v1 /v1/* /app /app/*
     handle @customer {
         reverse_proxy 127.0.0.1:18800 {
@@ -7,14 +16,6 @@ backend.getlumina.pro {
             header_up X-Forwarded-Proto https
             header_up X-AgentAI-Client-IP {remote_host}
             header_up X-Forwarded-For {remote_host}
-            header_up -Forwarded
-        }
-    }
-    # Live view frames: exactly one path shape, to the frame gateway inside the browse service (never the web app's single worker).
-    @liveframe path_regexp liveframe ^/live/[a-f0-9]{32}/frame$
-    handle @liveframe {
-        reverse_proxy 127.0.0.1:18801 {
-            flush_interval -1
             header_up -Forwarded
         }
     }

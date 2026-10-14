@@ -114,7 +114,7 @@ UI_BUNDLE_DIR = os.environ.get('AGENTAI_UI_BUNDLE_DIR', '/var/lib/agentai-platfo
 BROWSE_SOCKET = os.environ.get('AGENTAI_BROWSE_SOCKET', '/run/agentai-browse/browse.sock')
 # Live view: the frame gateway is a separate process; this file holds the secret both sides use to sign and check watch tickets.
 LIVE_SECRET_FILE = os.environ.get('AGENTAI_LIVE_SECRET_FILE', '')
-LIVE_PATH = os.environ.get('AGENTAI_LIVE_PATH', '/live')
+LIVE_PATH = os.environ.get('AGENTAI_LIVE_PATH', '/v1/live')
 CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
 
 # Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.

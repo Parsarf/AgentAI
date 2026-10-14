@@ -12,8 +12,7 @@ if (config.rewrites) {
     { src: '^/$', dest: backend + '/app/' },
     { src: '^/account/?$', dest: backend + '/account/' },
     { src: '^/account/(.*?)/?$', dest: backend + '/account/$1/' },
-    { src: '^/(auth|v1|app)(/.*)?$', dest: backend + '/$1$2' },
-    { src: '^/live/([a-f0-9]{32})/frame$', dest: backend + '/live/$1/frame' }      // live view frames only; nothing else under /live
+    { src: '^/(auth|v1|app)(/.*)?$', dest: backend + '/$1$2' }
   );
 } else {
   copyFileSync(new URL('./public/index.html', import.meta.url), new URL('static/index.html', output));

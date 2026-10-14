@@ -17,17 +17,24 @@ What it is: the Lumina **Live view** page shows a running browser task as a live
 * Frames live in the same 0700 job folder as screenshots and are deleted with it after 24 hours. The gateway runs inside the browse service
   because only that process may read those folders; no folder permissions were loosened.
 
-## One-time setup on the server (not done by the repo)
-1. Create the shared secret, readable by root only (the browse service) and by the web app's group:
-   `head -c 48 /dev/urandom | base64 > /etc/agentai-platform/live.secret; chown root:agentai-platform /etc/agentai-platform/live.secret; chmod 0640 /etc/agentai-platform/live.secret`
-2. Web app environment (`accounts.env`): `AGENTAI_LIVE_SECRET_FILE=/etc/agentai-platform/live.secret`. Restart the app service.
-3. Restart `agentai-browse` (it starts the gateway when the secret file exists; without it, live view is simply off and the page shows snapshots).
-4. Caddy: install the new `@liveframe` block from `caddy/Caddyfile.getlumina`, `caddy validate`, then reload. It allows exactly `/live/<32 hex>/frame`.
-5. Vercel: redeploy `deploy/vercel` (adds the same single path to the output routes).
-6. Ship the new Lumina bundle with `bin/deploy-lumina.py --apply` (and the new runner: `/opt/agentai-browse/runner/runner.mjs`).
-   The stage image does not need to change: the screencast uses Chrome's built-in protocol.
+## Route
+Frames are fetched from `/v1/live/<task>/frame`, which rides the `/v1` route that Vercel already forwards to the server: no Vercel change.
+On the server, Caddy sends exactly that path shape to the gateway (`127.0.0.1:18801`) **before** its general `/v1` rule
+(see `caddy/Caddyfile.getlumina`); everything else under `/v1` still goes to the web app.
 
-Roll back: remove `AGENTAI_LIVE_SECRET_FILE` and restart the app (the page falls back to snapshots), or `mv ui.prev ui` for the page itself.
+## Setup on the server
+1. Secret, readable by root (the browse service) and the web app's group:
+   `head -c 48 /dev/urandom | base64 > /etc/agentai-platform/live.secret; chown root:agentai-platform /etc/agentai-platform/live.secret; chmod 0640 /etc/agentai-platform/live.secret`
+2. Web app environment (`accounts.env`): `AGENTAI_LIVE_SECRET_FILE=/etc/agentai-platform/live.secret`.
+3. Release the backend (`deploy/release.py`), put the same `agentai_platform` into a new `/opt/agentai-supervisor/releases/<id>` and switch its
+   `current` link, restart `agentai-request-worker` and `agentai-browse` (the browse service starts the gateway when the secret file exists;
+   without it, live view is simply off and the page shows snapshots).
+4. Copy the new `browse/runner.mjs` to `/opt/agentai-browse/runner/` (each browser job mounts it fresh).
+5. Caddy: add the `@liveframe` block, `caddy validate`, reload.
+6. Ship the Lumina bundle with `bin/deploy-lumina.py --apply`.
+
+Roll back: remove `AGENTAI_LIVE_SECRET_FILE` and restart the app (the page falls back to snapshots); `mv ui.prev ui` for the page itself;
+`release.py` rolls the web app back on its own if the new release fails its probes; point the supervisor `current` link back and restart the browse service.
 
 ## Not covered yet
 * Coding and computer tasks: the Terminal and Files views follow the agent's tool events (about 1.5 s behind, output trimmed and redacted).
