@@ -17,3 +17,8 @@ describe('conversation background', () => {
     expect(screen.getByTestId('backdrop')).toBeTruthy();
   });
 });
+
+it('keeps the live workspace free of background scenery', () => {
+  render(<MemoryRouter initialEntries={['/live']}><Shell /></MemoryRouter>);
+  expect(screen.queryByTestId('backdrop')).toBeNull();
+});

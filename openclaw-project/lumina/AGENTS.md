@@ -29,3 +29,19 @@ errors visible without a looping orb. Preserve reduced-motion support.
 Thinking orbs run at 55% of the library preset speed and blend states over 600ms.
 Keep their motion timeline continuous across state changes, preserve the displayed
 frame if a transition is interrupted, and skip blends when motion is reduced.
+
+The transcript has a bounded width with `minmax(0, 1fr)` grid tracks. Prose and
+inline code wrap naturally (long tokens must not widen the page); fenced code
+preserves lines and scrolls horizontally within a keyboard-focusable code box.
+Wide tables scroll within their own container. Never add horizontal scrolling to
+ordinary paragraphs. Recognized read-only JSON cards are schema-validated before
+rendering; malformed data and code examples remain literal, locally scrollable code.
+Verify charts plus very long code lines, prose, URLs, and tables at mobile/desktop
+widths, including the visible scrollbar and ability to reach the end of a code line.
+
+Live view opens the newest active task directly, with a compact task selector for
+history. Show observable tool activity and reported terminal output, never invented
+reasoning or simulated shell output. Browser takeover is enabled only after the
+backend confirms pause/handoff and takeover. Sensitive text is masked by default,
+cleared after submission, and never stored in local/session storage. Browser input
+must be serialized before returning control. Keep task details bounded on mobile.

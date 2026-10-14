@@ -39,3 +39,9 @@ describe('assistant thinking indicator', () => {
     expect(screen.queryByTestId('orb')).toBeNull();
   });
 });
+
+it('shows the server explanation for a failed task', () => {
+  render(<AgentThinking task={{ ...task, state: 'failed', result: 'The browser task was interrupted. Please try again.' }} />);
+  expect(screen.getByText('The browser task was interrupted. Please try again.')).toBeTruthy();
+  expect(screen.queryByTestId('orb')).toBeNull();
+});

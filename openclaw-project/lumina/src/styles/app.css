@@ -422,3 +422,38 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .live-side .act-list { flex: 1; min-height: 0; padding: 0; }
 @media (max-width: 1100px) { .live-grid { grid-template-columns: minmax(0, 1fr); } .live-side { position: static; max-height: none; } .live-side .act-list { max-height: 320px; } }
 @media (max-width: 640px) { .live-main { padding: 10px; } .live-type .btn { flex: 1 1 auto; } .live-term { height: 50vh; } }
+
+/* Intrinsic code/table widths must never determine the conversation width. */
+.chatpage .thread-col { width: 100%; min-width: 0; }
+.chatpage .thread, .chatpage .turn { grid-template-columns: minmax(0, 1fr); min-width: 0; max-width: 100%; }
+.chatpage .bubble, .chatpage .dock { min-width: 0; max-width: 100%; }
+.chatpage .bubble.agent { width: 100%; }
+
+/* Live view is a tool workspace, not a task-history page. */
+.live-workspace { max-width: 1500px; margin: 0 auto; padding: 18px 12px; min-width: 0; }
+.live-workspace-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 26px; flex-wrap: wrap; }
+.live-workspace-head h1 { font-size: 30px; letter-spacing: -.03em; margin: 5px 0 8px; }
+.live-eyebrow { color: var(--ink-3); font-size: 10px; letter-spacing: .18em; }
+.live-task-picker { display: grid; gap: 6px; width: min(360px, 100%); }
+.live-task-picker label { color: var(--ink-3); font-size: 12px; }
+.live-task-picker select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--ink); background: #14141c; }
+.live-chat-link { font-size: 12px; color: var(--ink-2); margin-bottom: 10px; }
+.live-goal { font-size: 16px; line-height: 1.5; flex: 1 1 300px; min-width: 0; overflow-wrap: anywhere; }
+.live-workspace .live-head { margin-bottom: 18px; }
+.live-workspace .live-main { padding: 16px; background: #101016; }
+.live-workspace .live-stage { margin-top: 14px; }
+.live-workspace .live-term { min-height: 420px; max-height: min(70vh, 700px); }
+.live-workspace .live-side { max-height: min(80vh, 850px); overflow: auto; background: #101016; }
+.live-assistance { border: 1px solid rgba(255,180,84,.35); border-radius: 12px; background: rgba(255,180,84,.06); padding: 16px; margin-top: 14px; }
+.live-assistance h3 { color: #ffcb80; }
+.live-show-text { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.live-show-text input { width: auto; }
+.live-empty { display: grid; gap: 14px; justify-items: center; text-align: center; padding: 80px 24px; }
+.live-empty > span { font-size: 48px; color: var(--neon); font-family: monospace; }
+.live-empty p { max-width: 460px; color: var(--ink-2); }
+@media (max-width: 1100px) { .live-workspace .live-grid { grid-template-columns: minmax(0, 1fr); } .live-workspace .live-side { max-height: 300px; } }
+@media (max-width: 600px) { .live-workspace { padding: 12px 0; } .live-workspace .live-main { padding: 10px; } .live-workspace .live-term { min-height: 280px; } }
+
+.live-show-text input[type="checkbox"] { flex: none; padding: 0; }
+.live-workspace .live-meta { padding-top: 0; }
+.live-workspace .livepage { max-width: none; }

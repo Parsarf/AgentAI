@@ -3,6 +3,8 @@ import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Root, PhrasingContent } from 'mdast';
 import './response.css';
+import { inlineCard } from '../../lib/genui/inline';
+import { ChartCard, ComparisonCard, TableCard } from '../genui/Cards';
 
 export function safeResponseUrl(value: string): string | undefined {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
@@ -27,9 +29,32 @@ function sourceLinks() {
   };
 }
 const PLUGINS = [remarkGfm, sourceLinks];
+function dataCard(value: string) {
+  const card = inlineCard(value);
+  if (!card) return null;
+  if (card.kind === 'chart') return <ChartCard spec={card.spec} />;
+  if (card.kind === 'table') return <TableCard spec={card.spec} />;
+  return <ComparisonCard spec={card.spec} />;
+}
 const COMPONENTS: Components = {
     a: ({ href, children }) => { const url = href && safeResponseUrl(href); return url ? <a href={url} target="_blank" rel="noopener noreferrer">{children}<span className="sr"> (opens in a new tab)</span></a> : <span>{children}</span>; },
-    p: ({ node, children }) => <p className={node?.children.some(c => c.type === 'text' && /^Sources?:/i.test(c.value.trim())) ? 'answer-sources' : undefined}>{children}</p>,
+    p: ({ node, children }) => {
+      const textOnly = node?.children.every(c => c.type === 'text');
+      const value = textOnly ? node!.children.map(c => c.type === 'text' ? c.value : '').join('') : '';
+      return dataCard(value) ?? <p className={node?.children.some(c => c.type === 'text' && /^Sources?:/i.test(c.value.trim())) ? 'answer-sources' : undefined}>{children}</p>;
+    },
+    pre: ({ node, children }) => {
+      const code = node?.children.find(c => c.type === 'element' && c.tagName === 'code');
+      if (code?.type === 'element') {
+        const language = String(code.properties.className ?? '').replace('language-', '').trim().toLowerCase();
+        if (['', 'json', 'chart', 'genui', 'lumina'].includes(language)) {
+          const value = code.children.map(c => c.type === 'text' ? c.value : '').join('');
+          const card = dataCard(value);
+          if (card) return card;
+        }
+      }
+      return <pre role="region" aria-label="Code block" tabIndex={0}>{children}</pre>;
+    },
     img: ({ alt, src }) => <span>{alt || 'Image'}{src && safeResponseUrl(src) && <> — <a href={safeResponseUrl(src)} target="_blank" rel="noopener noreferrer">View image ↗</a></>}</span>,
     table: ({ children }) => <div className="answer-table" role="region" aria-label="Response table" tabIndex={0}><table>{children}</table></div>,
   };

@@ -6,11 +6,12 @@ import { ICON, type ActivityItem } from '../lib/activity';
 export function LiveTerminal({ rows, active }: { rows: ActivityItem[]; active: boolean }) {
   const box = useRef<HTMLDivElement>(null); const stick = useRef(true);
   useEffect(() => { if (stick.current) box.current?.scrollTo({ top: box.current.scrollHeight }); }, [rows.length, rows[rows.length - 1]?.status, rows[rows.length - 1]?.output]);
-  const lines = rows.filter(r => r.category !== 'note' || r.label);
+  const commands = rows.some(r => r.category === 'command');
+  const lines = commands ? rows.filter(r => ['command', 'note', 'error'].includes(r.category)) : rows;
   return (
-    <div className="live-term" ref={box} role="log" aria-label="Terminal" aria-live="off"
+    <div className="live-term" ref={box} tabIndex={0} role="log" aria-label={commands ? 'Terminal' : 'Activity log'} aria-live="off"
       onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}>
-      {lines.length === 0 && <p className="faint">{active ? 'Waiting for the first command…' : 'No commands were recorded for this task.'}</p>}
+      {lines.length === 0 && <p className="faint">{active ? 'Waiting for the first tool activity…' : 'No tool activity was recorded for this task.'}</p>}
       {lines.map(r => r.category === 'command'
         ? (<div key={r.key} className={`term-block ${r.status}`}>
             <div className="term-cmd"><span className="term-prompt" aria-hidden="true">$</span> <code>{r.detail || r.label}</code>{r.status === 'running' && <span className="term-cursor" aria-label="running" />}{r.status === 'failed' && <span className="act-bad"> · failed</span>}</div>

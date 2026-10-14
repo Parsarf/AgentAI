@@ -24,3 +24,33 @@ describe('formatted agent answers', () => {
     expect(document.querySelector('script')).toBeNull();
   });
 });
+
+const reportedPie = { schemaVersion: '1.0', type: 'pie', title: "What's Working Today 🎯", labels: ['Tables', 'Charts', 'Comparisons', 'Emojis', 'Details blocks'], series: [{ name: 'Ready', values: [20, 20, 20, 20, 20] }] };
+describe('structured replies and long lines', () => {
+  it('renders the reported JSON as a pie chart inside the reply', () => {
+    render(<AgentResponse content={'Data visualizations ✨\n\n```json\n' + JSON.stringify(reportedPie) + '\n```\n\nMore normal text.'} />);
+    expect(screen.getByRole('img', { name: reportedPie.title })).toBeTruthy();
+    expect(screen.getByText('More normal text.')).toBeTruthy();
+    expect(document.querySelector('pre')).toBeNull();
+    expect(document.body.textContent).not.toContain('schemaVersion');
+  });
+  it('also handles a raw JSON card paragraph and the canonical chart schema', () => {
+    render(<AgentResponse content={JSON.stringify({ ...reportedPie, type: 'chart', chart: 'pie' })} />);
+    expect(screen.getByRole('img', { name: reportedPie.title })).toBeTruthy();
+  });
+  it('leaves invalid chart data and explicitly typed programming examples as code', () => {
+    const invalid = { ...reportedPie, series: [{ name: 'Bad', values: [-1, 20, 20, 20, 20] }] };
+    render(<AgentResponse content={'```json\n' + JSON.stringify(invalid) + '\n```\n\n```javascript\n' + JSON.stringify(reportedPie) + '\n```'} />);
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.getAllByRole('region', { name: 'Code block' })).toHaveLength(2);
+    expect(document.querySelectorAll('pre code')).toHaveLength(2);
+  });
+  it('keeps preserved code lines keyboard-scrollable and prose in paragraphs', () => {
+    const line = 'const value = "' + 'x'.repeat(2000) + '";';
+    render(<AgentResponse content={'A normal paragraph that wraps.\n\n```js\n' + line + '\n```'} />);
+    expect(screen.getByText('A normal paragraph that wraps.').tagName).toBe('P');
+    const code = screen.getByRole('region', { name: 'Code block' });
+    expect(code.getAttribute('tabindex')).toBe('0');
+    expect(code.textContent).toContain(line);
+  });
+});

@@ -37,8 +37,9 @@ describe('live view helpers', () => {
     expect(keyAction({ key: 'a' })).toEqual({ kind: 'text', text: 'a' });
     expect(keyAction({ key: ' ' })).toEqual({ kind: 'text', text: ' ' });
     expect(keyAction({ key: 'Enter' })).toEqual({ kind: 'key', text: 'Enter' });
+    expect(keyAction({ key: 'ArrowLeft' })).toEqual({ kind: 'key', text: 'ArrowLeft' });
     expect(keyAction({ key: 'Backspace' })).toEqual({ kind: 'key', text: 'Backspace' });
-    for (const k of ['F5', 'Shift', 'Meta', 'ArrowLeft', 'Delete', 'Dead']) expect(keyAction({ key: k })).toBeNull();
+    for (const k of ['F5', 'Shift', 'Meta', 'Delete', 'Dead']) expect(keyAction({ key: k })).toBeNull();
     expect(keyAction({ key: 'r', metaKey: true })).toBeNull();                                      // Cmd/Ctrl+R stays the browser's own
     expect(keyAction({ key: 'w', ctrlKey: true })).toBeNull();
     expect(keyAction({ key: 'x', altKey: true })).toBeNull();

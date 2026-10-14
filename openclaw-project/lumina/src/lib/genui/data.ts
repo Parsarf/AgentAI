@@ -14,7 +14,8 @@ export const tableSpec = z.object({
 export const chartSpec = z.object({
   schemaVersion: z.literal('1.0'), type: z.literal('chart'), chart: z.enum(['bar', 'line', 'pie', 'donut']), title: t(120), caption: t(240).optional(), unit: t(12).optional(),
   labels: z.array(t(60)).min(1).max(40), series: z.array(z.object({ name: t(60), values: z.array(z.number()) }).strict()).min(1).max(4),
-}).strict().refine(c => c.series.every(s => s.values.length === c.labels.length));
+}).strict().refine(c => c.series.every(s => s.values.length === c.labels.length))
+  .refine(c => !['pie', 'donut'].includes(c.chart) || (c.series.length === 1 && c.series[0].values.every(v => v >= 0)));
 
 export const comparisonSpec = z.object({
   schemaVersion: z.literal('1.0'), type: z.literal('comparison'), title: t(120), caption: t(240).optional(), bestIndex: z.number().int().min(0).optional(),

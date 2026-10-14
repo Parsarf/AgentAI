@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { ICON } from '../lib/activity';
 import { ago, elapsed, title as clip } from '../lib/format';
@@ -12,65 +12,57 @@ import { LiveFiles, LiveTerminal } from '../components/LiveTerminal';
 
 
 /** Everything Lumina is doing, in one place: its browser, its terminal and its files, live. Hop in on a browser task at any time. */
-function LiveList() {
-  const { requests } = useData();
-  const rows = [...requests].sort((a, b) => Number(isActive(b.state)) - Number(isActive(a.state)) || b.created_epoch - a.created_epoch).slice(0, 30);
-  return (
-    <div className="livepage"><h1 className="page-title">Live view</h1>
-      <section className="panel card">
-        <h2>Watch Lumina work</h2>
-        {rows.length === 0 && <p className="faint" style={{ marginTop: 8 }}>Nothing yet. Ask Lumina to do something and you can watch it here, live.</p>}
-        {rows.map(r => {
-          const p = phase(r.state); const on = isActive(r.state);
-          return (
-            <p key={r.id} className="live-row"><Link to={`/live/${r.id}`}>{clip(r.message, 90)}</Link>
-              <span className="faint"> · {on ? (p === 'queued' ? 'Queued' : 'Working now') : p === 'completed' ? 'Done' : p === 'failed' ? 'Stopped' : 'Cancelled'} · {ago(r.created_epoch)}</span>{on && <span className="pill live" style={{ marginLeft: 8 }}>Live</span>}</p>);
-        })}
-      </section></div>);
-}
 
 function LiveRun({ id }: { id: string }) {
-  const { app, requests } = useData();
+  const { app, requests, refresh } = useData();
   const request = requests.find(r => r.id === id);
   const [run, setRun] = useState<RunDetail | null>(null); const [isBrowse, setIsBrowse] = useState<boolean | null>(app?.features.browse ? null : false);
   const [events, setEvents] = useState<RunEvent[]>([]); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [stamp, setStamp] = useState(0);
+  const [showText, setShowText] = useState(false);
+  const controlQueue = useRef<Promise<void>>(Promise.resolve());
   const [pinned, setPinned] = useState<Mode | null>(null); const [now, setNow] = useState(Date.now());
   const since = useRef(0); const buffer = useRef(''); const flushTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const load = useCallback(async () => {
-    if (isBrowse === false) return;
+    if (!app?.features.browse) return;
     try {
-      const r = await api<RunDetail>('GET', `/v1/browse/${id}?since=${since.current}`);
+      const r = { ...await api<RunDetail>('GET', `/v1/browse/${id}?since=${since.current}`) };
+      if (request && ['failed', 'cancelled'].includes(request.state) && LIVE_STATES.includes(r.status)) { r.status = request.state; r.takeover = false; }
       if (r.events.length) { since.current = Math.max(since.current, ...r.events.map(e => e.n)); setEvents(old => [...old, ...r.events.filter(e => !old.some(o => o.n === e.n))]); setStamp(Date.now()); }
       setRun(r); setIsBrowse(true); setErr('');
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setIsBrowse(false);          // not a browser task: terminal and files only
       else setErr('Could not refresh. Retrying…');
     }
-  }, [id, isBrowse]);
+  }, [id, app?.features.browse, request?.state]);
   useEffect(() => { since.current = 0; setEvents([]); setRun(null); setPinned(null); setErr(''); setIsBrowse(app?.features.browse ? null : false); }, [id, app?.features.browse]);
   useEffect(() => { void load(); }, [load]);
 
   const browseLive = !!run && LIVE_STATES.includes(run.status);
   const taskLive = isBrowse ? browseLive : !!request && isActive(request.state);
   const { rows, err: actErr } = useActivity(id, taskLive);
-  useEffect(() => { if (isBrowse === false || !browseLive) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' ? 800 : 2000); return () => clearInterval(t); }, [isBrowse, browseLive, load, run?.pausing, run?.status]);
+  useEffect(() => { if (!app?.features.browse || (!browseLive && !isActive(request?.state ?? 'completed'))) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' ? 800 : 2000); return () => clearInterval(t); }, [app?.features.browse, request?.state, browseLive, load, run?.pausing, run?.status]);
   useEffect(() => { if (!taskLive) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [taskLive]);
   useEffect(() => () => clearTimeout(flushTimer.current), []);
 
   const browse = isBrowse === true;
   const modes = modesFor(browse); const followed = followMode(rows, browse);
-  const mode: Mode = pinned && modes.includes(pinned) ? pinned : followed;
+  const mode: Mode = pinned && modes.includes(pinned) ? pinned : run?.takeover && (run.status === 'paused' || run.status === 'handoff') ? 'screen' : followed;
+  useEffect(() => { if (run?.takeover && (run.status === 'paused' || run.status === 'handoff')) setPinned(null); }, [run?.takeover, run?.status]);
 
-  const send = useCallback(async (body: Record<string, unknown>) => {
-    try { await api('POST', `/v1/browse/${id}/control`, body); setErr(''); }
-    catch (e) { setErr(e instanceof ApiError && e.status === 409 ? 'You do not have the wheel right now. Press “Hop in” and wait for Lumina to pause.' : 'That did not go through.'); }
+  const send = useCallback((body: Record<string, unknown>) => {
+    const next = controlQueue.current.then(async () => {
+      try { await api('POST', `/v1/browse/${id}/control`, body); setErr(''); }
+      catch (e) { setErr(e instanceof ApiError && e.status === 409 ? 'Wait for Lumina to pause before taking control.' : 'That input did not go through. Try again.'); throw e; }
+    });
+    controlQueue.current = next.catch(() => {});
+    return next.catch(() => {});
   }, [id]);
   const act = async (path: 'pause' | 'resume' | 'release') => {
     try { await api('POST', `/v1/browse/${id}/${path}`, {}); setErr(''); } catch { setErr('That did not go through.'); }
     await load();
   };
-  const flush = useCallback(() => { clearTimeout(flushTimer.current); const t = buffer.current; buffer.current = ''; if (t) void send({ action: 'type', text: t.slice(0, 500) }); }, [send]);
+  const flush = useCallback(() => { clearTimeout(flushTimer.current); const t = buffer.current; buffer.current = ''; return t ? send({ action: 'type', text: t.slice(0, 500) }) : controlQueue.current; }, [send]);
   const driving = !!run?.takeover && (run.status === 'paused' || run.status === 'handoff');
   const onKey = (e: React.KeyboardEvent) => {
     if (!driving || mode !== 'screen' || (e.target as HTMLElement).tagName === 'INPUT') return;
@@ -78,7 +70,7 @@ function LiveRun({ id }: { id: string }) {
     if (a.kind === 'text') { buffer.current += a.text; clearTimeout(flushTimer.current); flushTimer.current = setTimeout(flush, 300); }
     else { flush(); void send({ action: 'key', text: a.text }); }
   };
-  const stop = async () => { try { await api('POST', `/v1/requests/${id}/cancel`, {}); } catch { setErr('That did not go through.'); } };
+  const stop = async () => { try { await api('POST', `/v1/requests/${id}/cancel`, {}); await refresh(); await load(); } catch { setErr('That did not go through.'); } };
 
   const shots = events.filter(e => e.kind === 'screenshot'); const last = shots[shots.length - 1];
   const fallback = last ? `/v1/browse/${id}/shot/${last.file as string}?t=${stamp}` : null;
@@ -91,47 +83,49 @@ function LiveRun({ id }: { id: string }) {
 
   return (
     <div className="livepage">
-      <p><Link to="/live" className="faint">← All live tasks</Link></p>
+      <p className="live-chat-link"><Link to={request?.conversation_id ? `/chat/${request.conversation_id}` : '/chat'}>Open chat · Give Lumina guidance ↗</Link></p>
       <header className="live-head">
-        <h1 className="page-title">{heading.length > 90 ? heading.slice(0, 90) + '…' : heading}</h1>
+        <h2 className="live-goal">{heading}</h2>
         <div className="live-meta"><span className={`pill${taskLive ? ' live' : ''}`}>{status}</span>{taskLive && started > 0 && <span className="faint">{elapsed(started, now)}</span>}{run?.url && <span className="faint">{new URL(run.url, 'http://x').hostname}</span>}
           {taskLive && <button className="btn small danger" onClick={stop}>Stop</button>}</div>
       </header>
       <div className="live-grid">
         <section className="panel live-main">
           <div className="live-tabs" role="tablist" aria-label="What to watch">
-            {modes.map(m => <button key={m} role="tab" aria-selected={mode === m} className="chip" aria-pressed={mode === m} onClick={() => setPinned(m)}>{MODE_LABEL[m]}</button>)}
+            {modes.map(m => <button key={m} role="tab" aria-selected={mode === m} className="chip" aria-pressed={mode === m} onClick={() => setPinned(m)}>{m === 'terminal' && !rows.some(r => r.category === 'command') ? 'Activity' : MODE_LABEL[m]}</button>)}
             <span className="spacer" />
             <button className="chip small" aria-pressed={pinned === null} onClick={() => setPinned(pinned === null ? mode : null)} title="Switch between screen, terminal and files as Lumina moves between them">Follow Lumina</button>
           </div>
+          {browse && run && run.status === 'running' && (
+            <div className="live-bar">{run.pausing
+              ? <span className="muted" role="status">Pausing after Lumina’s current step…</span>
+              : <><button className="btn primary" onClick={() => act('pause')}>Take control</button><span className="faint">Pause Lumina, then use the browser yourself.</span></>}</div>)}
+          {browse && run && driving && (
+            <div className="live-bar col live-assistance" role="region" aria-label="Your assistance is needed"><h3>{run.status === 'paused' ? 'You are in control' : 'Lumina needs your help'}</h3>
+              <p className="muted">{run.status === 'paused'
+                ? 'You have the wheel. Lumina is waiting. Click the screen to point, type to enter text, scroll with the wheel.'
+                : `${run.pending_action?.label ? `Lumina stopped before: ${run.pending_action.label}. ` : 'Lumina stopped at a step that needs you. '}Complete the remaining steps in the browser below yourself. End the browser session when you are finished.`}</p>
+              {mode !== 'screen' ? <button className="btn primary" onClick={() => setPinned('screen')}>Return to browser</button> : <form className="live-type" autoComplete="off" onSubmit={e => { e.preventDefault(); if (text) { flush(); void send({ action: 'type', text }); setText(''); } }}>
+                <label className="sr" htmlFor="tk">Text to type into the page</label>
+                <input id="tk" type={showText ? 'text' : 'password'} autoComplete="off" spellCheck={false} value={text} maxLength={500} onChange={e => setText(e.target.value)} placeholder="Type into the selected field" />
+                <button className="btn" type="submit" disabled={!text}>Type into page</button><label className="live-show-text"><input type="checkbox" checked={showText} onChange={e => setShowText(e.target.checked)} />Show text</label>
+                <button className="btn" type="button" onClick={() => { flush(); void send({ action: 'key', text: 'Enter' }); }}>Enter</button>
+                <button className="btn" type="button" onClick={() => void send({ action: 'scroll', text: 'up' })}>Scroll up</button>
+                <button className="btn" type="button" onClick={() => void send({ action: 'scroll', text: 'down' })}>Scroll down</button>
+                <button className="btn primary" type="button" onClick={async () => { await flush(); await act(run.status === 'paused' ? 'resume' : 'release'); }}>{run.status === 'paused' ? 'Continue with Lumina' : 'End browser session'}</button>
+              </form>}
+            </div>)}
+          {isBrowse === false && rows.some(r => r.category === 'browse' && r.status === 'failed') && <div className="live-assistance" role="status"><h3>Browser could not start</h3><p>This task did not open an interactive browser session. Its recorded steps are shown below.</p><Link className="btn small" to={request?.conversation_id ? `/chat/${request.conversation_id}` : '/chat'}>Open chat for help</Link></div>}
           <div className="live-stage" tabIndex={driving && mode === 'screen' ? 0 : -1} onKeyDown={onKey} aria-label={driving ? 'The page you are controlling. Click to point, type to enter text.' : undefined}>
             {mode === 'screen' && <LiveScreen id={id} enabled={browse && browseLive} fallback={fallback} interactive={driving} onPoint={p => { flush(); void send({ action: 'click', ...p }); }} onWheel={dir => void send({ action: 'scroll', text: dir })} />}
             {mode === 'terminal' && <LiveTerminal rows={rows} active={taskLive} />}
             {mode === 'files' && <LiveFiles rows={rows} />}
           </div>
 
-          {browse && run && run.status === 'running' && (
-            <div className="live-bar">{run.pausing
-              ? <span className="muted" role="status">Pausing after Lumina’s current step…</span>
-              : <><button className="btn primary" onClick={() => act('pause')}>Hop in</button><span className="faint">Take the wheel any time. Lumina waits for you.</span></>}</div>)}
-          {browse && run && driving && (
-            <div className="live-bar col">
-              <p className="muted">{run.status === 'paused'
-                ? 'You have the wheel. Lumina is waiting. Click the screen to point, type to enter text, scroll with the wheel.'
-                : `${run.pending_action?.label ? `Lumina stopped before: ${run.pending_action.label}. ` : 'Lumina stopped at a step that needs you. '}Nothing is bought unless you do it yourself.`}</p>
-              <form className="live-type" onSubmit={e => { e.preventDefault(); if (text) { flush(); void send({ action: 'type', text }); setText(''); } }}>
-                <label className="sr" htmlFor="tk">Text to type into the page</label>
-                <input id="tk" value={text} maxLength={500} onChange={e => setText(e.target.value)} placeholder="Type into the selected field" />
-                <button className="btn" type="submit">Type</button>
-                <button className="btn" type="button" onClick={() => { flush(); void send({ action: 'key', text: 'Enter' }); }}>Enter</button>
-                <button className="btn" type="button" onClick={() => void send({ action: 'scroll', text: 'up' })}>Scroll up</button>
-                <button className="btn" type="button" onClick={() => void send({ action: 'scroll', text: 'down' })}>Scroll down</button>
-                <button className="btn primary" type="button" onClick={() => { flush(); act(run.status === 'paused' ? 'resume' : 'release'); }}>{run.status === 'paused' ? 'Hand back to Lumina' : 'Return control'}</button>
-              </form>
-            </div>)}
           {browse && run?.status === 'handoff' && !run.takeover && <p className="muted live-note">The take-over window has closed.</p>}
-          {isBrowse === false && taskLive && <p className="faint small live-note">You can watch and stop this task here. Hopping in with the mouse and keyboard works on browser tasks; to steer this one, tell Lumina in the chat.</p>}
+          {isBrowse === false && taskLive && <p className="faint small live-note">You can watch and stop this task here. Terminal output appears as it is reported by the runtime. To change the task or answer a question, use the chat link above.</p>}
           {(err || actErr) && <p className="err small live-note" role="alert">{err || actErr}</p>}
+          {run?.reason && <p className="live-note">{run.reason}</p>}
           {run?.answer && <p className="live-note">{run.answer}</p>}
         </section>
 
@@ -152,6 +146,22 @@ function LiveRun({ id }: { id: string }) {
 }
 
 export default function Live() {
-  const { id } = useParams();
-  return id ? <LiveRun id={id} /> : <LiveList />;
+  const { id } = useParams(); const nav = useNavigate();
+  const { requests } = useData();
+  const tasks = [...requests].sort((a, b) => Number(isActive(b.state)) - Number(isActive(a.state)) || b.created_epoch - a.created_epoch);
+  const selected = id ?? tasks[0]?.id;
+  return <div className="live-workspace">
+    <header className="live-workspace-head">
+      <div><p className="live-eyebrow">LUMINA WORKSPACE</p><h1>Live view</h1><p className="muted">Watch the tools in use. Step in when Lumina needs you.</p></div>
+      <div className="live-task-picker"><label htmlFor="live-task">Task</label>
+        <select id="live-task" value={selected ?? ''} onChange={e => nav(`/live/${e.target.value}`)}>
+          {!selected && <option value="">No tasks yet</option>}
+          {id && !tasks.some(t => t.id === id) && <option value={id}>Selected task</option>}
+          {tasks.slice(0, 50).map(t => <option key={t.id} value={t.id}>{isActive(t.state) ? '● Live · ' : ''}{clip(t.message, 70)}</option>)}
+        </select>
+        {id && <Link to="/live" className="faint small">Follow the latest task</Link>}
+      </div>
+    </header>
+    {selected ? <LiveRun key={selected} id={selected} /> : <section className="live-empty panel"><span aria-hidden="true">›_</span><h2>Your workspace is ready</h2><p>Ask Lumina to browse, run a command, or work with files. Its tools will appear here as it works.</p><Link className="btn primary" to="/chat">Start a task</Link></section>}
+  </div>;
 }

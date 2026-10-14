@@ -18,6 +18,17 @@ function check() {
     if (turns[i].getBoundingClientRect().top < turns[i - 1].getBoundingClientRect().bottom - 1)
       failures.push('Conversation turns overlap.');
   }
+  for (const p of document.querySelectorAll('.agent-response p')) {
+    if (p.scrollWidth > p.clientWidth + 1) failures.push('Ordinary prose does not wrap.');
+  }
+  for (const pre of document.querySelectorAll('.agent-response pre')) {
+    if (pre.getBoundingClientRect().width > document.querySelector('.thread').getBoundingClientRect().width + 1)
+      failures.push('A code box widened the conversation.');
+    if (getComputedStyle(pre).overflowX !== 'auto' || pre.tabIndex !== 0)
+      failures.push('Code cannot be scrolled within its own focusable box.');
+  }
+  if (location.pathname.endsWith('/overflow') && document.querySelector('.agent-response') && !document.querySelector('.agent-response [role="img"]'))
+    failures.push('The reported pie chart was left as raw JSON.');
   document.documentElement.dataset.layoutCheck = failures.length ? 'failed' : 'passed';
   document.documentElement.dataset.layoutFailures = failures.join(' ');
   if (failures.length) console.error('Chat layout regression:', failures);

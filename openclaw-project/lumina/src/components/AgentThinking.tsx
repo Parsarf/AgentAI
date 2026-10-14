@@ -35,7 +35,7 @@ export default function AgentThinking({ task }: { task: ThreadTask }) {
     void load();
     return () => { stopped = true; clearTimeout(timer); };
   }, [task.id, active]);
-  if (task.state === 'failed' || task.state === 'cancelled') return <div className="agent-status-error" role="status">{task.state === 'failed' ? 'Something went wrong. Open Activity for details.' : 'Stopped.'}</div>;
+  if (task.state === 'failed' || task.state === 'cancelled') return <div className="agent-status-error" role="status">{task.state === 'failed' ? task.result || 'Something went wrong. Open Activity for details.' : 'Stopped.'}</div>;
   const activity = agentActivityFor(task.state, snapshot.taskId === task.id ? snapshot.events : []);
   if (!activity) return null;
   return <div className="agent-thinking" role="status" aria-live="polite" aria-atomic="true" data-orb-state={activity.orb}>

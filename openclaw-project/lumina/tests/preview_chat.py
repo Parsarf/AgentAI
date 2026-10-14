@@ -33,6 +33,13 @@ class Preview(SimpleHTTPRequestHandler):
                 if scenario in ['long', 'multiple']: messages.append({'id': 3, 'provenance': 'customer', 'request_id': None, 'content': 'A longer message that should wrap naturally. ' * 30, 'created_at': ''})
                 if scenario == 'multiple':
                     for i in range(4, 12): messages.append({'id': i, 'provenance': 'agent' if i % 2 == 0 else 'customer', 'request_id': None, 'content': f'Message {i}', 'created_at': ''})
+                if scenario == 'overflow':
+                    pie = {'schemaVersion': '1.0', 'type': 'pie', 'title': "What's Working Today 🎯", 'labels': ['Tables', 'Charts', 'Comparisons', 'Emojis', 'Details blocks'], 'series': [{'name': 'Ready', 'values': [20, 20, 20, 20, 20]}]}
+                    code = 'const value = "' + 'long-preserved-code-line-' * 80 + '";'
+                    prose = 'Normal text should wrap at word boundaries and grow vertically. ' * 25
+                    url = 'https://example.com/' + 'long-url-segment-' * 80
+                    table = '| ' + ' | '.join('Column ' + str(i) for i in range(12)) + ' |\n| ' + ' | '.join('---' for _ in range(12)) + ' |\n| ' + ' | '.join('Value' for _ in range(12)) + ' |'
+                    messages[1]['content'] = 'Data visualizations ✨\n\n```json\n' + json.dumps(pie, ensure_ascii=False) + '\n```\n\n' + prose + '\n\n```js\n' + code + '\n```\n\n' + url + '\n\n' + table
                 after = int(parse_qs(parsed.query).get('after', ['0'])[0])
                 data = {'messages': [m for m in messages if m['id'] > after], 'tasks': [task], 'has_more': False}
             elif path.endswith('/blocks'): data = {'blocks': []}

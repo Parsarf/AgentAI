@@ -39,7 +39,7 @@ export type KeyAction = { kind: 'text'; text: string } | { kind: 'key'; text: st
 export function keyAction(e: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): KeyAction {
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   if (e.key.length === 1) return { kind: 'text', text: e.key };
-  if (['Enter', 'Tab', 'Escape', 'Backspace', 'ArrowDown', 'ArrowUp'].includes(e.key)) return { kind: 'key', text: e.key };
+  if (['Enter', 'Tab', 'Escape', 'Backspace', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return { kind: 'key', text: e.key };
   return null;
 }
 
