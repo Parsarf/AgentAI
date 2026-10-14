@@ -46,3 +46,11 @@ def build(snapshot_text: str, limit: int = 20) -> list[dict]:
 def page_is_payment(url: str, snapshot_text: str, page_text: str) -> bool:
     """A page that is, or is about to be, a payment step: the read-only release stops here and hands the screen to the user."""
     return bool(CHECKOUT_PATH.search(url or '')) or bool(CARD_FIELD.search(snapshot_text or '')) or sum(1 for _ in CARD_FIELD.finditer(page_text or '')) >= 2
+
+
+BOT_CHECK = re.compile(r'just a moment|verify (you are|you.re) (a )?human|checking (if|that) you are human|checking your browser|attention required|are you a robot|press (&|and) hold|captcha|unusual traffic|access denied', re.I)
+
+
+def page_is_bot_check(title: str, page_text: str) -> bool:
+    """A human-verification wall (Cloudflare and similar). Short pages only, so an article that merely mentions captchas does not match."""
+    return len(page_text or '') < 1500 and bool(BOT_CHECK.search(f'{title or ""} {(page_text or "")[:1500]}'))

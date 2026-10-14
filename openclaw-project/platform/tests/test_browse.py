@@ -114,6 +114,25 @@ class Loop(unittest.TestCase):
         r = BrowseRunner(s, Ladder(llm, max_sonnet=1), max_steps=12).run('g', 'https://shop.example/')
         self.assertEqual(r.status, 'stuck'); self.assertIn('sonnet', llm.calls); self.assertEqual(llm.calls.count('sonnet'), 1)   # capped
 
+    def test_a_human_verification_wall_is_handed_to_the_user_not_guessed_at(self):
+        wall = {'start': {'url': 'https://food.example/', 'snap': '', 'text': 'Just a moment...'}}
+        llm = scripted_llm([])
+        waits = []
+        r = BrowseRunner(FakeSession(wall), Ladder(llm), max_steps=3, wait=waits.append).run('order a burger', 'https://food.example/')
+        self.assertEqual(r.status, 'handoff'); self.assertIn('verify you are human', r.reason)
+        self.assertEqual(llm.calls, []); self.assertEqual(waits, [4, 4, 4])       # no model money spent on a wall; it was given time to clear
+
+    def test_a_check_that_clears_by_itself_lets_the_run_continue(self):
+        pages = {'start': {'url': 'https://food.example/', 'snap': '', 'text': 'Checking your browser'}}
+        s = FakeSession(pages)
+        def clear(_seconds): pages['start'].update(snap='[1] <a> "Burgers"', text='Welcome')
+        r = BrowseRunner(s, Ladder(scripted_llm(['{"action":"done","answer":"ok"}'])), max_steps=3, wait=clear).run('g', 'https://food.example/')
+        self.assertEqual(r.status, 'done')
+
+    def test_an_unusable_model_reply_says_why(self):
+        r = BrowseRunner(FakeSession(PAGES), Ladder(scripted_llm(['nonsense', 'still nonsense'])), max_steps=3).run('g', 'https://shop.example/')
+        self.assertEqual(r.status, 'stopped'); self.assertIn('no JSON', r.reason)
+
     def test_budget_refusal_stops_paid_decisions(self):
         n = []
         def admit(kind): n.append(kind); return len(n) <= 1

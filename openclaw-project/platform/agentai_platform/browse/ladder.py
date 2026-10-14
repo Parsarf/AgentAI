@@ -188,4 +188,5 @@ class Ladder:
                 raise
             except Exception as exc:       # invalid answer from that tier: try the next one, then give up
                 last = exc
-        return Decision('stop', 'rule', f'no valid decision ({type(last).__name__})')
+        why = str(last)[:60] if isinstance(last, ValueError) and str(last) else type(last).__name__
+        return Decision('stop', 'rule', f'the assistant gave no usable next step ({why})')

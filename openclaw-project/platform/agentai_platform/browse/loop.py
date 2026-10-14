@@ -52,9 +52,10 @@ class Result:
 
 class BrowseRunner:
     def __init__(self, session, ladder: Ladder, *, policy: Policy | None = None, on_event=lambda kind, data: None, cancelled=lambda: False,
-                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0):
+                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0, wait=time.sleep):
         self.s, self.ladder, self.policy, self.on_event, self.cancelled = session, ladder, policy or Policy(), on_event, cancelled
         self.max_steps, self.max_seconds, self.shots, self.clock = max_steps, max_seconds, shots, clock
+        self.wait = wait
         self.pause_gate = pause_gate        # blocks while the user has the wheel; returns the seconds waited so they do not count against the time limit
 
     def run(self, goal: str, start_url: str) -> Result:
@@ -77,6 +78,19 @@ class BrowseRunner:
             snap = self.s.snapshot()
             if not snap.get('ok'):
                 return self._end(res, 'error', 'could not read the page', history)
+            url = snap.get('url', '')
+            if not self.policy.url_ok(url):
+                return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
+            for _ in range(3):                  # some verification pages clear by themselves within seconds
+                if not cand.page_is_bot_check(snap.get('title', ''), snap.get('text', '')):
+                    break
+                self.wait(4)
+                again = self.s.snapshot()
+                if not again.get('ok'):
+                    break
+                snap = again
+            if cand.page_is_bot_check(snap.get('title', ''), snap.get('text', '')):
+                return self._end(res, 'handoff', 'the site is asking to verify you are human; use Take control to pass the check, then return the browser to me', history, snap.get('url', ''))
             url = snap.get('url', '')
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
