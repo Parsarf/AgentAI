@@ -43,9 +43,10 @@ class Result:
 
 class BrowseRunner:
     def __init__(self, session, ladder: Ladder, *, policy: Policy | None = None, on_event=lambda kind, data: None, cancelled=lambda: False,
-                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic):
+                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0):
         self.s, self.ladder, self.policy, self.on_event, self.cancelled = session, ladder, policy or Policy(), on_event, cancelled
         self.max_steps, self.max_seconds, self.shots, self.clock = max_steps, max_seconds, shots, clock
+        self.pause_gate = pause_gate        # blocks while the user has the wheel; returns the seconds waited so they do not count against the time limit
 
     def run(self, goal: str, start_url: str) -> Result:
         res = Result('error')
@@ -57,6 +58,9 @@ class BrowseRunner:
         self.on_event('opened', {'url': opened.get('url'), 'title': opened.get('title')})
         started, history, seen, failures, forced = self.clock(), [], {}, 0, False
         for step in range(1, self.max_steps + 1):
+            if self.cancelled():
+                return self._end(res, 'cancelled', 'stopped by you', history)
+            started += self.pause_gate()
             if self.cancelled():
                 return self._end(res, 'cancelled', 'stopped by you', history)
             if self.clock() - started > self.max_seconds:

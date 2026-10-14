@@ -65,6 +65,7 @@ class Job:
         self.state, self.reason, self.answer, self.url, self.pending = 'queued', '', None, '', None
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
+        self.pause_req = threading.Event()          # the user asked for the wheel; the loop acknowledges at the next step boundary (state -> 'paused')
         self.stats = {'jev_asked': 0, 'jev_agree': 0}
 
     def add(self, kind, data):
@@ -107,8 +108,8 @@ class BrowseService:
         with job.lock:
             events = [e for e in job.events if e['n'] > since]
         return {'state': job.state, 'reason': job.reason, 'answer': job.answer, 'url': job.url, 'pending_action': job.pending,
-                'cost_microusd': job.cost, 'events': events, 'takeover': job.state == 'handoff' and self.clock() < job.takeover_until,
-                'jev': dict(job.stats)}
+                'cost_microusd': job.cost, 'events': events, 'takeover': job.state in ('handoff', 'paused') and self.clock() < job.takeover_until,
+                'pausing': job.state == 'running' and job.pause_req.is_set(), 'jev': dict(job.stats)}
 
     def cancel(self, account, request_id):
         self._job(account, request_id).cancel.set()
@@ -123,27 +124,66 @@ class BrowseService:
             raise BrowseError('unavailable')
         return path.read_bytes()
 
-    def control(self, account, request_id, action, *, x=None, y=None, text=None):
-        """Takeover: only after the agent has handed over, only while the window is open, one action at a time."""
+    def pause(self, account, request_id):
+        """Hop in at any time: the agent finishes the step it is on, then waits; the user can then click and type. Returns at once
+        (the state turns 'paused' when the agent has stopped; until then control is refused so two hands never share the page)."""
         job = self._job(account, request_id)
-        if job.state != 'handoff' or self.clock() >= job.takeover_until or job.session is None:
+        if job.state not in ('running', 'paused', 'handoff'):
+            raise BrowseError('not available')
+        if job.state == 'running':
+            job.pause_req.set()
+        return {'ok': True, 'state': job.state}
+
+    def resume(self, account, request_id):
+        job = self._job(account, request_id)
+        job.pause_req.clear()
+        if job.state == 'handoff':
+            job.takeover_until = 0
+        return {'ok': True}
+
+    def _pause_gate(self, job):
+        def gate():
+            if not job.pause_req.is_set():
+                return 0
+            began = self.clock()
+            job.state = 'paused'
+            job.takeover_until = began + self.takeover_seconds     # idle limit: an abandoned pause hands the wheel back
+            job.add('status', {'state': 'paused', 'reason': 'you took over'})
+            while job.pause_req.is_set() and not job.cancel.is_set() and self.clock() < job.takeover_until:
+                self.sleep(0.05)
+            job.pause_req.clear()
+            with job.lock:                                         # a click already on its way finishes before the agent touches the page again
+                job.state = 'running'
+            job.add('status', {'state': 'running', 'reason': 'Lumina continues'})
+            return self.clock() - began
+        return gate
+
+    def control(self, account, request_id, action, *, x=None, y=None, text=None):
+        """Takeover: after a hand-off, or while paused, only while the window is open, one action at a time."""
+        job = self._job(account, request_id)
+        if job.state not in ('handoff', 'paused') or self.clock() >= job.takeover_until or job.session is None:
             raise BrowseError('not available')
         if action not in ('click', 'type', 'key', 'scroll'):
             raise BrowseError('invalid action')
         with job.lock:
+            if job.state not in ('handoff', 'paused'):             # re-checked under the lock: the agent may have just resumed
+                raise BrowseError('not available')
             reply = job.session.call('xy', action=action, x=x, y=y, text=text)
         if reply.get('ok'):
             job.takeover_until = self.clock() + self.takeover_seconds
-            shot = job.session.screenshot()
-            if shot.get('ok'):
-                job.add('screenshot', {'file': shot['file'], 'by': 'you'})
+            if job.state == 'paused':
+                job.add('control', {'action': action, 'by': 'you'})        # the live view shows the result; the record keeps what kind of input, never the text typed
+            else:
+                shot = job.session.screenshot()
+                if shot.get('ok'):
+                    job.add('screenshot', {'file': shot['file'], 'by': 'you'})
         return {'ok': bool(reply.get('ok')), 'error': reply.get('error')}
 
     def cancel_all(self):
         """Kill switch: stop every queued or running browser task now."""
         n = 0
         for job in list(self.jobs.values()):
-            if job.state in ('queued', 'running', 'handoff') and not job.cancel.is_set():
+            if job.state in ('queued', 'running', 'handoff', 'paused') and not job.cancel.is_set():
                 job.cancel.set(); n += 1
         return n
 
@@ -169,7 +209,7 @@ class BrowseService:
             return 0
         for path in entries:
             job = self.jobs.get(path.name)
-            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in ('queued', 'running', 'handoff')):
+            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in ('queued', 'running', 'handoff', 'paused')):
                 continue
             try:
                 if now() - path.stat().st_mtime > max_age:
@@ -246,7 +286,7 @@ class BrowseService:
                     job.url = data['url']
 
             result = BrowseRunner(session, ladder, policy=Policy(read_only=True), on_event=on_event, cancelled=job.cancel.is_set,
-                                  max_steps=job.max_steps, max_seconds=job.max_seconds).run(job.goal, start)
+                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job)).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
             job.url = result.url or job.url
@@ -299,6 +339,10 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
                     out = service.cancel(account, rid)
                 elif op == 'release':
                     out = service.release(account, rid)
+                elif op == 'pause':
+                    out = service.pause(account, rid)
+                elif op == 'resume':
+                    out = service.resume(account, rid)
                 elif op == 'shot':
                     out = {'jpeg_b64': base64.b64encode(service.shot(account, rid, req.get('file'))).decode()}
                 elif op == 'control':

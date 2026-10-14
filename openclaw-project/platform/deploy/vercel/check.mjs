@@ -39,4 +39,6 @@ assert.equal(target('/auth/login'),'https://backend.agentai-demo.com/auth/login'
 assert.equal(target('/v1/requests'),'https://backend.agentai-demo.com/v1/requests');
 assert.equal(target('/app/'),'https://backend.agentai-demo.com/app/');
 assert.equal(target('/internal/'),null);
+assert.equal(target('/live/' + 'a'.repeat(32) + '/frame'), 'https://backend.agentai-demo.com/live/' + 'a'.repeat(32) + '/frame');
+assert.equal(target('/live/'), null); assert.equal(target('/live/xyz/frame'), null); assert.equal(target('/live/' + 'a'.repeat(32) + '/other'), null);
 build('');console.log('Build output checks passed (root, account slashes, APIs and internal exclusion).');

@@ -1,33 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { ICON, toActivity } from '../lib/activity';
+import { ICON } from '../lib/activity';
+import { useActivity } from '../lib/useActivity';
 import { elapsed } from '../lib/format';
 import { useData } from '../state/data';
 
-type Ev = { sequence: number; kind: string; created_at?: string; payload?: Record<string, unknown> };
 interface Shot { file?: string }
 
 /** Live window onto what the assistant is doing for one task: searches, pages opened, commands, files, and the browser view. */
 export default function ActivityPanel({ taskId, active, startedAt, onStop, onClose }: { taskId: string; active: boolean; startedAt: number; onStop(): void; onClose(): void }) {
   const { app } = useData();
-  const [events, setEvents] = useState<Ev[]>([]); const [err, setErr] = useState(''); const [shot, setShot] = useState<string | null>(null); const [now, setNow] = useState(Date.now());
-  const cursor = useRef(0); const list = useRef<HTMLOListElement>(null); const stick = useRef(true);
+  const { rows, err } = useActivity(taskId, active);
+  const [shot, setShot] = useState<string | null>(null); const [now, setNow] = useState(Date.now());
+  const list = useRef<HTMLOListElement>(null); const stick = useRef(true);
 
-  useEffect(() => { cursor.current = 0; setEvents([]); setShot(null); setErr(''); }, [taskId]);
-  useEffect(() => {
-    let stop = false; let timer: ReturnType<typeof setTimeout>;
-    const load = async () => {
-      try {
-        const r = await api<{ events: Ev[] }>('GET', `/v1/tasks/${taskId}/events?after=${cursor.current}&limit=200`);
-        if (stop) return;
-        if (r.events.length) { cursor.current = Math.max(cursor.current, ...r.events.map(e => e.sequence)); setEvents(old => [...old, ...r.events]); }
-        setErr('');
-      } catch { if (!stop) setErr('Could not refresh. Retrying…'); }
-      if (!stop && (active || cursor.current === 0)) timer = setTimeout(load, 1500);
-    };
-    void load(); return () => { stop = true; clearTimeout(timer); };
-  }, [taskId, active]);
+  useEffect(() => { setShot(null); }, [taskId]);
   useEffect(() => { if (!active) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [active]);
   useEffect(() => {
     if (!app?.features.browse) return; let stop = false; let timer: ReturnType<typeof setTimeout>;
@@ -36,13 +24,12 @@ export default function ActivityPanel({ taskId, active, startedAt, onStop, onClo
         const r = await api<{ events: (Shot & { kind: string })[]; status: string }>('GET', `/v1/browse/${taskId}?since=0`);
         const last = [...r.events].reverse().find(e => e.kind === 'screenshot' && e.file);
         if (!stop && last?.file) setShot(`/v1/browse/${taskId}/shot/${last.file}?t=${Date.now()}`);
-        if (!stop && ['queued', 'running', 'handoff'].includes(r.status)) timer = setTimeout(look, 2000);
+        if (!stop && ['queued', 'running', 'handoff', 'paused'].includes(r.status)) timer = setTimeout(look, 2000);
       } catch { /* not a browser task */ }
     };
     void look(); return () => { stop = true; clearTimeout(timer); };
   }, [taskId, app?.features.browse]);
 
-  const rows = useMemo(() => toActivity(events), [events]);
   useEffect(() => { if (stick.current) list.current?.scrollTo({ top: list.current.scrollHeight }); }, [rows.length, rows[rows.length - 1]?.status]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
 
@@ -56,7 +43,7 @@ export default function ActivityPanel({ taskId, active, startedAt, onStop, onClo
       </header>
       {shot && (
         <div className="act-shot"><img src={shot} alt="The page Lumina is working on" />
-          <Link className="btn small" to={`/browser/${taskId}`}>Open full view</Link></div>)}
+          <Link className="btn small" to={`/live/${taskId}`}>Open live view</Link></div>)}
       <ol className="act-list" ref={list} onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}>
         {rows.length === 0 && <li className="faint act-empty">{active ? 'Waiting for the assistant’s first step…' : 'No tool use was recorded for this task.'}</li>}
         {rows.map(r => (

@@ -374,3 +374,30 @@ class BrowseHttpChecks(ChatHTTPChecks):
             self.assertEqual(self.post(a, '/v1/browse/br1/control', bad).status_code, 400, bad)
         self.assertEqual(self.post(b, '/v1/browse/br1/control', {'action': 'scroll', 'text': 'down'}).status_code, 404)
         self.assertIn(self.post(a, '/v1/browse/br1/control', {'action': 'scroll', 'text': 'down'}).status_code, (409, 503))   # no browse service in tests
+
+    def test_pause_resume_and_live_ticket_are_scoped_gated_and_degrade_without_the_service(self):
+        import os
+        import tempfile
+        from django.test import override_settings
+        from agentai_platform.live import ticket
+        rid = 'a' * 32
+        with connection.cursor() as c:
+            c.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch) VALUES (%s,%s,'a',%s,'k2','h2','find a paddle','running',1)", [self.account_ids[0], rid, self.project()])
+            c.execute("INSERT INTO browse_runs(account_id,request_id,goal,status,url,created_epoch,updated_epoch) VALUES (%s,%s,'find a paddle','running','https://shop.test/',1,1)", [self.account_ids[0], rid])
+        a, b = self.clients
+        for path in ('pause', 'resume', 'live'):
+            self.assertEqual(self.post(b, f'/v1/browse/{rid}/{path}', {}).status_code, 404, path)          # someone else's task
+        self.assertEqual(self.post(a, f'/v1/browse/{rid}/pause', {}).status_code, 409)                  # no browse service in tests
+        self.assertEqual(self.post(a, f'/v1/browse/{rid}/resume', {}).status_code, 409)
+        self.assertEqual(self.post(a, f'/v1/browse/{rid}/live', {}).status_code, 404)                   # live view not set up on this server: the page uses snapshots
+        with tempfile.NamedTemporaryFile() as f:
+            f.write(b'k' * 48); f.flush()
+            with override_settings(LIVE_SECRET_FILE=f.name):
+                got = self.post(a, f'/v1/browse/{rid}/live', {})
+                self.assertEqual(got.status_code, 200)
+                body = got.json()
+                self.assertEqual(body['path'], f'/live/{rid}/frame')
+                self.assertEqual(ticket.verify(b'k' * 48, body['ticket'], rid), self.account_ids[0])    # bound to the owner and this one task
+                with connection.cursor() as c:
+                    c.execute("UPDATE browse_runs SET status='done' WHERE request_id=%s", [rid])
+                self.assertEqual(self.post(a, f'/v1/browse/{rid}/live', {}).status_code, 409)           # finished tasks have nothing live to watch

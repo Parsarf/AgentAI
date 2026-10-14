@@ -125,6 +125,49 @@ class ServiceChecks(unittest.TestCase):
         never.start('acct', 'c' * 32, 'goal at https://shop.example/'); wait(never, ('error',), rid='c' * 32)
         self.assertIn('busy', never.poll('acct', 'c' * 32)['reason'])
 
+    def gated(self, steps, **kw):
+        """A service whose first decision waits on `gate`, so a test can hop in while the agent is mid-task."""
+        gate, calls = threading.Event(), []
+        def llm_for_gated(account):
+            def llm(tier, system, user):
+                if 'ONLY one https://' in system: return {'text': 'https://shop.example/', 'cost_microusd': 1}
+                calls.append(1)
+                if len(calls) == 1: gate.wait(5)
+                return {'text': steps.pop(0), 'cost_microusd': 1}
+            return llm
+        return gate, svc.BrowseService(spawn=lambda j, o: FakeTransport(o), llm_for=llm_for_gated, root=self.tmp.name, jev_mode='off', **kw)
+
+    def test_hop_in_pauses_the_agent_at_a_step_boundary_then_the_user_drives_and_hands_back(self):
+        gate, s = self.gated(['{"action":"click","ref":2}', '{"action":"click","ref":1}'], takeover_seconds=5)
+        s.start('acct', RID, 'goal at https://shop.example/'); wait(s, ('running',))
+        with self.assertRaises(svc.BrowseError): s.pause('other', RID)                                           # not your task
+        self.assertEqual(s.pause('acct', RID)['ok'], True)
+        self.assertTrue(s.poll('acct', RID)['pausing'])
+        with self.assertRaises(svc.BrowseError): s.control('acct', RID, 'click', x=5, y=5)                      # the agent has not stopped yet: two hands never share the page
+        gate.set()
+        p = wait(s, ('paused',)); self.assertTrue(p['takeover']); self.assertFalse(p['pausing'])
+        self.assertTrue(s.control('acct', RID, 'type', text='my secret text')['ok'])
+        events = s.poll('acct', RID)['events']
+        control = [e for e in events if e['kind'] == 'control']
+        self.assertEqual(control, [{'n': control[0]['n'], 'kind': 'control', 'action': 'type', 'by': 'you'}])      # the record never keeps what was typed
+        self.assertNotIn('my secret text', json.dumps(events))
+        with self.assertRaises(svc.BrowseError): s.control('acct', RID, 'format_disk')
+        s.resume('acct', RID)
+        p = wait(s, ('handoff',)); self.assertEqual(p['pending_action']['label'], 'Checkout')                  # the agent carried on and finished its task
+        self.assertEqual([e['state'] for e in p['events'] if e['kind'] == 'status' and e['state'] in ('paused', 'running')], ['paused', 'running'])
+
+    def test_an_abandoned_pause_hands_the_wheel_back_by_itself(self):
+        gate, s = self.gated(['{"action":"click","ref":2}', '{"action":"click","ref":1}'], takeover_seconds=0.4)
+        s.start('acct', RID, 'goal at https://shop.example/'); wait(s, ('running',)); s.pause('acct', RID); gate.set()
+        wait(s, ('paused',)); p = wait(s, ('handoff',), timeout=10)                                              # no resume call: the idle limit released it
+        self.assertEqual(p['pending_action']['label'], 'Checkout')
+
+    def test_pause_is_refused_for_finished_tasks_and_kill_switch_reaches_paused_ones(self):
+        gate, s = self.gated(['{"action":"click","ref":2}', '{"action":"click","ref":1}'], takeover_seconds=30)
+        s.start('acct', RID, 'goal at https://shop.example/'); wait(s, ('running',)); s.pause('acct', RID); gate.set(); wait(s, ('paused',))
+        self.assertEqual(s.cancel_all(), 1); wait(s, ('cancelled',))
+        with self.assertRaises(svc.BrowseError): s.pause('acct', RID)
+
     def test_kill_switch_stops_running_tasks(self):
         s = self.make(['{"action":"click","ref":2}', '{"action":"click","ref":1}'])
         s.start('acct', RID, 'goal at https://shop.example/'); wait(s, ('handoff',))

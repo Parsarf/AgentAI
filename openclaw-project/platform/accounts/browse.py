@@ -6,11 +6,12 @@ from django.db import connection
 from django.http import HttpResponse, JsonResponse
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.browse.client import BrowseRpc
+from agentai_platform.live import ticket as live_ticket
 from .lifecycle import AccountStore
 from .services import Denied, rate
 from .views import endpoint, customer
 
-LIVE = ('queued', 'running', 'handoff')
+LIVE = ('queued', 'running', 'handoff', 'paused')
 
 
 def _rpc(request):
@@ -109,3 +110,62 @@ def release(request, request_id):
     except CapabilityUnavailable:
         pass
     return JsonResponse({'ok': True})
+
+
+def _live_secret():
+    path = getattr(settings, 'LIVE_SECRET_FILE', '')
+    try:
+        return open(path, 'rb').read().strip() if path else b''
+    except OSError:
+        return b''
+
+
+@endpoint(['POST'], [])
+def pause(request, request_id):
+    """Hop in: the agent finishes its current step, then waits while you drive. The status turns 'paused' once it has stopped."""
+    denied = customer(request)
+    if denied:
+        return denied
+    rate('browse.control', request.account_id, 240, 60)
+    _run(request, request_id)
+    try:
+        out = _rpc(request)('pause', request_id=request_id)
+    except CapabilityUnavailable:
+        return JsonResponse({'error': 'not_available'}, status=409)
+    return JsonResponse({'ok': True, 'state': out.get('state')})
+
+
+@endpoint(['POST'], [])
+def resume(request, request_id):
+    """Hand the browser back to Lumina; it carries on from wherever you left the page."""
+    denied = customer(request)
+    if denied:
+        return denied
+    rate('browse.control', request.account_id, 240, 60)
+    _run(request, request_id)
+    try:
+        _rpc(request)('resume', request_id=request_id)
+    except CapabilityUnavailable:
+        return JsonResponse({'error': 'not_available'}, status=409)
+    return JsonResponse({'ok': True})
+
+
+@endpoint(['POST'], [])
+def live(request, request_id):
+    """A short-lived, view-only ticket for the frame gateway (a separate process, so watching never queues behind the site)."""
+    denied = customer(request)
+    if denied:
+        return denied
+    rate('browse.live', request.account_id, 60, 60)
+    row = _run(request, request_id)
+    secret = _live_secret()
+    if not secret:
+        raise Denied()                                           # live view is not set up on this server: the page falls back to snapshots
+    if row['status'] not in LIVE:
+        return JsonResponse({'error': 'not_available'}, status=409)
+    base = getattr(settings, 'LIVE_PATH', '/live').rstrip('/')
+    try:
+        minted = live_ticket.mint(secret, request.account_id, request_id)
+    except live_ticket.TicketError:
+        raise Denied()
+    return JsonResponse({'ticket': minted, 'path': f'{base}/{request_id}/frame', 'expires_in': live_ticket.TTL_SECONDS})
