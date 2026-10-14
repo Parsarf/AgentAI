@@ -464,3 +464,8 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 
 /* Emoji shown as OpenMoji pictures (src/lib/emojify.ts). The alt text is the emoji, so copying and screen readers still get the character. */
 .emoji { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -.26em; margin: 0 .03em; user-select: all; }
+
+/* Click feedback in Live view: a ring that fades where you clicked, so a click is acknowledged before the page reacts. */
+.live-tap { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid var(--neon); pointer-events: none; animation: live-tap .6s ease-out forwards; }
+@keyframes live-tap { from { opacity: .95; transform: scale(.4); } to { opacity: 0; transform: scale(1.5); } }
+@media (prefers-reduced-motion: reduce) { .live-tap { animation: none; opacity: .8; transform: none; } }

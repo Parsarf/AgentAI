@@ -15,6 +15,7 @@ export default function LiveScreen({ id, enabled, fallback, interactive, onPoint
 }) {
   const canvas = useRef<HTMLCanvasElement>(null); const img = useRef<HTMLImageElement>(null);
   const [state, setState] = useState<'connecting' | 'live' | 'snapshots'>('connecting'); const lastWheel = useRef(0);
+  const [taps, setTaps] = useState<{ id: number; x: number; y: number }[]>([]); const tapId = useRef(0);
 
   useEffect(() => {
     if (!enabled) return; let stop = false; const ac = new AbortController();
@@ -46,7 +47,15 @@ export default function LiveScreen({ id, enabled, fallback, interactive, onPoint
     return () => { stop = true; ac.abort(); };
   }, [id, enabled]);
 
-  const point = (e: React.MouseEvent) => { const el = state === 'live' ? canvas.current : img.current; if (el && interactive) onPoint(toBrowser(e.clientX, e.clientY, el.getBoundingClientRect())); };
+  const point = (e: React.MouseEvent) => {
+    const el = state === 'live' ? canvas.current : img.current;
+    if (!el || !interactive) return;
+    onPoint(toBrowser(e.clientX, e.clientY, el.getBoundingClientRect()));
+    // Instant feedback: the ring appears where you clicked right now; the page's own reaction arrives with the next live frame.
+    const box = e.currentTarget.getBoundingClientRect(); const id = ++tapId.current;
+    setTaps(t => [...t.slice(-3), { id, x: e.clientX - box.left, y: e.clientY - box.top }]);
+    setTimeout(() => setTaps(t => t.filter(k => k.id !== id)), 600);
+  };
   return (
     <div className={`live-screen${interactive ? ' driving' : ''}`} onClick={point}
       onWheel={e => { if (interactive && onWheel && Date.now() - lastWheel.current > 450) { lastWheel.current = Date.now(); onWheel(e.deltaY > 0 ? 'down' : 'up'); } }}>
@@ -54,6 +63,7 @@ export default function LiveScreen({ id, enabled, fallback, interactive, onPoint
       {state !== 'live' && (fallback
         ? <img ref={img} alt="The page Lumina is working on" src={fallback} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
         : <p className="faint live-wait">{enabled ? 'Waiting for the first view of the page…' : 'No picture was saved for this task.'}</p>)}
+      {taps.map(t => <span key={t.id} className="live-tap" style={{ left: t.x, top: t.y }} aria-hidden="true" />)}
       {enabled && <span className={`live-badge ${state}`} aria-live="polite">{state === 'live' ? '● Live' : state === 'snapshots' ? 'Snapshots' : 'Connecting…'}</span>}
     </div>);
 }
