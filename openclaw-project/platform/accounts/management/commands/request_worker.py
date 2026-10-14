@@ -28,12 +28,16 @@ def build_worker(store):
         from agentai_platform.storage import RootStore
         key = settings.ARTIFACT_SIGNING_KEY
         artifacts = ArtifactService(store, storage=RootStore(settings.STORAGE_DIR), signing_key=key.encode() if isinstance(key, str) else key)
-    driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store), artifacts=artifacts,
-                        sleep=time.sleep, heartbeat=queue.heartbeat, genui=GenUiRuntime(store, BlockStore(store)),
-                        browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET))
+    from agentai_platform.routing.services import ServiceRouter
     from agentai_platform.routing.shadow import ShadowRouter
     from agentai_platform.switches import SwitchStore
     switches = SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None)
+    # JEV chooses, per message, between Lumina's browser, a web search and a direct answer; the chosen service's output goes to the assistant.
+    services = ServiceRouter(config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE, switch_on=lambda: switches.is_on('jev_services'))
+    driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store), artifacts=artifacts,
+                        sleep=time.sleep, heartbeat=queue.heartbeat, genui=GenUiRuntime(store, BlockStore(store)),
+                        browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET),
+                        services=services, browse_enabled=lambda: switches.is_on('browse_tasks'))
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))
     from accounts.chat import service
