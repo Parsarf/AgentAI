@@ -33,6 +33,11 @@ BACKUP = f"{DASH}.bak-{STAMP}"
 PLAN = [
     ("Back up the current dashboard", f"cp -a {DASH} {BACKUP}"),
     ("Create the switches folder", f"mkdir -p {SWITCH_DIR} && test -e {SWITCH_DIR}/facts.json || echo '{{}}' > {SWITCH_DIR}/facts.json"),
+    # The service runs with ProtectSystem=strict and may only write to its own folder, so saving a switch failed with "could not save (OSError)".
+    # Allow exactly the switches folder (a drop-in; the daemon-reload happens with the restart below).
+    ("Let the dashboard save switches (write access to the switches folder only)",
+     "install -d -m 755 /etc/systemd/system/openclaw-dashboard.service.d && printf '[Service]\\nReadWritePaths=%s\\n' " + SWITCH_DIR +
+     " > /etc/systemd/system/openclaw-dashboard.service.d/feature-switches.conf && chmod 644 /etc/systemd/system/openclaw-dashboard.service.d/feature-switches.conf && systemctl daemon-reload"),
 ]
 
 
