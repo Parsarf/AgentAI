@@ -5,6 +5,8 @@ import type { Root, PhrasingContent } from 'mdast';
 import './response.css';
 import { inlineCard } from '../../lib/genui/inline';
 import { ChartCard, ComparisonCard, TableCard } from '../genui/Cards';
+import { isEmojiUrl, remarkEmoji } from '../../lib/emojify';
+import { EmojiImg } from '../Emoji';
 
 export function safeResponseUrl(value: string): string | undefined {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
@@ -28,7 +30,7 @@ function sourceLinks() {
     }
   };
 }
-const PLUGINS = [remarkGfm, sourceLinks];
+const PLUGINS = [remarkGfm, sourceLinks, remarkEmoji];
 function dataCard(value: string) {
   const card = inlineCard(value);
   if (!card) return null;
@@ -39,8 +41,11 @@ function dataCard(value: string) {
 const COMPONENTS: Components = {
     a: ({ href, children }) => { const url = href && safeResponseUrl(href); return url ? <a href={url} target="_blank" rel="noopener noreferrer">{children}<span className="sr"> (opens in a new tab)</span></a> : <span>{children}</span>; },
     p: ({ node, children }) => {
-      const textOnly = node?.children.every(c => c.type === 'text');
-      const value = textOnly ? node!.children.map(c => c.type === 'text' ? c.value : '').join('') : '';
+      // An emoji picture counts as the text it stands for, so a JSON card containing emoji is still recognised as one.
+      const textOf = (c: NonNullable<typeof node>['children'][number]) => c.type === 'text' ? c.value
+        : c.type === 'element' && c.tagName === 'img' && isEmojiUrl(String(c.properties.src ?? '')) ? String(c.properties.alt ?? '') : null;
+      const pieces = node?.children.map(textOf) ?? [];
+      const value = pieces.length && pieces.every(x => x !== null) ? pieces.join('') : '';
       return dataCard(value) ?? <p className={node?.children.some(c => c.type === 'text' && /^Sources?:/i.test(c.value.trim())) ? 'answer-sources' : undefined}>{children}</p>;
     },
     pre: ({ node, children }) => {
@@ -55,7 +60,7 @@ const COMPONENTS: Components = {
       }
       return <pre role="region" aria-label="Code block" tabIndex={0}>{children}</pre>;
     },
-    img: ({ alt, src }) => <span>{alt || 'Image'}{src && safeResponseUrl(src) && <> — <a href={safeResponseUrl(src)} target="_blank" rel="noopener noreferrer">View image ↗</a></>}</span>,
+    img: ({ alt, src }) => isEmojiUrl(src) ? <EmojiImg emoji={alt ?? ''} file={src!.slice(src!.lastIndexOf('/') + 1)} /> : <span>{alt || 'Image'}{src && safeResponseUrl(src) && <> — <a href={safeResponseUrl(src)} target="_blank" rel="noopener noreferrer">View image ↗</a></>}</span>,
     table: ({ children }) => <div className="answer-table" role="region" aria-label="Response table" tabIndex={0}><table>{children}</table></div>,
   };
 

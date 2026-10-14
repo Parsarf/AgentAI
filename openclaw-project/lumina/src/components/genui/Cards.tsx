@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Emojified } from '../Emoji';
 import { filterRows, formatCell, niceMax, shares, sortRows, toCsv, type ChartSpec, type ComparisonSpec, type TableSpec } from '../../lib/genui/data';
 
+const em = (t: ReactNode) => (typeof t === 'string' ? <Emojified text={t} /> : t);       // emoji in card text show as OpenMoji pictures
 const COLORS = ['#7b78ff', '#35d0ba', '#ffb454', '#ff6b8b', '#8fb4ff', '#b8f27c'];
 const link = (href: string, text: string) => <a href={href} target="_blank" rel="noopener noreferrer nofollow">{text} ↗</a>;
 
@@ -12,7 +14,7 @@ export function TableCard({ spec }: { spec: TableSpec }) {
   const copy = async () => { try { await navigator.clipboard.writeText(toCsv(spec, rows)); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } };
   return (
     <section className="gcard" aria-label={spec.title}>
-      <header className="gcard-h"><h3>{spec.title}</h3>
+      <header className="gcard-h"><h3>{em(spec.title)}</h3>
         <div className="gcard-tools">
           {spec.rows.length > 6 && <input className="gfilter" type="search" placeholder="Filter…" aria-label="Filter rows" value={q} onChange={e => setQ(e.target.value)} />}
           <button className="btn small" onClick={copy}>{copied ? 'Copied' : 'Copy CSV'}</button></div></header>
@@ -20,12 +22,12 @@ export function TableCard({ spec }: { spec: TableSpec }) {
         <thead><tr>{spec.columns.map(c => {
           const on = sort?.col === c.id; const num = c.type !== 'text' && c.type !== 'link';
           return <th key={c.id} className={num ? 'num' : ''} aria-sort={on ? (sort!.dir === 1 ? 'ascending' : 'descending') : 'none'}>
-            <button onClick={() => click(c.id)}>{c.label}<span aria-hidden className="arrow">{on ? (sort!.dir === 1 ? '↑' : '↓') : ''}</span></button></th>;
+            <button onClick={() => click(c.id)}>{em(c.label)}<span aria-hidden className="arrow">{on ? (sort!.dir === 1 ? '↑' : '↓') : ''}</span></button></th>;
         })}</tr></thead>
         <tbody>{rows.map((r, n) => (
           <tr key={n} className={r === best ? 'best' : ''}>{spec.columns.map(c => {
             const v = r[c.id]; const num = c.type !== 'text' && c.type !== 'link';
-            return <td key={c.id} className={num ? 'num' : ''}>{c.type === 'link' && typeof v === 'string' ? link(v, 'Open') : formatCell(v, c.type, c.unit)}</td>;
+            return <td key={c.id} className={num ? 'num' : ''}>{c.type === 'link' && typeof v === 'string' ? link(v, 'Open') : em(formatCell(v, c.type, c.unit))}</td>;
           })}</tr>))}
           {!rows.length && <tr><td colSpan={spec.columns.length} className="faint">No rows match.</td></tr>}</tbody></table></div>
       {(spec.caption || rows.length !== spec.rows.length) && <p className="gcard-cap">{spec.caption}{rows.length !== spec.rows.length ? ` Showing ${rows.length} of ${spec.rows.length}.` : ''}</p>}
@@ -53,7 +55,7 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
   const ticks = [0, 1, 2, 3, 4].map(k => min + (span * k) / 4);
   return (
     <section className="gcard" aria-label={spec.title}>
-      <header className="gcard-h"><h3>{spec.title}</h3><span className="gread" role="status">{hover ?? ' '}</span></header>
+      <header className="gcard-h"><h3>{em(spec.title)}</h3><span className="gread" role="status">{hover ?? ' '}</span></header>
       {pie ? (
         <div className="gpie">
           <svg viewBox="0 0 280 260" role="img" aria-label={spec.title}>
@@ -86,17 +88,17 @@ export function ComparisonCard({ spec }: { spec: ComparisonSpec }) {
   const [pick, setPick] = useState<number | null>(spec.bestIndex ?? null);
   return (
     <section className="gcard gcard-comparison" aria-label={spec.title}>
-      <header className="gcard-h"><h3>{spec.title}</h3><span className="gcompare-count">{spec.items.length} options</span></header>
+      <header className="gcard-h"><h3>{em(spec.title)}</h3><span className="gcompare-count">{spec.items.length} options</span></header>
       <div className="gcompare" data-count={spec.items.length}>
         {spec.items.map((it, i) => (
           <article key={i} className={`gopt${pick === i ? ' on' : ''}`}>
             <div className="gopt-heading">
               {(it.badge || spec.bestIndex === i) && <span className="gbadge">{it.badge ?? 'Best pick'}</span>}
-              <h4>{it.name}</h4>{it.subtitle && <p className="gopt-subtitle">{it.subtitle}</p>}{it.price && <p className="gprice">{it.price}</p>}
+              <h4>{em(it.name)}</h4>{it.subtitle && <p className="gopt-subtitle">{em(it.subtitle)}</p>}{it.price && <p className="gprice">{em(it.price)}</p>}
             </div>
-            {it.facts.length > 0 && <dl>{it.facts.map((f, k) => <div key={k}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}</dl>}
-            {it.pros.length > 0 && <ul className="pros" aria-label="Advantages">{it.pros.map((p, k) => <li key={k}>{p}</li>)}</ul>}
-            {it.cons.length > 0 && <ul className="cons" aria-label="Tradeoffs">{it.cons.map((p, k) => <li key={k}>{p}</li>)}</ul>}
+            {it.facts.length > 0 && <dl>{it.facts.map((f, k) => <div key={k}><dt>{em(f.label)}</dt><dd>{em(f.value)}</dd></div>)}</dl>}
+            {it.pros.length > 0 && <ul className="pros" aria-label="Advantages">{it.pros.map((p, k) => <li key={k}>{em(p)}</li>)}</ul>}
+            {it.cons.length > 0 && <ul className="cons" aria-label="Tradeoffs">{it.cons.map((p, k) => <li key={k}>{em(p)}</li>)}</ul>}
             <footer className="gopt-actions">
               <button className="gopt-pick" aria-pressed={pick === i} aria-label={`Select ${it.name}`} onClick={() => setPick(pick === i ? null : i)}>{pick === i ? 'Selected' : 'Select option'}</button>
               {it.link && link(it.link, 'View details')}

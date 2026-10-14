@@ -15,6 +15,7 @@ import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 import Orb from '../components/Orb';
+import { Emojified } from '../components/Emoji';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
 const same = <T,>(prev: T, next: T): T => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
@@ -94,7 +95,7 @@ export default function Chat() {
           {id && !loaded && <p className="muted">Loading…</p>}
           {msgs.map(m => (
             <div key={m.id} className="turn">
-              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : m.content}</div>
+              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : <Emojified text={m.content} />}</div>
               {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <AgentThinking task={byRequest.get(m.request_id)!} />}
               {m.provenance === 'agent' && m.request_id && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
                 <div className="filechips" aria-label="Files from this answer">{mine.map(a => <button key={a.display_name} className="chip small" title={humanSize(a.size_bytes)} onClick={() => download(a.id, a.version).catch(() => undefined)}>⬇ {a.display_name}</button>)}</div>); })()}

@@ -7,7 +7,7 @@ const colType = z.enum(['text', 'number', 'currency', 'percent', 'rating', 'link
 
 export const tableSpec = z.object({
   schemaVersion: z.literal('1.0'), type: z.literal('table'), title: t(120), caption: t(240).optional(), highlightRow: z.number().int().min(0).optional(),
-  columns: z.array(z.object({ id: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/), label: t(60), type: colType, unit: t(12).optional() }).strict()).min(1).max(12),
+  columns: z.array(z.object({ id: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/), label: t(60), type: colType.default('text'), unit: t(12).optional() }).strict()).min(1).max(12),   // the server defaults a missing column type to text; so does this
   rows: z.array(z.record(z.string(), z.union([z.string().max(500), z.number()]))).min(1).max(200),
 }).strict();
 
@@ -21,7 +21,7 @@ export const comparisonSpec = z.object({
   schemaVersion: z.literal('1.0'), type: z.literal('comparison'), title: t(120), caption: t(240).optional(), bestIndex: z.number().int().min(0).optional(),
   items: z.array(z.object({
     name: t(80), subtitle: t(120).optional(), badge: t(24).optional(), price: t(24).optional(), link: url.optional(),
-    facts: z.array(z.object({ label: t(40), value: t(120) }).strict()).max(10), pros: z.array(t(120)).max(5), cons: z.array(t(120)).max(5),
+    facts: z.array(z.object({ label: t(40), value: t(120) }).strict()).max(10).default([]), pros: z.array(t(120)).max(5).default([]), cons: z.array(t(120)).max(5).default([]),   // as on the server, all optional
   }).strict()).min(2).max(6),
 }).strict();
 

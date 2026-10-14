@@ -457,3 +457,6 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .live-show-text input[type="checkbox"] { flex: none; padding: 0; }
 .live-workspace .live-meta { padding-top: 0; }
 .live-workspace .livepage { max-width: none; }
+
+/* Emoji shown as OpenMoji pictures (src/lib/emojify.ts). The alt text is the emoji, so copying and screen readers still get the character. */
+.emoji { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -.26em; margin: 0 .03em; user-select: all; }
