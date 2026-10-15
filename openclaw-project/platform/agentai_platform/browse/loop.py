@@ -9,6 +9,7 @@ from . import candidates as cand
 from .untrusted import neutralize
 from .ladder import Decision, Ladder, Refused
 
+LOGIN_REASON = 'this page needs you to sign in; I never type passwords'
 WALL_REASON = 'the site is asking to verify you are human, which I cannot pass for you'
 DEFAULT_DENY = re.compile(r'(^|\.)(paypal|venmo|cash\.app|chase|bankofamerica|wellsfargo|citi|capitalone|robinhood|coinbase|binance|fidelity|schwab|vanguard)\.', re.I)
 
@@ -35,7 +36,7 @@ class Policy:
         """'ok' | 'handoff' (payment/consequential step: the user takes over) -- evaluated BEFORE any click."""
         if cand.page_is_payment(url, snapshot_text, page_text):
             return 'handoff'
-        if chosen and chosen.get('label') and cand.SENSITIVE.search(chosen['label']):
+        if chosen and (chosen.get('sensitive') or (chosen.get('label') and cand.SENSITIVE.search(chosen['label']))):   # `sensitive` also covers password fields
             return 'handoff'
         return 'ok'
 
@@ -99,6 +100,8 @@ class BrowseRunner:
             page = {'url': url, 'title': neutralize(snap.get('title', ''), 300), 'text': neutralize(snap.get('text', ''))}
             if self.policy.read_only and cand.page_is_payment(url, snap.get('snapshot', ''), page['text']):
                 return self._end(res, 'handoff', 'reached a payment step; you take it from here', history, url)
+            if cand.page_is_login(snap.get('snapshot', '')):
+                return self._end(res, 'handoff', LOGIN_REASON, history, url)       # before any model, so a sign-in page is never sent to a third party
             try:
                 d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures)
             except Refused as exc:

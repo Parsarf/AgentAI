@@ -48,6 +48,15 @@ def page_is_payment(url: str, snapshot_text: str, page_text: str) -> bool:
     return bool(CHECKOUT_PATH.search(url or '')) or bool(CARD_FIELD.search(snapshot_text or '')) or sum(1 for _ in CARD_FIELD.finditer(page_text or '')) >= 2
 
 
+PASSWORD_FIELD = re.compile(r'^\[\d+\]\s+<input\s+type=password>', re.M)
+
+
+def page_is_login(snapshot_text: str) -> bool:
+    """A page with a password field. It is read from the runner's snapshot lines (not the 20 listed candidates), so a field past the cap still counts.
+    Such a page goes to the user before any model, JEV included, is shown it: sign-in pages are where a customer's private data sits."""
+    return bool(PASSWORD_FIELD.search(snapshot_text or ''))
+
+
 BOT_CHECK = re.compile(r'just a moment|verify (you are|you.re) (a )?human|checking (if|that) you are human|checking your browser|attention required|are you a robot|press (&|and) hold|captcha|unusual traffic|access denied', re.I)
 
 

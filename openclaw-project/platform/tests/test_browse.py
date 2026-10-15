@@ -164,6 +164,54 @@ class Loop(unittest.TestCase):
         self.assertIn('UNTRUSTED', 'UNTRUSTED')   # the prompt marks page text as data (see ladder.render)
 
 
+LOGIN_PAGE = {'start': {'url': 'https://shop.example/account', 'snap': '[1] <input type=text> "Email"\n[2] <input type=password> "Password"\n[3] <button> "Continue"', 'text': 'Welcome back'}}
+
+
+class SafetyFloor(unittest.TestCase):
+    """Code rules no model answer can override: payment, human checks, denied sites, password fields, sensitive buttons. Same in every JEV mode."""
+
+    def ladders(self, llm_calls, jev_calls):
+        """One ladder per mode; any model call is recorded so a test can prove nothing was sent anywhere."""
+        def llm(tier, system, user): llm_calls.append(tier); return {'text': '{"action":"click","ref":1}', 'cost_microusd': 1}
+        def transport(endpoint, body, key, deadline): jev_calls.append(body); return 'unusable'
+        chooser = JevChooser('https://x', 'jev-1.13.0', 'k', transport)
+        return {'off': Ladder(llm), 'shadow': Ladder(llm, jev=chooser, shadow=True), 'live': Ladder(llm, jev=chooser)}
+
+    def test_page_is_login_reads_the_snapshot_lines(self):
+        self.assertTrue(cand.page_is_login(LOGIN_PAGE['start']['snap']))
+        self.assertTrue(cand.page_is_login('\n'.join(f'[{i}] <a> "L{i}"' for i in range(1, 40)) + '\n[40] <input type=password> "Pass"'))   # past the 20-candidate cap
+        self.assertFalse(cand.page_is_login(SNAP.replace('<input type=password> "Password"', '<input type=text> "Name"')))
+        self.assertFalse(cand.page_is_login('[1] <a> "Forgot password?"\n[2] <input type=text> "Password hint"'))
+        self.assertFalse(cand.page_is_login('') or cand.page_is_login(None))
+
+    def test_a_password_page_goes_to_the_user_before_any_model_is_asked(self):
+        for mode in ('off', 'shadow', 'live'):
+            with self.subTest(mode=mode):
+                llm_calls, jev_calls = [], []
+                r = BrowseRunner(FakeSession(LOGIN_PAGE), self.ladders(llm_calls, jev_calls)[mode], max_steps=4).run('check my orders', 'https://shop.example/account')
+                self.assertEqual(r.status, 'handoff'); self.assertIn('sign in', r.reason)
+                self.assertEqual((llm_calls, jev_calls), ([], []))
+
+    def test_other_floors_hold_in_every_mode_whatever_jev_says(self):
+        wall = {'start': {'url': 'https://food.example/', 'snap': '', 'text': 'Just a moment...'}}
+        pay = {'start': {'url': 'https://shop.example/checkout', 'snap': '[1] <input type=text> "Card number"', 'text': ''}}
+        for mode in ('off', 'shadow', 'live'):
+            for name, pages, url, status in (('wall', wall, 'https://food.example/', 'handoff'), ('payment', pay, 'https://shop.example/checkout', 'handoff'),
+                                             ('denied', PAGES, 'https://www.paypal.com/', 'blocked')):
+                with self.subTest(mode=mode, case=name):
+                    llm_calls, jev_calls = [], []
+                    r = BrowseRunner(FakeSession(pages), self.ladders(llm_calls, jev_calls)[mode], max_steps=4, wait=lambda s: None).run('g', url)
+                    self.assertEqual(r.status, status); self.assertEqual((llm_calls, jev_calls), ([], []))
+
+    def test_the_gate_stops_on_password_fields_and_sensitive_buttons_even_when_the_label_looks_harmless(self):
+        policy = Policy()
+        self.assertEqual(policy.gate('https://x/y', '', '', {'label': 'Secret', 'sensitive': True}), 'handoff')       # e.g. a password input labelled oddly
+        self.assertEqual(policy.gate('https://x/y', '', '', {'label': 'Place order', 'sensitive': True}), 'handoff')
+        self.assertEqual(policy.gate('https://x/y', '', '', {'label': 'Place order'}), 'handoff')                      # the label rule still works on its own
+        self.assertEqual(policy.gate('https://x/y', '', '', {'label': 'Search paddles', 'sensitive': False}), 'ok')
+        self.assertEqual(policy.gate('https://x/y', '', '', None), 'ok')
+
+
 @unittest.skipUnless(shutil.which('node') and Path('/Applications/Google Chrome.app').exists() and (Path(__file__).resolve().parents[2] / 'browse' / 'node_modules').exists(),
                      'needs node, local Chrome and the runner dependencies')
 class RealRunner(unittest.TestCase):
