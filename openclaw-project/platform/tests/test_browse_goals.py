@@ -32,8 +32,9 @@ class GoalChecks(unittest.TestCase):
         def transport(endpoint, body, credential, deadline):
             self.assertIn(current, body['state'])
             self.assertLess(body['state'].index('Search DoorDash'), body['state'].index('Old chat interface'))
-            return {'model': 'test', 'answers': {'action': {'type': 'choice', 'choice': 'stop', 'probabilities': {'stop': 1, 'escalate': 0, 'no_valid_action': 0}}}}
-        JevChooser('unused', 'test', 'unused', transport).choose(wrapped(current), '', [])
+            options = list(body['questions']['operation']['criteria'])
+            return {'model': 'test', 'answers': {'operation': {'type': 'choice', 'choice': 'done', 'probabilities': {o: 1.0 if o == 'done' else 0.0 for o in options}}}}
+        self.assertEqual(JevChooser('unused', 'test', 'unused', transport).choose(wrapped(current), '', []).operation, 'done')
 
     def test_start_page_uses_current_urls_not_history_urls(self):
         with tempfile.TemporaryDirectory() as root:

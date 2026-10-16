@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from . import candidates as cand
 from .untrusted import neutralize
-from .ladder import Decision, Ladder, Refused
+from .ladder import RUNNER_V2, Decision, Ladder, Refused
 
 LOGIN_REASON = 'this page needs you to sign in; I never type passwords'
 WALL_REASON = 'the site is asking to verify you are human, which I cannot pass for you'
@@ -96,6 +96,7 @@ class BrowseRunner:
             url = snap.get('url', '')
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
+            fp_before = snap.get('page_fp')
             candidates = cand.build(snap.get('snapshot', ''), elements=snap.get('elements'))
             page = {'url': url, 'title': neutralize(snap.get('title', ''), 300), 'text': neutralize(snap.get('text', ''))}
             if self.policy.read_only and cand.page_is_payment(url, snap.get('snapshot', ''), page['text']):
@@ -103,7 +104,8 @@ class BrowseRunner:
             if cand.page_is_login(snap.get('snapshot', '')):
                 return self._end(res, 'handoff', LOGIN_REASON, history, url)       # before any model, so a sign-in page is never sent to a third party
             try:
-                d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures)
+                d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures,
+                                                 caps=RUNNER_V2 if snap.get('elements') is not None else frozenset())
             except Refused as exc:
                 return self._end(res, 'budget', f'stopped: the spending limit was reached ({exc})', history, url)
             res.cost_microusd += d.cost_microusd
@@ -111,6 +113,8 @@ class BrowseRunner:
             if d.kind == 'done':
                 res.answer = d.answer
                 return self._end(res, 'done', d.reason, history, url)
+            if d.kind == 'handoff':
+                return self._end(res, 'handoff', d.reason, history, url)         # JEV added a hand-off; it can never remove one
             if d.kind == 'stop':
                 return self._end(res, 'stopped', d.reason or 'could not continue', history, url)
             a = d.action
@@ -125,7 +129,9 @@ class BrowseRunner:
                     return self._end(res, 'stuck', 'repeating the same step', history, url)
                 forced = True
             out = self.s.act(a['action'], a['ref'], a.get('value'), a.get('label'))
-            entry = {'step': step, 'by': d.by, 'action': a['action'], 'label': a['label'], 'result': 'ok' if out.get('ok') else out.get('error', 'failed')}
+            after = out.get('page_fp')
+            changed = None if not (fp_before and after) else after != fp_before         # None = unknown (an older runner, or the page was mid-change)
+            entry = {'step': step, 'by': d.by, 'action': a['action'], 'label': a['label'], 'result': 'ok' if out.get('ok') else out.get('error', 'failed'), 'changed': changed}
             history.append(entry)
             self.on_event('step', {**entry, 'url': out.get('url', url), 'confidence': d.confidence, **d.meta})
             if not out.get('ok'):

@@ -838,7 +838,7 @@ class ChatDriver:
             return f'Opened {e.get("url", "")}'
         if e['kind'] == 'step':
             who = {'jev': 'JEV', 'haiku': 'Haiku', 'sonnet': 'Sonnet'}.get(e.get('by'), e.get('by', ''))
-            verb = {'click': 'Clicked', 'type': 'Typed into', 'select': 'Chose in', 'press': 'Pressed', 'scroll': 'Scrolled', 'back': 'Went back'}.get(e.get('action'), e.get('action', ''))
+            verb = {'click': 'Clicked', 'type': 'Typed into', 'select': 'Chose in', 'press': 'Pressed', 'scroll': 'Scrolled', 'back': 'Went back', 'wait': 'Waited'}.get(e.get('action'), e.get('action', ''))
             tail = '' if e.get('result') == 'ok' else f' (failed: {e.get("result")})'
             label = f' “{e.get("label")}”' if e.get('label') else ''
             return f'{verb}{label} · {who}{tail}'
