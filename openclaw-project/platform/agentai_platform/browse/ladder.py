@@ -10,6 +10,7 @@ The code rules in loop.py (payment, human checks, sign-in pages, sensitive butto
 from __future__ import annotations
 from dataclasses import dataclass, field
 import json
+import logging
 import math
 import re
 from urllib.parse import urlsplit
@@ -18,6 +19,8 @@ from agentai_platform.genui.runtime import extract_json
 from agentai_platform.privacy import scrub
 from .untrusted import neutralize
 from .goals import goal_parts, instruction_text
+
+log = logging.getLogger('agentai.browse')       # lines go to the service journal; they carry reasons and numbers, never page text or typed values
 
 ACTIONS = ('click', 'type', 'select', 'press', 'scroll', 'back', 'done', 'stop')
 OPERATIONS = ('click', 'type', 'select', 'scroll_down', 'scroll_up', 'back', 'press_enter', 'wait', 'done', 'needs_user', 'too_complex')
@@ -173,6 +176,7 @@ class Pick:
     target: str | None = None      # candidate id
     option: str | None = None      # dropdown option text
     text: str | None = None        # a phrase from the user's request to type; None means "write new text"
+    answers: dict = field(default_factory=dict)   # question -> (choice, probability), for the log
 
 
 class JevChooser:
@@ -220,6 +224,7 @@ class JevChooser:
             text_id = needed('type_text')
             pick.text = None if text_id == 'write_new' else phrases[int(text_id[1:])]
         pick.confidence = min(probs)
+        pick.answers = answers
         return pick
 
 
@@ -266,6 +271,20 @@ def parse_decision(text, candidates, by, cost=0):
     return Decision('act', by, str(data.get('reason', ''))[:200], action={'action': act, 'ref': ref, 'value': value if act != 'click' else None, 'label': cand['label']}, cost_microusd=cost)
 
 
+def _why(exc):
+    """A short, page-free reason for the journal: the error type, an HTTP status and the start of the provider's error body (it describes the request format, not the page)."""
+    out = type(exc).__name__
+    if getattr(exc, 'code', None):
+        out += f' {exc.code}'
+        try:
+            out += ' ' + scrub(exc.read(300).decode('utf-8', 'replace'), 200)
+        except Exception:
+            pass
+    elif str(exc):
+        out += ': ' + scrub(str(exc), 200)
+    return out
+
+
 @dataclass
 class _Step:
     decision: Decision | None = None
@@ -287,8 +306,25 @@ class Ladder:
     def _ask(self, tier, goal, history, page, candidates, hint=''):
         if not self.admit(tier):
             raise Refused(tier)
-        reply = self.llm(tier, SYSTEM, render(goal, history, page, candidates) + hint)
-        return parse_decision(reply['text'], candidates, tier, reply.get('cost_microusd', 0))
+        user = render(goal, history, page, candidates) + hint
+        reply = self.llm(tier, SYSTEM, user)
+        cost = reply.get('cost_microusd', 0)
+        try:
+            return parse_decision(reply['text'], candidates, tier, cost)
+        except ValueError as exc:
+            if str(exc) != 'no JSON':
+                raise
+            log.warning('browse: %s reply had no JSON (length %d, finish %s); asking once more', tier, len(reply.get('text') or ''), reply.get('finish'))
+        # The model wrote prose (or was cut off) instead of the JSON object: ask once more, firmly, before giving up on this tier.
+        if not self.admit(tier):
+            raise Refused(tier)
+        again = self.llm(tier, SYSTEM, user + '\n\nYour last reply was not a JSON object. Reply with ONLY the JSON object, no other text.')
+        cost += again.get('cost_microusd', 0)
+        try:
+            return parse_decision(again['text'], candidates, tier, cost)
+        except ValueError as exc:
+            log.warning('browse: %s second reply failed too (%s; length %d, finish %s)', tier, exc, len(again.get('text') or ''), again.get('finish'))
+            raise
 
     def _value_for(self, goal, history, page, cand):
         """JEV chose a field to type into and asked for new text; a language model supplies only the text."""
@@ -319,7 +355,8 @@ class Ladder:
                 pick = self.jev.choose(goal, page.get('text', ''), candidates, page=page, history=history, caps=caps, phrases=goal_phrases(goal), allow_enter=self._enter_ok(history, candidates))
                 d.meta = {'jev_op': pick.operation, 'jev_choice': pick.target or pick.operation, 'jev_prob': round(pick.confidence, 3), 'agree': self._same_step(d, pick)}
                 d.cost_microusd += pick.cost_microusd
-        except Exception:
+        except Exception as exc:
+            log.warning('browse: JEV (shadow) failed: %s', _why(exc))
             d.meta = {'jev_choice': None}
         return d
 
@@ -343,10 +380,12 @@ class Ladder:
             raise Refused('jev')
         try:
             pick = self.jev.choose(goal, page.get('text', ''), candidates, page=page, history=history, caps=caps, phrases=goal_phrases(goal), allow_enter=self._enter_ok(history, candidates))
-        except Exception:                                        # timeout, HTTP error, malformed or inconsistent answer
+        except Exception as exc:                                 # timeout, HTTP error, malformed or inconsistent answer
+            log.warning('browse: JEV miss: %s', _why(exc))
             return _Step(signal='miss')
         cost, op = pick.cost_microusd, pick.operation
         if pick.confidence < self.automatic:
+            log.warning('browse: JEV miss: low confidence %.2f (%s)', pick.confidence, ', '.join(f'{k}={c}:{p:.2f}' for k, (c, p) in pick.answers.items()))
             return _Step(signal='miss', cost=cost)
         meta = {'jev_op': op}
         conf = round(pick.confidence, 3)
@@ -369,6 +408,7 @@ class Ladder:
             return _Step(Decision('act', 'jev', 'JEV choice', {'action': action[0], 'ref': None, 'value': action[1], 'label': ''}, confidence=pick.confidence, cost_microusd=cost, meta=meta))
         cand = by_id.get(pick.target)
         if cand is None or cand['action'] != op:
+            log.warning('browse: JEV miss: %s target %s does not fit', op, pick.target)
             return _Step(signal='miss', cost=cost)
         if op == 'click':
             return _Step(Decision('act', 'jev', 'JEV choice', {'action': 'click', 'ref': cand['ref'], 'value': None, 'label': cand['label']}, confidence=pick.confidence, cost_microusd=cost, meta=meta))

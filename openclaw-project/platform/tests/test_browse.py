@@ -220,8 +220,22 @@ class Loop(unittest.TestCase):
         self.assertEqual(r.status, 'done')
 
     def test_an_unusable_model_reply_says_why(self):
-        r = BrowseRunner(FakeSession(PAGES), Ladder(scripted_llm(['nonsense', 'still nonsense'])), max_steps=3).run('g', 'https://shop.example/')
+        r = BrowseRunner(FakeSession(PAGES), Ladder(scripted_llm(['nonsense', 'still nonsense', 'prose again', 'and again'])), max_steps=3).run('g', 'https://shop.example/')
         self.assertEqual(r.status, 'stopped'); self.assertIn('no JSON', r.reason)
+
+    def test_a_reply_without_json_is_asked_for_once_more_before_the_tier_is_given_up(self):
+        llm = scripted_llm(['Let me look at the menu first.', '{"action":"click","ref":2}'])
+        r = BrowseRunner(FakeSession(PAGES), Ladder(llm), max_steps=1).run('g', 'https://shop.example/')
+        self.assertEqual([h['by'] for h in r.steps], ['haiku']); self.assertEqual(llm.calls, ['haiku', 'haiku'])
+        self.assertEqual(r.cost_microusd, 6000)                                      # both calls are paid for and counted
+        with self.assertLogs('agentai.browse', 'WARNING') as logged:                 # and the journal says what happened, without any page text
+            Ladder(scripted_llm(['prose', '{"action":"stop"}'])).decide('g', [], {'url': 'u', 'title': 't', 'text': 'SECRET PAGE TEXT'}, [])
+        self.assertIn('no JSON', logged.output[0]); self.assertNotIn('SECRET', ' '.join(logged.output))
+        asked = []
+        def admit(kind): asked.append(kind); return len(asked) <= 1
+        with self.assertRaises(Refused): Ladder(scripted_llm(['prose', '{"action":"stop"}']), admit=admit).decide('g', [], PAGE, CANDS)     # the retry is a paid call too
+        llm2 = scripted_llm(['prose', 'more prose', '{"action":"click","ref":2}'])                                                           # Haiku fails twice: Sonnet is tried
+        self.assertEqual(Ladder(llm2).decide('g', [], PAGE, CANDS).by, 'sonnet'); self.assertEqual(llm2.calls, ['haiku', 'haiku', 'sonnet'])
 
     def test_budget_refusal_stops_paid_decisions(self):
         n = []
@@ -312,6 +326,17 @@ class JevOperations(unittest.TestCase):
                 else:
                     d, llm, *_ = self.decide(misses[name], llm_steps=['{"action":"click","ref":2}'])
                 self.assertTrue(d.miss); self.assertNotEqual(d.by, 'jev')
+
+    def test_the_journal_says_why_jev_missed_without_any_page_text(self):
+        import urllib.error, io
+        def refused(endpoint, body, key, deadline):
+            raise urllib.error.HTTPError(endpoint, 400, 'Bad Request', {}, io.BytesIO(b'{"error":"questions.click_target: at least 2 criteria needed"}'))
+        for name, jev, expect in (('rejected', refused, 'HTTPError 400'), ('garbage', lambda *a: 'not json', 'JSONDecodeError'), ('low confidence', None, 'low confidence 0.60'), ('target not offered', None, 'bad choice or probabilities')):
+            with self.subTest(name), self.assertLogs('agentai.browse', 'WARNING') as logged:
+                transport = jev if jev is not None else ScriptedJev({'operation': 'click', 'click_target': 'c1' if name == 'target not offered' else 'c2'}, p=0.6 if name == 'low confidence' else 1.0)
+                page = {**PAGE, 'text': 'SECRET PAGE TEXT'}
+                live(scripted_llm(['{"action":"click","ref":2}']), transport).decide('SECRET GOAL', [], page, CANDS)
+            self.assertIn(expect, ' '.join(logged.output)); self.assertNotIn('SECRET', ' '.join(logged.output))
 
     def test_scroll_up_and_wait_are_not_offered_to_an_older_runner(self):
         _, _, jev, _ = self.decide({'operation': 'back'}, caps=frozenset())

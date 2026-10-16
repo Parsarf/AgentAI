@@ -26,6 +26,8 @@ class LiteLLM:
                                      headers={'Authorization': 'Bearer ' + self.key, 'Content-Type': 'application/json'})
         with self.opener(req, timeout=self.timeout) as response:
             data = json.load(response)
-        text = (data['choices'][0]['message'].get('content') or '')
+        choice = data['choices'][0]
+        text = (choice['message'].get('content') or '')
         usage = data.get('usage') or {}
-        return {'text': text, 'cost_microusd': estimate_microusd(tier, usage.get('prompt_tokens', 0), usage.get('completion_tokens', 0))}
+        return {'text': text, 'finish': choice.get('finish_reason'),    # 'length' = cut off at max_tokens
+                'cost_microusd': estimate_microusd(tier, usage.get('prompt_tokens', 0), usage.get('completion_tokens', 0))}
