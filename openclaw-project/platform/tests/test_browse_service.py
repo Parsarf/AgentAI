@@ -81,6 +81,27 @@ class ServiceChecks(unittest.TestCase):
         self.assertEqual([c['cmd'] for c in self.transports[0].log].count('act'), 1)                              # only "Add to cart" was clicked
         later = s.poll('acct', RID, p['events'][-1]['n']); self.assertEqual(later['events'], [])                  # polling is incremental
 
+    def test_live_mode_counts_who_decided_each_step_and_keeps_the_totals_with_the_run(self):
+        from agentai_platform.browse.ladder import JevChooser
+        from tests.test_browse import ScriptedJev
+        jev = ScriptedJev('oops', {'operation': 'type', 'type_target': 'c1', 'type_text': 't0'}, {'operation': 'click', 'click_target': 'c2'}, {'operation': 'click', 'click_target': 'c1'})
+        s = svc.BrowseService(spawn=lambda j, o: self.transports.append(FakeTransport(o)) or self.transports[-1], llm_for=llm_for(['{"action":"scroll"}']), root=self.tmp.name,
+                              jev_for=lambda account: JevChooser('https://x', 'jev-1.13.0', 'k', jev), jev_mode='live', takeover_seconds=5)
+        s.start('acct', RID, 'buy a paddle at https://shop.example/')
+        p = wait(s, ('handoff',))
+        stats = p['jev']
+        self.assertEqual(set(svc.STAT_KEYS), set(stats))
+        steps = [e for e in p['events'] if e['kind'] == 'step']
+        self.assertEqual([e['by'] for e in steps], ['haiku', 'jev', 'jev'])
+        self.assertEqual((stats['jev_acted'], stats['haiku_step'], stats['sonnet_step']), (2, 1, 0))
+        self.assertEqual(stats['jev_acted'] + stats['haiku_step'] + stats['sonnet_step'], len(steps))              # per-step counts add up to the steps taken
+        self.assertEqual((stats['jev_misses'], stats['jev_typed_from_goal'], stats['haiku_text'], stats['haiku_answer']), (1, 1, 0, 0))
+        self.assertEqual([c['cmd'] for c in self.transports[0].log].count('act'), 3)
+        self.assertEqual((steps[0].get('miss'), steps[1].get('src')), (True, 'goal'))                              # short facts on the step events, so SQL over browse_steps can rebuild the counts
+        status = [e for e in p['events'] if e['kind'] == 'status' and e.get('state') == 'handoff'][-1]
+        self.assertEqual(status['stats'], stats)                                                                    # the totals are stored with the run
+        self.assertNotIn('buy a paddle', json.dumps(steps))                                                         # the typed text is never put in an event
+
     def test_goal_accepts_saved_conversation_context_but_remains_bounded(self):
         s = self.make([])
         # Startup admission only: no browser or model call runs in this test.

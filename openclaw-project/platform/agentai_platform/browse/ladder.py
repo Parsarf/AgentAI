@@ -389,14 +389,15 @@ class Ladder:
 
     def decide(self, goal, history, page, candidates, *, force_escalate=False, failures=0, jev_misses=0, caps=frozenset()):
         escalate = force_escalate or failures >= 2
-        jev_cost, miss, want_sonnet = 0, False, escalate
+        jev_cost, miss, want_sonnet, signal = 0, False, escalate, ''
         if self.jev and not self.shadow and not escalate and jev_misses < self.give_up_after:
             step = self._jev_step(goal, history, page, candidates, caps)
             jev_cost = step.cost
             if step.decision is not None:
                 return step.decision
             miss = step.signal == 'miss'
-            want_sonnet = step.signal == 'too_complex' or (miss and jev_misses + 1 >= 2)        # a second miss in a row, or JEV's own "too complex"
+            signal = 'too_complex' if step.signal == 'too_complex' else ''
+            want_sonnet = signal == 'too_complex' or (miss and jev_misses + 1 >= 2)        # a second miss in a row, or JEV's own "too complex"
         tiers = ['sonnet'] if want_sonnet and self.sonnet_used < self.max_sonnet else ['haiku']
         if tiers == ['haiku']:
             tiers.append('sonnet') if self.sonnet_used < self.max_sonnet else None
@@ -407,11 +408,11 @@ class Ladder:
                     self.sonnet_used += 1
                 d = self._shadow(self._ask(tier, goal, history, page, candidates), goal, history, page, candidates, caps)
                 d.cost_microusd += jev_cost
-                d.miss = miss
+                d.miss, d.signal = miss, signal
                 return d
             except Refused:
                 raise
             except Exception as exc:       # invalid answer from that tier: try the next one, then give up
                 last = exc
         why = str(last)[:60] if isinstance(last, ValueError) and str(last) else type(last).__name__
-        return Decision('stop', 'rule', f'the assistant gave no usable next step ({why})', cost_microusd=jev_cost, miss=miss)
+        return Decision('stop', 'rule', f'the assistant gave no usable next step ({why})', cost_microusd=jev_cost, miss=miss, signal=signal)

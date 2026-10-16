@@ -54,10 +54,10 @@ class Result:
 
 class BrowseRunner:
     def __init__(self, session, ladder: Ladder, *, policy: Policy | None = None, on_event=lambda kind, data: None, cancelled=lambda: False,
-                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0, wait=time.sleep):
+                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0, wait=time.sleep, on_stat=lambda name, n=1: None):
         self.s, self.ladder, self.policy, self.on_event, self.cancelled = session, ladder, policy or Policy(), on_event, cancelled
         self.max_steps, self.max_seconds, self.shots, self.clock = max_steps, max_seconds, shots, clock
-        self.wait = wait
+        self.wait, self.on_stat = wait, on_stat      # on_stat(name): a counter the service keeps for the run (who decided what, how often JEV missed)
         self.pause_gate = pause_gate        # blocks while the user has the wheel; returns the seconds waited so they do not count against the time limit
 
     def run(self, goal: str, start_url: str) -> Result:
@@ -114,6 +114,11 @@ class BrowseRunner:
             forced = False
             if d.miss:
                 jev_misses += 1
+                self.on_stat('jev_misses')
+            if d.signal:
+                self.on_stat('jev_' + d.signal)                 # jev_needs_user | jev_too_complex
+            if d.haiku_answer:
+                self.on_stat('haiku_answer')
             if d.kind == 'done':
                 res.answer = d.answer
                 return self._end(res, 'done', d.reason, history, url)
@@ -138,7 +143,11 @@ class BrowseRunner:
             changed = None if not (fp_before and after) else after != fp_before         # None = unknown (an older runner, or the page was mid-change)
             entry = {'step': step, 'by': d.by, 'action': a['action'], 'label': a['label'], 'result': 'ok' if out.get('ok') else out.get('error', 'failed'), 'changed': changed}
             history.append(entry)
-            self.on_event('step', {**entry, 'url': out.get('url', url), 'confidence': d.confidence, **d.meta})
+            self.on_stat({'jev': 'jev_acted', 'haiku': 'haiku_step', 'sonnet': 'sonnet_step'}.get(d.by, 'other_step'))        # every acted step is counted exactly once
+            if d.text_src:
+                self.on_stat('jev_typed_from_goal' if d.text_src == 'goal' else 'haiku_text')               # sub-counts of a JEV step
+            why = {k: v for k, v in (('miss', d.miss), ('signal', d.signal), ('src', d.text_src)) if v}      # short facts for the run's record; never page text or typed values
+            self.on_event('step', {**entry, 'url': out.get('url', url), 'confidence': d.confidence, **d.meta, **why})
             if not out.get('ok'):
                 failures += 1
                 if failures >= 4:
@@ -153,6 +162,7 @@ class BrowseRunner:
                     return self._end(res, 'stuck', 'the page is not changing', history, url)
                 if unchanged == 3:
                     forced = True                     # a loop signal: the next step goes to Sonnet
+                    self.on_stat('no_change_loops')
             if self.shots:
                 shot = self.s.screenshot()
                 if shot.get('ok'):

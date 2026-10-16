@@ -553,6 +553,36 @@ class RealRunner(unittest.TestCase):
         self.assertEqual(r.status, 'handoff'); self.assertIn('step', events); self.assertIn('screenshot', events)
         self.assertEqual(r.pending_action['label'], 'Checkout')                      # never reached "Place order"
 
+    def test_a_scripted_jev_drives_the_real_runner_with_element_state_and_the_new_moves(self):
+        import subprocess, time
+        from agentai_platform.browse.session import ProcessTransport, Session
+        root = Path(__file__).resolve().parents[2] / 'browse'
+        site = subprocess.Popen(['node', '-e', "import('./fixtures/site.mjs').then(async m=>{const s=await m.startSite();console.log(s.port)})"], cwd=root, stdout=subprocess.PIPE, text=True)
+        port = int(site.stdout.readline()); self.addCleanup(site.terminate)
+        env = {**os.environ, 'BROWSE_CHROME': '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'BROWSE_ALLOW_LOOPBACK': '1', 'BROWSE_OUT': '/tmp/lumina-browse-py2'}
+        session = Session(ProcessTransport(['node', 'runner.mjs'], env=env, cwd=root)); self.addCleanup(session.close)
+        time.sleep(1.5)
+
+        def by_label(head, text):
+            return lambda body: next(i for i, d in body['questions'][head]['criteria'].items() if text in d)
+
+        def step(op, head=None, text=None, **more):
+            def pick(body):
+                picks = {'operation': op}
+                if head: picks[head] = by_label(head, text)(body)
+                return jev_answer(body, {**picks, **more})
+            return pick
+        jev = ScriptedJev(step('type', 'type_target', 'Search paddles', type_text='t0'), step('scroll_down'), step('scroll_up'), step('wait'), step('click', 'click_target', 'Add to cart'),
+                          step('click', 'click_target', 'Checkout'))
+        events = []
+        r = BrowseRunner(session, live(scripted_llm([]), jev), on_event=lambda k, d: events.append((k, d)), max_steps=8).run('carbon paddle', f'http://127.0.0.1:{port}/')
+        self.assertEqual(r.status, 'handoff'); self.assertEqual(r.pending_action['label'], 'Checkout')
+        self.assertEqual([h['action'] for h in r.steps], ['type', 'scroll', 'scroll', 'wait', 'click']); self.assertTrue(all(h['by'] == 'jev' and h['result'] == 'ok' for h in r.steps))
+        self.assertIn('Search paddles', json.dumps(jev.bodies[0]['questions']['type_target']))
+        self.assertIn('now: ', json.dumps(jev.bodies[1]['questions']['type_target']))          # after typing, the field reports its text
+        self.assertTrue({'scroll_up', 'wait'} <= set(jev.bodies[0]['questions']['operation']['criteria']))      # the new runner has the new moves
+        self.assertTrue(all(h['changed'] is not None for h in r.steps))                         # the real runner reports page_fp
+
 
 if __name__ == '__main__':
     unittest.main()

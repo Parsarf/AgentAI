@@ -59,6 +59,12 @@ def watch_kill_switch(service, is_on, stop, interval=3, sleep=time.sleep):
         sleep(interval)
 
 
+# What the owner reads to judge the JEV-first ladder. jev_asked / jev_agree are shadow mode's (how often JEV picked the same step as Haiku or Sonnet);
+# the others count live mode: acted steps by who decided them (jev_acted + haiku_step + sonnet_step = steps taken), and how often JEV handed over.
+STAT_KEYS = ('jev_asked', 'jev_agree', 'jev_acted', 'jev_typed_from_goal', 'haiku_text', 'haiku_answer', 'haiku_step', 'sonnet_step',
+             'jev_needs_user', 'jev_too_complex', 'jev_misses', 'no_change_loops')
+
+
 class BrowseError(Exception):
     pass
 
@@ -72,7 +78,7 @@ class Job:
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
         self.last_shot = 0.0
         self.pause_req = threading.Event()          # the user asked for the wheel; the loop acknowledges at the next step boundary (state -> 'paused')
-        self.stats = {'jev_asked': 0, 'jev_agree': 0}
+        self.stats = dict.fromkeys(STAT_KEYS, 0)
 
     def add(self, kind, data):
         with self.lock:
@@ -296,7 +302,10 @@ class BrowseService:
                 if kind in ('opened', 'step') and data.get('url'):
                     job.url = data['url']
 
-            result = BrowseRunner(session, ladder, policy=Policy(read_only=True), on_event=on_event, cancelled=job.cancel.is_set,
+            def on_stat(name, n=1):
+                job.stats[name] = job.stats.get(name, 0) + n
+
+            result = BrowseRunner(session, ladder, policy=Policy(read_only=True), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
                                   max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job)).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
@@ -307,7 +316,7 @@ class BrowseService:
                 if shot.get('ok'):
                     job.add('screenshot', {'file': shot['file'], 'by': 'lumina'})
             job.state = result.status
-            job.add('status', {'state': job.state, 'reason': job.reason})
+            job.add('status', {'state': job.state, 'reason': job.reason, 'stats': dict(job.stats)})       # kept with the run in browse_steps: no schema change needed
             while job.state == 'handoff' and self.clock() < job.takeover_until and not job.cancel.is_set():
                 time.sleep(0.2)                    # the user may take over; the stage stays up only for this window
         except (BrowseError, Refused) as exc:
