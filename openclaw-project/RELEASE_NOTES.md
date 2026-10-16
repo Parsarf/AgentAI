@@ -1,6 +1,6 @@
 # Release notes: 13-14 October 2026
 
-Latest: **live6** (14 Oct, evening). Sections marked *(live5)* and *(live6)* below are newer than the live1-live4 table.
+Latest: **live7** (16 Oct, JEV-first browser agent, JEV mode **live**). Before it: **live6** (14 Oct, evening). Sections marked *(live5)* and *(live6)* below are newer than the live1-live4 table.
 
 Everything below is **live** (verified: the server's 260 backend files and the live site's 4,509 frontend files are byte-identical to the committed code).
 GitHub suspended the owner's account on 14 Oct 2026 (after 00:51), so none of this has reached GitHub; see "Where the code is kept".
@@ -75,7 +75,8 @@ GitHub suspended the owner's account on 14 Oct 2026 (after 00:51), so none of th
 | live3 | `7dcc3fe` | OpenMoji emoji, JSON-card defaults fix, JEV service routing |
 | live4 | `d67d15e` | Sharper JEV service wording |
 | live5 | `84d7ec6` | Verification-wall handoff in the browser agent; thinking-label branch (frontend `acfd9f8`) |
-| live6 | `f8658ee` | Instant takeover clicks, faster frames, verification-wall handover to the assistant (now the running release) |
+| live6 | `f8658ee` | Instant takeover clicks, faster frames, verification-wall handover to the assistant |
+| live7 | `f435324` | JEV decides each browser step (one call: what to do, which element, which option, which text); sign-in pages and password fields go to the user before any model; hand-off ladder JEV -> Haiku -> Sonnet; per-run counts. Browser service and request worker only (`/opt/agentai-supervisor/current`); runner updated. **Running release.** Browse service runs `--jev-mode live` |
 Up to live4 the web app and browser service ran the same code. live5 and live6 changed only the browser service and request worker (`/opt/agentai-supervisor/current`);
 the web app (`/opt/agentai-platform/current`) is still on live4, which is fine because nothing it runs changed. Release tags: `release/live5` (frontend), `release/live5-browse`, `release/live6`. Frontend files live in `/var/lib/agentai-platform/ui`.
 
@@ -87,11 +88,12 @@ the web app (`/opt/agentai-platform/current`) is still on live4, which is fine b
 - Owner switch `jev_services` turned ON with both confirmations recorded as given by the owner in chat on 2026-10-14 (`switches.json.bak-*` in the same folder).
 - `/opt/agentai-browse/runner/runner.mjs` replaced again for live6 (previous copy: `runner.mjs.bak-live5`; the one before: `runner.mjs.bak-live1`).
 - Dashboard files refreshed (backup `/opt/openclaw-production/dashboard.bak-20261014T081251Z`).
+- live7 (16 Oct 2026): `/opt/agentai-browse/runner/runner.mjs` replaced (previous copy `runner.mjs.bak-live7`); `/etc/systemd/system/agentai-browse.service.d/jev.conf` sets `--jev-mode live` (delete it for the old `shadow` default); `/opt/agentai-supervisor/current` -> `releases/live7`. The new six-question JEV request format was NOT test-called before the switch (the check was blocked); if TypeSafe rejects it every step counts as a JEV miss and Haiku/Sonnet decide as before. Read `stats` in the closing `status` row of `browse_steps` to see who decided the steps.
 
 ## How to roll back
 - **Web app + request worker:** point `/opt/agentai-platform/current` at the previous release (`releases/live3` etc.) and `systemctl restart agentai-platform-app agentai-request-worker`.
   Database backups from before each release: `/var/lib/agentai-platform/backup-*-premigrate-liveN.sqlite3` (the old release can still read the new schema).
-- **Browser service and request worker:** point `/opt/agentai-supervisor/current` at the previous release (`releases/live5`, then `live4`) and `systemctl restart agentai-browse agentai-request-worker`. Also restore `runner.mjs.bak-live5` over `runner.mjs`.
+- **Browser service and request worker:** point `/opt/agentai-supervisor/current` at the previous release (`releases/live6`, then `live5`, `live4`) and `systemctl restart agentai-browse agentai-request-worker`. Also restore `runner.mjs.bak-live5` over `runner.mjs`.
 - **Frontend:** `mv /var/lib/agentai-platform/ui.prev /var/lib/agentai-platform/ui` (one step back only).
 - **Smart services:** switch it off in the owner dashboard (Feature switches).
 - **Live view only:** remove `AGENTAI_LIVE_SECRET_FILE` from `accounts.env` and restart the app; the page falls back to snapshots.
