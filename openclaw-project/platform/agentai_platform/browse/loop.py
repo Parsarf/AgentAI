@@ -69,6 +69,8 @@ class BrowseRunner:
             return Result('error', f'could not open the page ({opened.get("error")})')
         self.on_event('opened', {'url': opened.get('url'), 'title': opened.get('title')})
         started, history, seen, failures, forced = self.clock(), [], {}, 0, False
+        jev_misses = 0       # JEV was asked and someone else took the step, in a row; resets only when a JEV step is acted on successfully
+        unchanged = 0        # acted steps in a row (a wait does not count) after which the page looked exactly the same
         for step in range(1, self.max_steps + 1):
             if self.cancelled():
                 return self._end(res, 'cancelled', 'stopped by you', history)
@@ -104,12 +106,14 @@ class BrowseRunner:
             if cand.page_is_login(snap.get('snapshot', '')):
                 return self._end(res, 'handoff', LOGIN_REASON, history, url)       # before any model, so a sign-in page is never sent to a third party
             try:
-                d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures,
+                d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures, jev_misses=jev_misses,
                                                  caps=RUNNER_V2 if snap.get('elements') is not None else frozenset())
             except Refused as exc:
                 return self._end(res, 'budget', f'stopped: the spending limit was reached ({exc})', history, url)
             res.cost_microusd += d.cost_microusd
             forced = False
+            if d.miss:
+                jev_misses += 1
             if d.kind == 'done':
                 res.answer = d.answer
                 return self._end(res, 'done', d.reason, history, url)
@@ -122,7 +126,8 @@ class BrowseRunner:
             if self.policy.gate(url, snap.get('snapshot', ''), page['text'], chosen) == 'handoff':
                 res.pending_action = {'action': a['action'], 'label': a['label'], 'url': url}
                 return self._end(res, 'handoff', f'next step is "{a["label"]}", which needs you', history, url)
-            key = (url, a['action'], a['ref'], a.get('label'))
+            # A scroll or key press is the same step only if it is the same move from the same place on the page (the fingerprint includes the scroll position).
+            key = (url, a['action'], a['ref'], a.get('label'), a.get('value') if a['action'] in ('scroll', 'press') else None, fp_before if a['action'] == 'scroll' else None)
             seen[key] = seen.get(key, 0) + 1
             if seen[key] > 2:
                 if seen[key] > 3:
@@ -140,6 +145,14 @@ class BrowseRunner:
                     return self._end(res, 'stuck', 'too many failed steps', history, url)
                 continue
             failures = 0
+            if d.by == 'jev':
+                jev_misses = 0
+            if a['action'] != 'wait':
+                unchanged = unchanged + 1 if changed is False else 0
+                if unchanged >= 4:                    # three steps changed nothing, the next one (Sonnet's, or Haiku's when Sonnet is used up) did not either
+                    return self._end(res, 'stuck', 'the page is not changing', history, url)
+                if unchanged == 3:
+                    forced = True                     # a loop signal: the next step goes to Sonnet
             if self.shots:
                 shot = self.s.screenshot()
                 if shot.get('ok'):

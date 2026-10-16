@@ -386,6 +386,102 @@ class JevOperations(unittest.TestCase):
         self.assertEqual(goal_phrases('pizza near me')[0], 'pizza near me')
 
 
+class FpSession(FakeSession):
+    """A fake page that also reports a page fingerprint: `fps` yields the value after each action (the first is the fingerprint of the first snapshot);
+    `error` makes a given (action, ref) fail with that runner error."""
+    def __init__(self, pages, fps, errors=None, elements=True):
+        super().__init__(pages); self.fps, self.fp, self.errors, self.elements = fps, next(fps), errors or {}, elements
+    def snapshot(self):
+        snap = super().snapshot(); snap['page_fp'] = self.fp
+        if self.elements: snap['elements'] = []
+        return snap
+    def act(self, action, ref=None, value=None, label=None):
+        if (action, ref) in self.errors:
+            self.log.append(('act', action, ref, value)); return {'ok': False, 'error': self.errors[(action, ref)]}
+        out = super().act(action, ref, value, label); self.fp = next(self.fps, self.fp); out['page_fp'] = self.fp
+        return out
+
+
+FLAT = {'start': {'url': 'https://shop.example/', 'snap': '[1] <a> "Alpha"\n[2] <a> "Beta"\n[3] <a> "Gamma"', 'text': 'x'}}
+HAIKU, SONNET = '{"action":"click","ref":1}', '{"action":"click","ref":3}'
+
+
+class HandOffToClaude(unittest.TestCase):
+    """The ladder JEV -> Haiku -> Sonnet as the loop drives it. Steps are shown as who took them."""
+
+    def run_loop(self, jev_script, llm_steps, session=None, max_steps=8, **ladder):
+        llm = scripted_llm(list(llm_steps)); jev = ScriptedJev(*jev_script)
+        s = session or FpSession(FLAT, iter(range(10**6)))
+        r = BrowseRunner(s, live(llm, jev, **ladder), max_steps=max_steps).run('g', 'https://shop.example/')
+        return r, llm, jev, s
+
+    click = lambda self, c: {'operation': 'click', 'click_target': c}
+
+    def test_one_miss_goes_to_haiku_and_the_next_step_goes_back_to_jev(self):
+        r, llm, jev, _ = self.run_loop(['oops', self.click('c2'), self.click('c2')], [HAIKU], max_steps=3)
+        self.assertEqual([h['by'] for h in r.steps], ['haiku', 'jev', 'jev']); self.assertEqual((llm.calls, len(jev.bodies)), (['haiku'], 3))
+
+    def test_two_misses_in_a_row_go_to_sonnet_and_a_good_jev_step_resets_the_count(self):
+        r, llm, *_ = self.run_loop(['oops', 'oops', self.click('c2')], [HAIKU, SONNET], max_steps=3)
+        self.assertEqual([h['by'] for h in r.steps], ['haiku', 'sonnet', 'jev']); self.assertEqual(llm.calls, ['haiku', 'sonnet'])
+        r, llm, *_ = self.run_loop(['oops', self.click('c2'), 'oops'], [HAIKU, HAIKU], max_steps=3)         # the good step in between resets it
+        self.assertEqual([h['by'] for h in r.steps], ['haiku', 'jev', 'haiku']); self.assertEqual(llm.calls, ['haiku', 'haiku'])
+
+    def test_a_miss_does_not_reset_on_a_failed_or_claude_step(self):
+        r, llm, *_ = self.run_loop(['oops', 'oops', 'oops'], [HAIKU, SONNET, '{"action":"click","ref":2}'], max_steps=3)
+        self.assertEqual([h['by'] for h in r.steps], ['haiku', 'sonnet', 'sonnet']); self.assertEqual(llm.calls, ['haiku', 'sonnet', 'sonnet'])
+
+    def test_after_four_misses_jev_is_not_asked_again_for_the_run(self):
+        moves = [f'{{"action":"click","ref":{n}}}' for n in (1, 2, 3)] + ['{"action":"scroll"}', '{"action":"back"}', '{"action":"press","value":"Enter"}']      # all different: no repeat rule
+        r, llm, jev, _ = self.run_loop(['oops'] * 4, moves, max_steps=6, max_sonnet=3)
+        self.assertEqual(len(jev.bodies), 4); self.assertEqual(len(r.steps), 6)                                         # steps 5 and 6 never asked JEV
+
+    def test_too_complex_goes_to_sonnet_for_that_step_and_jev_resumes(self):
+        r, llm, *_ = self.run_loop([{'operation': 'too_complex'}, self.click('c2')], [SONNET], max_steps=2)
+        self.assertEqual([h['by'] for h in r.steps], ['sonnet', 'jev']); self.assertEqual(llm.calls, ['sonnet'])
+
+    def test_the_same_step_a_third_time_goes_to_sonnet_and_a_fourth_ends_the_run(self):
+        r, llm, *_ = self.run_loop([self.click('c2')] * 3 + [self.click('c1')] * 2, ['{"action":"click","ref":3}'], max_steps=6, session=FpSession(FLAT, iter(range(99))))
+        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'sonnet', 'jev', 'jev']); self.assertEqual(llm.calls, ['sonnet'])
+        r, *_ = self.run_loop([self.click('c2')] * 6, ['{"action":"click","ref":2}'], max_steps=8, session=FpSession(FLAT, iter(range(99))))
+        self.assertEqual((r.status, r.reason), ('stuck', 'repeating the same step'))
+
+    def test_three_acts_that_changed_nothing_send_the_next_step_to_sonnet_and_a_fourth_ends_the_run(self):
+        same = lambda: FpSession(FLAT, iter([7] * 99))
+        r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}'], session=same(), max_steps=8)
+        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'sonnet']); self.assertEqual((r.status, r.reason), ('stuck', 'the page is not changing'))
+        self.assertEqual([h['changed'] for h in r.steps], [False] * 4)
+        r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3')], [HAIKU], session=same(), max_steps=8, max_sonnet=0)     # no Sonnet left: Haiku's step is the last chance
+        self.assertEqual((r.status, [h['by'] for h in r.steps], llm.calls), ('stuck', ['jev', 'jev', 'jev', 'haiku'], ['haiku']))
+
+    def test_a_wait_neither_counts_nor_resets_and_a_changing_or_unknown_page_never_triggers(self):
+        wait = {'operation': 'wait'}
+        r, llm, *_ = self.run_loop([self.click('c1'), wait, self.click('c2'), wait, self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}'], session=FpSession(FLAT, iter([7] * 99)), max_steps=8)
+        self.assertEqual([h['by'] for h in r.steps[:6]], ['jev', 'jev', 'jev', 'jev', 'jev', 'sonnet'])                         # the forced step comes after the third real act
+        for session in (FpSession(FLAT, iter(range(99))), FpSession(FLAT, iter([None] * 99)), FakeSession(FLAT)):
+            r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c1'), self.click('c2')], [], session=session, max_steps=5)
+            self.assertEqual((r.status, llm.calls), ('max_steps', []), type(session).__name__)
+
+    def test_scrolling_a_long_page_is_not_a_repeat_until_it_stops_moving(self):
+        down = {'operation': 'scroll_down'}
+        r, *_ = self.run_loop([down] * 6, [], session=FpSession(FLAT, iter(range(99))), max_steps=6)            # the page moves every time
+        self.assertEqual((r.status, len(r.steps)), ('max_steps', 6))
+        r, *_ = self.run_loop([down] * 6, ['{"action":"scroll"}'], session=FpSession(FLAT, iter([1, 2, 3, 3, 3, 3, 3, 3])), max_steps=8)       # it hit the bottom
+        self.assertEqual(r.status, 'stuck')
+
+    def test_runner_refusals_count_as_failures_jev_is_asked_after_one_and_sonnet_after_two(self):
+        errors = {('click', 2): 'covered'}
+        r, llm, jev, _ = self.run_loop([self.click('c2'), self.click('c2'), self.click('c1')], [SONNET], session=FpSession(FLAT, iter(range(99)), errors=errors), max_steps=3)
+        self.assertEqual([(h['by'], h['result']) for h in r.steps], [('jev', 'covered'), ('jev', 'covered'), ('sonnet', 'ok')])
+        self.assertEqual(len(jev.bodies), 2)                                                                       # not asked a third time: two failed acts mean Sonnet
+
+    def test_an_older_runner_gets_no_scroll_up_or_wait(self):
+        _, _, jev, _ = self.run_loop([{'operation': 'back'}], [], session=FpSession(FLAT, iter(range(99)), elements=False), max_steps=1)
+        self.assertFalse({'scroll_up', 'wait'} & set(jev.bodies[0]['questions']['operation']['criteria']))
+        _, _, jev, _ = self.run_loop([{'operation': 'back'}], [], max_steps=1)
+        self.assertTrue({'scroll_up', 'wait'} <= set(jev.bodies[0]['questions']['operation']['criteria']))
+
+
 LOGIN_PAGE = {'start': {'url': 'https://shop.example/account', 'snap': '[1] <input type=text> "Email"\n[2] <input type=password> "Password"\n[3] <button> "Continue"', 'text': 'Welcome back'}}
 
 
