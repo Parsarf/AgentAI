@@ -25,7 +25,13 @@ def action_type(tag: str, input_type: str | None) -> str | None:
     return ACTIONS.get(tag)
 
 
-def build(snapshot_text: str, limit: int = 20) -> list[dict]:
+STATE_FIELDS = ('role', 'value', 'checked', 'expanded', 'in_view', 'options')
+
+
+def build(snapshot_text: str, limit: int = 20, elements: list | None = None) -> list[dict]:
+    """Candidates come from the snapshot LINES (the format has not changed). `elements`, when the runner sends it, adds each element's state;
+    an older runner sends none, and then candidates simply carry no state."""
+    by_ref = {e.get('ref'): e for e in elements or [] if isinstance(e, dict)}
     out = []
     for line in snapshot_text.splitlines():
         m = SNAPSHOT_RE.match(line.strip())
@@ -35,9 +41,15 @@ def build(snapshot_text: str, limit: int = 20) -> list[dict]:
         kind = action_type(tag, input_type)
         if kind is None:
             continue
-        out.append({'id': f'c{ref}', 'ref': int(ref), 'action': kind, 'label': label, 'tag': tag, 'input_type': input_type or '',
-                    'fingerprint': hashlib.sha256(f'{ref}|{tag}|{input_type or ""}|{label}'.encode()).hexdigest()[:16],
-                    'sensitive': bool(SENSITIVE.search(label)) or input_type == 'password'})
+        c = {'id': f'c{ref}', 'ref': int(ref), 'action': kind, 'label': label, 'tag': tag, 'input_type': input_type or '',
+             'fingerprint': hashlib.sha256(f'{ref}|{tag}|{input_type or ""}|{label}'.encode()).hexdigest()[:16],
+             'sensitive': bool(SENSITIVE.search(label)) or input_type == 'password'}
+        state = by_ref.get(int(ref))
+        if state and state.get('label') == label:                      # the same element the line describes
+            c.update({k: state[k] for k in STATE_FIELDS if k in state})
+            if input_type == 'password':
+                c['value'] = ''                                       # belt and braces: the runner already sends none
+        out.append(c)
         if len(out) >= limit:
             break
     return out

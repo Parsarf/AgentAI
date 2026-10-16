@@ -5,6 +5,7 @@ import { chromium } from 'playwright-core';
 import { createInterface } from 'node:readline';
 import { mkdirSync, statSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const CHROME = process.env.BROWSE_CHROME || '/usr/bin/chromium';
 const OUT = process.env.BROWSE_OUT || '/tmp/out';
@@ -29,12 +30,16 @@ export function urlAllowed(raw, allowLoopback = false) {
   return true;
 }
 
-// Runs in the page. Describes interactive elements in the format the host parses: [ref] <tag type=x> "label"
-function describe(max) {
-  const sel = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [onclick]';
+const SELECTOR = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [onclick]';
+
+// Runs in the page. Describes interactive elements in the format the host parses: [ref] <tag type=x> "label", plus their state.
+// A field that holds a secret (password, card, one-time code) is always listed, never with its value, so the host can see that the page needs the user.
+function describe(args) {
+  const { sel, max } = args;
   for (const el of document.querySelectorAll('[data-lumina-ref]')) { el.removeAttribute('data-lumina-ref'); el.removeAttribute('data-lumina-label'); }
   const clean = s => (s || '').replace(/\s+/g, ' ').replace(/"/g, "'").trim().slice(0, 100);
   const out = []; let n = 0;
+  const vw = window.innerWidth, vh = window.innerHeight;
   for (const el of document.querySelectorAll(sel)) {
     if (n >= max) break;
     const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
@@ -42,12 +47,55 @@ function describe(max) {
     const tag = el.tagName.toLowerCase(); const role = el.getAttribute('role');
     let kind = tag === 'a' || role === 'link' ? 'a' : tag === 'input' || tag === 'select' || tag === 'textarea' ? tag : 'button';
     const type = kind === 'input' ? (el.getAttribute('type') || 'text').toLowerCase().replace(/[^a-z]/g, '') : '';
-    let label = clean(el.getAttribute('aria-label') || (kind === 'input' || kind === 'select' || kind === 'textarea' ? ((el.labels && el.labels[0] && el.labels[0].innerText) || el.placeholder || el.value || el.name || el.getAttribute('title')) : (el.innerText || el.value || el.getAttribute('title'))));
+    const secret = type === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((el.getAttribute('autocomplete') || '').toLowerCase());
+    let label = clean(el.getAttribute('aria-label') || (kind === 'input' || kind === 'select' || kind === 'textarea' ? ((el.labels && el.labels[0] && el.labels[0].innerText) || el.placeholder || (secret ? '' : el.value) || el.name || el.getAttribute('title')) : (el.innerText || el.value || el.getAttribute('title'))));
+    if (!label && secret) label = type === 'password' ? 'Password' : 'Secret field';
     if (!label) continue;
     n += 1; el.setAttribute('data-lumina-ref', String(n)); el.setAttribute('data-lumina-label', label);
-    out.push({ ref: n, tag: kind, type, label });
+    let value = '';
+    if (!secret) {
+      if (tag === 'select') value = el.selectedOptions && el.selectedOptions[0] ? el.selectedOptions[0].label : '';
+      else if ((tag === 'input' && !['checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'file'].includes(type)) || tag === 'textarea') value = el.value;
+    }
+    const ariaChecked = el.getAttribute('aria-checked'); const ariaExpanded = el.getAttribute('aria-expanded');
+    const checked = type === 'checkbox' || type === 'radio' ? !!el.checked : ariaChecked === 'true' ? true : ariaChecked === 'false' ? false : null;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const options = tag === 'select' ? [...el.options].slice(0, 15).map(o => (o.label || '').replace(/\s+/g, ' ').trim().slice(0, 80)) : [];
+    out.push({ ref: n, tag: kind, type, label, role: role || '', value: clean(value), checked, expanded: ariaExpanded === 'true' ? true : ariaExpanded === 'false' ? false : null,
+      in_view: cx >= 0 && cy >= 0 && cx <= vw && cy <= vh, options });
   }
   return { elements: out, title: document.title.slice(0, 120), text: (document.body && document.body.innerText || '').replace(/\s+\n/g, '\n').slice(0, 6000) };
+}
+
+// Runs in the page. Read-only (marks nothing): a text summary of what a person would see, so two summaries are equal exactly when the page did not visibly change.
+// Scroll position is part of it, so scrolling counts as a change until the bottom is reached.
+function fingerprint(sel) {
+  const parts = [location.href, String(Math.round(window.scrollY / 50)), String(((document.body && document.body.innerText) || '').length)];
+  for (const el of document.querySelectorAll(sel)) {
+    const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
+    if (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none' || el.closest('[aria-hidden=true]')) continue;
+    const type = (el.getAttribute('type') || '').toLowerCase();
+    const secret = type === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((el.getAttribute('autocomplete') || '').toLowerCase());
+    const label = (el.getAttribute('aria-label') || el.innerText || el.placeholder || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    const value = secret ? '' : (el.tagName === 'SELECT' ? (el.selectedOptions[0] && el.selectedOptions[0].label) : ['checkbox', 'radio'].includes(type) ? String(el.checked) : el.value) || '';
+    parts.push(`${el.tagName}|${label}|${String(value).slice(0, 60)}|${el.getAttribute('aria-expanded') || ''}|${el.getAttribute('aria-checked') || ''}|${el.disabled ? 1 : 0}`);
+  }
+  return parts.join('\n');
+}
+
+// Runs in the page, on the element the host chose, right before acting. 'ok' | 'disabled' | 'covered' | 'stale'.
+function ready(el, action) {
+  if (!el.isConnected) return 'stale';
+  if (el.disabled || el.getAttribute('aria-disabled') === 'true' || el.closest('[inert], [aria-disabled=true], fieldset:disabled')) return 'disabled';
+  if (action === 'type' && (el.readOnly || el.getAttribute('aria-readonly') === 'true')) return 'disabled';
+  const r = el.getBoundingClientRect();
+  if (r.width < 2 || r.height < 2) return 'covered';
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'covered';
+  const top = document.elementFromPoint(cx, cy);
+  if (!top) return 'covered';
+  if (top === el || el.contains(top)) return 'ok';
+  return 'covered';                                                                                // a banner, modal, or any other element is on top (the browser would refuse the click too, after a 6 s wait)
 }
 
 export class Runner {
@@ -89,6 +137,7 @@ export class Runner {
     try { await l.cdp.send('Page.stopScreencast'); await l.cdp.detach(); } catch { /* page already closed */ }
   }
   info() { return { url: this.page.url(), title: '' }; }
+  async fp() { try { return createHash('sha1').update(await this.page.evaluate(fingerprint, SELECTOR)).digest('hex').slice(0, 12); } catch { return null; } }   // null = could not tell (page changing under us)
   async settle() { try { await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }); await this.page.waitForLoadState('networkidle', { timeout: 2500 }); } catch { /* slow pages are fine */ } }
 
   async handle(msg) {
@@ -99,30 +148,46 @@ export class Runner {
         await this.settle(); return { ok: true, url: this.page.url(), title: (await this.page.title()).slice(0, 120) };
       }
       case 'snapshot': {
-        await this.settle(); const d = await this.page.evaluate(describe, MAX_ELEMENTS);
+        await this.settle(); const d = await this.page.evaluate(describe, { sel: SELECTOR, max: MAX_ELEMENTS });
         const lines = d.elements.map(e => `[${e.ref}] <${e.tag}${e.type ? ' type=' + e.type : ''}> "${e.label}"`).join('\n');
-        return { ok: true, url: this.page.url(), title: d.title, snapshot: lines, text: d.text, pages: this.context.pages().length };
+        return { ok: true, url: this.page.url(), title: d.title, snapshot: lines, text: d.text, pages: this.context.pages().length, elements: d.elements, page_fp: await this.fp() };
       }
       case 'act': {
         const { ref, action, value, expect } = msg;
-        if (action === 'back') { await this.page.goBack({ timeout: 8000 }).catch(() => {}); await this.settle(); return { ok: true, url: this.page.url() }; }
-        if (action === 'press') { if (!KEYS.has(value)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(value); await this.settle(); return { ok: true, url: this.page.url() }; }
-        if (action === 'scroll') { await this.page.mouse.wheel(0, 700); return { ok: true, url: this.page.url() }; }
+        const done = async extra => ({ ok: true, url: this.page.url(), page_fp: await this.fp(), ...extra });
+        if (action === 'back') { await this.page.goBack({ timeout: 8000 }).catch(() => {}); await this.settle(); return done(); }
+        if (action === 'press') { if (!KEYS.has(value)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(value); await this.settle(); return done(); }
+        if (action === 'scroll') {
+          if (value !== undefined && value !== null && !['down', 'up'].includes(value)) return { ok: false, error: 'bad_value' };
+          await this.page.mouse.wheel(0, value === 'up' ? -700 : 700); await this.page.waitForTimeout(150); return done();
+        }
+        if (action === 'wait') { await this.page.waitForTimeout(1000); await this.settle(); return done(); }
         if (!['click', 'type', 'select'].includes(action) || !Number.isInteger(ref)) return { ok: false, error: 'bad_action' };
         const el = await this.page.$(`[data-lumina-ref="${ref}"]`);
         if (!el) return { ok: false, error: 'stale' };
         // Fresh-target check: the element must still carry the label it had when the host chose it. A re-render drops the marks, so
         // a moved, renamed or removed element is "stale" and nothing is clicked.
         if (expect && (await el.getAttribute('data-lumina-label')) !== expect.label) return { ok: false, error: 'stale' };
+        if ((action === 'type' || action === 'select') && (typeof value !== 'string' || value.length > MAX_VALUE)) return { ok: false, error: 'bad_value' };
+        // Ready check: bring it into view, then act only if it is enabled and nothing (a banner, a modal) sits on top of it. Nothing is clicked otherwise.
+        await el.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+        const state = await el.evaluate(ready, action).catch(() => 'stale');
+        if (state !== 'ok') return { ok: false, error: state };
         const before = this.page.url(); const pagesBefore = this.context.pages().length;
         try {
           if (action === 'click') await el.click({ timeout: 6000 });
-          else if (action === 'type') { if (typeof value !== 'string' || value.length > MAX_VALUE) return { ok: false, error: 'bad_value' }; await el.fill(value, { timeout: 6000 }); }
-          else { if (typeof value !== 'string') return { ok: false, error: 'bad_value' }; await el.selectOption({ label: value }).catch(() => el.selectOption(value)); }
+          else if (action === 'type') await el.fill(value, { timeout: 6000 });
+          else {
+            // Resolve the option in the page first (exact label, exact value, case-insensitive label, then label prefix) so a miss fails at once, not after the 8 s default wait.
+            const idx = await el.evaluate((s, v) => { const o = [...s.options]; const lc = x => String(x).trim().toLowerCase(); let i = o.findIndex(x => x.label === v);
+              if (i < 0) i = o.findIndex(x => x.value === v); if (i < 0) i = o.findIndex(x => lc(x.label) === lc(v)); if (i < 0) i = o.findIndex(x => lc(x.label).startsWith(lc(v))); return i; }, value);
+            if (idx < 0) return { ok: false, error: 'no_option' };
+            await el.selectOption({ index: idx }, { timeout: 4000 });
+          }
         } catch (e) { return { ok: false, error: 'action_failed' }; }
         await this.page.waitForTimeout(400);          // a link opening a new tab reports it asynchronously
         await this.settle();
-        return { ok: true, url: this.page.url(), navigated: this.page.url() !== before, new_tab: this.context.pages().length > pagesBefore };
+        return done({ navigated: this.page.url() !== before, new_tab: this.context.pages().length > pagesBefore });
       }
       case 'xy': {   // takeover: coordinates come from the user's own click on the screenshot; the host has already range-checked them
         const { x, y, action, text } = msg;

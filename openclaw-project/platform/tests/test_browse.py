@@ -18,6 +18,17 @@ class Candidates(unittest.TestCase):
         self.assertEqual(cand.build('garbage\n[x] <b> "n"'), [])
         self.assertEqual(len(cand.build('\n'.join(f'[{i}] <a> "L{i}"' for i in range(1, 60)), 20)), 20)
 
+    def test_element_state_is_carried_only_for_the_element_the_line_describes_and_never_for_passwords(self):
+        snap = '[1] <input type=text> "Search"\n[2] <select> "Size"\n[3] <input type=password> "Password"\n[4] <a> "Home"'
+        elements = [{'ref': 1, 'label': 'Search', 'value': 'paddles', 'in_view': True, 'role': '', 'checked': None, 'expanded': None, 'options': []},
+                    {'ref': 2, 'label': 'Size', 'value': 'S', 'in_view': False, 'options': ['S', 'M']},
+                    {'ref': 3, 'label': 'Password', 'value': 'hunter2'},                         # a runner bug must not reach a model
+                    {'ref': 4, 'label': 'Something else', 'value': 'x'}]                         # same ref, different element: ignored
+        c = {x['ref']: x for x in cand.build(snap, elements=elements)}
+        self.assertEqual((c[1]['value'], c[1]['in_view']), ('paddles', True)); self.assertEqual(c[2]['options'], ['S', 'M'])
+        self.assertEqual(c[3]['value'], ''); self.assertNotIn('value', c[4])
+        self.assertEqual([x['ref'] for x in cand.build(snap)], [1, 2, 3, 4]); self.assertNotIn('value', cand.build(snap)[0])       # an older runner sends none
+
     def test_payment_pages_are_recognised(self):
         self.assertTrue(cand.page_is_payment('https://shop.example/checkout', '', ''))
         self.assertTrue(cand.page_is_payment('https://x/y', '[1] <input type=text> "Card number"', ''))
