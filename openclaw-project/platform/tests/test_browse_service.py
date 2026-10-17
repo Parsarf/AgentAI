@@ -102,6 +102,83 @@ class ServiceChecks(unittest.TestCase):
         self.assertEqual(status['stats'], stats)                                                                    # the totals are stored with the run
         self.assertNotIn('buy a paddle', json.dumps(steps))                                                         # the typed text is never put in an event
 
+    # -- a hand-off must not hold the one browser stage while someone waits for it ---------------------------------------------------------------
+    def stop_jobs(self, s):
+        """End every job and wait for its thread to let go, so the temporary folder can be removed without racing a job still writing into it."""
+        s.cancel_all(); end = time.time() + 6
+        while time.time() < end and any(j.state in ('queued', 'running', 'paused') for j in s.jobs.values()): time.sleep(0.05)
+        if s._slot.acquire(timeout=4): s._slot.release()
+
+    def handoff_then_new_task(self, same_account, **kw):
+        s = self.make(['{"action":"click","ref":2}', '{"action":"click","ref":1}'] * 3, takeover_seconds=kw.pop('takeover_seconds', 300)); self.addCleanup(self.stop_jobs, s)
+        s.start('acct', RID, 'buy a paddle at https://shop.example/'); wait(s, ('handoff',))
+        other = 'b' * 32
+        t0 = time.time(); s.start('acct' if same_account else 'other', other, 'search again at https://shop.example/')
+        return s, other, t0
+
+    def test_the_same_customers_next_task_closes_their_idle_handoff_and_does_not_wait_for_the_window(self):
+        s, other, t0 = self.handoff_then_new_task(True)                                    # a 300 s window nobody is using
+        got = wait(s, ('running', 'handoff', 'error', 'stopped', 'done'), rid=other, timeout=5)
+        self.assertLess(time.time() - t0, 20, 'the next task started at once, not after the 300 s window')
+        first = s.poll('acct', RID, 0); self.assertEqual(first['state'], 'handoff'); self.assertFalse(first['takeover'])      # the old window is closed, the record stays
+
+    def test_another_customers_task_shortens_an_idle_handoff_to_the_grace_period(self):
+        with patch.object(svc, 'QUEUE_GRACE_SECONDS', 1):
+            s, other, t0 = self.handoff_then_new_task(False)
+            wait(s, ('running', 'handoff', 'error', 'stopped', 'done'), rid=other, account='other', timeout=25)
+        self.assertLess(time.time() - t0, 25)                                                 # after about the grace period, not the 300 s window
+        self.assertFalse(s.poll('acct', RID, 0)['takeover'])                                  # the idle window was cut short
+
+    def test_a_customer_driving_the_page_keeps_it_but_only_for_the_grace_while_others_wait(self):
+        with patch.object(svc, 'QUEUE_GRACE_SECONDS', 30):
+            s = self.make(['{"action":"click","ref":2}', '{"action":"click","ref":1}'] * 3, takeover_seconds=300); self.addCleanup(self.stop_jobs, s)
+            s.start('acct', RID, 'buy a paddle at https://shop.example/'); wait(s, ('handoff',))
+            s.jobs['b' * 32] = svc.Job('other', 'b' * 32, 'x', None, 1, 5, 60)        # a task is waiting for the stage (state 'queued')
+            now = s.clock(); s.control('acct', RID, 'scroll', text='down')
+            left = s.jobs[RID].takeover_until - now
+            self.assertTrue(25 < left <= 31, left)                                       # extended by the grace, not by 300 s
+            del s.jobs['b' * 32]; s.control('acct', RID, 'scroll', text='down')
+            self.assertGreater(s.jobs[RID].takeover_until - s.clock(), 250)              # nobody waiting: the full window again
+
+    def test_a_customer_who_has_the_wheel_is_never_cut_off_by_a_new_task(self):
+        s = self.make([], takeover_seconds=300)
+        held = svc.Job('acct', RID, 'goal here', None, 1, 5, 60); held.state = 'paused'; held.takeover_until = s.clock() + 200
+        s.jobs[RID] = held
+        with patch.object(s, '_run'):
+            s.start('acct', 'b' * 32, 'another goal here'); s.start('other', 'c' * 32, 'and another goal')
+        self.assertTrue(held.takeover_until - s.clock() > 150)
+
+    def test_old_screenshots_and_live_frames_are_deleted_on_a_timer_even_when_no_task_runs(self):
+        s = self.make([]); root = Path(self.tmp.name)
+        old, fresh, live = 'a' * 32, 'b' * 32, 'c' * 32
+        for rid in (old, fresh, live):
+            (root / rid / 'out').mkdir(parents=True); (root / rid / 'out' / 'live.jpg').write_bytes(b'\xff\xd8frame'); (root / rid / 'out' / 'shot-001.jpg').write_bytes(b'\xff\xd8shot')
+        two_days = time.time() - 2 * 86400
+        for rid in (old, live): os.utime(root / rid, (two_days, two_days))
+        s.jobs[live] = svc.Job('acct', live, 'still running', None, 1, 5, 60); s.jobs[live].state = 'running'          # old folder, but its task is alive
+        stop = threading.Event(); runs = []
+        def sleep(seconds): runs.append(seconds); stop.set() if len(runs) >= 2 else None
+        svc.watch_purge(s, stop, every=900, sleep=sleep)
+        self.assertEqual(runs, [900, 900])                                                                            # it looks, waits, looks again
+        self.assertFalse((root / old).exists(), 'a finished task older than a day is gone with its live frame')
+        self.assertTrue((root / fresh).exists() and (root / live).exists(), 'recent and still-running tasks are kept')
+
+    def test_the_purge_timer_survives_an_error_and_is_wired_into_the_service_start(self):
+        s = self.make([]); calls = []
+        def broken(): calls.append(1); raise OSError('disk')
+        s.purge = broken; stop = threading.Event()
+        svc.watch_purge(s, stop, every=1, sleep=lambda n: stop.set() if len(calls) >= 3 else None)
+        self.assertEqual(len(calls), 3)
+        self.assertIn('watch_purge', Path(svc.__file__).with_name('service_main.py').read_text())
+
+    def test_hop_in_is_accepted_while_the_task_is_still_waiting_for_the_stage(self):
+        s = self.make([])
+        with patch.object(s, '_run'):
+            s.start('acct', RID, 'a goal to wait on'); self.assertEqual(s.poll('acct', RID)['state'], 'queued')
+            self.assertEqual(s.pause('acct', RID)['state'], 'queued'); self.assertTrue(s.jobs[RID].pause_req.is_set())     # it will stop at its first step
+            s.jobs[RID].state = 'done'
+            with self.assertRaises(svc.BrowseError): s.pause('acct', RID)                                                  # a finished task cannot be paused
+
     def test_goal_accepts_saved_conversation_context_but_remains_bounded(self):
         s = self.make([])
         # Startup admission only: no browser or model call runs in this test.
@@ -221,11 +298,11 @@ class ServiceChecks(unittest.TestCase):
         self.assertTrue(self.transports[0].closed)                                                                  # stage released
 
     def test_one_stage_at_a_time_cancel_budget_and_crash_do_not_hold_the_slot(self):
-        s = self.make(['{"action":"click","ref":2}', '{"action":"click","ref":1}'] * 3, takeover_seconds=30)
-        s.start('acct', RID, 'first goal https://shop.example/'); wait(s, ('handoff',))
+        gate, s = self.gated(['{"action":"click","ref":2}', '{"action":"click","ref":1}'] * 3, takeover_seconds=30)
+        s.start('acct', RID, 'first goal https://shop.example/'); wait(s, ('running',))                                # mid-task, holding the stage
         s.start('acct', 'b' * 32, 'second goal https://shop.example/')
         time.sleep(0.3); self.assertEqual(s.poll('acct', 'b' * 32)['state'], 'queued')                              # waits for the single stage
-        s.cancel('acct', RID); wait(s, ('handoff', 'cancelled', 'done'), RID); wait(s, ('handoff',), 'b' * 32)
+        s.cancel('acct', RID); gate.set(); wait(s, ('handoff', 'cancelled', 'done'), RID); wait(s, ('handoff',), 'b' * 32)
         # budget: a $0.002 cap refuses the first paid call
         s2 = self.make(['{"action":"click","ref":2}']); s2.start('acct', 'c' * 32, 'goal https://shop.example/', max_cost_microusd=2000)
         self.assertEqual(wait(s2, svc.FINAL, 'c' * 32)['state'], 'budget')

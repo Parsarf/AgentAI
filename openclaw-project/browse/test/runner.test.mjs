@@ -8,7 +8,7 @@ import { startSite } from '../fixtures/site.mjs';
 process.env.BROWSE_CHROME ||= '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 process.env.BROWSE_ALLOW_LOOPBACK = '1';
 process.env.BROWSE_OUT = join(tmpdir(), 'lumina-browse-test');
-const { Runner, urlAllowed } = await import('../runner.mjs');
+const { Runner, urlAllowed, privateIp } = await import('../runner.mjs');
 
 let site, r, base;
 before(async () => { site = await startSite(); base = `http://127.0.0.1:${site.port}`; r = new Runner(); await r.start(); });
@@ -182,4 +182,61 @@ test('page_fp changes after a real change and not after a no-op, and act and sna
   const l1 = (await r.handle({ cmd: 'snapshot' })).page_fp;
   await r.page.evaluate(() => { document.querySelector('input[type=password]').value = 'something else'; });
   assert.equal((await r.handle({ cmd: 'snapshot' })).page_fp, l1, 'a secret value is not part of the fingerprint');
+});
+
+test('when a popup tab closes the agent carries on in the page that is still open', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  let s = await r.handle({ cmd: 'snapshot' }); const promo = find(s.snapshot, 'Open promo');
+  assert.equal((await r.handle({ cmd: 'act', action: 'click', ref: +promo[1], expect: { label: promo[4] } })).new_tab, true);
+  assert.match(r.page.url(), /\/popup$/);
+  const close = find((await r.handle({ cmd: 'snapshot' })).snapshot, 'Close promo');
+  const a = await r.handle({ cmd: 'act', action: 'click', ref: +close[1], expect: { label: close[4] } });        // the popup closes itself
+  assert.equal(a.ok, true, 'the click that closed the tab still succeeded');
+  s = await r.handle({ cmd: 'snapshot' });
+  assert.equal(s.ok, true); assert.match(s.url, /\/$/); assert.ok(find(s.snapshot, 'Add to cart'));                   // back on the shop, not stuck on a dead tab
+  assert.equal(r.page.isClosed(), false);
+});
+
+test('a tab closed from outside, or the last tab closing, does not leave the runner holding a dead page', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  const s = await r.handle({ cmd: 'snapshot' }); const promo = find(s.snapshot, 'Open promo');
+  await r.handle({ cmd: 'act', action: 'click', ref: +promo[1], expect: { label: promo[4] } });
+  await r.page.close();                                                                                     // closed from outside, as a site's own script would
+  assert.equal(r.page.isClosed(), false, 'switched to the remaining page at once, before any command');
+  assert.equal((await r.handle({ cmd: 'snapshot' })).ok, true);
+  for (const p of r.context.pages()) await p.close();                                                       // every tab gone
+  const again = await r.handle({ cmd: 'open', url: base + '/' });
+  assert.equal(again.ok, true); assert.ok(find((await r.handle({ cmd: 'snapshot' })).snapshot, 'Add to cart'));   // a fresh page was made
+});
+
+test('private address ranges are recognised in every written form', () => {
+  for (const bad of ['10.1.2.3', '127.0.0.2', '0.0.0.0', '169.254.169.254', '172.16.0.1', '172.31.255.255', '192.168.1.1', '100.64.0.1', '::1', '::', 'fd00::1', 'fe80::1', 'fc00::1', '::ffff:10.0.0.1', '::ffff:7f00:1'])
+    assert.equal(privateIp(bad), true, bad);
+  for (const ok of ['93.184.216.34', '8.8.8.8', '172.32.0.1', '100.128.0.1', '2606:2800:220:1:248:1893:25c8:1946', 'example.com']) assert.equal(privateIp(ok), false, ok);
+});
+
+test('a name that looks public but resolves to an internal address is refused, a public one is not, and a name that does not resolve is left to the browser', async () => {
+  const answers = { 'private.example': [{ address: '10.0.0.5', family: 4 }], 'mixed.example': [{ address: '93.184.216.34', family: 4 }, { address: '192.168.1.9', family: 4 }],
+    'public.example': [{ address: '93.184.216.34', family: 4 }], 'v6.example': [{ address: 'fd12::1', family: 6 }] };
+  const asked = [];
+  const lookup = async (host) => { asked.push(host); if (host === 'broken.example') throw new Error('ENOTFOUND'); if (host === 'hang.example') return new Promise(() => {}); return answers[host]; };
+  const r2 = new Runner({ lookup }); await r2.start();
+  try {
+    for (const host of ['private.example', 'mixed.example', 'v6.example']) {
+      const o = await r2.handle({ cmd: 'open', url: `http://${host}:${site.port}/` });
+      assert.equal(o.ok, false, host); assert.ok(r2.blocked.some(u => u.includes(host)), `${host} was refused by the resolution check`);
+    }
+    r2.blocked = [];
+    for (const host of ['public.example', 'broken.example']) {
+      await r2.handle({ cmd: 'open', url: `http://${host}:${site.port}/` });                      // the browser itself cannot resolve these test names
+      assert.deepEqual(r2.blocked, [], `${host} is not refused by us`);
+    }
+    const t0 = Date.now(); await r2.handle({ cmd: 'open', url: `http://hang.example:${site.port}/` });
+    assert.ok(Date.now() - t0 < 12000, 'a resolver that never answers does not hang the page'); assert.deepEqual(r2.blocked, []);
+    const before = asked.filter(h => h === 'private.example').length;
+    await r2.handle({ cmd: 'open', url: `http://private.example:${site.port}/again` });
+    assert.equal(asked.filter(h => h === 'private.example').length, before, 'answers are cached, not asked for on every request');
+    await new Promise(res => setTimeout(res, 800));                                                  // let Chrome's own error page settle before the next navigation
+    assert.equal((await r2.handle({ cmd: 'open', url: base + '/' })).ok, true, 'literal loopback is still judged by the test switch only');
+  } finally { await r2.stop(); }
 });

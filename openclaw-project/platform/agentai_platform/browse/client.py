@@ -7,6 +7,11 @@ import socket
 from agentai_platform.adapters import CapabilityUnavailable
 
 
+class BrowseJobUnknown(CapabilityUnavailable):
+    """The service answered, but it has no such job: it was restarted (it keeps nothing across restarts) or the job belongs to someone else.
+    Different from the service being unreachable: waiting longer will never bring the job back."""
+
+
 class BrowseRpc:
     def __init__(self, account_id, socket_path, *, timeout=30):
         self.account_id, self.path, self.timeout = account_id, str(socket_path), timeout
@@ -32,7 +37,10 @@ class BrowseRpc:
         except ValueError as exc:
             raise CapabilityUnavailable('browse service reply invalid') from exc
         if not reply.get('ok'):
-            raise CapabilityUnavailable('browse service refused: ' + str(reply.get('error', ''))[:80])
+            error = str(reply.get('error', ''))[:80]
+            if error == 'unavailable':
+                raise BrowseJobUnknown('browse service has no such job')
+            raise CapabilityUnavailable('browse service refused: ' + error)
         return reply.get('result') or {}
 
     def shot(self, request_id, name):

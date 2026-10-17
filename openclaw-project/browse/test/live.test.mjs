@@ -43,3 +43,16 @@ test('takeover input returns at once: a click that starts a slow page load does 
   for (let i = 0; i < 40 && (await title()) !== 'Slow'; i++) await sleep(100);
   assert.equal(await title(), 'Slow', 'the click really happened');
 });
+
+test('live view: a capture that is slow to start is not started a second time by the next timer tick', async () => {
+  const out = process.env.BROWSE_OUT; const mark = join(out, 'watching');
+  await r.handle({ cmd: 'open', url: base + '/' }); await r.liveOff(); rmSync(mark, { force: true });
+  let sessions = 0; const real = r.context.newCDPSession.bind(r.context);
+  r.context.newCDPSession = async p => { sessions += 1; await sleep(700); return real(p); };       // a busy page answers slowly; the timer ticks every 250 ms
+  try {
+    writeFileSync(mark, '1');                                                                      // one viewer appears
+    await sleep(2500);
+    assert.equal(sessions, 1, `one capture session for one viewer (started ${sessions})`);
+    assert.ok(r.live, 'and it is running');
+  } finally { r.context.newCDPSession = real; rmSync(mark, { force: true }); await r.liveOff(); }
+});

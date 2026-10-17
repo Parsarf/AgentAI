@@ -16,7 +16,7 @@ export function startSite() {
     if (u.pathname === '/add') { const p = PRODUCTS.find(x => x.id === +u.searchParams.get('id')); if (p) cart.push(p); res.writeHead(302, { Location: '/cart' }); return res.end(); }
     if (u.pathname === '/cart') return send('Cart', `<h1>Your cart</h1>${cart.map(p => `<p>${p.name} $${p.price}</p>`).join('') || '<p>Empty</p>'}<a href="/checkout">Checkout</a><a href="/">Keep shopping</a>`);
     if (u.pathname === '/checkout') return send('Checkout', `<h1>Checkout</h1><input name=addr placeholder="Delivery address" aria-label="Delivery address"><select aria-label="Shipping"><option>Standard</option><option>Express</option></select><button id=buy onclick="document.title='ORDER PLACED'">Place order</button>`);
-    if (u.pathname === '/popup') return send('Promo', '<h1>Promo</h1><button>Close promo</button>');
+    if (u.pathname === '/popup') return send('Promo', '<h1>Promo</h1><button onclick="window.close()">Close promo</button>');
     // Pages for the runner's safety and state checks (stage 2).
     if (u.pathname === '/covered') return send('Covered', `<h1>Covered</h1><button onclick="document.title='CLICKED'">Details</button><div style="position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:50">Cookie banner</div>`);
     if (u.pathname === '/login') return send('Sign in', `<h1>Sign in</h1><input name=u aria-label="Email" value="me@example.com"><input type=password value="hunter2-secret"><input aria-hidden=false autocomplete="cc-number" value="4111 1111 1111 1111"><button>Continue</button>`);

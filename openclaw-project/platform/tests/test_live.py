@@ -81,8 +81,13 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.frame(rid=OTHER)[0], 403)                # ticket is for RID only
         other_ticket = ticket.mint(SECRET, 'a', OTHER)
         self.assertEqual(self.frame(t=other_ticket, rid=OTHER)[0], 404)  # signed, but no such running task
-        (self.out / 'live.jpg').write_bytes(b'x' * 1_000_001)
+        (self.out / 'live.jpg').write_bytes(b'x' * 3_000_001)
         self.assertEqual(self.frame()[0], 204)                          # never serve a runaway file
+
+    def test_a_large_but_plausible_frame_is_served_instead_of_freezing_the_picture(self):
+        (self.out / 'live.jpg').write_bytes(b'\xff\xd8' + b'x' * 1_500_000)      # a photo-heavy page at 1280x800
+        status, headers, body = self.frame()
+        self.assertEqual((status, len(body)), (200, 1_500_002))
 
     def test_too_many_waiters_are_told_to_retry_instead_of_piling_up(self):
         gw = FrameGateway(self.tmp.name, SECRET, hold=0.6, max_waiters=1)

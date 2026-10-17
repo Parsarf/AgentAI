@@ -1,6 +1,6 @@
 # Live view (watch and hop in on browser tasks)
 
-What it is: the Lumina **Live view** page shows a running browser task as a live picture (about 5-8 frames a second), and a customer can
+What it is: the Lumina **Live view** page shows a running browser task as a live picture (up to 15 frames a second at 1280x800), and a customer can
 **hop in** (Lumina finishes its current step, then waits) to click, type and scroll, and hand the page back.
 
 ## How it stays smooth for the rest of the site
@@ -9,12 +9,17 @@ What it is: the Lumina **Live view** page shows a running browser task as a live
   Each viewer asks "newest frame, if it changed since X"; the server holds the question about 2.5 s. Slow viewers skip frames; nothing queues.
 * The browser stage only captures while someone is watching (a `watching` marker the gateway refreshes). No viewer, no screencast, no cost.
   A hidden browser tab stops asking, so capture stops within about 6 s. Only the newest frame is kept (`out/live.jpg`).
-* The gateway is limited to 12 simultaneous waiting viewers; more get "try again".
+* The gateway is limited to 12 simultaneous waiting viewers; more get "try again". A frame up to 3 MB is served (a busy page can pass 1 MB).
+* A hand-off (the agent stopped and waits for you) keeps the browser for 10 minutes, but only 2 minutes once another browser task is waiting for it; a customer's own next task closes their idle hand-off at once. A customer who has the wheel (hopped in) is never cut off by a new task.
+* If the browse service restarts, a running task is gone (it keeps no state): the request ends within seconds with "the browser session was lost" instead of holding the queue until its timeout.
+
+## Cost to know about
+While someone watches, the browser stage replaces `out/live.jpg` up to 15 times a second (roughly 3 MB/s of disk writes for a busy page; nothing accumulates, the file is replaced). That is a trade between smoothness and disk wear: the rate is `LIVE.fps` in `browse/runner.mjs` (lower it to 8 for about half the writes). Nothing is written when nobody watches.
 
 ## Privacy
 * Tickets are HMAC-signed, expire in 2 minutes, are bound to one account and one task, and are **view only**. Controlling the page still needs the
   signed-in session (`/v1/browse/<id>/pause|resume|control`). Pausing does not store anything you type; the record keeps only "you typed".
-* Frames live in the same 0700 job folder as screenshots and are deleted with it after 24 hours. The gateway runs inside the browse service
+* Frames live in the same 0700 job folder as screenshots and are deleted with it after 24 hours; the service checks every 15 minutes, whether or not any task is running. The gateway runs inside the browse service
   because only that process may read those folders; no folder permissions were loosened.
 
 ## Route

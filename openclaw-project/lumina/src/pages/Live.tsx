@@ -19,7 +19,7 @@ function LiveRun({ id }: { id: string }) {
   const [run, setRun] = useState<RunDetail | null>(null); const [isBrowse, setIsBrowse] = useState<boolean | null>(app?.features.browse ? null : false);
   const [events, setEvents] = useState<RunEvent[]>([]); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [stamp, setStamp] = useState(0);
   const [showText, setShowText] = useState(false);
-  const controlQueue = useRef<Promise<void>>(Promise.resolve());
+  const controlQueue = useRef<Promise<void>>(Promise.resolve()); const runStatus = useRef<string | undefined>(undefined);
   const [pinned, setPinned] = useState<Mode | null>(null); const [now, setNow] = useState(Date.now());
   const since = useRef(0); const buffer = useRef(''); const flushTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -38,6 +38,7 @@ function LiveRun({ id }: { id: string }) {
   useEffect(() => { since.current = 0; setEvents([]); setRun(null); setPinned(null); setErr(''); setIsBrowse(app?.features.browse ? null : false); }, [id, app?.features.browse]);
   useEffect(() => { void load(); }, [load]);
 
+  runStatus.current = run?.status;
   const browseLive = !!run && LIVE_STATES.includes(run.status);
   const taskLive = isBrowse ? browseLive : !!request && isActive(request);
   const { rows, err: actErr } = useActivity(id, taskLive);
@@ -53,7 +54,9 @@ function LiveRun({ id }: { id: string }) {
   const send = useCallback((body: Record<string, unknown>) => {
     const next = controlQueue.current.then(async () => {
       try { await api('POST', `/v1/browse/${id}/control`, body); setErr(''); }
-      catch (e) { setErr(e instanceof ApiError && e.status === 409 ? 'Wait for Lumina to pause before taking control.' : 'That input did not go through. Try again.'); throw e; }
+      catch (e) { setErr(e instanceof ApiError && e.status === 409
+        ? (runStatus.current === 'running' ? 'Wait for Lumina to pause before taking control.' : 'The take-over window has closed, so that input was not sent.')
+        : 'That input did not go through. Try again.'); throw e; }
     });
     controlQueue.current = next.catch(() => {});
     return next.catch(() => {});

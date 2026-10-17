@@ -15,6 +15,7 @@ import time
 import uuid
 from urllib.parse import urlsplit
 from .adapters import CapabilityUnavailable
+from .browse.client import BrowseJobUnknown
 from .budget import BudgetDenied, BudgetLedger
 from .events import EventService
 from .gateway import SyntheticGateway
@@ -34,6 +35,7 @@ MAX_PROJECTS = 10  # product/plan.json max_projects; the numeric source of truth
 MAX_TRANSCRIPT_CHARS = 16000
 HISTORY_PAGES = 32
 SETTLE_POLLS = 2   # consecutive idle history reads that end a run
+BROWSE_UNREACHABLE_SECONDS = 60   # the browse service not answering for this long: its job is gone as far as the customer is concerned
 
 BUDGET_CATEGORIES = (
     ('queue full', 'queue_full'),
@@ -728,16 +730,17 @@ class ChatDriver:
         if announce:
             self._emit(claim, 'task_started', {'summary': 'Opening a browser for this task.'})
         goal = self.genui.with_conversation_context(claim, claim.message) if self.genui else claim.message
-        try:
-            rpc('start', request_id=claim.request_id, goal=goal, max_cost_microusd=int((reserved[0] if reserved else 1_000_000) * cost_share))
-        except CapabilityUnavailable:
-            message = 'The browser could not start. Please try again in a moment.'
-            self._mirror_browse(claim, {'state': 'failed', 'reason': message, 'events': []})
+        def give_up(state, message):
+            self._mirror_browse(claim, {'state': state, 'reason': message, 'events': []})
             self._emit(claim, 'error', {'summary': message, 'category': 'browser'})
             if soft:
                 return {'state': 'error', 'reason': message}
             return self._close(claim, 'failed', message, gateway, before)
-        since, deadline, final = 0, self.clock() + self.run_timeout, None
+        try:
+            rpc('start', request_id=claim.request_id, goal=goal, max_cost_microusd=int((reserved[0] if reserved else 1_000_000) * cost_share))
+        except CapabilityUnavailable:
+            return give_up('failed', 'The browser could not start. Please try again in a moment.')
+        since, deadline, final, unreachable_since = 0, self.clock() + self.run_timeout, None, None
         finals = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
         while True:
             with self.coordinator.transaction() as con:
@@ -751,8 +754,16 @@ class ChatDriver:
                 self.heartbeat(claim)
             try:
                 polled = rpc('poll', request_id=claim.request_id, since=since)
+                unreachable_since = None
+            except BrowseJobUnknown:
+                # The service is up but has no such job: it restarted (it keeps nothing across restarts). Waiting cannot bring the job back, and
+                # this request holds the one serial slot every customer shares, so end it now instead of at the run timeout.
+                return give_up('error', 'The browser session was lost because the browser service restarted. Nothing is left running; please try again.')
             except CapabilityUnavailable:
                 polled = None
+                unreachable_since = unreachable_since if unreachable_since is not None else self.clock()
+                if self.clock() - unreachable_since >= BROWSE_UNREACHABLE_SECONDS:
+                    return give_up('error', 'The browser service stopped answering, so the task was ended. Please try again in a moment.')
             if polled is not None:
                 if polled.get('state') == 'paused':
                     deadline += self.poll_interval          # the customer has the wheel: their time does not count against the task

@@ -23,7 +23,7 @@ PATH = re.compile(r'^(?:/v1)?/live/([a-f0-9]{32})/frame$')      # /v1/... travel
 HOLD_SECONDS = 2.5
 STEP_SECONDS = 0.04
 MAX_WAITERS = 12                  # a single small server: more viewers than this get "try again" instead of slowing everyone
-MAX_FRAME_BYTES = 1_000_000
+MAX_FRAME_BYTES = 3_000_000       # a busy 1280x800 page can pass 1 MB; above this the file is not a screenshot (and a frozen picture is worse than a big one)
 MARK_EVERY = 1.0
 
 

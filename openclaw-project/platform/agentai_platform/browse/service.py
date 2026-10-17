@@ -27,10 +27,12 @@ URL_IN_TEXT = re.compile(r'https?://[^\s<>"\')]+', re.I)
 FILE = re.compile(r'^shot-\d{3}\.jpg$')
 FINAL = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
 TAKEOVER_SECONDS = 600
+QUEUE_GRACE_SECONDS = 120                     # a hand-off window shrinks to this once another browser task is waiting for the one stage (an active user keeps it alive)
 MIN_FREE_BYTES = 2 * 1024 ** 3                 # a browser stage needs ~1.5 GiB; below this we wait instead of starving everyone's chats
 MEMORY_WAIT_SECONDS = 120
 SNAPSHOT_EVERY_SECONDS = 4
 SCREENSHOT_RETENTION_SECONDS = 24 * 3600    # pages can show personal data: screenshots are deleted a day after the task
+PURGE_EVERY_SECONDS = 900                     # ...and this is how often the service looks for them, whether or not any task is running
 MAX_CALLS = 60
 # A 16k request plus 12k of saved context and JSON quoting overhead.
 MAX_GOAL_CHARS = 48_000
@@ -57,6 +59,17 @@ def watch_kill_switch(service, is_on, stop, interval=3, sleep=time.sleep):
         except Exception:
             pass
         sleep(interval)
+
+
+def watch_purge(service, stop, every=PURGE_EVERY_SECONDS, sleep=time.sleep):
+    """Enforce the retention promise on a timer. Cleaning only at start-up and when a task ends meant that after a quiet stretch the last customer's
+    screenshots and live frame stayed on disk well past a day."""
+    while not stop.is_set():
+        try:
+            service.purge()
+        except Exception:
+            pass
+        sleep(every)
 
 
 # What the owner reads to judge the JEV-first ladder. jev_asked / jev_agree are shadow mode's (how often JEV picked the same step as Haiku or Sonnet);
@@ -106,8 +119,23 @@ class BrowseService:
                 return {'ok': True, 'state': existing.state}            # idempotent
             job = Job(account, request_id, goal, start_url, max_cost, min(int(max_steps), 40), min(int(max_seconds), 900))
             self.jobs[request_id] = job
+            self._make_room(job)
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
         return {'ok': True, 'state': 'queued'}
+
+    def _window(self):
+        """Seconds a hand-off stays open. Nobody waiting: the full window. Someone waiting for the one browser stage: a short grace, because an idle
+        window would otherwise hold the stage (and make that customer's next task sit in 'queued') for up to ten minutes."""
+        return min(self.takeover_seconds, QUEUE_GRACE_SECONDS) if any(j.state == 'queued' for j in list(self.jobs.values())) else self.takeover_seconds
+
+    def _make_room(self, new_job):
+        """A new browser task is about to wait for the stage. A hand-off that is only waiting out its window (its agent has finished) is closed at once if it is
+        the same customer's (they moved on), or shortened to the grace period if it is somebody else's. A customer who has the wheel (paused) is never cut off."""
+        now = self.clock()
+        for other in list(self.jobs.values()):
+            if other is new_job or other.state != 'handoff':
+                continue
+            other.takeover_until = 0 if other.account == new_job.account else min(other.takeover_until, now + QUEUE_GRACE_SECONDS)
 
     def _job(self, account, request_id):
         job = self.jobs.get(request_id)
@@ -140,9 +168,9 @@ class BrowseService:
         """Hop in at any time: the agent finishes the step it is on, then waits; the user can then click and type. Returns at once
         (the state turns 'paused' when the agent has stopped; until then control is refused so two hands never share the page)."""
         job = self._job(account, request_id)
-        if job.state not in ('running', 'paused', 'handoff'):
+        if job.state not in ('queued', 'running', 'paused', 'handoff'):
             raise BrowseError('not available')
-        if job.state == 'running':
+        if job.state in ('queued', 'running'):                     # a task still waiting for the stage pauses at its first step boundary
             job.pause_req.set()
         return {'ok': True, 'state': job.state}
 
@@ -182,7 +210,7 @@ class BrowseService:
                 raise BrowseError('not available')
             reply = job.session.call('xy', action=action, x=x, y=y, text=text)
         if reply.get('ok'):
-            job.takeover_until = self.clock() + self.takeover_seconds
+            job.takeover_until = self.clock() + (self._window() if job.state == 'handoff' else self.takeover_seconds)
             if job.state == 'paused':
                 job.add('control', {'action': action, 'by': 'you'})        # the live view shows the result; the record keeps what kind of input, never the text typed
             elif self.clock() - job.last_shot >= SNAPSHOT_EVERY_SECONDS:
@@ -311,7 +339,7 @@ class BrowseService:
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
             job.url = result.url or job.url
             if result.status == 'handoff':
-                job.takeover_until = self.clock() + self.takeover_seconds
+                job.takeover_until = self.clock() + self._window()
                 shot = session.screenshot()
                 if shot.get('ok'):
                     job.add('screenshot', {'file': shot['file'], 'by': 'lumina'})

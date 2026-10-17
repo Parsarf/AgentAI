@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from agentai_platform.adapters import CapabilityUnavailable
+from agentai_platform.browse.client import BrowseJobUnknown
 from agentai_platform.browse.loop import WALL_REASON
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.capacity import CapacityResult
@@ -48,9 +49,13 @@ class Handoff(unittest.TestCase):
         class Rpc:
             script = []
             fail_start = False
+            poll_error = None          # an exception raised for every poll, or a callable(n) -> exception or None
             def __call__(s, op, **p):
                 outer.calls.append((op, p))
                 if op == 'start' and s.fail_start: raise CapabilityUnavailable('down')
+                if op == 'poll' and s.poll_error is not None:
+                    err = s.poll_error(sum(1 for c in outer.calls if c[0] == 'poll')) if callable(s.poll_error) else s.poll_error
+                    if err is not None: raise err
                 if op == 'poll': return s.script.pop(0) if len(s.script) > 1 else s.script[0]
                 return {'ok': True}
         self.rpc = Rpc()
@@ -80,6 +85,37 @@ class Handoff(unittest.TestCase):
     def assistant_got(self):
         """Every customer-role message the synthetic assistant received."""
         return [m['content'] for sess in self.gw.sessions.values() for m in sess if m['role'] == 'customer']
+
+    def simulated_time(self):
+        """Make the driver's sleeps advance its clock, so a timeout can be tested without waiting."""
+        driver = self.worker.driver
+        driver.sleep = lambda seconds: setattr(self, 'now', self.now + seconds)
+
+    def test_a_browser_job_the_service_forgot_ends_the_request_at_once_not_at_the_timeout(self):
+        self.simulated_time(); self.rpc.poll_error = BrowseJobUnknown('no such job')            # the browse service restarted
+        start = self.now
+        self.run_message('search for the spiciest food around me')
+        self.assertLess(self.now - start, 10)                                                    # not the 900 s run timeout that used to hold the serial slot
+        self.assertEqual(sum(1 for c in self.calls if c[0] == 'poll'), 1)
+        self.assertIn(self.state(), ('completed', 'failed'))
+        run = self.rows('SELECT status,reason FROM browse_runs')[0]
+        self.assertEqual(run['status'], 'error'); self.assertIn('browser service restarted', run['reason'])   # the Live page no longer shows it as working
+        self.assertTrue(self.rows("SELECT 1 FROM events WHERE kind='error' AND public_payload LIKE '%browser session was lost%'"))
+
+    def test_a_browser_only_request_fails_cleanly_when_its_job_is_lost(self):
+        self.simulated_time(); self.rpc.poll_error = BrowseJobUnknown('no such job')
+        self.run_message('open youtube.com', mode='browse')
+        self.assertEqual(self.state(), 'failed'); self.assertEqual(self.rows('SELECT status FROM browse_runs')[0]['status'], 'error')
+
+    def test_a_service_that_stays_unreachable_ends_the_request_after_a_minute_but_a_short_outage_does_not(self):
+        self.simulated_time(); self.rpc.poll_error = CapabilityUnavailable('down')
+        start = self.now
+        self.run_message('open youtube.com', mode='browse')
+        self.assertEqual(self.state(), 'failed'); self.assertTrue(60 <= self.now - start < 75, self.now - start)
+        self.rpc.script[:] = [{'state': 'done', 'reason': 'ok', 'answer': 'Found it.', 'url': 'https://example.com/', 'cost_microusd': 100, 'events': []}]
+        self.rpc.poll_error = lambda n: CapabilityUnavailable('restarting') if n <= 4 else None      # four failed polls, then the service answers
+        self.run_message('open example.com', mode='browse', key='k2')
+        self.assertEqual(self.state(), 'completed')
 
     def state(self): return self.rows('SELECT state FROM customer_requests ORDER BY created_epoch DESC')[0]['state']
 

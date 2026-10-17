@@ -65,6 +65,22 @@ describe('live workspace', () => {
     finish();
     await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/browse/active/release', {}));
   });
+  it('tells you why an input was refused: still working versus the take-over window having closed', async () => {
+    fixture.run = { request_id: 'active', goal: 'Current task', status: 'handoff', takeover: true, created_epoch: 100, events: [] };
+    const original = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (method, path, body) => {
+      if (path.endsWith('/control')) throw new ApiError('not_available', 409);
+      return original(method, path, body);
+    });
+    mount(); await screen.findByText('Lumina needs your help');
+    fireEvent.change(screen.getByLabelText('Text to type into the page'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Type into page' }));
+    expect(await screen.findByText('The take-over window has closed, so that input was not sent.')).toBeTruthy();
+    expect(screen.queryByText(/Wait for Lumina to pause/)).toBeNull();
+    cleanup(); fixture.run = { request_id: 'active', goal: 'Current task', status: 'running', takeover: false, created_epoch: 100, events: [] };
+    mount(); await screen.findByRole('button', { name: 'Take control' });
+    expect(screen.queryByText(/take-over window has closed/)).toBeNull();
+  });
   it('does not allow browser input while the agent still owns it', async () => {
     fixture.run = { request_id: 'active', goal: 'Current task', status: 'running', takeover: false, created_epoch: 100, events: [] };
     mount();

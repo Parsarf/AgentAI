@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline';
 import { mkdirSync, statSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { lookup as dnsLookup } from 'node:dns/promises';
 
 const CHROME = process.env.BROWSE_CHROME || '/usr/bin/chromium';
 const OUT = process.env.BROWSE_OUT || '/tmp/out';
@@ -16,6 +17,17 @@ const KEYS = new Set(['Enter', 'Tab', 'Escape']);
 // while the host has recently touched OUT/watching. Nobody watching = no screencast, no CPU, no disk writes.
 const LIVE = { fps: 15, quality: 60, width: 1280, height: 800, watchSeconds: 6, pollMs: 250 };
 
+/** An address (not a name) in a private, loopback, link-local or otherwise internal range. */
+export function privateIp(h) {
+  const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (m) { const [a, b] = [+m[1], +m[2]]; return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127); }
+  if (h.includes(':')) {
+    const v4 = h.toLowerCase().match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);                       // an IPv4 address written as IPv6
+    return v4 ? privateIp(v4[1]) : /^(fc|fd|fe80|::1|::)/i.test(h);
+  }
+  return false;
+}
+
 export function urlAllowed(raw, allowLoopback = false) {
   let u; try { u = new URL(raw); } catch { return false; }
   if (!['http:', 'https:'].includes(u.protocol)) return false;
@@ -24,10 +36,7 @@ export function urlAllowed(raw, allowLoopback = false) {
   const loop = h === 'localhost' || h === '127.0.0.1' || h === '::1';
   if (loop) return allowLoopback;
   if (h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.localhost')) return false;
-  const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (m) { const [a, b] = [+m[1], +m[2]]; if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)) return false; }
-  if (h.includes(':')) { if (/^(fc|fd|fe80|::1|::)/.test(h)) return false; }
-  return true;
+  return !privateIp(h);
 }
 
 const SELECTOR = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [onclick]';
@@ -99,23 +108,55 @@ function ready(el, action) {
 }
 
 export class Runner {
-  constructor() { this.browser = null; this.context = null; this.page = null; this.shots = 0; this.live = null; this.liveTimer = null; this.lastFrame = 0; }
+  constructor({ lookup = dnsLookup } = {}) { this.lookup = lookup; this.dnsSeen = new Map(); this.blocked = []; this.browser = null; this.context = null; this.page = null; this.shots = 0; this.live = null; this.liveTimer = null; this.lastFrame = 0; }
   async start() {
     mkdirSync(OUT, { recursive: true });
     this.browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--disable-crash-reporter', '--no-first-run'] });
     this.context = await this.browser.newContext({ acceptDownloads: false, permissions: [], viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
-    await this.context.route('**/*', route => { const u = route.request().url(); if (urlAllowed(u, ALLOW_LOOPBACK)) return route.continue(); console.error('blocked', u.slice(0, 120)); return route.abort('blockedbyclient'); });
-    this.context.on('page', p => { if (this.context.pages().length > MAX_PAGES) { p.close().catch(() => {}); return; } this.page = p; });
-    this.page = await this.context.newPage(); this.page.setDefaultTimeout(8000); this.page.setDefaultNavigationTimeout(20000);
+    await this.context.route('**/*', async route => {
+      const u = route.request().url();
+      if (urlAllowed(u, ALLOW_LOOPBACK) && !(await this.resolvesPrivately(u))) return route.continue();
+      this.blocked = [...this.blocked.slice(-49), u.slice(0, 120)]; console.error('blocked', u.slice(0, 120)); return route.abort('blockedbyclient');
+    });
+    this.context.on('page', p => { if (this.context.pages().length > MAX_PAGES) { p.close().catch(() => {}); return; } this.page = this.prepare(p); });
+    this.page = this.prepare(await this.context.newPage());
     this.liveTimer = setInterval(() => this.liveSync().catch(() => {}), LIVE.pollMs); this.liveTimer.unref?.();
+  }
+  /** A name that looks public but resolves to an internal address (wildcard DNS such as 10.0.0.1.nip.io, or a misconfigured record). The host firewall is the real
+   *  barrier; this catches the static cases early. A name that does not resolve is let through: the browser fails on it by itself. Answers are cached for 30 s. */
+  resolvesPrivately(raw) {
+    let host; try { host = new URL(raw).hostname.toLowerCase().replace(/^\[|\]$/g, ''); } catch { return Promise.resolve(false); }
+    if (host === 'localhost' || /^[\d.]+$/.test(host) || host.includes(':')) return Promise.resolve(false);               // literal addresses were already judged by urlAllowed
+    const seen = this.dnsSeen.get(host);
+    if (seen && seen.until > Date.now()) return seen.answer;
+    const answer = Promise.race([this.lookup(host, { all: true }), new Promise((_, no) => setTimeout(() => no(new Error('slow')), 3000))])
+      .then(list => list.some(a => privateIp(a.address) && !(ALLOW_LOOPBACK && (a.address === '127.0.0.1' || a.address === '::1'))), () => false);
+    this.dnsSeen.set(host, { until: Date.now() + 30_000, answer });
+    return answer;
+  }
+  // Every page gets the same timeouts and a close handler: when the page the agent is on closes (a login, OAuth or payment popup that finishes and
+  // closes itself, or a site closing a tab), the agent carries on in the page that is still open instead of being left holding a dead one.
+  prepare(p) {
+    p.setDefaultTimeout(8000); p.setDefaultNavigationTimeout(20000);
+    p.on('close', () => { if (this.page === p) { const open = this.context.pages().filter(x => !x.isClosed()); if (open.length) this.page = open[open.length - 1]; } });
+    return p;
+  }
+  async ensurePage() {
+    if (!this.page.isClosed()) return;
+    const open = this.context.pages().filter(x => !x.isClosed());
+    this.page = open.length ? open[open.length - 1] : this.prepare(await this.context.newPage());    // the last tab closed: start again from a blank one
   }
   async stop() { clearInterval(this.liveTimer); await this.liveOff(); try { await this.browser?.close(); } catch { /* already gone */ } }
 
   watched() { try { return Date.now() - statSync(join(OUT, 'watching')).mtimeMs < LIVE.watchSeconds * 1000; } catch { return false; } }
   async liveSync() {
-    const want = this.watched();
-    if (want && (!this.live || this.live.page !== this.page)) await this.liveOn();
-    else if (!want && this.live) await this.liveOff();
+    if (this.liveBusy) return;                       // the timer fires every 250 ms; starting a capture can take longer, and a second start would leave a second one running
+    this.liveBusy = true;
+    try {
+      const want = this.watched();
+      if (want && (!this.live || this.live.page !== this.page)) await this.liveOn();
+      else if (!want && this.live) await this.liveOff();
+    } finally { this.liveBusy = false; }
   }
   async liveOn() {
     await this.liveOff();
@@ -141,6 +182,7 @@ export class Runner {
   async settle() { try { await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }); await this.page.waitForLoadState('networkidle', { timeout: 2500 }); } catch { /* slow pages are fine */ } }
 
   async handle(msg) {
+    await this.ensurePage();
     switch (msg.cmd) {
       case 'open': {
         if (!urlAllowed(msg.url, ALLOW_LOOPBACK)) return { ok: false, error: 'url_blocked' };
@@ -159,9 +201,9 @@ export class Runner {
         if (action === 'press') { if (!KEYS.has(value)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(value); await this.settle(); return done(); }
         if (action === 'scroll') {
           if (value !== undefined && value !== null && !['down', 'up'].includes(value)) return { ok: false, error: 'bad_value' };
-          await this.page.mouse.wheel(0, value === 'up' ? -700 : 700); await this.page.waitForTimeout(150); return done();
+          await this.page.mouse.wheel(0, value === 'up' ? -700 : 700); await this.page.waitForTimeout(150).catch(() => {}); return done();
         }
-        if (action === 'wait') { await this.page.waitForTimeout(1000); await this.settle(); return done(); }
+        if (action === 'wait') { await this.page.waitForTimeout(1000).catch(() => {}); await this.settle(); return done(); }
         if (!['click', 'type', 'select'].includes(action) || !Number.isInteger(ref)) return { ok: false, error: 'bad_action' };
         const el = await this.page.$(`[data-lumina-ref="${ref}"]`);
         if (!el) return { ok: false, error: 'stale' };
@@ -173,7 +215,7 @@ export class Runner {
         await el.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
         const state = await el.evaluate(ready, action).catch(() => 'stale');
         if (state !== 'ok') return { ok: false, error: state };
-        const before = this.page.url(); const pagesBefore = this.context.pages().length;
+        const page = this.page; const before = page.url(); const pagesBefore = this.context.pages().length;
         try {
           if (action === 'click') await el.click({ timeout: 6000 });
           else if (action === 'type') await el.fill(value, { timeout: 6000 });
@@ -184,8 +226,9 @@ export class Runner {
             if (idx < 0) return { ok: false, error: 'no_option' };
             await el.selectOption({ index: idx }, { timeout: 4000 });
           }
-        } catch (e) { return { ok: false, error: 'action_failed' }; }
-        await this.page.waitForTimeout(400);          // a link opening a new tab reports it asynchronously
+        } catch (e) { if (!page.isClosed()) return { ok: false, error: 'action_failed' }; }      // the click closed its own tab (a popup finishing): that is what it was for
+        await this.ensurePage();
+        await this.page.waitForTimeout(400).catch(() => {});          // a link opening a new tab reports it asynchronously (and a click may close this one)
         await this.settle();
         return done({ navigated: this.page.url() !== before, new_tab: this.context.pages().length > pagesBefore });
       }

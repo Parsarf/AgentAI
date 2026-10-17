@@ -96,10 +96,10 @@ def main():
     service = BrowseService(spawn=spawn, llm_for=llm_for, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode)
     import threading
     from ..switches import SwitchStore
-    from .service import watch_kill_switch
+    from .service import watch_kill_switch, watch_purge
     switches = SwitchStore(args.switches, facts_path=args.switch_facts)
     threading.Thread(target=watch_kill_switch, args=(service, lambda: switches.is_on('browse_tasks'), threading.Event()), daemon=True).start()
-    service.purge()                                  # screenshots left from before a restart
+    threading.Thread(target=watch_purge, args=(service, threading.Event()), daemon=True).start()      # now, and then every 15 minutes: screenshots and live frames live a day
     start_live_view(args, service)
     app = pwd.getpwnam(args.app_user)
     server = serve(service, str(args.socket), allowed_uids={app.pw_uid}, group_gid=grp.getgrnam(args.app_user).gr_gid)
