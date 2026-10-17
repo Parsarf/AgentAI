@@ -58,11 +58,11 @@ class HostProbe:
         try:
             one = lambda sql, *a: con.execute(sql, a).fetchone()[0]
             oldest_op = one("SELECT min(strftime('%s',created_at)) FROM operations WHERE state='pending'")
-            oldest_req = one("SELECT min(created_epoch) FROM customer_requests WHERE state='waiting'")
+            oldest_req = one("SELECT min(created_epoch) FROM customer_requests WHERE state='waiting' AND paused=0")
             oldest_evt = one("SELECT min(received_epoch) FROM billing_inbox WHERE status='received'") if self._has(con, 'billing_inbox') else None
             return {'pending': one("SELECT count(*) FROM operations WHERE state='pending'"), 'oldest_pending_age_s': now - int(oldest_op) if oldest_op else 0,
                     'uncertain': one("SELECT count(*) FROM operations WHERE state='uncertain'"),
-                    'waiting_requests': one("SELECT count(*) FROM customer_requests WHERE state='waiting'"), 'oldest_request_age_s': now - oldest_req if oldest_req else 0,
+                    'waiting_requests': one("SELECT count(*) FROM customer_requests WHERE state='waiting' AND paused=0"), 'oldest_request_age_s': now - oldest_req if oldest_req else 0,
                     'billing_inbox_lag_s': now - oldest_evt if oldest_evt else 0,
                     'billing_dead': one("SELECT count(*) FROM billing_inbox WHERE status='dead'") if self._has(con, 'billing_inbox') else 0}
         finally: con.close()

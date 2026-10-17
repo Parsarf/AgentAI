@@ -185,4 +185,25 @@ class ExposureAndInventoryChecks(unittest.TestCase):
         self.assertEqual(gaps({'artifacts': [{'asset': a} for a in BACKED_UP]}), [])
         self.assertIn('app-db', gaps({'artifacts': []})); self.assertNotIn('tenant-cells', gaps({'artifacts': [{'asset': 'app-db'}]}))   # no tenants yet is not a gap
         keys = next(a for a in ASSETS if a.id == 'encryption-keys'); self.assertIn('NEVER on the host', keys.where)
+
+class QueueFactsChecks(unittest.TestCase):
+    def test_a_paused_task_is_not_a_task_waiting_too_long(self):
+        from agentai_platform.ops.hostprobe import HostProbe
+        from agentai_platform.request_queue import RequestQueue
+        from agentai_platform.security import Principal
+        from agentai_platform.store import Store
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / 'db.sqlite3'); store.initialize(); now = [NOW]
+            with store.connect() as c:
+                c.execute("INSERT INTO accounts(id,status) VALUES ('a','active')"); c.execute("INSERT INTO memberships VALUES ('a','x','customer','active')")
+                c.execute("INSERT INTO projects(account_id,id,name) VALUES ('a','p','P')")
+            q = RequestQueue(store, clock=lambda: now[0]); who = Principal('a', 'x', 'customer')
+            item = q.submit(who, message='hello', key='k1'); q.pause(who, item['id']); now[0] += 4000
+            facts = HostProbe({'app_db': str(Path(tmp) / 'db.sqlite3')}, None, clock=lambda: now[0]).queue_facts()
+            self.assertEqual((facts['waiting_requests'], facts['oldest_request_age_s']), (0, 0))      # held on purpose: no "waiting too long" alert
+            q.resume(who, item['id'])
+            facts = HostProbe({'app_db': str(Path(tmp) / 'db.sqlite3')}, None, clock=lambda: now[0]).queue_facts()
+            self.assertEqual((facts['waiting_requests'], facts['oldest_request_age_s']), (1, 4000))
+
+
 if __name__ == '__main__': unittest.main()

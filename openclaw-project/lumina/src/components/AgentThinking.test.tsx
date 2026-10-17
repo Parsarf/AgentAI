@@ -17,6 +17,12 @@ describe('assistant thinking indicator', () => {
     rerender(<AgentThinking task={{ ...task, state: 'completed' }} />);
     expect(screen.queryByRole('status')).toBeNull();
   });
+  it('says a held task is paused instead of showing the working orb, and makes no activity calls', () => {
+    render(<AgentThinking task={{ ...task, state: 'waiting', paused: true }} />);
+    expect(screen.getByRole('status').textContent).toMatch(/Paused/);
+    expect(screen.queryByTestId('orb')).toBeNull();
+    expect(api).not.toHaveBeenCalled();
+  });
   it('drains more than 200 events before selecting the latest activity', async () => {
     vi.mocked(api).mockImplementation(async (_method, url) => ({ events: url.includes('after=0&') ? Array.from({ length: 200 }, (_, i) => ({ sequence: i + 1, kind: 'progress' })) : [{ sequence: 201, kind: 'activity', payload: { category: 'file', status: 'running' } }] }) as any);
     render(<AgentThinking task={task} />);

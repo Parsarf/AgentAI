@@ -4,7 +4,7 @@ import * as I from '../components/Icons';
 import Composer, { TEMPLATES } from '../components/Composer';
 import { useData } from '../state/data';
 import { ago, displayName, greeting, title } from '../lib/format';
-import { phase } from '../lib/tasks';
+import { dotClass, phase, statusLabel } from '../lib/tasks';
 
 const CAPS = [
   { key: 'Web', name: 'Search Web', text: 'Find, analyze and summarize anything.', icon: I.Browser, color: 'var(--neon)' },
@@ -13,14 +13,14 @@ const CAPS = [
   { key: 'Automate', name: 'Automate', text: 'Create workflows and recurring tasks.', icon: I.Bolt, color: 'var(--neon-2)' },
 ];
 
-export function TaskRow({ r, onOpen }: { r: { id: string; message: string; state: string; created_epoch: number }; onOpen(): void }) {
+export function TaskRow({ r, onOpen }: { r: { id: string; message: string; state: string; created_epoch: number; paused?: boolean; ahead?: number | null }; onOpen(): void }) {
   const p = phase(r.state);
-  const label = p === 'queued' ? 'Queued' : p === 'running' ? 'Working' : p === 'completed' ? 'Completed' : p === 'failed' ? 'Failed' : 'Cancelled';
+  const label = statusLabel(r) + (p === 'queued' && !r.paused && typeof r.ahead === 'number' && r.ahead > 0 ? ` (${r.ahead} ahead)` : '');
   return (
     <button className="task" onClick={onOpen}>
       <span className="t-ico">{p === 'running' ? <I.Bolt width={18} height={18} /> : <I.Tasks width={18} height={18} />}</span>
       <span className="t-main"><span className="t-name" style={{ display: 'block' }}>{title(r.message, 90)}</span>
-        <span className="t-meta"><span className={`dot-s ${p}`} />{label} · {ago(r.created_epoch)}</span></span>
+        <span className="t-meta"><span className={`dot-s ${dotClass(r)}`} />{label} · {ago(r.created_epoch)}</span></span>
       <I.Chevron width={18} height={18} />
     </button>);
 }

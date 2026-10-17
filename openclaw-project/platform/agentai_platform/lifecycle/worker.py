@@ -99,7 +99,7 @@ class LifecycleWorker:
         queued = 0
         with self.store.connect() as con:
             due = [(r['account_id'], r['generation'], r['request_id']) for r in con.execute(
-                "SELECT c.account_id,d.generation,(SELECT id FROM customer_requests q WHERE q.account_id=c.account_id AND q.state='waiting' AND q.intent!='browse' "
+                "SELECT c.account_id,d.generation,(SELECT id FROM customer_requests q WHERE q.account_id=c.account_id AND q.state='waiting' AND q.paused=0 AND q.intent!='browse' "
                 "ORDER BY q.sequence LIMIT 1) AS request_id FROM lifecycle_cells c JOIN deployments d "
                 "ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.observed_state='stopped'").fetchall() if r['request_id']]
         for account, generation, request in due:
@@ -112,7 +112,7 @@ class LifecycleWorker:
 
     def waiting_accounts(self):
         with self.store.connect() as con:
-            return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting'")}
+            return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting' AND paused=0")}
 
     def tick(self):
         report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0, 'woken': 0, 'realigned': 0}

@@ -139,6 +139,60 @@ class ChatChecks(unittest.TestCase):
         self.assertEqual(self.service.cancel(self.a, result['id'])['state'], 'cancelled')
         self.assertIsNone(self.queue.claim(owner='w', capacity=CAPACITY))
 
+    def test_retry_runs_a_cancelled_task_again_as_one_new_task(self):
+        first = self.service.send(self.a, conversation_id='c-a', message='find paddles', key='k1', mode='text')
+        with self.assertRaises(Conflict):
+            self.service.retry(self.a, first['id'])                                       # it has not failed: nothing to retry
+        self.service.cancel(self.a, first['id'])
+        again = self.service.retry(self.a, first['id'])
+        self.assertNotEqual(again['id'], first['id'])
+        self.assertEqual((again['state'], again['retry_of'], again['admission']), ('waiting', first['id'], 'reserved'))
+        self.assertEqual(self.rows('SELECT context_json,intent,conversation_id FROM customer_requests WHERE id=?', (again['id'],))[0][:], ('{"mode":"text"}', 'chat', 'c-a'))   # same mode, same conversation
+        self.assertTrue(self.rows("SELECT 1 FROM task_reservations WHERE account_id='a' AND task_id=? AND state='active'", (again['id'],)))      # its own budget reservation
+        self.assertEqual(len(self.rows("SELECT 1 FROM chat_messages WHERE conversation_id='c-a' AND provenance='customer'")), 2)
+        self.assertEqual(self.service.retry(self.a, first['id'])['id'], again['id'])      # pressing it twice gives the one retry
+        self.assertEqual(len(self.rows("SELECT 1 FROM customer_requests WHERE retry_of=?", (first['id'],))), 1)
+        with self.assertRaises(NotFound):
+            self.service.retry(self.b, first['id'])
+        self.service.cancel(self.a, again['id'])
+        third = self.service.retry(self.a, again['id'])                                    # a retry can itself be retried
+        self.assertEqual(third['retry_of'], again['id'])
+
+    def test_a_retry_the_budget_refuses_leaves_nothing_behind_and_can_be_tried_again_later(self):
+        first = self.send(key='k1'); self.service.cancel(self.a, first['id'])
+        with self.store.connect() as con:
+            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(dict(LIMITS, period_microusd=100)),))
+        with self.assertRaises(BudgetDenied):
+            self.service.retry(self.a, first['id'])
+        self.assertFalse(self.rows("SELECT 1 FROM customer_requests WHERE state='waiting' AND idempotency_key LIKE 'retry-%'"))
+        with self.store.connect() as con:
+            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(LIMITS),))
+        later = self.service.retry(self.a, first['id'])                                    # a new attempt, not the dead cancelled one
+        self.assertEqual((later['state'], later['admission']), ('waiting', 'reserved'))
+
+    def test_a_completed_task_and_an_archived_conversation_cannot_be_retried(self):
+        done = self.send(key='k1')
+        with self.store.connect() as con:
+            con.execute("UPDATE customer_requests SET state='completed' WHERE id=?", (done['id'],))
+        with self.assertRaises(Conflict):
+            self.service.retry(self.a, done['id'])
+        gone = self.send(key='k2'); self.service.cancel(self.a, gone['id'])
+        with self.store.connect() as con:
+            con.execute("UPDATE conversations SET archived_epoch=? WHERE id='c-a'", (self.now,))
+        with self.assertRaises(Conflict):
+            self.service.retry(self.a, gone['id'])
+
+    def test_pause_and_resume_hold_a_waiting_task_through_the_service(self):
+        item = self.send()
+        self.assertTrue(self.service.pause(self.a, item['id'])['paused'])
+        self.assertTrue(self.service.messages(self.a, 'c-a')['tasks'][0]['paused'])           # the chat page learns it too, so it does not show a working orb
+        self.assertTrue(self.service.task(self.a, item['id'])['paused'])
+        self.assertIsNone(self.queue.claim(owner='w', capacity=CAPACITY))
+        self.assertFalse(self.service.resume(self.a, item['id'])['paused'])
+        self.assertIsNotNone(self.queue.claim(owner='w', capacity=CAPACITY))
+        with self.assertRaises(Conflict):
+            self.service.pause(self.a, item['id'])                                         # it has started
+
     def metered_driver(self, gateway, **kw):
         return ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(gateway),
                           clock=lambda: self.now, sleep=lambda s: None, **kw)

@@ -13,7 +13,35 @@ export function phase(state: string): Phase {
     default: return 'queued';
   }
 }
-export const isActive = (state: string) => ['queued', 'running'].includes(phase(state));
+type Row = Pick<RequestRow, 'state'> & Partial<Pick<RequestRow, 'paused' | 'ahead' | 'retry_of'>>;
+
+/** What a person reads under a task. A paused task is held in the queue, so it is still "queued" for filters but never starts until resumed. */
+export function statusLabel(r: Row): string {
+  const p = phase(r.state);
+  if (p === 'queued') return r.paused ? 'Paused' : 'Queued';
+  return p === 'running' ? 'Working' : p === 'completed' ? 'Completed' : p === 'failed' ? 'Failed' : 'Cancelled';
+}
+/** The colour class for the status dot. */
+export const dotClass = (r: Row) => (phase(r.state) === 'queued' && r.paused ? 'paused' : phase(r.state));
+
+/** Where a waiting task stands in the line, in words. Empty when it is not waiting its turn. */
+export function queueLine(r: Row): string {
+  if (phase(r.state) !== 'queued') return '';
+  if (r.paused) return 'Paused. It keeps its place and its budget, and will not start until you resume it.';
+  if (r.ahead === 0) return 'Next in line.';
+  if (typeof r.ahead === 'number') return `${r.ahead} ${r.ahead === 1 ? 'task is' : 'tasks are'} ahead of this one.`;
+  return '';
+}
+
+/** What can be done to a task now. A task that is running cannot be paused: the assistant has no safe place to stop mid-run (cancel it instead). */
+export function controls(r: Row) {
+  const p = phase(r.state);
+  const waiting = r.state === 'waiting';
+  return { pause: waiting && !r.paused, resume: waiting && !!r.paused, cancel: p === 'queued' || p === 'running', retry: r.state === 'failed' || r.state === 'cancelled' };
+}
+
+/** Is Lumina working on it (or about to)? A held task is queued but nothing is happening, so it does not count: no thinking orb, no live badge. */
+export const isActive = (x: string | Row) => { const r = typeof x === 'string' ? { state: x } : x; return ['queued', 'running'].includes(phase(r.state)) && !(r as Row).paused; };
 
 export function counts(rows: RequestRow[]) {
   const c = { running: 0, queued: 0, completed: 0, failed: 0 };
@@ -26,7 +54,7 @@ export function counts(rows: RequestRow[]) {
 
 /** Most recently created in-flight request: what the Active Task panel shows. */
 export function activeTask(rows: RequestRow[]): RequestRow | null {
-  const live = rows.filter(r => isActive(r.state));
+  const live = rows.filter(r => isActive(r));
   return live.length ? live.reduce((a, b) => (b.created_epoch > a.created_epoch ? b : a)) : null;
 }
 

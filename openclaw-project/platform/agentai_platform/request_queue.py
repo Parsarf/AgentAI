@@ -50,7 +50,7 @@ class RequestQueue:
             old=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND idempotency_key=?',(principal.account_id,key)).fetchone()
             if old:
                 if old['payload_hash']!=digest or old['conversation_id']!=conversation_id:raise Conflict('request payload changed')
-                return self._public(old)
+                return self._view(c,old)
             if c.execute("SELECT count(*) FROM customer_requests WHERE account_id=? AND state='waiting'",(principal.account_id,)).fetchone()[0]>=3:raise Conflict('queue full')
             if conversation_id is not None:
                 # The request belongs to the project its conversation lives in (budget admission checks that pairing).
@@ -63,17 +63,26 @@ class RequestQueue:
             c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,intent,context_json)
                 VALUES (?,?,?,?,?,?,?,?,'waiting',?,?,?)''',(principal.account_id,request,principal.actor_id,project[0],conversation_id,key,digest,message,int(self.clock()),intent,context_json))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_submit','completed')
-            return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
-    def _public(self,row):
-        return {k:row[k] for k in ['id','message','state','cancel_requested','result','created_epoch','conversation_id']}
+            return self._view(c,c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
+    def _public(self,row,ahead=None):
+        # `ahead`: how many tasks run before this one (the task using the slot, then earlier unpaused waiting tasks of any account); None unless it is waiting its turn.
+        view={k:row[k] for k in ['id','message','state','cancel_requested','result','created_epoch','conversation_id']}
+        view.update(paused=bool(row['paused']),retry_of=row['retry_of'],ahead=ahead)
+        return view
+    @staticmethod
+    def _ahead(c,row):
+        if row['state']!='waiting' or row['paused']:return None
+        busy=c.execute('SELECT count(*) FROM request_slot').fetchone()[0]
+        return busy+c.execute("SELECT count(*) FROM customer_requests WHERE state='waiting' AND paused=0 AND sequence<?",(row['sequence'],)).fetchone()[0]
+    def _view(self,c,row):return self._public(row,self._ahead(c,row))
     def get(self,principal,request=None):
         with self.store.connect() as c:
             self.store._authorize(c,principal)
             if request:
                 row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone()
                 if not row:raise NotFound()
-                return self._public(row)
-            return [self._public(r) for r in c.execute('SELECT * FROM customer_requests WHERE account_id=? ORDER BY sequence DESC LIMIT 100',(principal.account_id,)).fetchall()]
+                return self._view(c,row)
+            return [self._view(c,r) for r in c.execute('SELECT * FROM customer_requests WHERE account_id=? ORDER BY sequence DESC LIMIT 100',(principal.account_id,)).fetchall()]
     def cancel(self,principal,request):
         with self.coordinator.transaction() as c:
             self.store._authorize(c,principal)
@@ -83,6 +92,37 @@ class RequestQueue:
             elif row['state'] in {'starting','running','uncertain'}:c.execute('UPDATE customer_requests SET cancel_requested=1 WHERE account_id=? AND id=?',(principal.account_id,request))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_cancel','completed')
             return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
+    def pause(self,principal,request):
+        """Hold a task that has not started: it keeps its place in the account's queue limit and its budget reservation, but is never claimed and never wakes the assistant."""
+        return self._hold(principal,request,1)
+    def resume(self,principal,request):
+        return self._hold(principal,request,0)
+    def _hold(self,principal,request,paused):
+        with self.coordinator.transaction() as c:
+            self.store._authorize(c,principal)
+            row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone()
+            if not row:raise NotFound()
+            if row['state']!='waiting':raise Conflict('only a task that has not started can be paused or resumed')
+            if row['paused']!=paused:
+                c.execute('UPDATE customer_requests SET paused=? WHERE account_id=? AND id=?',(paused,principal.account_id,request))
+                self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_pause' if paused else 'request_resume','completed')
+            return self._view(c,c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
+    def retry_source(self,principal,request):
+        """What a retry re-runs: only a task that failed or was cancelled. Also the earlier retry attempts (keys `retry-<id>-<n>`), so a repeat press finds the live one
+        and an attempt that was refused (budget) and cancelled is followed by a new key instead of being handed the dead request again."""
+        with self.store.connect() as c:
+            self.store._authorize(c,principal)
+            row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone()
+            if not row:raise NotFound()
+            if row['state'] not in {'failed','cancelled'}:raise Conflict('only a failed or cancelled task can be retried')
+            if not row['conversation_id']:raise Conflict('this task has no conversation to retry in')
+            mark='retry-'+request+'-'
+            attempts=c.execute("SELECT * FROM customer_requests WHERE account_id=? AND substr(idempotency_key,1,?)=? ORDER BY sequence DESC",(principal.account_id,len(mark),mark)).fetchall()
+            return {'message':row['message'],'conversation_id':row['conversation_id'],'intent':row['intent'],'context':json.loads(row['context_json']) if row['context_json'] else None,
+                    'attempts':len(attempts),'latest':self._view(c,attempts[0]) if attempts else None}
+    def mark_retry(self,principal,request,source):
+        with self.coordinator.transaction() as c:
+            c.execute('UPDATE customer_requests SET retry_of=? WHERE account_id=? AND id=? AND retry_of IS NULL',(source,principal.account_id,request))
     def claim(self,*,owner,capacity,lease_seconds=60):
         identifier(owner)
         if type(lease_seconds) is not int or not 1<=lease_seconds<=120:raise ValueError('invalid lease')
@@ -94,7 +134,7 @@ class RequestQueue:
             if capacity.admitted_slots<1 or capacity.blockers:return None
             # Skip requests whose author/account was revoked while they waited.
             while True:
-                row=c.execute("SELECT * FROM customer_requests WHERE state='waiting' ORDER BY sequence LIMIT 1").fetchone()
+                row=c.execute("SELECT * FROM customer_requests WHERE state='waiting' AND paused=0 ORDER BY sequence LIMIT 1").fetchone()
                 if not row:return None
                 authorized=c.execute("SELECT 1 FROM accounts a JOIN memberships m ON m.account_id=a.id WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.status='active' AND m.role='customer'",(row['account_id'],row['actor_id'])).fetchone()
                 if authorized:break

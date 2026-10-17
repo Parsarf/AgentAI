@@ -1954,6 +1954,117 @@
     }
    }
   },
+  "/v1/requests/{request_id}/pause": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Hold a task that has not started: it keeps its place and budget reservation but is never started until resumed",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Paused; the request now has paused=true and no queue position"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     }
+    }
+   }
+  },
+  "/v1/requests/{request_id}/resume": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Let a paused task take its turn again",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Resumed; the request shows how many tasks are ahead of it"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     }
+    }
+   }
+  },
+  "/v1/requests/{request_id}/retry": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Run a failed or cancelled task again as a new task in the same conversation (idempotent: one retry per task)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "The retry, queued and admitted afresh; retry_of names the original"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "402": {
+      "description": "Plan allowance or task budget cannot fund the retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
   "/v1/conversations/{id}/messages": {
    "get": {
     "summary": "Bounded transcript with id cursor",

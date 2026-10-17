@@ -52,12 +52,12 @@ export default function Chat() {
   useEffect(() => { cachedMessages.current = []; setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); void loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
   useEffect(() => { void loadList(); }, [loadList]);
   const drafting = blocks.some(b => b.status === 'submitted');
-  const working = tasks.some(t => isActive(t.state)) || drafting || blocks.some(b => b.run_status === 'running');
+  const working = tasks.some(t => isActive(t)) || drafting || blocks.some(b => b.run_status === 'running');
   useEffect(() => { if (!working) return; const t = setInterval(() => { void loadThread(); void loadList(); }, 2500); return () => clearInterval(t); }, [working, loadThread, loadList]);
   useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; if (stick.current) bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); else setNewBelow(true); } }, [msgs.length, tasks.length]);
 
   const [activityId, setActivityId] = useState<string | null>(null);
-  const latest = [...tasks].reverse().find(t => isActive(t.state)) ?? tasks[tasks.length - 1];
+  const latest = [...tasks].reverse().find(t => isActive(t)) ?? tasks[tasks.length - 1];
   const toggleActivity = useCallback(() => setActivityId(cur => (cur ? null : latest?.id ?? null)), [latest?.id]);
   useEffect(() => { setActivityId(null); }, [id]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); toggleActivity(); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [toggleActivity]);
@@ -107,13 +107,13 @@ export default function Chat() {
                   <button className="chip small" onClick={() => askAgain('Compare the options from your last answer side by side.')}>Compare side by side</button>
                 </div>)}
             </div>))}
-          {drafting && !tasks.some(t => isActive(t.state)) && <div className="agent-thinking" role="status" data-orb-state="weaving"><Orb state="weaving" size={48} /><span>Planning…</span></div>}
+          {drafting && !tasks.some(t => isActive(t)) && <div className="agent-thinking" role="status" data-orb-state="weaving"><Orb state="weaving" size={48} /><span>Planning…</span></div>}
           {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
           <div ref={bottom} />
         </div>
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }}>Jump to latest ↓</button>}
         <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
       </section>
-    {shown && <ActivityPanel taskId={shown.id} active={isActive(shown.state)} startedAt={shown.created_epoch} onStop={() => cancel(shown.id)} onClose={() => setActivityId(null)} />}
+    {shown && <ActivityPanel taskId={shown.id} active={isActive(shown)} startedAt={shown.created_epoch} onStop={() => cancel(shown.id)} onClose={() => setActivityId(null)} />}
     </div>);
 }

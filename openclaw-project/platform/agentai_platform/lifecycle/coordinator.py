@@ -174,7 +174,7 @@ class Coordinator:
             if not cell: raise NotFound()
             if cell['generation']!=generation: raise Conflict('stale generation')
             if cell['observed_state']!={'stop':'running','backup':'stopped','start':'stopped'}[kind]: raise Conflict('cell is not in the required state')
-            if kind=='start' and not con.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting'",(account,)).fetchone():
+            if kind=='start' and not con.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting' AND paused=0",(account,)).fetchone():
                 raise Conflict('no waiting request needs this cell')
             if con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')",(account,)).fetchone():
                 raise Conflict('account operation unresolved')

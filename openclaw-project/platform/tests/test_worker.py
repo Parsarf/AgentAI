@@ -155,6 +155,15 @@ class WakeChecks(unittest.TestCase):
         self.assertIsNotNone(self.queue().claim(owner='w', capacity=OK))
         self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 0)   # running cells are not woken again
 
+    def test_a_paused_request_does_not_wake_a_stopped_cell_and_resuming_it_does(self):
+        self.request('create'); self.worker(wake=True).tick()
+        item = self.submit()
+        self.queue().pause(Principal('a', 'customer-a', 'customer'), item['id'])
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 0)       # holding a task must not start the assistant
+        self.assertEqual(self.worker(wake=True).waiting_accounts(), set())                   # nor keep a running cell from handing the slot over
+        self.queue().resume(Principal('a', 'customer-a', 'customer'), item['id'])
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 1)
+
     def test_wake_is_off_by_default(self):
         self.request('create'); self.worker().tick(); self.submit()
         self.assertEqual(self.worker().tick()['woken'], 0)

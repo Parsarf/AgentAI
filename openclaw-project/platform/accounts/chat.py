@@ -15,7 +15,7 @@ from agentai_platform.request_queue import RequestQueue
 from agentai_platform.security import Principal, NotFound
 from agentai_platform.lifecycle.types import Conflict
 from .lifecycle import AccountStore
-from .services import Denied
+from .services import Denied, rate
 from .views import endpoint, customer
 
 ERROR_CATEGORIES = {
@@ -204,6 +204,45 @@ def chat_cancel(request, request_id):
         return JsonResponse({'task': cancelled}, status=202)
     except NotFound:
         raise Denied()
+
+
+def _hold(request, request_id, action):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        return JsonResponse({'request': getattr(service(), action)(principal(request), request_id)}, status=202)
+    except NotFound:
+        raise Denied()
+    except Conflict:
+        return JsonResponse({'error': 'request_conflict'}, status=409)
+
+
+@endpoint(['POST'])
+def chat_pause(request, request_id):
+    """Hold a task that has not started. A running task cannot be paused (the assistant has no safe stopping point mid-run); browser tasks have their own pause."""
+    return _hold(request, request_id, 'pause')
+
+
+@endpoint(['POST'])
+def chat_resume(request, request_id):
+    return _hold(request, request_id, 'resume')
+
+
+@endpoint(['POST'])
+def chat_retry(request, request_id):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        rate('task.create', request.account_id, 30, 3600)          # a retry is a new task: same limit as sending one
+        return JsonResponse({'request': service().retry(principal(request), request_id)}, status=202)
+    except NotFound:
+        raise Denied()
+    except Conflict:
+        return JsonResponse({'error': 'request_conflict'}, status=409)
+    except BudgetDenied as error:
+        return JsonResponse({'error': 'budget_denied', 'category': denial_category(error), 'execution_enabled': False}, status=402)
 
 
 @endpoint(['GET'])

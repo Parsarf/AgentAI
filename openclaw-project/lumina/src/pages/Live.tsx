@@ -39,9 +39,9 @@ function LiveRun({ id }: { id: string }) {
   useEffect(() => { void load(); }, [load]);
 
   const browseLive = !!run && LIVE_STATES.includes(run.status);
-  const taskLive = isBrowse ? browseLive : !!request && isActive(request.state);
+  const taskLive = isBrowse ? browseLive : !!request && isActive(request);
   const { rows, err: actErr } = useActivity(id, taskLive);
-  useEffect(() => { if (!app?.features.browse || (!browseLive && !isActive(request?.state ?? 'completed'))) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' ? 800 : 2000); return () => clearInterval(t); }, [app?.features.browse, request?.state, browseLive, load, run?.pausing, run?.status]);
+  useEffect(() => { if (!app?.features.browse || (!browseLive && !(request ? isActive(request) : false))) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' ? 800 : 2000); return () => clearInterval(t); }, [app?.features.browse, request?.state, browseLive, load, run?.pausing, run?.status]);
   useEffect(() => { if (!taskLive) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [taskLive]);
   useEffect(() => () => clearTimeout(flushTimer.current), []);
 
@@ -148,7 +148,7 @@ function LiveRun({ id }: { id: string }) {
 export default function Live() {
   const { id } = useParams(); const nav = useNavigate();
   const { requests } = useData();
-  const tasks = [...requests].sort((a, b) => Number(isActive(b.state)) - Number(isActive(a.state)) || b.created_epoch - a.created_epoch);
+  const tasks = [...requests].sort((a, b) => Number(isActive(b)) - Number(isActive(a)) || b.created_epoch - a.created_epoch);
   const selected = id ?? tasks[0]?.id;
   return <div className="live-workspace">
     <header className="live-workspace-head">
@@ -157,7 +157,7 @@ export default function Live() {
         <select id="live-task" value={selected ?? ''} onChange={e => nav(`/live/${e.target.value}`)}>
           {!selected && <option value="">No tasks yet</option>}
           {id && !tasks.some(t => t.id === id) && <option value={id}>Selected task</option>}
-          {tasks.slice(0, 50).map(t => <option key={t.id} value={t.id}>{isActive(t.state) ? '● Live · ' : ''}{clip(t.message, 70)}</option>)}
+          {tasks.slice(0, 50).map(t => <option key={t.id} value={t.id}>{isActive(t) ? '● Live · ' : ''}{clip(t.message, 70)}</option>)}
         </select>
         {id && <Link to="/live" className="faint small">Follow the latest task</Link>}
       </div>

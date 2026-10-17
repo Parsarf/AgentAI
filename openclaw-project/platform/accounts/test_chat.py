@@ -252,6 +252,35 @@ class UiContractChecks(ChatHTTPChecks):
         self.assertIn("default-src 'none'", anon.get('/account/login/', secure=True)['Content-Security-Policy'])   # classic pages keep the strict policy
 
 
+class TaskControlHttpChecks(ChatHTTPChecks):
+    """Pause, resume and retry over HTTP: CSRF, ownership, and what each state allows."""
+    def task(self, client, request_id):
+        return client.get('/v1/requests/' + request_id, secure=True).json()['request']
+
+    def test_pause_resume_and_retry_roundtrip_with_ownership_and_state_checks(self):
+        conversation = self.conversation(); a, b = self.clients
+        sent = self.post(a, '/v1/conversations/' + conversation + '/send', {'message': 'compare two laptops', 'key': 'tc1', 'mode': 'text'})
+        self.assertEqual(sent.status_code, 202, sent.content); rid = sent.json()['request']['id']
+        listed = a.get('/v1/requests', secure=True).json()['requests'][0]
+        self.assertEqual((listed['id'], listed['paused'], listed['retry_of']), (rid, False, None)); self.assertIsInstance(listed['ahead'], int)
+        for action in ('pause', 'resume', 'retry'):                                       # another account cannot touch it, and learns nothing
+            self.assertEqual(self.post(b, f'/v1/requests/{rid}/{action}', {}).status_code, 404, action)
+        self.assertEqual(self.post(a, f'/v1/requests/{rid}/retry', {}).status_code, 409)       # it has not failed
+        held = self.post(a, f'/v1/requests/{rid}/pause', {}); self.assertEqual(held.status_code, 202, held.content)
+        self.assertEqual((held.json()['request']['paused'], held.json()['request']['ahead']), (True, None))
+        self.assertTrue(self.task(a, rid)['paused'])
+        back = self.post(a, f'/v1/requests/{rid}/resume', {}); self.assertFalse(back.json()['request']['paused'])
+        self.assertEqual(self.post(a, f'/v1/requests/{rid}/cancel', {}).status_code, 202)
+        self.assertEqual(self.post(a, f'/v1/requests/{rid}/pause', {}).status_code, 409)       # cancelled: nothing to hold
+        retry = self.post(a, f'/v1/requests/{rid}/retry', {}); self.assertEqual(retry.status_code, 202, retry.content)
+        new = retry.json()['request']; self.assertEqual((new['retry_of'], new['state']), (rid, 'waiting')); self.assertNotEqual(new['id'], rid)
+        self.assertEqual(self.post(a, f'/v1/requests/{rid}/retry', {}).json()['request']['id'], new['id'])      # idempotent
+        self.assertEqual(self.client_without_csrf(a, f'/v1/requests/{new["id"]}/pause'), 403)
+
+    def client_without_csrf(self, client, path):
+        return client.post(path, data='{}', content_type='application/json', secure=True).status_code
+
+
 class OpenApiDriftChecks(ChatHTTPChecks):
     """Every public route must be documented, and nothing undocumented may be advertised: a new UI is built from this file."""
     DISABLED = {'streams', 'exports', 'memory', 'schedules', 'integrations', 'controls'}   # routes that answer 404 by design

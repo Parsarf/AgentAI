@@ -355,7 +355,7 @@ class ChatService:
             rows = con.execute('''SELECT id,request_id,provenance,content,created_at FROM chat_messages
                 WHERE account_id=? AND conversation_id=? AND id>? ORDER BY id LIMIT ?''',
                 (principal.account_id, conversation_id, after, limit + 1)).fetchall()
-            tasks = con.execute('''SELECT r.id,r.state,r.cancel_requested,r.result,r.created_epoch,t.state AS task_state,
+            tasks = con.execute('''SELECT r.id,r.state,r.paused,r.cancel_requested,r.result,r.created_epoch,t.state AS task_state,
                     t.budget_microusd,v.state AS reservation_state
                 FROM customer_requests r LEFT JOIN tasks t ON t.account_id=r.account_id AND t.id=r.id
                 LEFT JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
@@ -369,7 +369,7 @@ class ChatService:
     def task(self, principal: Principal, request_id: str):
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            row = con.execute('''SELECT r.id,r.state,r.cancel_requested,r.result,r.created_epoch,r.conversation_id,
+            row = con.execute('''SELECT r.id,r.state,r.paused,r.cancel_requested,r.result,r.created_epoch,r.conversation_id,
                     t.state AS task_state,t.budget_microusd,v.state AS reservation_state
                 FROM customer_requests r LEFT JOIN tasks t ON t.account_id=r.account_id AND t.id=r.id
                 LEFT JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
@@ -380,6 +380,26 @@ class ChatService:
 
     def cancel(self, principal: Principal, request_id: str):
         return self.queue.cancel(principal, request_id)
+
+    def pause(self, principal: Principal, request_id: str):
+        return self.queue.pause(principal, request_id)
+
+    def resume(self, principal: Principal, request_id: str):
+        return self.queue.resume(principal, request_id)
+
+    def retry(self, principal: Principal, request_id: str):
+        """Run a failed or cancelled task again: the same request in the same conversation, queued and admitted afresh (a new budget reservation, the usual caps).
+        Idempotent: pressing Retry twice gives the one retry. The new task's `retry_of` names the original."""
+        source = self.queue.retry_source(principal, request_id)
+        latest = source['latest']
+        if latest and latest['state'] in ('waiting', 'starting', 'running', 'uncertain', 'completed'):
+            return latest | {'execution_enabled': self.execution, 'admission': 'existing'}        # a repeat press: the retry that already exists
+        if self.conversation(principal, source['conversation_id'])['archived_epoch'] is not None:
+            raise Conflict('restore the archived conversation first')
+        result = self._spawn(principal, source['conversation_id'], message=source['message'], key=f'retry-{request_id}-{source["attempts"] + 1}',
+                             intent=source['intent'], context=source['context'], shown=source['message'])
+        self.queue.mark_retry(principal, result['id'], request_id)
+        return self.queue.get(principal, result['id']) | {'execution_enabled': result['execution_enabled'], 'admission': result['admission']}
 
 
 class ChatDriver:
