@@ -130,6 +130,40 @@ class SearchSetupChecks(unittest.TestCase):
         self.calls.clear()
         self.assertTrue(self.prov().setup_search(binding)); self.assertEqual(self.calls, [])      # marker: second start does nothing
 
+    def test_a_rotated_key_reaches_a_cell_that_already_has_search_without_reinstalling_the_plugin(self):
+        binding = SimpleNamespace(tenant_ref=TENANT)
+        self.assertTrue(self.prov().setup_search(binding)); self.calls.clear()
+        self.assertTrue(self.prov().setup_search(binding)); self.assertEqual(self.calls, [])                  # same key: nothing to do
+        self.key.write_text('BSA-the-NEW-key-after-rotation\n')
+        self.assertTrue(self.prov().setup_search(binding))
+        flat = [' '.join(a) for a, _ in self.calls]
+        self.assertEqual([i for _, i in self.calls if i], ['BSA-the-NEW-key-after-rotation\n'])             # the new key, on stdin
+        self.assertFalse(any('plugins install' in c for c in flat))                                          # no reinstall, no config churn
+        self.assertNotIn('NEW-key', ' '.join(flat)); self.calls.clear()
+        self.assertTrue(self.prov().setup_search(binding)); self.assertEqual(self.calls, [])                  # and it is remembered
+        marker = (self.root / TENANT / 'workspace' / '.search-2026.9.6').read_text()
+        self.assertNotIn('BSA', marker); self.assertNotIn('NEW', marker)                                      # the marker never holds the key
+
+    def test_a_cell_set_up_before_keys_were_tracked_gets_one_key_refresh_and_a_failed_refresh_is_retried(self):
+        binding = SimpleNamespace(tenant_ref=TENANT)
+        (self.root / TENANT / 'workspace' / '.search-2026.9.6').write_text('ok\n')                           # the old marker
+        self.assertTrue(self.prov().setup_search(binding))
+        self.assertEqual(len([i for _, i in self.calls if i]), 1); self.assertFalse(any('plugins install' in ' '.join(a) for a, _ in self.calls))
+        self.key.write_text('BSA-another-key\n'); self.calls.clear()
+        def failing(argv, input_text=None):
+            self.calls.append((list(argv), input_text)); return (1, '') if input_text else (0, '')
+        broken = CellProvisioner(None, None, self.root, run=failing, search_key_file=self.key, chown=lambda *a: None, sleep=lambda s: None)
+        self.assertFalse(broken.setup_search(binding))                                                         # the cell keeps its key and says so
+        self.calls.clear(); self.assertTrue(self.prov().setup_search(binding)); self.assertEqual(len([i for _, i in self.calls if i]), 1)   # the next start tries again
+
+    def test_an_unreadable_key_file_leaves_a_working_cell_alone(self):
+        binding = SimpleNamespace(tenant_ref=TENANT)
+        self.assertTrue(self.prov().setup_search(binding)); self.calls.clear()
+        self.key.unlink()
+        self.assertTrue(self.prov().setup_search(binding)); self.assertEqual(self.calls, [])
+        fresh = SimpleNamespace(tenant_ref='other-tenant'); (self.root / 'other-tenant' / 'workspace').mkdir(parents=True)
+        self.assertFalse(self.prov().setup_search(fresh))
+
     def test_waits_for_the_gateway_then_gives_up_without_leaving_a_marker(self):
         binding = SimpleNamespace(tenant_ref=TENANT)
         self.assertTrue(self.prov(fail_installs=3).setup_search(binding))                           # retried until the gateway answered

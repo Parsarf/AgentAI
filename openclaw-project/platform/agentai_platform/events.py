@@ -50,6 +50,8 @@ SECRET_PATTERNS = [
     re.compile(
         r'(api[_-]?key|secret|password|token|credential)"?\s*[:=]\s*"[^"]{6,}"',
         re.IGNORECASE),
+    re.compile(r'\bBSA[A-Za-z0-9_-]{20,}'),                                          # Brave Search API keys
+    re.compile(r'x-subscription-token"?\s*[:=]\s*"?[^\s",;]+', re.IGNORECASE),        # ...and the header they travel in
 ]
 
 

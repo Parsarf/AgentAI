@@ -4,6 +4,7 @@ Applied by the host between ``fleet create`` and first start. The cell reaches
 LiteLLM only through the host relay (10.77.0.1:4000) with its own per-tenant
 virtual key; owner credentials are never used.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -31,8 +32,8 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL)
 RESOLVERS = ('1.1.1.1', '9.9.9.9')
 SEARCH_PLUGIN_VERSION = '2026.9.6'   # must match the pinned runtime image
 
-# Read by the assistant at the start of every session (OpenClaw loads AGENTS.md from the workspace). Search needs no paid
-# provider: the cell can reach public search pages, and the assistant is told how to use them frugally and honestly.
+# Read by the assistant at the start of every session (OpenClaw loads AGENTS.md from the workspace). Search uses the Brave plugin set up by
+# setup_search (a shared key held by the host); the assistant is told how to use it frugally and honestly.
 WORKSPACE_RULES = '''# How you work (Lumina)
 
 ## Searching the web
@@ -108,33 +109,41 @@ class CellProvisioner:
     def setup_search(self, binding, *, attempts=20):
         """Install the official Brave search plugin (pinned to the runtime's version) and give the cell the search key.
 
-        Idempotent via a marker in the cell's own volume. The key travels on stdin, never on a command line. Needs the
-        Gateway to be up, so it retries while the cell finishes starting."""
+        Idempotent via a marker in the cell's own volume, which records WHICH key the cell has (a salted hash, never the key). A rotated key therefore reaches
+        every cell at its next start: the plugin is only installed the first time, the key is set again whenever it differs. A marker from before this
+        recorded a key ("ok") counts as "plugin installed, key unknown" and gets one key refresh. The key travels on stdin, never on a command line.
+        Needs the Gateway to be up, so it retries while the cell finishes starting."""
         if self.run is None or self.search_key_file is None:
             return False
         marker = self.root / binding.tenant_ref / 'workspace' / f'.search-{SEARCH_PLUGIN_VERSION}'
-        if marker.exists():
-            return True
-        key = self.search_key_file.read_text().strip()
+        try:
+            key = self.search_key_file.read_text().strip()
+        except OSError:
+            return marker.exists()                  # the key file cannot be read right now: leave a cell that already has search alone
         if not key:
             return False
+        tag = 'key ' + hashlib.sha256(f'{binding.tenant_ref}:{key}'.encode()).hexdigest()[:16]
+        seen = marker.read_text().strip() if marker.exists() else None
+        if seen == tag:
+            return True
         name = f'openclaw-cell-{binding.tenant_ref}'
         cli = ['docker', 'exec', name, 'node', '/app/openclaw.mjs']
-        for _ in range(attempts):
-            code, _out = self.run(cli + ['plugins', 'install', f'@openclaw/brave-plugin@{SEARCH_PLUGIN_VERSION}', '--force'])
-            if code == 0:
-                break
-            self.sleep(3)
-        else:
-            return False
-        steps = [['config', 'set', 'tools.web.search.enabled', 'true'], ['config', 'set', 'tools.web.search.provider', 'brave']]
-        for step in steps:
-            if self.run(cli + step)[0] != 0:
+        if seen is None:                            # first time for this cell: install and enable the plugin
+            for _ in range(attempts):
+                code, _out = self.run(cli + ['plugins', 'install', f'@openclaw/brave-plugin@{SEARCH_PLUGIN_VERSION}', '--force'])
+                if code == 0:
+                    break
+                self.sleep(3)
+            else:
                 return False
+            steps = [['config', 'set', 'tools.web.search.enabled', 'true'], ['config', 'set', 'tools.web.search.provider', 'brave']]
+            for step in steps:
+                if self.run(cli + step)[0] != 0:
+                    return False
         stdin_cmd = ['docker', 'exec', '-i', name, 'sh', '-c', 'cd /app && node openclaw.mjs config set plugins.entries.brave.config.webSearch.apiKey "$(cat | tr -d \'\\n\')"']
         if self.run(stdin_cmd, input_text=key + '\n')[0] != 0:
-            return False
-        marker.write_text('ok\n')
+            return False                            # the cell keeps the key it has; the marker is unchanged, so the next start tries again
+        marker.write_text(tag + '\n')
         self.chown(marker, CELL_UID, CELL_GID)
         return True
 

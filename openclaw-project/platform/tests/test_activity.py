@@ -67,5 +67,18 @@ class ActivityChecks(unittest.TestCase):
         self.assertEqual(page['messages'], [])        # rows without runtime ids are not transcript rows
 
 
+class SearchKeyRedaction(unittest.TestCase):
+    def test_a_brave_key_or_its_header_never_reaches_the_customer_even_in_a_failed_tool_result(self):
+        key = 'BSA' + 'k3yK3yK3yK3yK3yK3yK3yK3yK3y'
+        for leaked in (f'401 from api.search.brave.com: X-Subscription-Token: {key}', f'{{"apiKey":"{key}"}}', f'request failed with {key} in the url',
+                       f'x-subscription-token="{key}"; retry'):
+            clean = activity.clean(leaked, 400)
+            self.assertNotIn(key, clean, leaked); self.assertIn('[redacted]', clean)
+        self.assertEqual(activity.clean('searched for BSA pricing models', 100), 'searched for BSA pricing models')      # an ordinary word is untouched
+        rows = [{'role': 'assistant', 'content': [{'type': 'toolCall', 'id': 'c1', 'name': 'web_search', 'arguments': {'query': 'paddles'}}]},
+                {'role': 'toolResult', 'toolCallId': 'c1', 'isError': True, 'content': [{'type': 'text', 'text': f'Brave API error. X-Subscription-Token: {key}'}]}]
+        self.assertNotIn(key, str(activity.extract(rows)))
+
+
 if __name__ == '__main__':
     unittest.main()
