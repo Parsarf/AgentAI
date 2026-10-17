@@ -36,11 +36,21 @@ REQUEST_CHARS, PREVIOUS_CHARS = 1500, 500
 DEADLINE_S = 8                      # JEV measured 4-6.5 s; the worker is out of band, so this never blocks the website
 MIN_CONFIDENCE = 0.6                # below this JEV's pick is not trusted; the deterministic rules decide
 
-# Could this message need the live web at all? Anything else skips JEV entirely.
-WEBISH = re.compile(
-    r'\b(search|find|look ?up|google|browse|check|compare|latest|news|today|tonight|tomorrow|now|current|price|prices|cheapest|best|top|review|reviews|'
-    r'near me|around me|nearby|open now|hours|menu|order|book|reserve|buy|purchase|ticket|tickets|flight|hotel|restaurant|food|delivery|takeout|'
-    r'weather|score|stock|website|site|link|url|go to|open|visit|log ?in|sign ?up)\b|https?://|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|app|gov|edu)\b', re.I)
+# Could this message need the live web at all? Anything else skips JEV entirely, so the start of it never leaves the server. Privacy first: the checks below are
+# deliberately narrow. A request that is missed here is still answered by the assistant, which has its own search tools; a request that is sent is shared
+# (scrubbed) with a third party, so ordinary coding and writing must not be.
+# Strong signals of a lookup: they send the message even if it mentions code ("what is the latest news on python").
+STRONG = re.compile(r'\b(news|headlines?|weather|forecast|scores?|google|search (?:the web|online|for)|look ?up|near me|around me|nearby|open now|opening hours|'
+                    r'stock price|share price|exchange rate)\b|https?://|www\.', re.I)
+# Weaker signals: only for a message that does not look like code.
+WEAK = re.compile(r'\b(latest|cheapest|prices?|deals?|how much (?:is|are|does|do)|what time|who (?:won|is the current)|when (?:is|does|did|was)|capital of|population of|'
+                  r'release date|reviews? (?:of|for)|best (?:price|deal))\b|\b[a-z0-9-]+\.(?:com|net|org|io|co|app|gov|edu)\b', re.I)
+# "Order me ...", "book a table ...", "go to ...": a request to act on a website, at the start of the message.
+ACT = re.compile(r"^\s*(?:please\s+)?(?:(?:can|could|would) you\s+|i (?:want|need|'d like) to\s+|help me\s+)?(?:order|buy|purchase|book|reserve|get me|find me|search|look up|go to|visit|log ?in to|sign ?up for)\b", re.I)
+# Something that is about code, files or a system: it stays on the server unless a strong signal says otherwise.
+CODEISH = re.compile(r'```|`[^`]+`|=>|[{};]|\b(function|def|class|import|refactor\w*|compile\w*|debug\w*|bugs?|errors?|exceptions?|stack ?trace|regex|sql|json|yaml|html|css|python|'
+                     r'javascript|typescript|react|node|npm|api|endpoint|variable|loop|array|git|commit|repo|docker|nginx|code|coding|script|indent\w*|files?|folders?|directory|'
+                     r'database|query|schema|component|syntax|lint\w*|deploy\w*|server|config\w*|async|foreign key|tables?)\b', re.I)
 FOLLOW_UP = re.compile(r'^\s*(try again|retry|again|do it|go ahead|yes|yep|ok(ay)?|sure|please do|continue|keep going|what about|and\b|also\b|then\b)', re.I)
 
 
@@ -56,11 +66,22 @@ class ServicePlan:
 DIRECT = ServicePlan('direct', 'off')
 
 
+def _looks_web(text: str) -> bool:
+    text = text or ''
+    if STRONG.search(text):
+        return True
+    if gen_intent.detect(text, mode='auto', browse=True) == 'browse':        # the existing rule for acting on a site (order / book / buy ... at a place)
+        return True
+    if CODEISH.search(text):
+        return False
+    return bool(ACT.search(text) or WEAK.search(text))
+
+
 def may_need_web(text: str, previous: str = '') -> bool:
     """Local pre-check: true for requests that could need the live web, including short follow-ups to one."""
-    if WEBISH.search(text or ''):
+    if _looks_web(text):
         return True
-    return bool(previous) and len(text or '') < 60 and bool(FOLLOW_UP.search(text or '')) and bool(WEBISH.search(previous))
+    return bool(previous) and len(text or '') < 60 and bool(FOLLOW_UP.search(text or '')) and _looks_web(previous)
 
 
 def rules(text: str, previous: str = '') -> str:
@@ -108,9 +129,10 @@ class ServiceRouter:
             fallback = rules(text, previous)
             plan = self._ask(text, previous)
             service, source, confidence, latency = (plan if plan else (fallback, 'rules', 0.0, 0))
+            note = None
             if service == 'browser' and not browser_ok:
-                service = 'web'
-            return ServicePlan(service, source, confidence, latency, self._note(service, source, confidence))
+                service, note = 'web', 'Lumina used a web search for this because its browser is not available right now'      # not "JEV chose a web search": it chose the browser
+            return ServicePlan(service, source, confidence, latency, note if note is not None else self._note(service, source, confidence))
         except Exception:
             return DIRECT
 

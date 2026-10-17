@@ -22,6 +22,47 @@ class Fake:
         return self.raw
 
 
+WEB_OR_ACTION = [
+    "search for the spiciest food around me", "order me youngla underwear", "what is the latest news on python today", "who won the world cup in 2018",
+    "what is the capital of peru", "open youtube.com", "book a table for two at an italian restaurant", "compare iphone 15 and pixel 8 prices",
+    "what's the weather in Toronto tomorrow", "find me the cheapest flight to Lisbon", "buy a pickleball paddle", "go to doordash and find tacos",
+    "google the opening hours of the louvre", "how much is a tesla model 3?", "what time does the game start tonight", "look up the definition of ephemeral",
+    "can you order a large pepperoni pizza from dominos", "please book me a hotel in rome", "reserve a table at nobu"]
+ORDINARY = [
+    "check my python function for bugs", "open the file and fix the indentation", "write a poem about the sea", "order the list by date in my React component",
+    "what's the top-level structure of this json", "now refactor it to use async", "can you review this email draft before I send it", "link the two tables with a foreign key",
+    "explain how a hash map works", "write a function that finds the best match", "set up a site config for nginx", "how do I install docker on ubuntu",
+    "can you summarize this paragraph for me", "translate this to french", "help me plan a birthday party", "what is 15% of 80", "tell me a joke",
+    "fix the error on line 12 of main.py", "what does this regex do", "add a button to the page and style it", "open the database and run the query", "write an email to my landlord"]
+
+
+class PreFilterChecks(unittest.TestCase):
+    """The local check that decides whether JEV (a third party) sees a message at all. Privacy first: ordinary coding and writing must never pass it,
+    and the requests the browser exists for must always pass it."""
+    def test_real_lookups_and_actions_reach_the_router(self):
+        self.assertEqual([m for m in WEB_OR_ACTION if not svc.may_need_web(m)], [])
+
+    def test_ordinary_coding_writing_and_chat_stay_on_the_server(self):
+        self.assertEqual([m for m in ORDINARY if svc.may_need_web(m)], [])
+
+    def test_a_strong_signal_wins_over_code_words_and_follow_ups_follow_their_topic(self):
+        self.assertTrue(svc.may_need_web('what is the latest news on python today'))
+        self.assertTrue(svc.may_need_web('search for the docs of this api'))
+        self.assertFalse(svc.may_need_web('the latest version of react in my package'))      # a weak signal in code talk: not sent
+        self.assertTrue(svc.may_need_web('try again', 'order pizza from dominos.com'))
+        self.assertFalse(svc.may_need_web('yes', 'write a poem about the sea'))
+        self.assertFalse(svc.may_need_web('try again', 'fix the bug in my function'))
+
+    def test_the_router_never_calls_jev_for_ordinary_messages(self):
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup); d = Path(tmp.name)
+        (d / 'routing.json').write_text(json.dumps({'enabled': True})); (d / 'key').write_text('k\n')
+        fake = Fake(reply('web'))
+        router = svc.ServiceRouter(config_path=str(d / 'routing.json'), key_path=str(d / 'key'), switch_on=lambda: True, transport=fake)
+        for message in ORDINARY: self.assertEqual(router.choose(message).service, 'direct', message)
+        self.assertEqual(fake.bodies, [])                                                    # not one request left the server
+        router.choose('order me youngla underwear'); self.assertEqual(len(fake.bodies), 1)
+
+
 class ServiceChecks(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
@@ -72,7 +113,8 @@ class ServiceChecks(unittest.TestCase):
         self.assertEqual(self.router(Fake(exc=OSError())).choose('what is the latest news today').service, 'web')
 
     def test_the_browser_is_only_chosen_when_it_can_run(self):
-        self.assertEqual(self.router(Fake(reply('browser'))).choose('open doordash and find tacos', browser_ok=False).service, 'web')
+        down = self.router(Fake(reply('browser'))).choose('open doordash and find tacos', browser_ok=False)
+        self.assertEqual(down.service, 'web'); self.assertIn('browser is not available', down.note); self.assertNotIn('JEV', down.note)      # honest about why
 
     def test_switch_off_missing_key_or_disabled_routing_means_direct_or_rules_with_no_call(self):
         fake = Fake(reply('browser')); self.on = False
