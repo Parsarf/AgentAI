@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 import subprocess
 import threading
+import time
+from collections import deque
+
+from .trace import NULL
 
 
 class RunnerError(Exception):
@@ -13,8 +17,10 @@ class ProcessTransport:
     """Spawns `argv` (e.g. node runner.mjs locally, or docker exec into the stage) and speaks JSON lines to it."""
 
     def __init__(self, argv, env=None, cwd=None):
-        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, cwd=cwd, text=True, bufsize=1)
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=cwd, text=True, bufsize=1)
         self._lines = []
+        self.stderr_tail = deque(maxlen=20)          # the runner's last words, for the trace when it dies (read off a pipe so it can never fill up and block it)
+        threading.Thread(target=self._drain_stderr, daemon=True).start()
         self._cv = threading.Condition()
         threading.Thread(target=self._pump, daemon=True).start()
 
@@ -26,6 +32,13 @@ class ProcessTransport:
         with self._cv:
             self._lines.append(None)
             self._cv.notify_all()
+
+    def _drain_stderr(self):
+        try:
+            for line in self.proc.stderr:
+                self.stderr_tail.append(line.rstrip()[:300])
+        except Exception:
+            pass
 
     def send(self, obj):
         self.proc.stdin.write(json.dumps(obj) + '\n')
@@ -54,15 +67,30 @@ class ProcessTransport:
 class Session:
     DEADLINES = {'open': 40, 'snapshot': 20, 'act': 30, 'screenshot': 20}
 
-    def __init__(self, transport):
-        self.t, self._id = transport, 0
+    def __init__(self, transport, trace=NULL):
+        self.t, self._id, self.trace = transport, 0, trace
 
     def call(self, cmd, **params):
         self._id += 1
-        self.t.send({'id': self._id, 'cmd': cmd, **params})
-        reply = self.t.recv(self.DEADLINES.get(cmd, 20))
-        if reply.get('id') != self._id:
-            raise RunnerError('out-of-order reply')
+        started = time.monotonic()
+        # What is recorded about a call is which command, on which element, and how it went: never the text typed or the label.
+        info = {'cmd': cmd, **{k: params[k] for k in ('action', 'ref') if k in params}}
+        try:
+            self.t.send({'id': self._id, 'cmd': cmd, **params})
+            reply = self.t.recv(self.DEADLINES.get(cmd, 20))
+            if reply.get('id') != self._id:
+                raise RunnerError('out-of-order reply')
+        except Exception as exc:
+            self.trace.emit('runner_error', **info, ms=int((time.monotonic() - started) * 1000), why=type(exc).__name__ + (f': {exc}' if str(exc) else ''),
+                            stderr=list(getattr(self.t, 'stderr_tail', ()))[-8:])
+            raise
+        fields = {'ok': bool(reply.get('ok')), 'ms': int((time.monotonic() - started) * 1000)}
+        if reply.get('error'):
+            fields['error'] = reply['error']
+        for key in ('page_fp', 'status'):
+            if reply.get(key) is not None:
+                fields[key] = reply[key]
+        self.trace.emit('runner', **info, **fields)
         return reply
 
     def open(self, url): return self.call('open', url=url)

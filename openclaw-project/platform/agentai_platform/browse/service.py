@@ -14,13 +14,20 @@ import socketserver
 import struct
 import threading
 import time
+import traceback
 import uuid
+import logging
 
 from . import llm as llm_mod
 from .ladder import JevChooser, Ladder, Refused
 from .goals import goal_parts, instruction_text
 from .loop import BrowseRunner, Policy
 from .session import Session
+from .trace import NULL, Trace
+from .loop import _where
+from agentai_platform.privacy import scrub
+
+log = logging.getLogger('agentai.browse')
 
 REQUEST_ID = re.compile(r'^[a-f0-9]{32}$')
 URL_IN_TEXT = re.compile(r'https?://[^\s<>"\')]+', re.I)
@@ -90,6 +97,7 @@ class Job:
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
         self.last_shot = 0.0
+        self.trace = NULL                           # set when the run starts: the operator's record (trace.py)
         self.pause_req = threading.Event()          # the user asked for the wheel; the loop acknowledges at the next step boundary (state -> 'paused')
         self.stats = dict.fromkeys(STAT_KEYS, 0)
 
@@ -152,7 +160,9 @@ class BrowseService:
                 'pausing': job.state == 'running' and job.pause_req.is_set(), 'jev': dict(job.stats)}
 
     def cancel(self, account, request_id):
-        self._job(account, request_id).cancel.set()
+        job = self._job(account, request_id)
+        job.trace.emit('user', what='stopped the task', state=job.state)
+        job.cancel.set()
         return {'ok': True}
 
     def shot(self, account, request_id, name):
@@ -172,11 +182,13 @@ class BrowseService:
             raise BrowseError('not available')
         if job.state in ('queued', 'running'):                     # a task still waiting for the stage pauses at its first step boundary
             job.pause_req.set()
+        job.trace.emit('user', what='asked for the wheel', state=job.state)
         return {'ok': True, 'state': job.state}
 
     def resume(self, account, request_id):
         job = self._job(account, request_id)
         job.pause_req.clear()
+        job.trace.emit('user', what='gave the wheel back', state=job.state)
         if job.state == 'handoff':
             job.takeover_until = 0
         return {'ok': True}
@@ -240,6 +252,7 @@ class BrowseService:
 
     def release(self, account, request_id):
         job = self._job(account, request_id)
+        job.trace.emit('user', what='released the browser', state=job.state)
         job.takeover_until = 0
         return {'ok': True}
 
@@ -292,6 +305,15 @@ class BrowseService:
             pass
         raise BrowseError('Could not choose a starting page. Please include the website URL in your request.')
 
+    def _crash_trace(self, job, exc, what):
+        """Where an unexpected failure happened: the error type, its short redacted text and the code lines it passed through (file and line, not values)."""
+        frames = [f'{Path(f.filename).name}:{f.lineno} {f.name}' for f in traceback.extract_tb(exc.__traceback__)][-8:]
+        try:
+            (job.trace if job.trace is not NULL else Trace(self.root / job.id / 'trace.jsonl')).emit('crash', what=what, error=type(exc).__name__, why=str(exc), frames=frames)
+            log.warning('browse: %s failed (%s: %s); trace %s', job.id, type(exc).__name__, scrub(str(exc), 120), self.root / job.id / 'trace.jsonl')
+        except Exception:
+            pass
+
     def _run(self, job):
         self._slot.acquire()
         stage = None
@@ -308,19 +330,30 @@ class BrowseService:
             out_dir = self.root / job.id / 'out'
             out_dir.mkdir(parents=True, exist_ok=True)
             os.chmod(out_dir, 0o777)               # the stage runs as uid 1000; the directory holds only screenshots
+            job.trace = trace = Trace(self.root / job.id / 'trace.jsonl')
+            trace.emit('start', jev_mode=self.jev_mode, goal_chars=len(job.goal), max_steps=job.max_steps, max_seconds=job.max_seconds, max_cost_microusd=job.max_cost,
+                       where=_where(job.start_url or ''))
             llm = self.llm_for(job.account)
             start = self._pick_start(job, llm)
             transport = self.spawn(job.id, out_dir)
             stage = transport
-            job.session = session = Session(transport)
+            job.session = session = Session(transport, trace=trace)
             jev = self.jev_for(job.account) if self.jev_mode != 'off' else None
+            trace.emit('ready', start=_where(start), jev=jev is not None)
 
             def tracked(tier, system, user):
-                reply = llm(tier, system, user)
+                began = time.monotonic()
+                try:
+                    reply = llm(tier, system, user)
+                except Exception as exc:
+                    trace.emit('llm', tier=tier, outcome='error', ms=int((time.monotonic() - began) * 1000), why=type(exc).__name__ + (f': {exc}' if str(exc) else ''), prompt_chars=len(user))
+                    raise
                 job.cost += reply.get('cost_microusd', 0)
+                trace.emit('llm', tier=tier, outcome='ok', ms=int((time.monotonic() - began) * 1000), cost_microusd=reply.get('cost_microusd', 0), prompt_chars=len(user),
+                           reply_chars=len(reply.get('text') or ''), finish=reply.get('finish'))
                 return {**reply, 'cost_microusd': 0}      # cost is added once here; the loop's own sum stays 0
 
-            ladder = Ladder(tracked, admit=self._admit(job), jev=jev, shadow=(self.jev_mode == 'shadow'))
+            ladder = Ladder(tracked, admit=self._admit(job), jev=jev, shadow=(self.jev_mode == 'shadow'), trace=trace)
 
             def on_event(kind, data):
                 if kind == 'step' and data.get('agree') is not None:
@@ -334,7 +367,7 @@ class BrowseService:
                 job.stats[name] = job.stats.get(name, 0) + n
 
             result = BrowseRunner(session, ladder, policy=Policy(read_only=True), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
-                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job)).run(job.goal, start)
+                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), trace=trace).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
             job.url = result.url or job.url
@@ -344,14 +377,18 @@ class BrowseService:
                 if shot.get('ok'):
                     job.add('screenshot', {'file': shot['file'], 'by': 'lumina'})
             job.state = result.status
+            job.trace.emit('final', state=job.state, reason=job.reason, stats=dict(job.stats), cost_microusd=job.cost)
+            log.info('browse: %s ended %s (%s); trace %s', job.id, job.state, scrub(job.reason, 120), self.root / job.id / 'trace.jsonl')
             job.add('status', {'state': job.state, 'reason': job.reason, 'stats': dict(job.stats)})       # kept with the run in browse_steps: no schema change needed
             while job.state == 'handoff' and self.clock() < job.takeover_until and not job.cancel.is_set():
                 time.sleep(0.2)                    # the user may take over; the stage stays up only for this window
         except (BrowseError, Refused) as exc:
+            self._crash_trace(job, exc, 'stopped before the run')
             job.state = 'budget' if isinstance(exc, Refused) else 'error'
             job.reason = 'The browser spending limit was reached before startup.' if isinstance(exc, Refused) else str(exc)
             job.add('status', {'state': job.state, 'reason': job.reason})
         except Exception as exc:                   # a crash must never leave the shared stage slot held
+            self._crash_trace(job, exc, 'crash')
             job.state, job.reason = 'error', f'the browser run failed ({type(exc).__name__})'
             job.add('status', {'state': 'error', 'reason': job.reason})
         finally:

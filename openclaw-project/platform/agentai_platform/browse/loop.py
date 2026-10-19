@@ -8,10 +8,17 @@ from urllib.parse import urlsplit
 from . import candidates as cand
 from .untrusted import neutralize
 from .ladder import RUNNER_V2, Decision, Ladder, Refused
+from .trace import NULL
 
 LOGIN_REASON = 'this page needs you to sign in; I never type passwords'
 WALL_REASON = 'the site is asking to verify you are human, which I cannot pass for you'
 DEFAULT_DENY = re.compile(r'(^|\.)(paypal|venmo|cash\.app|chase|bankofamerica|wellsfargo|citi|capitalone|robinhood|coinbase|binance|fidelity|schwab|vanguard)\.', re.I)
+
+
+def _where(url):
+    """Host and path only: a query string or fragment can carry tokens and personal data."""
+    parts = urlsplit(url or '')
+    return f'{parts.hostname or ""}{parts.path}'[:200]
 
 
 @dataclass
@@ -54,9 +61,10 @@ class Result:
 
 class BrowseRunner:
     def __init__(self, session, ladder: Ladder, *, policy: Policy | None = None, on_event=lambda kind, data: None, cancelled=lambda: False,
-                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0, wait=time.sleep, on_stat=lambda name, n=1: None):
+                 max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0, wait=time.sleep, on_stat=lambda name, n=1: None, trace=NULL):
         self.s, self.ladder, self.policy, self.on_event, self.cancelled = session, ladder, policy or Policy(), on_event, cancelled
         self.max_steps, self.max_seconds, self.shots, self.clock = max_steps, max_seconds, shots, clock
+        self.trace = trace
         self.wait, self.on_stat = wait, on_stat      # on_stat(name): a counter the service keeps for the run (who decided what, how often JEV missed)
         self.pause_gate = pause_gate        # blocks while the user has the wheel; returns the seconds waited so they do not count against the time limit
 
@@ -72,6 +80,7 @@ class BrowseRunner:
         jev_misses = 0       # JEV was asked and someone else took the step, in a row; resets only when a JEV step is acted on successfully
         unchanged = 0        # acted steps in a row (a wait does not count) after which the page looked exactly the same
         for step in range(1, self.max_steps + 1):
+            self.trace.step = step
             if self.cancelled():
                 return self._end(res, 'cancelled', 'stopped by you', history)
             started += self.pause_gate()
@@ -94,16 +103,20 @@ class BrowseRunner:
                     break
                 snap = again
             if cand.page_is_bot_check(snap.get('title', ''), snap.get('text', '')):
+                self.trace.emit('floor', rule='bot check wall')
                 return self._end(res, 'handoff', WALL_REASON, history, snap.get('url', ''))
             url = snap.get('url', '')
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
             fp_before = snap.get('page_fp')
             candidates = cand.build(snap.get('snapshot', ''), elements=snap.get('elements'))
+            self.trace.emit('snapshot', where=_where(url), candidates=len(candidates), text_chars=len(snap.get('text') or ''), page_fp=fp_before, v2=snap.get('elements') is not None)
             page = {'url': url, 'title': neutralize(snap.get('title', ''), 300), 'text': neutralize(snap.get('text', ''))}
             if self.policy.read_only and cand.page_is_payment(url, snap.get('snapshot', ''), page['text']):
+                self.trace.emit('floor', rule='payment page')
                 return self._end(res, 'handoff', 'reached a payment step; you take it from here', history, url)
             if cand.page_is_login(snap.get('snapshot', '')):
+                self.trace.emit('floor', rule='sign-in page')
                 return self._end(res, 'handoff', LOGIN_REASON, history, url)       # before any model, so a sign-in page is never sent to a third party
             try:
                 d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures, jev_misses=jev_misses,
@@ -112,6 +125,8 @@ class BrowseRunner:
                 return self._end(res, 'budget', f'stopped: the spending limit was reached ({exc})', history, url)
             res.cost_microusd += d.cost_microusd
             forced = False
+            self.trace.emit('decision', by=d.by, verdict=d.kind, action=(d.action or {}).get('action'), ref=(d.action or {}).get('ref'), label=(d.action or {}).get('label'),
+                            confidence=d.confidence, miss=d.miss, signal=d.signal, text_src=d.text_src, cost_microusd=d.cost_microusd, reason=d.reason if d.kind != 'act' else '')
             if d.miss:
                 jev_misses += 1
                 self.on_stat('jev_misses')
@@ -129,6 +144,7 @@ class BrowseRunner:
             a = d.action
             chosen = next((c for c in candidates if c['ref'] == a['ref']), None) if a['ref'] is not None else None
             if self.policy.gate(url, snap.get('snapshot', ''), page['text'], chosen) == 'handoff':
+                self.trace.emit('floor', rule='sensitive control', label=a['label'])
                 res.pending_action = {'action': a['action'], 'label': a['label'], 'url': url}
                 return self._end(res, 'handoff', f'next step is "{a["label"]}", which needs you', history, url)
             # A scroll or key press is the same step only if it is the same move from the same place on the page (the fingerprint includes the scroll position).
@@ -138,6 +154,7 @@ class BrowseRunner:
                 if seen[key] > 3:
                     return self._end(res, 'stuck', 'repeating the same step', history, url)
                 forced = True
+                self.trace.emit('loop_signal', rule='same step a third time', action=a['action'], label=a.get('label'))
             out = self.s.act(a['action'], a['ref'], a.get('value'), a.get('label'))
             after = out.get('page_fp')
             changed = None if not (fp_before and after) else after != fp_before         # None = unknown (an older runner, or the page was mid-change)
@@ -147,9 +164,11 @@ class BrowseRunner:
             if d.text_src:
                 self.on_stat('jev_typed_from_goal' if d.text_src == 'goal' else 'haiku_text')               # sub-counts of a JEV step
             why = {k: v for k, v in (('miss', d.miss), ('signal', d.signal), ('src', d.text_src)) if v}      # short facts for the run's record; never page text or typed values
+            self.trace.emit('act', **{k: entry[k] for k in ('action', 'label', 'result', 'changed', 'by')}, page_fp_before=fp_before, page_fp_after=after)
             self.on_event('step', {**entry, 'url': out.get('url', url), 'confidence': d.confidence, **d.meta, **why})
             if not out.get('ok'):
                 failures += 1
+                self.trace.emit('act_failed', error=entry['result'], failures=failures)
                 if failures >= 4:
                     return self._end(res, 'stuck', 'too many failed steps', history, url)
                 continue
@@ -162,6 +181,7 @@ class BrowseRunner:
                     return self._end(res, 'stuck', 'the page is not changing', history, url)
                 if unchanged == 3:
                     forced = True                     # a loop signal: the next step goes to Sonnet
+                    self.trace.emit('loop_signal', rule='three acted steps with the page unchanged')
                     self.on_stat('no_change_loops')
             if self.shots:
                 shot = self.s.screenshot()
@@ -169,7 +189,7 @@ class BrowseRunner:
                     self.on_event('screenshot', {'file': shot['file'], 'step': step})
         return self._end(res, 'max_steps', 'step limit reached', history)
 
-    @staticmethod
-    def _end(res, status, reason, history, url=''):
+    def _end(self, res, status, reason, history, url=''):
         res.status, res.reason, res.steps, res.url = status, reason, history, url or res.url
+        self.trace.emit('end', status=status, reason=reason, steps=len(history), cost_microusd=res.cost_microusd, where=_where(res.url))
         return res

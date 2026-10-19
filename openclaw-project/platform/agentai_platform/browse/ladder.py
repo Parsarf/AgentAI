@@ -13,10 +13,12 @@ import json
 import logging
 import math
 import re
+import time
 from urllib.parse import urlsplit
 
 from agentai_platform.genui.runtime import extract_json
 from agentai_platform.privacy import scrub
+from .trace import NULL
 from .untrusted import neutralize
 from .goals import goal_parts, instruction_text
 
@@ -201,7 +203,11 @@ class JevChooser:
         body = {'model': self.model, 'state': self._state(subgoal, page_text, page, history),
                 'questions': {name: {'type': 'choice', 'instructions': INSTRUCTIONS[name], 'criteria': options} for name, options in heads.items()}}
         raw = self.transport(self.endpoint, body, self.credential, self.deadline)
-        answers = validate_choice(raw, heads, self.model)
+        try:
+            answers = validate_choice(raw, heads, self.model)
+        except ValueError as exc:
+            exc.raw = raw                       # kept for the run's trace: what JEV actually said when its answer was refused
+            raise
         usage = (json.loads(raw) if isinstance(raw, str) else raw).get('usage') or {}
         cost = int(round((usage.get('input_tokens') or 0) * 0.042))               # micro-USD at $0.042/Mtok; an estimate
         op, op_p = answers['operation']
@@ -271,6 +277,10 @@ def parse_decision(text, candidates, by, cost=0):
     return Decision('act', by, str(data.get('reason', ''))[:200], action={'action': act, 'ref': ref, 'value': value if act != 'click' else None, 'label': cand['label']}, cost_microusd=cost)
 
 
+def _ms(started):
+    return int((time.monotonic() - started) * 1000)
+
+
 def _why(exc):
     """A short, page-free reason for the journal: the error type, an HTTP status and the start of the provider's error body (it describes the request format, not the page)."""
     out = type(exc).__name__
@@ -301,6 +311,7 @@ class Ladder:
     max_sonnet: int = 2
     give_up_after: int = 4                   # this many JEV misses in a row: stop asking JEV for the rest of the run (each miss can cost a 5 s timeout)
     shadow: bool = False                     # JEV is asked too and compared, but never decides (calibration before trust)
+    trace: object = NULL                     # the operator's record of the run (see trace.py)
     sonnet_used: int = field(default=0, init=False)
 
     def _ask(self, tier, goal, history, page, candidates, hint=''):
@@ -378,15 +389,22 @@ class Ladder:
         """Ask JEV once. A decision comes back only for an answer that is confident and consistent; everything else is a `miss` (nothing ran)."""
         if not self.admit('jev'):
             raise Refused('jev')
+        started = time.monotonic()
         try:
             pick = self.jev.choose(goal, page.get('text', ''), candidates, page=page, history=history, caps=caps, phrases=goal_phrases(goal), allow_enter=self._enter_ok(history, candidates))
         except Exception as exc:                                 # timeout, HTTP error, malformed or inconsistent answer
             log.warning('browse: JEV miss: %s', _why(exc))
+            raw = getattr(exc, 'raw', None)
+            self.trace.emit('jev', outcome='invalid' if raw is not None else 'timeout' if isinstance(exc, TimeoutError) or 'timed out' in str(exc) else 'error',
+                            ms=_ms(started), why=_why(exc), candidates=len(candidates), raw=None if raw is None else (raw if isinstance(raw, str) else json.dumps(raw))[:400])
             return _Step(signal='miss')
         cost, op = pick.cost_microusd, pick.operation
+        heads = {k: [c, round(p, 3)] for k, (c, p) in pick.answers.items()}
         if pick.confidence < self.automatic:
             log.warning('browse: JEV miss: low confidence %.2f (%s)', pick.confidence, ', '.join(f'{k}={c}:{p:.2f}' for k, (c, p) in pick.answers.items()))
+            self.trace.emit('jev', outcome='low_confidence', op=op, confidence=round(pick.confidence, 3), threshold=self.automatic, heads=heads, ms=_ms(started), candidates=len(candidates), cost=cost)
             return _Step(signal='miss', cost=cost)
+        self.trace.emit('jev', outcome=op, confidence=round(pick.confidence, 3), heads=heads, ms=_ms(started), candidates=len(candidates), cost=cost)
         meta = {'jev_op': op}
         conf = round(pick.confidence, 3)
         by_id = {c['id']: c for c in candidates}
@@ -399,8 +417,11 @@ class Ladder:
                 d = self._confirm_done(goal, history, page, candidates)
             except Refused:
                 raise
-            except Exception:
+            except Exception as exc:
+                self.trace.emit('jev_followup', outcome='error', what='confirm done', why=_why(exc))
                 return _Step(signal='miss', cost=cost)
+            if d.kind != 'done':
+                self.trace.emit('jev_followup', outcome='rejected', what='Haiku did not confirm the task was done')
             d.cost_microusd += cost
             return _Step(d, cost=cost)
         if op in ('scroll_down', 'scroll_up', 'back', 'press_enter', 'wait'):
@@ -409,6 +430,7 @@ class Ladder:
         cand = by_id.get(pick.target)
         if cand is None or cand['action'] != op:
             log.warning('browse: JEV miss: %s target %s does not fit', op, pick.target)
+            self.trace.emit('jev_followup', outcome='bad_target', what=f'{op} target {pick.target} is not a {op} candidate')
             return _Step(signal='miss', cost=cost)
         if op == 'click':
             return _Step(Decision('act', 'jev', 'JEV choice', {'action': 'click', 'ref': cand['ref'], 'value': None, 'label': cand['label']}, confidence=pick.confidence, cost_microusd=cost, meta=meta))
@@ -422,7 +444,8 @@ class Ladder:
             value, vcost = self._value_for(goal, history, page, cand)
         except Refused:
             raise
-        except Exception:
+        except Exception as exc:
+            self.trace.emit('jev_followup', outcome='error', what='Haiku text for the field', why=_why(exc))
             return _Step(signal='miss', cost=cost)
         return _Step(Decision('act', 'jev', 'JEV chose the field; Haiku supplied the text', {'action': 'type', 'ref': cand['ref'], 'value': value, 'label': cand['label']},
                               confidence=pick.confidence, cost_microusd=cost + vcost, meta=meta, text_src='haiku'))
@@ -430,6 +453,9 @@ class Ladder:
     def decide(self, goal, history, page, candidates, *, force_escalate=False, failures=0, jev_misses=0, caps=frozenset()):
         escalate = force_escalate or failures >= 2
         jev_cost, miss, want_sonnet, signal = 0, False, escalate, ''
+        skipped = '' if self.jev and not self.shadow and not escalate and jev_misses < self.give_up_after else (
+            'no JEV' if not self.jev else 'shadow mode' if self.shadow else 'forced to Sonnet (loop or repeated failure)' if escalate else f'gave up on JEV after {jev_misses} misses')
+        self.trace.emit('route', jev_asked=not skipped, skipped=skipped, failures=failures, jev_misses=jev_misses, forced=force_escalate, sonnet_used=self.sonnet_used)
         if self.jev and not self.shadow and not escalate and jev_misses < self.give_up_after:
             step = self._jev_step(goal, history, page, candidates, caps)
             jev_cost = step.cost
@@ -454,5 +480,6 @@ class Ladder:
                 raise
             except Exception as exc:       # invalid answer from that tier: try the next one, then give up
                 last = exc
+                self.trace.emit('tier_error', tier=tier, outcome='no_json' if str(exc) == 'no JSON' else 'invalid', why=_why(exc))
         why = str(last)[:60] if isinstance(last, ValueError) and str(last) else type(last).__name__
         return Decision('stop', 'rule', f'the assistant gave no usable next step ({why})', cost_microusd=jev_cost, miss=miss, signal=signal)
