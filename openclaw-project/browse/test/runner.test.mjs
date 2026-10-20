@@ -240,3 +240,53 @@ test('a name that looks public but resolves to an internal address is refused, a
     assert.equal((await r2.handle({ cmd: 'open', url: base + '/' })).ok, true, 'literal loopback is still judged by the test switch only');
   } finally { await r2.stop(); }
 });
+
+// ---- what the picture mode needs from the runner: the window as a JPEG, what is under a point, and clicking or typing at a point
+const html = body => r.page.setContent(`<!doctype html><body style="margin:0">${body}</body>`);
+const at = (left, top, width, height) => `position:absolute;left:${left}px;top:${top}px;width:${width}px;height:${height}px;box-sizing:border-box`;
+
+test('snapshot says how far down the page is and which controls in the window have something on top of them', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  await html(`<div style="height:3000px"></div><button style="${at(100, 100, 120, 40)}">Under panel</button><button style="${at(700, 100, 120, 40)}">Free button</button>
+    <div style="position:fixed;top:0;left:0;width:500px;height:800px;background:#ddd;z-index:5"></div><button style="${at(100, 3200, 120, 40)}">Far below</button>`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  const by = Object.fromEntries(s.elements.map(e => [e.label, e]));
+  assert.equal(by['Under panel'].covered, true); assert.equal(by['Free button'].covered, false); assert.equal(by['Far below'].covered, null);   // out of the window: unknown
+  assert.equal(s.scroll, 0); assert.ok(s.height > 3000); assert.equal(s.window, 800);
+  await r.page.evaluate(() => window.scrollTo(0, 500));
+  assert.equal((await r.handle({ cmd: 'snapshot' })).scroll, 500);
+});
+
+test('view returns the window as a JPEG inside the size limits JEV accepts, and keeps a copy when asked', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  const v = await r.handle({ cmd: 'view', save: true });
+  assert.equal(v.ok, true); assert.deepEqual(v.view, { w: 1280, h: 800 });
+  const bytes = Buffer.from(v.data, 'base64'); assert.deepEqual([...bytes.subarray(0, 2)], [0xff, 0xd8]);
+  assert.ok(v.width >= 280 && v.width <= 1568 && v.height >= 280 && v.height <= 1568 && v.width * v.height <= 2_458_624);
+  assert.match(v.file, /^shot-\d{3}\.jpg$/); assert.ok(existsSync(join(process.env.BROWSE_OUT, v.file)));
+  assert.equal((await r.handle({ cmd: 'view' })).file, undefined);
+});
+
+test('probe names what is under a point, even inside a shadow root, and never reveals a secret field', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  await html(`<div id=host></div><input type=search placeholder="Search products" style="${at(100, 300, 300, 40)}"><input type=password aria-label="Pin" style="${at(100, 400, 300, 40)}">
+    <script>const root = document.getElementById('host').attachShadow({ mode: 'open' }); const b = document.createElement('button'); b.textContent = 'Accept'; b.style.cssText = '${at(600, 100, 200, 60)}'; root.appendChild(b);</script>`);
+  assert.deepEqual(await r.handle({ cmd: 'probe', x: 700, y: 130 }), { ok: true, hit: { tag: 'button', type: '', label: 'Accept', secret: false, editable: false, disabled: false } });
+  assert.deepEqual((await r.handle({ cmd: 'probe', x: 200, y: 320 })).hit, { tag: 'input', type: 'search', label: 'Search products', secret: false, editable: true, disabled: false });
+  const secret = (await r.handle({ cmd: 'probe', x: 200, y: 420 })).hit; assert.equal(secret.secret, true); assert.equal(secret.label, 'Password');
+  assert.equal((await r.handle({ cmd: 'probe', x: 5000, y: 5 })).error, 'bad_coordinates');
+});
+
+test('click and type at a point act exactly there, and typing needs a real text field', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  await html(`<button style="${at(100, 100, 150, 50)}" onclick="document.title='CLICKED'">Go</button><input type=search style="${at(100, 300, 300, 40)}"><p style="${at(100, 500, 300, 40)}">Just words</p>
+    <input type=password style="${at(100, 600, 300, 40)}">`);
+  assert.equal((await r.handle({ cmd: 'act', action: 'clickat', x: 170, y: 120 })).ok, true); assert.equal(await r.page.title(), 'CLICKED');
+  assert.equal((await r.handle({ cmd: 'act', action: 'typeat', x: 200, y: 320, value: 'boxer briefs' })).ok, true); assert.equal(await r.page.inputValue('input[type=search]'), 'boxer briefs');
+  assert.equal((await r.handle({ cmd: 'act', action: 'typeat', x: 200, y: 320, value: 'replaced' })).ok, true); assert.equal(await r.page.inputValue('input[type=search]'), 'replaced');   // typing replaces what was there
+  assert.equal((await r.handle({ cmd: 'act', action: 'typeat', x: 150, y: 520, value: 'x' })).error, 'not_a_field');
+  assert.equal((await r.handle({ cmd: 'act', action: 'typeat', x: 150, y: 620, value: 'secret' })).error, 'not_a_field');                // a password field is never typed into from a picture
+  assert.equal(await r.page.inputValue('input[type=password]'), '');
+  assert.equal((await r.handle({ cmd: 'act', action: 'clickat', x: 5000, y: 5 })).error, 'bad_coordinates');
+  assert.equal((await r.handle({ cmd: 'act', action: 'typeat', x: 200, y: 320, value: 'x'.repeat(501) })).error, 'bad_value');
+});

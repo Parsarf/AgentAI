@@ -19,6 +19,7 @@ import uuid
 import logging
 
 from . import llm as llm_mod
+from agentai_platform.live import now as live_now
 from .ladder import JevChooser, Ladder, Refused
 from .goals import goal_parts, instruction_text
 from .loop import BrowseRunner, Policy
@@ -366,8 +367,14 @@ class BrowseService:
             def on_stat(name, n=1):
                 job.stats[name] = job.stats.get(name, 0) + n
 
+            now_seq = [0]
+
+            def on_now(by, mode, note):
+                now_seq[0] += 1
+                live_now.write(out_dir, now_seq[0], by, mode, note)      # who is deciding, for the live view (codes only)
+
             result = BrowseRunner(session, ladder, policy=Policy(read_only=True), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
-                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), trace=trace).run(job.goal, start)
+                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), trace=trace, on_now=on_now).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
             job.url = result.url or job.url

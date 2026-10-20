@@ -65,7 +65,7 @@ class ProcessTransport:
 
 
 class Session:
-    DEADLINES = {'open': 40, 'snapshot': 20, 'act': 30, 'screenshot': 20}
+    DEADLINES = {'open': 40, 'snapshot': 20, 'act': 30, 'screenshot': 20, 'view': 20, 'probe': 10}
 
     def __init__(self, transport, trace=NULL):
         self.t, self._id, self.trace = transport, 0, trace
@@ -74,7 +74,7 @@ class Session:
         self._id += 1
         started = time.monotonic()
         # What is recorded about a call is which command, on which element, and how it went: never the text typed or the label.
-        info = {'cmd': cmd, **{k: params[k] for k in ('action', 'ref') if k in params}}
+        info = {'cmd': cmd, **{k: params[k] for k in ('action', 'ref', 'x', 'y') if k in params}}
         try:
             self.t.send({'id': self._id, 'cmd': cmd, **params})
             reply = self.t.recv(self.DEADLINES.get(cmd, 20))
@@ -97,8 +97,18 @@ class Session:
     def snapshot(self): return self.call('snapshot')
     def screenshot(self): return self.call('screenshot')
 
-    def act(self, action, ref=None, value=None, label=None):
+    def view(self, save=False):
+        """The window as a JPEG sized for JEV (base64 in `data`); `save` also keeps it with the run's pictures and returns its file name."""
+        return self.call('view', save=True) if save else self.call('view')
+
+    def probe(self, x, y):
+        """What is under a point on the screen: {tag, type, label, secret, editable, disabled} or None."""
+        return self.call('probe', x=x, y=y)
+
+    def act(self, action, ref=None, value=None, label=None, x=None, y=None):
         params = {'action': action}
+        if x is not None and y is not None:                    # a point chosen from a picture (clickat | typeat)
+            params['x'], params['y'] = int(round(x)), int(round(y))
         if ref is not None:
             params['ref'] = ref
             params['expect'] = {'label': label}

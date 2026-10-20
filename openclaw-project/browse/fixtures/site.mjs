@@ -24,6 +24,12 @@ export function startSite() {
     if (u.pathname === '/form') return send('Form', `<h1>Form</h1><input type=checkbox id=gift style="position:absolute;left:10px;top:60px;width:20px;height:20px;opacity:0"><label for=gift style="position:absolute;left:10px;top:60px;z-index:5;width:140px;height:24px;background:#eee">Gift wrap</label>
       <button style="position:absolute;left:10px;top:120px" aria-expanded="false" onclick="this.setAttribute('aria-expanded','true')">Details</button><input type=text readonly value="fixed" aria-label="Reference" style="position:absolute;left:10px;top:160px">
       <select aria-label="Size" style="position:absolute;left:10px;top:200px"><option>Small (S)</option><option>Medium (M)</option><option>Large (L)</option></select>`);
+    // A page a popup covers: everything behind it is marked hidden (so the page lists no controls) and the popup's only button sits in a shadow root. Accepting it lifts the cover.
+    if (u.pathname === '/blocked') return send('Blocked', `<div id=main aria-hidden="true"><h1>Shop</h1><a href="/">Paddle Shop</a></div><div id=host></div><script>
+      const host = document.getElementById('host'), root = host.attachShadow({ mode: 'open' }); const layer = document.createElement('div');
+      layer.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99'; const b = document.createElement('button'); b.textContent = 'Accept';
+      b.style.cssText = 'position:absolute;left:40%;top:40%;width:20%;height:10%'; b.addEventListener('click', () => { document.getElementById('main').removeAttribute('aria-hidden'); host.remove(); });
+      layer.appendChild(b); root.appendChild(layer);</script>`);
     if (u.pathname === '/slow') return setTimeout(() => send('Slow', '<h1>Slow page</h1>'), 1500);
     send('Not found', '<h1>404</h1>', 404);
   });

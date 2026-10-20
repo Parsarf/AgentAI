@@ -17,7 +17,7 @@ from .service import BrowseService, serve, stage_argv
 from .session import ProcessTransport
 
 JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
-JEV_MODEL = 'jev-1.13.0'
+JEV_MODEL = 'jev-1.14.0'            # box questions and pictures need 1.14; the same model decides controls steps and picture steps
 
 
 def start_live_view(args, service):

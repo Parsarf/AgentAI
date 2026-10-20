@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from agentai_platform.live import now as live_now
 from agentai_platform.live import ticket
 from agentai_platform.live.gateway import FrameGateway, make_server
 
@@ -39,6 +40,28 @@ class TicketTests(unittest.TestCase):
             ticket.mint(SECRET, 'a', '../etc')
 
 
+class NowTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_round_trip_and_nothing_outside_the_whitelist_is_written_or_read(self):
+        self.assertTrue(live_now.write(self.dir, 3, 'claude', 'picture', 'took'))
+        self.assertEqual(live_now.read(self.dir), {'seq': 3, 'by': 'claude', 'mode': 'picture', 'note': 'took'})
+        for bad in ((0, 'jev', 'controls', ''), (1, 'bing', 'controls', ''), (1, 'jev', 'x', ''), (1, 'jev', 'controls', 'Order placed <b>'), (True, 'jev', 'controls', ''), ('1', 'jev', 'controls', '')):
+            self.assertFalse(live_now.write(self.dir, *bad), bad)
+        self.assertEqual(live_now.read(self.dir)['seq'], 3)                                                       # the refused writes changed nothing
+
+    def test_a_file_that_is_not_exactly_what_write_makes_is_ignored(self):
+        for text in ('', 'not json', '[]', '{"seq":1,"by":"jev","mode":"controls","note":"","extra":"x"}', '{"seq":1,"by":"jev","mode":"controls","note":"Secret page words"}',
+                     '{"seq":1,"by":"jev","mode":"controls","note":"' + 'x' * 400 + '"}', '{"seq":true,"by":"jev","mode":"controls","note":""}'):
+            (self.dir / live_now.FILE).write_text(text)
+            self.assertIsNone(live_now.read(self.dir), text[:40])
+        self.assertIsNone(live_now.read(self.dir / 'missing'))
+
+
 class GatewayTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -50,8 +73,31 @@ class GatewayTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def frame(self, after=0, t=None, rid=RID):
-        return self.gw.frame(rid, self.t if t is None else t, after)
+    def frame(self, after=0, t=None, rid=RID, now=0):
+        return self.gw.frame(rid, self.t if t is None else t, after, now)
+
+    def test_who_is_deciding_rides_with_the_frame_and_is_sent_once_per_change(self):
+        (self.out / 'live.jpg').write_bytes(b'\xff\xd8frame')
+        live_now.write(self.out, 4, 'claude', 'controls', 'took')
+        status, headers, body = self.frame()
+        self.assertEqual(status, 200); self.assertEqual((headers['X-Now-Seq'], headers['X-By'], headers['X-Mode'], headers['X-Note']), ('4', 'claude', 'controls', 'took'))
+        status, headers, _ = self.frame(now=4)                                               # the client has seen seq 4: no headers, nothing repeated
+        self.assertEqual(status, 200); self.assertFalse(any(k.startswith('X-Now') or k in ('X-By', 'X-Mode', 'X-Note') for k in headers))
+
+    def test_a_change_with_no_new_picture_is_answered_at_once_not_after_the_hold(self):
+        (self.out / 'live.jpg').write_bytes(b'\xff\xd8frame')
+        seq = int(self.frame()[1]['X-Seq'])
+        live_now.write(self.out, 1, 'jev', 'picture', 'picture')
+        started = time.monotonic()
+        status, headers, body = self.frame(after=seq)
+        self.assertLess(time.monotonic() - started, 0.2)                                      # the gateway holds for 0.3 s when nothing changed; this did not wait
+        self.assertEqual((status, body, headers['X-Seq'], headers['X-Mode'], headers['X-Note']), (204, b'', str(seq), 'picture', 'picture'))
+
+    def test_a_bad_now_file_adds_no_headers(self):
+        (self.out / 'live.jpg').write_bytes(b'\xff\xd8frame')
+        (self.out / live_now.FILE).write_text('{"seq":1,"by":"jev","mode":"controls","note":"<script>"}')
+        status, headers, _ = self.frame()
+        self.assertEqual(status, 200); self.assertNotIn('X-Now-Seq', headers)
 
     def test_no_frame_yet_holds_briefly_then_204_and_marks_the_task_as_watched(self):
         status, headers, body = self.frame()

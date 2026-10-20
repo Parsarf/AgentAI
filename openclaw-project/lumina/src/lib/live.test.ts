@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityItem } from './activity';
-import { FALLBACK_AFTER, frameBackoff, followMode, keyAction, modesFor, stepText, toBrowser } from './live';
+import { FALLBACK_AFTER, NOTE_TEXT, frameBackoff, followMode, keyAction, modesFor, nowLabel, parseNow, stepText, toBrowser } from './live';
 
 const row = (category: string, key = category): ActivityItem => ({ key, category, label: category, detail: '', output: '', status: 'done', at: '' });
 
@@ -51,3 +51,23 @@ describe('live view helpers', () => {
     expect(FALLBACK_AFTER).toBeGreaterThan(1);
   });
 });
+
+describe('who is deciding, read from a frame response', () => {
+  const headers = (h: Record<string, string>) => (name: string) => h[name] ?? null;
+
+  it('reads the four headers into a status and turns the codes into our own words', () => {
+    const n = parseNow(headers({ 'X-Now-Seq': '7', 'X-By': 'claude', 'X-Mode': 'controls', 'X-Note': 'took' }));
+    expect(n).toEqual({ seq: '7', by: 'claude', mode: 'controls', note: 'took' });
+    expect(nowLabel(n!)).toBe('Claude'); expect(NOTE_TEXT.took).toBe('Claude took over this page');
+    expect(nowLabel({ seq: '1', by: 'jev', mode: 'picture', note: '' })).toBe('JEV · picture');
+    expect(nowLabel({ seq: '1', by: 'jev', mode: 'controls', note: '' })).toBe('JEV');
+    expect(parseNow(headers({ 'X-Now-Seq': '2', 'X-By': 'jev', 'X-Mode': 'controls' }))?.note).toBe('');          // no note header: no notice
+  });
+
+  it('ignores anything that is not exactly what the gateway sends, so no page-controlled text can reach the screen', () => {
+    const ok = { 'X-Now-Seq': '1', 'X-By': 'jev', 'X-Mode': 'controls', 'X-Note': '' };
+    expect(parseNow(headers({}))).toBeNull();
+    for (const bad of [{ 'X-Now-Seq': 'abc' }, { 'X-Now-Seq': '1'.repeat(20) }, { 'X-By': 'someone' }, { 'X-Mode': 'x' }, { 'X-Note': 'Order placed <b>' }]) expect(parseNow(headers({ ...ok, ...bad }))).toBeNull();
+  });
+});
+

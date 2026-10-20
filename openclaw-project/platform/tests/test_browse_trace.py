@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from agentai_platform.live import now as live_now
 from agentai_platform.browse import service as svc
 from agentai_platform.browse import trace as tr
 from agentai_platform.browse.ladder import JevChooser
@@ -109,9 +110,16 @@ class RunTrace(unittest.TestCase):
         s.start('acct', RID, 'buy a paddle at https://shop.example/'); wait(s, ('handoff',))
         jevs = [r for r in self.rows() if r['kind'] == 'jev']
         self.assertEqual(jevs[0]['outcome'], 'invalid'); self.assertIn('ms', jevs[0]); self.assertTrue(jevs[0]['why'])
-        low = next(r for r in jevs if r['outcome'] == 'low_confidence'); self.assertEqual(low['threshold'], 0.85); self.assertIn('operation', low['heads'])
+        acted = next(r for r in jevs if r['outcome'] == 'click'); self.assertEqual(acted['confidence'], 0.5); self.assertIn('operation', acted['heads'])      # no cut-off: a valid answer at 50% was acted on
+        self.assertFalse(any(r['outcome'] == 'low_confidence' for r in jevs))
         routes = [r for r in self.rows() if r['kind'] == 'route']
         self.assertTrue(routes[0]['jev_asked']); self.assertIn('jev_misses', routes[0])
+
+    def test_who_is_deciding_is_written_next_to_the_frames_as_codes_only(self):
+        s = self.service(['{"action":"click","ref":2}', '{"action":"click","ref":1}'])
+        s.start('acct', RID, 'buy a paddle at https://shop.example/'); wait(s, ('handoff',))
+        info = live_now.read(Path(self.tmp.name) / RID / 'out')
+        self.assertEqual((info['by'], info['mode'], info['note']), ('claude', 'controls', ''))                    # no JEV in this run: Claude decided, and nothing is announced
 
     def test_a_crash_is_recorded_with_where_it_happened(self):
         s = self.service([], hang=True)

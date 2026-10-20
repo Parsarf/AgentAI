@@ -183,10 +183,10 @@ class Loop(unittest.TestCase):
         self.assertEqual(s.log[1:3], [('act', 'type', 1, 'carbon paddle'), ('act', 'click', 2, None)])                   # the typed text came from the user's own request
         self.assertEqual(len(jev.bodies), 3)
 
-    def test_low_confidence_or_garbage_from_jev_falls_back_to_haiku_without_any_effect(self):
+    def test_garbage_from_jev_falls_back_to_haiku_without_any_effect_and_a_low_confidence_answer_is_simply_acted_on(self):
         llm = scripted_llm(['{"action":"done","answer":"ok"}'])
-        r = BrowseRunner(FakeSession(PAGES), live(llm, ScriptedJev({'operation': 'click', 'click_target': 'c2'}, p=0.5)), max_steps=3).run('g', 'https://shop.example/')
-        self.assertEqual((r.status, llm.calls), ('done', ['haiku']))
+        r = BrowseRunner(FakeSession(PAGES), live(llm, ScriptedJev({'operation': 'click', 'click_target': 'c2'}, {'operation': 'done'}, p=0.5)), max_steps=3).run('g', 'https://shop.example/')
+        self.assertEqual([h['by'] for h in r.steps], ['jev']); self.assertEqual((r.status, llm.calls), ('done', ['haiku']))          # JEV clicked at 50%; Haiku only confirmed that the goal was done
         r2 = BrowseRunner(FakeSession(PAGES), live(scripted_llm(['{"action":"done","answer":"ok"}']), ScriptedJev('oops')), max_steps=3).run('g', 'https://shop.example/')
         self.assertEqual(r2.status, 'done')
 
@@ -314,26 +314,29 @@ class JevOperations(unittest.TestCase):
             'target none fits': {'operation': 'click', 'click_target': 'none'},
             'dropdown option from another dropdown': None,
             'operation not offered': 'garbage',
-            'low confidence': {'operation': 'click', 'click_target': 'c2'},
         }
         for name in misses:
             with self.subTest(name):
-                if name == 'low confidence':
-                    d, llm, *_ = self.decide(misses[name], p=0.6, llm_steps=['{"action":"click","ref":2}'])
-                elif name == 'dropdown option from another dropdown':
+                if name == 'dropdown option from another dropdown':
                     two = cand.build('[1] <select> "Size"\n[2] <select> "Colour"', elements=[{'ref': 1, 'label': 'Size', 'options': ['S']}, {'ref': 2, 'label': 'Colour', 'options': ['Red']}])
                     d, llm, *_ = self.decide({'operation': 'select', 'select_target': 'c1', 'select_option': 's2_0'}, candidates=two, llm_steps=['{"action":"click","ref":9}', '{"action":"stop"}'])
                 else:
                     d, llm, *_ = self.decide(misses[name], llm_steps=['{"action":"click","ref":2}'])
                 self.assertTrue(d.miss); self.assertNotEqual(d.by, 'jev')
 
+    def test_there_is_no_confidence_cut_off_a_valid_answer_is_acted_on_even_at_low_probability(self):
+        for p in (0.9, 0.6, 0.5):
+            d, llm, *_ = self.decide({'operation': 'click', 'click_target': 'c2'}, p=p)
+            self.assertEqual((d.kind, d.by, d.action['ref'], d.miss, llm.calls), ('act', 'jev', 2, False, []), p)
+            self.assertAlmostEqual(d.confidence, p)                                                                   # still recorded, but nothing is decided by it
+
     def test_the_journal_says_why_jev_missed_without_any_page_text(self):
         import urllib.error, io
         def refused(endpoint, body, key, deadline):
             raise urllib.error.HTTPError(endpoint, 400, 'Bad Request', {}, io.BytesIO(b'{"error":"questions.click_target: at least 2 criteria needed"}'))
-        for name, jev, expect in (('rejected', refused, 'HTTPError 400'), ('garbage', lambda *a: 'not json', 'JSONDecodeError'), ('low confidence', None, 'low confidence 0.60'), ('target not offered', None, 'bad choice or probabilities')):
+        for name, jev, expect in (('rejected', refused, 'HTTPError 400'), ('garbage', lambda *a: 'not json', 'JSONDecodeError'), ('target not offered', None, 'bad choice or probabilities')):
             with self.subTest(name), self.assertLogs('agentai.browse', 'WARNING') as logged:
-                transport = jev if jev is not None else ScriptedJev({'operation': 'click', 'click_target': 'c1' if name == 'target not offered' else 'c2'}, p=0.6 if name == 'low confidence' else 1.0)
+                transport = jev if jev is not None else ScriptedJev({'operation': 'click', 'click_target': 'c1' if name == 'target not offered' else 'c2'}, p=1.0)
                 page = {**PAGE, 'text': 'SECRET PAGE TEXT'}
                 live(scripted_llm(['{"action":"click","ref":2}']), transport).decide('SECRET GOAL', [], page, CANDS)
             self.assertIn(expect, ' '.join(logged.output)); self.assertNotIn('SECRET', ' '.join(logged.output))
@@ -491,8 +494,9 @@ class HandOffToClaude(unittest.TestCase):
         down = {'operation': 'scroll_down'}
         r, *_ = self.run_loop([down] * 6, [], session=FpSession(FLAT, iter(range(99))), max_steps=6)            # the page moves every time
         self.assertEqual((r.status, len(r.steps)), ('max_steps', 6))
-        r, *_ = self.run_loop([down] * 6, ['{"action":"scroll"}'], session=FpSession(FLAT, iter([1, 2, 3, 3, 3, 3, 3, 3])), max_steps=8)       # it hit the bottom
-        self.assertEqual(r.status, 'stuck')
+        r, llm, *_ = self.run_loop([down] * 6, ['{"action":"scroll"}', '{"action":"done","answer":"ok"}'], session=FpSession(FLAT, iter([1, 2, 3, 3, 3, 3, 3, 3])), max_steps=8)   # it hit the bottom
+        self.assertEqual([h['by'] for h in r.steps], ['jev'] * 4 + ['haiku'])         # JEV scrolled twice with nothing moving: Claude takes the page
+        self.assertEqual((r.status, llm.calls[0]), ('done', 'haiku'))
 
     def test_runner_refusals_count_as_failures_jev_is_asked_after_one_and_sonnet_after_two(self):
         errors = {('click', 2): 'covered'}

@@ -1,11 +1,13 @@
 """Frame gateway: a small server, separate from the web app, that serves the newest frame of a running browser task.
 
-  GET /v1/live/<task>/frame?t=<ticket>&after=<seq>        (also /live/<task>/frame)
+  GET /v1/live/<task>/frame?t=<ticket>&after=<seq>&now=<seq>        (also /live/<task>/frame)
 
 Returns the newest frame (200, image/jpeg, X-Seq) as soon as it differs from `after`, or 204 after a short hold when nothing changed.
 A client loops on this, so it always shows the latest picture and a slow client simply skips frames; no video connection is held open,
 which also makes it work through any HTTP proxy. It never reads the database and never writes anything but the tiny `watching` marker
 that tells the browser stage someone is looking (no marker, no screencast, no cost).
+Who is deciding (JEV or Claude, from the page's controls or from a picture) rides along as four small headers whenever it changed since the `now` the client last saw:
+a change with no new picture is answered at once (204 with the headers) instead of waiting for the hold to end, so the label moves with the picture.
 """
 from __future__ import annotations
 import os
@@ -17,6 +19,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
+from . import now as live_now
 from .ticket import REQUEST_ID, TicketError, verify
 
 PATH = re.compile(r'^(?:/v1)?/live/([a-f0-9]{32})/frame$')      # /v1/... travels the same proxy route as the rest of the API
@@ -46,7 +49,15 @@ class FrameGateway:
         except OSError:
             pass
 
-    def frame(self, request_id: str, ticket: str, after: int):
+    @staticmethod
+    def _now_headers(out_dir: Path, seen: int):
+        """-> headers for a who-is-deciding change the client has not seen, else {}. Only whitelisted codes ever reach a header."""
+        info = live_now.read(out_dir)
+        if info is None or info['seq'] == seen:
+            return {}
+        return {'X-Now-Seq': str(info['seq']), 'X-By': info['by'], 'X-Mode': info['mode'], 'X-Note': info['note']}
+
+    def frame(self, request_id: str, ticket: str, after: int, now: int = 0):
         """-> (status, headers, body)"""
         try:
             verify(self.secret, ticket or '', request_id, now=self.clock)
@@ -59,8 +70,15 @@ class FrameGateway:
             return 429, {'Retry-After': '1'}, b''
         try:
             deadline = self.clock() + self.hold
+            nowh, now_mtime = {}, None
             while True:
                 self._mark(out_dir, request_id)
+                try:                                              # now.json is read only when it changed: this loop runs every 40 ms
+                    stamp = (out_dir / live_now.FILE).stat().st_mtime_ns
+                except OSError:
+                    stamp = None
+                if stamp != now_mtime:
+                    now_mtime, nowh = stamp, self._now_headers(out_dir, now)
                 try:
                     stat = (out_dir / 'live.jpg').stat()
                     seq = stat.st_mtime_ns
@@ -72,7 +90,9 @@ class FrameGateway:
                     except OSError:
                         body = b''
                     if body:
-                        return 200, {'Content-Type': 'image/jpeg', 'X-Seq': str(seq)}, body
+                        return 200, {'Content-Type': 'image/jpeg', 'X-Seq': str(seq), **nowh}, body
+                if nowh:
+                    return 204, {'X-Seq': str(after), **nowh}, b''
                 if self.clock() >= deadline:
                     return 204, {'X-Seq': str(after)}, b''
                 self.sleep(STEP_SECONDS)
@@ -106,7 +126,8 @@ def make_server(gateway: FrameGateway, host='127.0.0.1', port=18801):
                 return self._send(404, {})
             q = parse_qs(url.query)
             after = q.get('after', ['0'])[0]
-            status, headers, body = gateway.frame(m.group(1), q.get('t', [''])[0], int(after) if after.isdigit() else 0)
+            seen = q.get('now', ['0'])[0]
+            status, headers, body = gateway.frame(m.group(1), q.get('t', [''])[0], int(after) if after.isdigit() else 0, int(seen) if seen.isdigit() else 0)
             self._send(status, headers, body)
 
         do_HEAD = do_POST = do_PUT = do_DELETE = lambda self: self._send(405, {'Allow': 'GET'})

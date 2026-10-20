@@ -22,9 +22,9 @@ def sanitize(text: str) -> str:
     return scrub(text, MAX_CHARS)
 
 
-def http_post(endpoint: str, body: dict, credential: str, deadline_s: float) -> str:
+def http_post(endpoint: str, body: dict, credential: str, deadline_s: float, headers: dict | None = None) -> str:
     req = urllib.request.Request(endpoint, data=json.dumps(body).encode(), method='POST',
-                                 headers={'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json'})
+                                 headers={'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json', **(headers or {})})
     with urllib.request.urlopen(req, timeout=deadline_s) as response:
         return response.read(200_000).decode()
 

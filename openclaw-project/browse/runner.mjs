@@ -70,10 +70,48 @@ function describe(args) {
     const checked = type === 'checkbox' || type === 'radio' ? !!el.checked : ariaChecked === 'true' ? true : ariaChecked === 'false' ? false : null;
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     const options = tag === 'select' ? [...el.options].slice(0, 15).map(o => (o.label || '').replace(/\s+/g, ' ').trim().slice(0, 80)) : [];
+    // Is something else on top of the middle of the part of it that shows? null when none of it is in the window. The host uses the share of covered controls to tell that a panel or popup is in the way.
+    const vl = Math.max(r.left, 0), vr = Math.min(r.right, vw), vt = Math.max(r.top, 0), vb = Math.min(r.bottom, vh);
+    let covered = null;
+    if (vr - vl > 1 && vb - vt > 1) {
+      const hit = document.elementFromPoint((vl + vr) / 2, (vt + vb) / 2);
+      covered = !(hit && (hit === el || el.contains(hit) || (el.labels && [...el.labels].some(l => l === hit || l.contains(hit)))));
+    }
     out.push({ ref: n, tag: kind, type, label, role: role || '', value: clean(value), checked, expanded: ariaExpanded === 'true' ? true : ariaExpanded === 'false' ? false : null,
-      in_view: cx >= 0 && cy >= 0 && cx <= vw && cy <= vh, options });
+      in_view: cx >= 0 && cy >= 0 && cx <= vw && cy <= vh, covered, options });
   }
-  return { elements: out, title: document.title.slice(0, 120), text: (document.body && document.body.innerText || '').replace(/\s+\n/g, '\n').slice(0, 6000) };
+  const page = document.documentElement;
+  return { elements: out, title: document.title.slice(0, 120), text: (document.body && document.body.innerText || '').replace(/\s+\n/g, '\n').slice(0, 6000),
+    scroll: Math.round(window.scrollY), height: Math.round(Math.max(page.scrollHeight, document.body ? document.body.scrollHeight : 0)), window: vh };
+}
+
+// Runs in the page. What is at a point on the screen: the control under it (looking through open shadow roots) with the name a person would give it.
+// Used when a picture, not the element list, chose the target, so the host can run its safety rules on the label before anything is clicked.
+function hitAt({ x, y }) {
+  let el = document.elementFromPoint(x, y);
+  while (el && el.shadowRoot) { const inner = el.shadowRoot.elementFromPoint(x, y); if (!inner || inner === el) break; el = inner; }
+  if (!el) return null;
+  const clean = s => (s || '').replace(/\s+/g, ' ').replace(/"/g, "'").trim().slice(0, 100);
+  const control = el.closest('a, button, input, select, textarea, summary, label, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab]');
+  const c = control || el, tag = c.tagName.toLowerCase(), field = ['input', 'select', 'textarea'].includes(tag);
+  const type = tag === 'input' ? (c.getAttribute('type') || 'text').toLowerCase().replace(/[^a-z]/g, '') : '';
+  const secret = type === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((c.getAttribute('autocomplete') || '').toLowerCase());
+  const img = c.querySelector && c.querySelector('img[alt]');
+  const named = c.getAttribute('aria-label') || (field ? (c.labels && c.labels[0] && c.labels[0].innerText) || c.placeholder || c.name || c.title : c.innerText || c.value || c.title || (img && img.alt));
+  const label = secret ? (type === 'password' ? 'Password' : 'Secret field') : clean(control || (c.innerText || '').length <= 40 ? named : c.getAttribute('aria-label') || c.title || (img && img.alt));
+  const editable = tag === 'textarea' || (tag === 'input' && !['checkbox', 'radio', 'submit', 'button', 'reset', 'image', 'file', 'range', 'color', 'hidden'].includes(type)) || !!c.isContentEditable;
+  return { tag, type, label, secret, editable, disabled: !!c.disabled || c.getAttribute('aria-disabled') === 'true' };
+}
+
+// Runs in the page, after a click on a text field: is the focus really in something that takes text? If so, select what is there so typing replaces it.
+function focusActive() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName.toLowerCase(), type = tag === 'input' ? (el.getAttribute('type') || 'text').toLowerCase() : '';
+  const ok = tag === 'textarea' || (tag === 'input' && !['checkbox', 'radio', 'submit', 'button', 'reset', 'image', 'file', 'range', 'color', 'hidden'].includes(type)) || el.isContentEditable;
+  if (!ok || el.readOnly || el.disabled || type === 'password') return false;
+  if (el.select) el.select(); else document.execCommand('selectAll');
+  return true;
 }
 
 // Runs in the page. Read-only (marks nothing): a text summary of what a person would see, so two summaries are equal exactly when the page did not visibly change.
@@ -192,7 +230,7 @@ export class Runner {
       case 'snapshot': {
         await this.settle(); const d = await this.page.evaluate(describe, { sel: SELECTOR, max: MAX_ELEMENTS });
         const lines = d.elements.map(e => `[${e.ref}] <${e.tag}${e.type ? ' type=' + e.type : ''}> "${e.label}"`).join('\n');
-        return { ok: true, url: this.page.url(), title: d.title, snapshot: lines, text: d.text, pages: this.context.pages().length, elements: d.elements, page_fp: await this.fp() };
+        return { ok: true, url: this.page.url(), title: d.title, snapshot: lines, text: d.text, pages: this.context.pages().length, elements: d.elements, page_fp: await this.fp(), scroll: d.scroll, height: d.height, window: d.window };
       }
       case 'act': {
         const { ref, action, value, expect } = msg;
@@ -204,6 +242,24 @@ export class Runner {
           await this.page.mouse.wheel(0, value === 'up' ? -700 : 700); await this.page.waitForTimeout(150).catch(() => {}); return done();
         }
         if (action === 'wait') { await this.page.waitForTimeout(1000).catch(() => {}); await this.settle(); return done(); }
+        if (action === 'clickat' || action === 'typeat') {      // a point chosen from a picture: the host has already named what is there (probe) and run its rules on it
+          const { x, y } = msg;
+          if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 1280 || y > 800) return { ok: false, error: 'bad_coordinates' };
+          if (action === 'typeat' && (typeof value !== 'string' || !value || value.length > MAX_VALUE)) return { ok: false, error: 'bad_value' };
+          const page = this.page; const before = page.url(); const pagesBefore = this.context.pages().length;
+          try {
+            await page.mouse.move(x, y, { steps: 3 }); await page.mouse.click(x, y, { delay: 40 });
+            if (action === 'typeat') {
+              await page.waitForTimeout(200);
+              if (!(await page.evaluate(focusActive))) return { ok: false, error: 'not_a_field' };
+              await page.keyboard.insertText(value);
+            }
+          } catch (e) { if (!page.isClosed()) return { ok: false, error: 'action_failed' }; }
+          await this.ensurePage();
+          await this.page.waitForTimeout(400).catch(() => {});
+          await this.settle();
+          return done({ navigated: this.page.url() !== before, new_tab: this.context.pages().length > pagesBefore });
+        }
         if (!['click', 'type', 'select'].includes(action) || !Number.isInteger(ref)) return { ok: false, error: 'bad_action' };
         const el = await this.page.$(`[data-lumina-ref="${ref}"]`);
         if (!el) return { ok: false, error: 'stale' };
@@ -243,6 +299,17 @@ export class Runner {
           else return { ok: false, error: 'bad_action' };
         } catch (e) { return { ok: false, error: 'action_failed' }; }
         return { ok: true, url: this.page.url() };     // no waiting for the page to settle: the next input must not queue behind a slow load
+      }
+      case 'view': {   // the picture JEV is shown when the element list cannot be used: one JPEG of the window as it is (1280x800, inside JEV's size limits), optionally kept for the run's record
+        const bytes = await this.page.screenshot({ type: 'jpeg', quality: 75, scale: 'css', fullPage: false });
+        const size = this.page.viewportSize() || { width: 1280, height: 800 };
+        let file; if (msg.save) { file = `shot-${String(++this.shots).padStart(3, '0')}.jpg`; writeFileSync(join(OUT, file), bytes); }     // same names and folder as every other picture, so the host serves it the same way
+        return { ok: true, data: bytes.toString('base64'), width: size.width, height: size.height, view: { w: size.width, h: size.height }, file };
+      }
+      case 'probe': {
+        const { x, y } = msg;
+        if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 1280 || y > 800) return { ok: false, error: 'bad_coordinates' };
+        return { ok: true, hit: await this.page.evaluate(hitAt, { x, y }) };
       }
       case 'screenshot': {
         const file = `shot-${String(++this.shots).padStart(3, '0')}.jpg`;

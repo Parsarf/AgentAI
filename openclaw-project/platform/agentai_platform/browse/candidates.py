@@ -25,7 +25,7 @@ def action_type(tag: str, input_type: str | None) -> str | None:
     return ACTIONS.get(tag)
 
 
-STATE_FIELDS = ('role', 'value', 'checked', 'expanded', 'in_view', 'options')
+STATE_FIELDS = ('role', 'value', 'checked', 'expanded', 'in_view', 'covered', 'options')
 
 
 def build(snapshot_text: str, limit: int = 20, elements: list | None = None) -> list[dict]:
