@@ -257,7 +257,7 @@ def validate_pointing(data, boxes=('target',), yesno=('found',)):
 
 
 class JevChooser:
-    def __init__(self, endpoint, model, credential, transport, deadline_s=5):
+    def __init__(self, endpoint, model, credential, transport, deadline_s=8):
         self.endpoint, self.model, self.credential, self.transport, self.deadline = endpoint, model, credential, transport, deadline_s
 
     @staticmethod
