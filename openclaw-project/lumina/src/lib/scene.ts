@@ -44,6 +44,20 @@ export function sceneFor(presence: Presence, task: TaskFacts | undefined, events
   return 'working';
 }
 
+/** The few plain words under the character. They name the same real state the scene shows, so a drawing is never the only carrier of it. */
+export function captionFor(scene: SceneState, presence: Presence, task: TaskFacts | undefined, events: EventFacts[]): string {
+  switch (scene) {
+    case 'sleeping': return 'Asleep';
+    case 'idle': return task && ['waiting', 'starting'].includes(task.state) && presence !== 'awake' ? 'Waking up' : 'Ready';
+    case 'planning': return 'Planning';
+    case 'working': return 'Working';
+    case 'waiting': return task?.paused ? 'Paused' : 'Waiting its turn';
+    case 'blocked': return 'Reconnecting';
+    case 'needs_user': return calls(events).some(e => e.kind === 'approval_request' && !['done', 'failed'].includes(e.payload?.status ?? '')) ? 'Needs your approval' : 'Needs your answer';
+    case 'stopped': return 'Stopped';
+  }
+}
+
 /** What happens to the scene player when a clip ends: the next clip to play. A loop only ends its cycle for a new scene or a pending event. */
 export function nextClip(head: Clip, want: SceneState, event: SceneEvent | null): Clip {
   switch (head.kind) {

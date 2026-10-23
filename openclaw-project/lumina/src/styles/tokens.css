@@ -1,16 +1,25 @@
-/* Design tokens: the only place colours, radii and spacing are defined. ~92% of the UI is monochrome; neon is for
-   branding, capability icons, active states, progress and the primary action. */
+/* Obsidian: shared surfaces, warm ink and quiet states. Legacy accent names
+   remain aliases so existing components keep the same styling contract. */
 :root {
   color-scheme: dark;
-  --bg: #050505; --bg-2: #0b0c0f; --card: #101115; --elevated: #16171c;
-  --ink: #f5f5f7; --ink-2: #9698a2; --ink-3: #646772;
-  --line: rgba(255, 255, 255, .08); --line-2: rgba(255, 255, 255, .13);
-  --neon: #6865ff; --neon-2: #a855f7; --ok: #2dd4bf; --warn: #f5b942; --bad: #ef6060;
-  --r-sm: 10px; --r: 16px; --r-lg: 22px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  --bg: #111211; --bg-2: #171817; --card: #1c1d1c; --elevated: #272827;
+  --ink: #eee9df; --ink-2: #b5b2a8; --ink-3: #929187;
+  --line: rgba(238,233,223,.10); --line-2: rgba(238,233,223,.20);
+  --accent: #e5e2da; --accent-soft: rgba(229,226,218,.07);
+  --accent-line: rgba(229,226,218,.26); --on-accent: #1a1b19;
+  --neon: var(--accent); --neon-2: #b9b9b3;
+  --ok: #b3bdb2; --warn: #cfbd9e; --bad: #d7a69e;
+  --info: #c2c5c3; --creative: #c6c3be;
+  --web: var(--ink-2); --code: var(--ink-2); --data: var(--ink-2); --automate: var(--ink-2);
+  --chart-1: var(--info); --chart-2: var(--ok); --chart-3: var(--accent);
+  --chart-4: var(--creative); --chart-5: var(--bad); --chart-6: var(--warn);
+  --r-xs: 6px; --r-sm: 8px; --r-md: 10px; --r: 12px; --r-xl: 14px; --r-lg: 16px; --r-pill: 999px;
+  --fs-label: 12px; --fs-2xs: 10px; --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-input: 16px; --fs-lead: 17px; --fs-lg: 18px; --fs-xl: 20px; --fs-2xl: 30px;   /* steps beside the ramp in DESIGN.md (12 label, 14 body, 26, 36) */
+  --wash-soft: rgba(255,255,255,.06); --wash: rgba(255,255,255,.07); --wash-strong: rgba(255,255,255,.08); --backdrop: rgba(0,0,0,.6);
+  --shadow: 0 12px 36px rgba(0,0,0,.18);
   --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --gap: 16px; --pad: 20px; --ease: cubic-bezier(.2, .7, .2, 1);
+  --gap: 16px; --pad: 24px; --ease: cubic-bezier(.2,.7,.2,1);
 }
 :root[data-compact='true'] { --gap: 10px; --pad: 14px; }
-:root[data-motion='reduced'] *, :root[data-motion='reduced'] *::before { animation: none !important; transition: none !important; }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+:root[data-motion='reduced'] *, :root[data-motion='reduced'] *::before, :root[data-motion='reduced'] *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

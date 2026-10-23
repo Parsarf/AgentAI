@@ -1,5 +1,6 @@
 import '@fontsource-variable/inter';
 import './styles/app.css';
+import './styles/obsidian.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';

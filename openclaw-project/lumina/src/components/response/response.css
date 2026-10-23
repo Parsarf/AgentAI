@@ -1,4 +1,4 @@
-.agent-response { white-space: normal; min-width: 0; color: #dedee5; line-height: 1.75; }
+.agent-response { white-space: normal; min-width: 0; color: var(--ink); line-height: 1.75; }
 .agent-response > :first-child { margin-top: 0; }
 .agent-response > :last-child { margin-bottom: 0; }
 .agent-response p { margin: 0 0 1em; }
@@ -7,21 +7,21 @@
 .agent-response strong { color: var(--ink); font-weight: 600; }
 .agent-response ul, .agent-response ol { padding-left: 1.4em; margin: .6em 0 1.2em; }
 .agent-response li { padding-left: .15em; margin: .3em 0; }
-.agent-response li::marker { color: #9b9aa9; }
+.agent-response li::marker { color: var(--ink-2); }
 .agent-response li p { margin: .4em 0; }
-.agent-response a { color: #b9b6ff; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(185,182,255,.4); }
-.agent-response a:hover { color: #d6d4ff; text-decoration-color: currentColor; }
-.agent-response blockquote { margin: 1.2em 0; padding: .3em 1em; border-left: 2px solid var(--neon); color: #aaaab8; }
+.agent-response a { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--accent-line); }
+.agent-response a:hover { color: var(--accent); text-decoration-color: currentColor; }
+.agent-response blockquote { margin: 1.2em 0; padding: .3em 1.1em; border-left: 1px solid var(--accent-line); color: var(--ink-2); }
 .agent-response hr { border: 0; border-top: 1px solid var(--line); margin: 1.6em 0; }
-.agent-response code { font-size: .88em; background: rgba(255,255,255,.06); border-radius: 5px; padding: .15em .35em; }
-.agent-response pre { max-width: 100%; white-space: pre; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #0c0d12; padding: 16px; margin: 1em 0; }
+.agent-response code { font-size: .88em; background: var(--wash-soft); border-radius: 5px; padding: .15em .35em; }
+.agent-response pre { max-width: 100%; white-space: pre; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); padding: 16px; margin: 1em 0; }
 .agent-response pre code { background: none; padding: 0; }
 .answer-table { overflow-x: auto; margin: 1.2em 0; border: 1px solid var(--line); border-radius: 12px; }
 .answer-table table { width: 100%; border-collapse: collapse; font-size: .92em; }
 .answer-table th, .answer-table td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; min-width: 100px; }
 .answer-table th { color: var(--ink); background: rgba(255,255,255,.035); font-weight: 600; }
 .answer-table tbody tr:last-child td { border-bottom: 0; }
-.agent-response .answer-sources { margin-top: 1.5em; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: #aaaab8; }
+.agent-response .answer-sources { margin-top: 1.5em; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
 .answer-sources a { display: inline-block; padding: 3px 9px; margin: 3px; border-radius: 8px; background: rgba(255,255,255,.04); text-decoration: none; }
 
 /* Prose grows vertically. Only preformatted code and wide tables scroll sideways. */
@@ -32,3 +32,12 @@
 .agent-response pre::-webkit-scrollbar, .answer-table::-webkit-scrollbar { height: 8px; }
 .agent-response pre::-webkit-scrollbar-track, .answer-table::-webkit-scrollbar-track { background: rgba(255,255,255,.04); }
 .agent-response pre::-webkit-scrollbar-thumb, .answer-table::-webkit-scrollbar-thumb { background: #555563; border-radius: 8px; }
+
+/* Layouts JEV may choose for a plain-text reply (routing/display.py). Only how the same words are shown changes. */
+.agent-response.layout-answer > p:first-child { font-size: var(--fs-lead); font-weight: 500; line-height: 1.5; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accent-line); background: var(--accent-soft); }
+.agent-response.layout-list > ul { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.agent-response.layout-list > ul > li { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line-2); background: rgba(255,255,255,.03); margin: 0; }
+.agent-response.layout-steps ol.as-steps { list-style: none; padding-left: 0; display: grid; gap: 8px; }
+.agent-response.layout-steps ol.as-steps > li label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.agent-response.layout-steps ol.as-steps > li input { margin-top: 4px; accent-color: var(--neon); }
+.agent-response.layout-steps ol.as-steps > li.done > label > span { text-decoration: line-through; color: var(--ink-2); }

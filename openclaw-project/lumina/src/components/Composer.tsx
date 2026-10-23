@@ -18,8 +18,8 @@ export async function createChat(): Promise<string> {
   return (await api<{ conversation: { id: string } }>('POST', '/v1/conversations', {})).conversation.id;
 }
 
-export default function Composer({ conversationId, seed, onSent, autoFocus }: {
-  conversationId?: string | null; seed?: { text: string; n: number } | null; onSent?: (result: any) => void; autoFocus?: boolean;
+export default function Composer({ conversationId, seed, onSent, autoFocus, showCapabilities = true }: {
+  conversationId?: string | null; seed?: { text: string; n: number } | null; onSent?: (result: any) => void; autoFocus?: boolean; showCapabilities?: boolean;
 }) {
   const { app, refresh } = useData();
   const storageKey = draftKey(app?.user.email ?? '', conversationId);
@@ -71,8 +71,8 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || (!e.shiftKey && !e.nativeEvent.isComposing))) { e.preventDefault(); void submit(); } }}
           onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); setErr('File attachments are not enabled yet; paste text instead.'); } }} />
         <div className="row">
-          {!conversationId && Object.keys(TEMPLATES).map(k => (
-            <button type="button" key={k} className="chip" aria-pressed={mode === k} onClick={() => choose(k)}>
+          {showCapabilities && !conversationId && Object.keys(TEMPLATES).map(k => (
+            <button type="button" key={k} className="chip" data-capability={k.toLowerCase()} aria-pressed={mode === k} onClick={() => choose(k)}>
               {k === 'Web' && <I.Browser width={16} height={16} />}{k === 'Code' && <I.Code width={16} height={16} />}{k === 'Data' && <I.Chart width={16} height={16} />}{k === 'Automate' && <I.Bolt width={16} height={16} />}{k}
             </button>))}
           <button type="button" className="chip" disabled title={app?.features.uploads ? '' : 'File uploads are not enabled yet'}><I.Clip width={16} height={16} />Use Files</button>
@@ -86,6 +86,6 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
           </span>
         </div>
       </form>
-      <p className={`hint${err ? ' err' : ''}`} role={err ? 'alert' : undefined}>{err || (live ? 'Enter to send · Shift+Enter for a new line · you can keep chatting while a task runs.' : 'Execution is off right now: your message is saved and waits.')}</p>
+      <p className={`hint${err ? ' err' : live ? ' keys' : ''}`} role={err ? 'alert' : undefined}>{err || (live ? 'Enter to send · Shift+Enter for a new line · you can keep chatting while a task runs.' : 'Execution is off right now: your message is saved and waits.')}</p>
     </div>);
 }

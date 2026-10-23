@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import AgentResponse from './AgentResponse';
 afterEach(cleanup);
 describe('formatted agent answers', () => {
@@ -52,5 +52,40 @@ describe('structured replies and long lines', () => {
     const code = screen.getByRole('region', { name: 'Code block' });
     expect(code.getAttribute('tabindex')).toBe('0');
     expect(code.textContent).toContain(line);
+  });
+});
+
+describe('layouts chosen for a plain-text reply', () => {
+  const steps = 'Here is how.\n\n1. Unplug the router\n2. Wait ten seconds\n3. Plug it back in\n\nThat usually fixes it.';
+  it('turns the numbered list into a checklist without changing a word', () => {
+    render(<AgentResponse content={steps} layout="steps" />);
+    const boxes = screen.getAllByRole('checkbox');
+    expect(boxes.length).toBe(3);
+    expect(screen.getByText('Wait ten seconds')).toBeTruthy(); expect(screen.getByText('That usually fixes it.')).toBeTruthy();
+    fireEvent.click(boxes[0]); expect((boxes[0] as HTMLInputElement).checked).toBe(true);
+  });
+  it('leaves bullet lists inside steps alone, and shows the reply as it is without a layout', () => {
+    render(<AgentResponse content={'1. First\n   - a detail\n2. Second\n3. Third'} layout="steps" />);
+    expect(screen.getAllByRole('checkbox').length).toBe(3);
+    cleanup();
+    render(<AgentResponse content={steps} />);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+  it('marks the answer and list layouts for styling only', () => {
+    const { container } = render(<><AgentResponse content={'It costs $12.\n\nMore detail.'} layout="answer" /><AgentResponse content={'- A\n- B\n- C'} layout="list" /></>);
+    expect(container.querySelector('.layout-answer > p')?.textContent).toBe('It costs $12.');
+    expect(container.querySelectorAll('.layout-list > ul > li').length).toBe(3);
+  });
+});
+
+describe('a reply whose card is already stored', () => {
+  const withFence = 'Here are the options.\n\n```lumina\n' + JSON.stringify({ schemaVersion: '1.0', type: 'callout', tone: 'tip', text: 'Book early.' }) + '\n```';
+  it('does not draw the card a second time from its own text', () => {
+    render(<AgentResponse content={withFence} cardsStored />);
+    expect(screen.queryByText('Book early.')).toBeNull(); expect(screen.getByText('Here are the options.')).toBeTruthy();
+  });
+  it('still draws it while no stored card exists yet', () => {
+    render(<AgentResponse content={withFence} />);
+    expect(screen.getAllByText('Book early.').length).toBe(1);
   });
 });

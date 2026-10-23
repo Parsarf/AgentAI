@@ -13,6 +13,21 @@ function check() {
   if (document.querySelector('.globe')) failures.push('An active conversation rendered decorative scenery.');
   if (document.documentElement.scrollWidth > innerWidth)
     failures.push('The conversation overflows the viewport horizontally.');
+  const composer = document.querySelector('.chatpage .composer');
+  const navigation = document.querySelector('.side');
+  if (composer && navigation && innerWidth <= 960) {
+    const c = composer.getBoundingClientRect(); const n = navigation.getBoundingClientRect();
+    if (c.top < n.bottom && c.bottom > n.top && c.top < innerHeight)
+      failures.push('The composer overlaps mobile navigation.');
+  }
+  const transcript = document.querySelector('.chatpage .thread');
+  const dock = document.querySelector('.chatpage .dock');
+  if (transcript && dock) {
+    if (transcript.getBoundingClientRect().bottom > dock.getBoundingClientRect().top + 1)
+      failures.push('The transcript paints into the composer area.');
+    if (getComputedStyle(transcript).overflowY !== 'auto' || transcript.clientHeight <= 0)
+      failures.push('The transcript has no bounded, scrollable reading area.');
+  }
   const turns = [...document.querySelectorAll('.turn')];
   for (let i = 1; i < turns.length; i++) {
     if (turns[i].getBoundingClientRect().top < turns[i - 1].getBoundingClientRect().bottom - 1)
@@ -41,5 +56,5 @@ function schedule() {
 }
 new MutationObserver(schedule).observe(document.getElementById('root'), { childList: true, subtree: true });
 addEventListener('resize', schedule);
-addEventListener('scroll', schedule, { passive: true });
+addEventListener('scroll', schedule, { passive: true, capture: true });
 schedule();

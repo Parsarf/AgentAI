@@ -40,6 +40,6 @@ export default function AgentThinking({ task }: { task: ThreadTask }) {
   const activity = agentActivityFor(task.state, snapshot.taskId === task.id ? snapshot.events : []);
   if (!activity) return null;
   return <div className="agent-thinking" role="status" aria-live="polite" aria-atomic="true" data-orb-state={activity.orb}>
-    <Orb state={activity.orb} size={48} /><span>{activity.label}…</span>
+    <Orb state={activity.orb} size={48} /><span className="agent-state" key={activity.label}>{activity.label}…</span>
   </div>;
 }

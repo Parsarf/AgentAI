@@ -81,3 +81,37 @@ describe('pending assistant reply', () => {
     expect(screen.queryByTestId('thinking-orb')).toBeNull();
   });
 });
+
+describe('a card arriving while you watch', () => {
+  it('is shown once at every stage: from the reply while it streams, then the stored card with pictures, then the final text', async () => {
+    const ID = 'ab'.repeat(16);
+    const spec = (withPicture: boolean) => ({ schemaVersion: '1.0', type: 'places', title: 'Spicy places', items: [{ name: 'Haidilao', link: 'https://haidilao.example/', tags: [], ...(withPicture ? { image: { id: ID, source: 'haidilao.example' } } : {}) }] });
+    const live = 'Here you go.\n\n```lumina\n' + JSON.stringify(spec(false)) + '\n```';
+    let messageCalls = 0; let stored = false; let finished = false;
+    const task = () => ({ id: 'r1', state: finished ? 'completed' : 'running', created_epoch: 1 });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/v1/conversations/a') return ok({ conversation: { id: 'a', title: 'Spicy' } });
+      if (url.endsWith('/blocks')) return ok({ blocks: stored ? [{ id: 'b1', conversation_id: 'a', anchor_message_id: 2, kind: 'places', schema_version: '1.0', spec: spec(true), state: {}, version: 1, status: 'final', launched_request_id: null, created_epoch: 1, updated_epoch: 1 }] : [] });
+      if (url.includes('/messages')) {
+        messageCalls += 1;
+        const after = Number(new URL(url, 'http://x').searchParams.get('after') ?? 0);
+        const now = finished                                                                                 // what the server holds: the cleaned reply and a closing line once it finished
+          ? [{ ...msg(1, 'spicy food near me', 'customer'), request_id: 'r1' }, { ...msg(2, 'Here you go.'), request_id: 'r1' }, { ...msg(3, 'Checked: the places are real.'), request_id: 'r1' }]
+          : [{ ...msg(1, 'spicy food near me', 'customer'), request_id: 'r1' }, { ...msg(2, live), request_id: 'r1' }];
+        return ok({ messages: now.filter(m => m.id > after), tasks: [task()] });
+      }
+      return ok({});
+    }));
+    mount();
+    await screen.findByRole('heading', { name: 'Spicy places' });
+    expect(screen.getAllByRole('heading', { name: 'Spicy places' }).length).toBe(1);                       // streaming: drawn from the reply's own text
+    stored = true;                                                                                           // the server stored the card (with its picture) but the task is still running
+    await waitFor(() => expect(screen.getByAltText('Haidilao')).toBeTruthy(), { timeout: 6000 });
+    expect(screen.getAllByRole('heading', { name: 'Spicy places' }).length).toBe(1);                       // the stored card replaced it: never both
+    finished = true;
+    await screen.findByText('Checked: the places are real.', {}, { timeout: 6000 });
+    expect(screen.getAllByRole('heading', { name: 'Spicy places' }).length).toBe(1);
+    expect(screen.getByAltText('Haidilao')).toBeTruthy();
+    expect(messageCalls).toBeGreaterThanOrEqual(3);
+  }, 15000);
+});

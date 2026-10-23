@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { isActive } from '../lib/tasks';
 import { useTaskEvents } from '../lib/useTaskEvents';
-import { clipUrl, failedCalls, firstClip, nextClip, posterUrl, sceneFor, type Clip, type Presence, type SceneEvent, type SceneState } from '../lib/scene';
+import { captionFor, clipUrl, failedCalls, firstClip, nextClip, posterUrl, sceneFor, type Clip, type Presence, type SceneEvent, type SceneState } from '../lib/scene';
 import { useSettings } from '../state/settings';
 import type { ThreadTask } from './AgentThinking';
 
@@ -59,7 +59,8 @@ export default function SceneBackground({ task, ready }: { task: ThreadTask | un
   const active = !!task && isActive(task);
   const { presence, known } = usePresence(task);
   const { taskId, events } = useTaskEvents(task?.id, active);
-  const want = sceneFor(presence, task, taskId === task?.id ? events : [], active);
+  const taskEvents = taskId === task?.id ? events : [];
+  const want = sceneFor(presence, task, taskEvents, active);
   const [event, clearEvent] = useSceneEvent(task, events, taskId);
 
   const wanted = useRef<SceneState>(want); wanted.current = want;
@@ -106,11 +107,14 @@ export default function SceneBackground({ task, ready }: { task: ThreadTask | un
 
   const still = reducedMotion || failed;
   return (
-    <div className="scene" aria-hidden data-scene={shown} data-want={want}>
-      <img className="scene-poster" src={posterUrl(still ? want : shown)} alt="" />
-      {!still && videos.map((ref, i) => (
-        <video key={i} ref={ref} className="scene-video" muted playsInline preload="auto" tabIndex={-1}
-          style={{ opacity: i === frontIdx ? 1 : 0 }} onEnded={() => { if (i === front.current) advance(); }} onError={() => setFailed(true)} />))}
-      <div className="scene-scrim" />
+    <div className="scene" data-scene={shown} data-want={want}>
+      <div className="scene-art" aria-hidden>
+        <img className="scene-poster" src={posterUrl(still ? want : shown)} alt="" />
+        {!still && videos.map((ref, i) => (
+          <video key={i} ref={ref} className="scene-video" muted playsInline preload="auto" tabIndex={-1}
+            style={{ opacity: i === frontIdx ? 1 : 0 }} onEnded={() => { if (i === front.current) advance(); }} onError={() => setFailed(true)} />))}
+        <div className="scene-scrim" />
+      </div>
+      <p className="stage-caption" data-state={want}>{captionFor(want, presence, task, taskEvents)}</p>
     </div>);
 }

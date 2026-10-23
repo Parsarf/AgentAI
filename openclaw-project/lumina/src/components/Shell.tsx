@@ -41,8 +41,28 @@ function Command({ onClose }: { onClose(): void }) {
 
 export default function Shell() {
   const { pathname } = useLocation();
-  const rail = pathname === '/home' || pathname.startsWith('/tasks');
-  const { requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
+  const hasRail = pathname === '/home' || pathname.startsWith('/tasks');
+  const [railOpen, setRailOpen] = useState(false);
+  const rail = hasRail && railOpen;
+  const { requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState<'chats' | 'pages' | null>(null);
+  const drawerOpener = useRef<HTMLElement | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!drawer) return;
+    drawerOpener.current = document.activeElement as HTMLElement;
+    const focusable = () => Array.from(drawerRef.current?.querySelectorAll<HTMLElement>('button, a[href], input, [tabindex="0"]') ?? []);
+    focusable()[0]?.focus();
+    const close = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawer(null);
+      if (e.key === 'Tab') {
+        const items = focusable(); const first = items[0]; const last = items.at(-1);
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    };
+    window.addEventListener('keydown', close);
+    return () => { window.removeEventListener('keydown', close); drawerOpener.current?.focus(); };
+  }, [drawer]);
   const [cmd, setCmd] = useState(false); const [bell, setBell] = useState(false);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -56,11 +76,13 @@ export default function Shell() {
   return (
     <div className={`shell${rail ? '' : ' no-right'}${sidebarOpen ? '' : ' side-collapsed'}`}>
       {!pathname.startsWith('/chat/') && !pathname.startsWith('/live') && <Backdrop />}
-      <Sidebar />
+      <Sidebar onMore={() => setDrawer('pages')} />
       <main className="main">
         <div className="topbar">
-          <button className="iconbtn only-mobile" aria-label="Chats" onClick={() => setDrawer(true)}><I.Chat /></button>
+          <button className="iconbtn only-mobile" aria-label="Chats" onClick={() => setDrawer('chats')}><I.Chat /></button>
+          <span className="workspace-title">{NAV.find(n => n.to === pathname || (n.to !== '/home' && pathname.startsWith(n.to + '/')))?.label ?? 'Lumina'}</span>
           <span className="spacer" />
+          {hasRail && <button className="btn context-toggle" aria-expanded={rail} aria-controls="workspace-activity" onClick={() => setRailOpen(v => !v)}>Activity</button>}
           <button className="iconbtn" aria-label="Search (Ctrl+K)" onClick={() => setCmd(true)}><I.Search /></button>
           <div style={{ position: 'relative' }}>
             <button className="iconbtn" aria-label="Notifications" aria-expanded={bell} onClick={() => setBell(b => !b)}><I.Bell />{attention.length > 0 && <span className="dot" />}</button>
@@ -74,13 +96,16 @@ export default function Shell() {
         </div>
         <Outlet />
       </main>
-      {rail && <aside className="rail" aria-label="Activity"><Rail /></aside>}
+      {rail && <aside id="workspace-activity" className="rail" aria-label="Workspace activity"><Rail /></aside>}
       {cmd && <Command onClose={() => setCmd(false)} />}
       {drawer && (
-        <div className="drawer-back left" onMouseDown={() => setDrawer(false)} role="presentation">
-          <aside className="drawer" role="dialog" aria-label="Chats" onMouseDown={e => e.stopPropagation()}>
-            <button className="btn primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => { setDrawer(false); void nav('/chat'); }}>New chat</button>
-            <ChatList chats={chats} onChanged={() => refreshChats()} onPick={() => setDrawer(false)} />
+        <div className="drawer-back left" onMouseDown={() => setDrawer(null)} role="presentation">
+          <aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'pages' ? 'Pages' : 'Chats'} onMouseDown={e => e.stopPropagation()}>
+            <button className="btn small drawer-close" onClick={() => setDrawer(null)}>Close</button>
+            {drawer === 'pages' ? <nav className="nav page-menu" aria-label="All pages">{NAV.map(n => <NavLink key={n.to} to={n.to} end={n.end} onClick={() => setDrawer(null)}><n.icon width={20} height={20} />{n.label}</NavLink>)}</nav> : <>
+            <button className="btn primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => { setDrawer(null); void nav('/chat'); }}>New chat</button>
+            <ChatList chats={chats} onChanged={() => refreshChats()} onPick={() => setDrawer(null)} />
+            </>}
           </aside>
         </div>)}
     </div>);

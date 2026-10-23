@@ -93,6 +93,7 @@ describe('assistant activity lifecycle', () => {
   });
   it('separates queue, startup, reconnection, thinking, and terminal states', () => {
     expect(agentActivityFor('waiting', [])?.label).toBe('Queued');
+    expect(agentActivityFor('waiting', [{ kind: 'progress', payload: { step: 'waking' } }])).toEqual({ orb: 'connecting', label: 'Waking your assistant' });       // the state beside the orb moves on as the stages do
     expect(agentActivityFor('starting', [])?.label).toBe('Getting ready');
     expect(agentActivityFor('uncertain', [])?.label).toBe('Reconnecting');
     expect(agentActivityFor('running', [])?.label).toBe('Thinking');
@@ -113,3 +114,11 @@ describe('assistant activity lifecycle', () => {
     expect(agentActivityFor('running', [{ kind: 'activity', payload: { category: 'browse' } }])?.label).toBe('Browsing');
   });
 });
+
+describe('waiting for the customer', () => {
+  it('says the browser is waiting for an answer, and goes back to working once it carries on', () => {
+    expect(agentActivityFor('running', [{ kind: 'progress', payload: { step: 'working' } }, { kind: 'progress', payload: { step: 'asking' } }])).toEqual({ orb: 'listening', label: 'Waiting for your answer' });
+    expect(agentActivityFor('running', [{ kind: 'progress', payload: { step: 'asking' } }, { kind: 'progress', payload: { step: 'working' } }])?.label).toBe('Thinking');
+  });
+});
+

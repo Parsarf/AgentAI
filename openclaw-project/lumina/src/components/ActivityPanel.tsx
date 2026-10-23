@@ -51,8 +51,11 @@ export default function ActivityPanel({ taskId, active, startedAt, onStop, onClo
             <span className="act-ico" aria-hidden="true">{ICON[r.category] ?? ICON.other}</span>
             <div className="act-body">
               <div className="act-label">{r.label}{r.status === 'running' && <span className="dot-s running" aria-label="in progress" />}{r.status === 'failed' && r.category !== 'error' && <span className="act-bad"> · failed</span>}</div>
-              {r.detail && <code className="act-detail">{r.detail}</code>}
-              {r.output && <details><summary className="faint small">Output</summary><pre className="act-out">{r.output}</pre></details>}
+              {(r.detail || r.output) && <details className="act-disclosure">
+                <summary className="faint small">Details{r.status === 'failed' ? ' · failed step' : ''}</summary>
+                {r.detail && <code className="act-detail">{r.detail}</code>}
+                {r.output && <pre className="act-out">{r.output}</pre>}
+              </details>}
             </div>
           </li>))}
       </ol>

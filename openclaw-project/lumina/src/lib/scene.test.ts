@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { failedCalls, firstClip, nextClip, sceneFor, type Clip } from './scene';
+import { captionFor, failedCalls, firstClip, nextClip, sceneFor, type Clip } from './scene';
 
 const running = { state: 'running' };
 const call = (ref: string, status: string, category = 'command') => ({ kind: 'tool', payload: { ref, status, category } });
@@ -59,5 +59,22 @@ describe('clip order', () => {
   it('opens a sleeping assistant asleep and any other scene with its entrance', () => {
     expect(firstClip('sleeping')).toEqual(loop('sleeping'));
     expect(firstClip('idle')).toEqual({ scene: 'idle', kind: 'enter' });
+  });
+});
+
+describe('captionFor', () => {
+  it('names the real state in plain words', () => {
+    expect(captionFor('sleeping', 'asleep', undefined, [])).toBe('Asleep');
+    expect(captionFor('idle', 'awake', undefined, [])).toBe('Ready');
+    expect(captionFor('idle', 'asleep', { state: 'waiting' }, [])).toBe('Waking up');
+    expect(captionFor('idle', 'waking', { state: 'waiting' }, [])).toBe('Waking up');
+    expect(captionFor('waiting', 'awake', { state: 'waiting', paused: true }, [])).toBe('Paused');
+    expect(captionFor('waiting', 'awake', { state: 'waiting' }, [])).toBe('Waiting its turn');
+    expect(captionFor('blocked', 'awake', { state: 'uncertain' }, [])).toBe('Reconnecting');
+    expect(captionFor('stopped', 'awake', { state: 'cancelled' }, [])).toBe('Stopped');
+  });
+  it('tells an answer from an approval', () => {
+    expect(captionFor('needs_user', 'awake', running, [{ kind: 'progress', payload: { step: 'asking' } }])).toBe('Needs your answer');
+    expect(captionFor('needs_user', 'awake', running, [{ kind: 'approval_request', payload: { ref: 'x' } }])).toBe('Needs your approval');
   });
 });

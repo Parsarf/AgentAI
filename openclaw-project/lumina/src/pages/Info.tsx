@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useData } from '../state/data';
 import { useSettings } from '../state/settings';
 import Credits from '../components/Credits';
+import SavedInfo from '../components/SavedInfo';
 
 function Soon({ name, what, needs }: { name: string; what: string; needs: string }) {
   return (
@@ -40,6 +41,7 @@ export function Settings() {
       <section className="panel card" style={{ marginBottom: 14 }}><h2>Usage this period</h2>
         {usage ? <p className="muted" style={{ marginTop: 10 }}>Used {usd(usage.reported_microusd)} · held {usd(usage.held_microusd)} · remaining {usd(usage.period_remaining_microusd)} of {usd(usage.period_limit_microusd)}</p> : <p className="faint" style={{ marginTop: 10 }}>Usage is not available right now.</p>}
         <p className="faint" style={{ marginTop: 6 }}>Plan access: {app?.features.billing_mode === 'open' ? 'free access' : app?.features.billing_mode === 'paid_required' ? 'subscription' : 'invitation'}</p></section>
+      <SavedInfo />
       <Credits />
       <section className="panel card"><h2>Account</h2><p className="muted" style={{ marginTop: 10 }}>{app?.user.email}</p>
         <p style={{ marginTop: 12 }}><button className="btn" onClick={signOut}>Sign out</button> <a className="btn" href="/account/">Classic view</a></p></section></div>);

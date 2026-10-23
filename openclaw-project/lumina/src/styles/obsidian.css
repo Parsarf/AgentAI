@@ -1,0 +1,234 @@
+/* Obsidian: a quiet working room. Neutral surfaces, precise type, useful space. */
+body { letter-spacing: -.01em; }
+button, a, summary { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+button, a, input, textarea, select { transition: color 160ms var(--ease), background-color 160ms var(--ease), border-color 160ms var(--ease); }
+input, textarea { caret-color: var(--ink); }
+::selection { background: var(--accent-line); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.panel { background: var(--bg-2); box-shadow: none; }
+/* Keep the existing globe lifecycle, but let the working surface lead. */
+.globe { opacity: .025; }
+.shell { --side-w: 232px; gap: 24px; }
+.shell.side-collapsed { --side-w: 64px; }
+.side { border: 0; border-right: 1px solid var(--line); border-radius: 0; background: transparent; padding: 8px 20px 8px 0; gap: 6px; }
+.side-top { padding: 12px 4px 28px 12px; }
+.side .brand { font-size: 12px; letter-spacing: .22em; gap: 10px; }
+.brand svg { width: 22px; height: 22px; color: var(--ink); filter: none; }
+.newchat-btn { min-height: 44px; background: var(--accent); color: var(--on-accent); border: 1px solid transparent; border-radius: var(--r-sm); margin: 0 0 16px; font-weight: 500; }
+.newchat-btn:hover { background: var(--ink); }
+.side .nav { gap: 2px; }
+.side .nav a { min-height: 40px; border-radius: 7px; font-size: var(--fs-sm); color: var(--ink-2); }
+.nav a[aria-current='page'] { color: var(--ink); background: var(--elevated); border-color: transparent; }
+.side .nav a:nth-child(4), .side .nav a:nth-child(10) { margin-top: 14px; }
+.side .nav a svg { width: 17px; height: 17px; }
+.side-chats { margin-top: 24px; padding-top: 8px; }
+.side .chatlist h4 { font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--ink-3); padding: 0; margin: 12px 10px 8px; }
+.side .chatitem { font-size: 12px; padding-block: 9px; border-radius: var(--r-xs); }
+.side .who { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding-top: 16px; font-size: 12px; }
+.avatar { width: 30px; height: 30px; background: var(--elevated); color: var(--ink-2); font-size: 12px; border-color: var(--line); }
+.side.collapsed { padding-right: 12px; }
+.side.collapsed .newchat-btn { color: var(--on-accent); }
+.main { padding: 8px 20px 40px; }
+.topbar { align-items: center; gap: 6px; }
+.workspace-title { font-size: 12px; color: var(--ink-3); padding-left: 2px; }
+.iconbtn { background: transparent; border-color: transparent; border-radius: var(--r-sm); color: var(--ink-2); }
+.iconbtn:hover { color: var(--ink); background: var(--elevated); }
+.iconbtn svg { width: 19px; height: 19px; }
+.iconbtn .dot { background: var(--ink-2); }
+.center { max-width: 880px; margin-inline: auto; }
+.hero { padding: 64px 0 30px; max-width: none; }
+.hero h1 { font-size: 36px; font-weight: 450; letter-spacing: -.035em; line-height: 1.25; text-wrap: balance; overflow-wrap: anywhere; }
+.hero h1 span { color: var(--ink-2); }
+.hero p { font-size: var(--fs-md); margin-top: 10px; color: var(--ink-2); }
+.page-title, .history-head h1, .live-workspace-head h1 { font-size: 26px; font-weight: 500; letter-spacing: -.025em; }
+.composer { background: var(--card); box-shadow: none; border: 1px solid var(--line-2); border-radius: var(--r-lg); padding: 16px 16px 12px; }
+.composer:focus-within { border-color: var(--accent-line); }
+.composer textarea { font-size: var(--fs-input); padding: 8px 6px; }
+.composer textarea:focus-visible { outline: 0; }
+.home-workspace .composer textarea { min-height: 112px; font-size: var(--fs-lead); line-height: 1.6; }
+.composer .row { gap: 6px; margin-top: 4px; }
+.send { width: 44px; height: 44px; border-radius: var(--r-md); background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.send:hover:not(:disabled) { background: var(--ink); }
+.send:disabled { opacity: .35; }
+.chip { border-radius: 7px; background: transparent; padding: 8px 12px; }
+.chip[aria-pressed='true'] { color: var(--ink); border-color: var(--line-2); background: var(--elevated); }
+.composer .respond { display: inline-flex; padding: 3px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); }
+.composer .respond .chip { border: 0; padding: 7px 10px; font-size: 12px; color: var(--ink-2); }
+.composer .respond .chip[aria-pressed='true'] { color: var(--ink); background: var(--elevated); }
+.composer .respond .chip:focus-visible { outline-offset: 0; }
+.hint { font-size: var(--fs-xs); color: var(--ink-3); line-height: 1.6; margin-top: 10px; }
+.caps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; margin-top: 28px; }
+.caps > div { min-width: 0; }
+.cap { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px; padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--ink-2); text-align: left; cursor: pointer; }
+.cap:hover { color: var(--ink); background: transparent; transform: none; }
+.cap > svg { flex: none; }
+.cap > svg:last-child { width: 14px; margin-left: auto; color: var(--ink-3); }
+.cap-copy { min-width: 0; }
+.cap-name { display: block; color: var(--ink); font-size: var(--fs-sm); font-weight: 500; line-height: 1.5; }
+.cap-description { display: block; color: var(--ink-3); font-size: 12px; line-height: 1.5; margin-top: 3px; }
+.sect { margin: 48px 0 12px; align-items: center; }
+.sect h2 { font-size: var(--fs-md); font-weight: 500; letter-spacing: -.015em; }
+.sect a { color: var(--ink-2); font-size: 12px; padding: 8px 0 8px 12px; }
+.tasks { gap: 0; grid-template-columns: minmax(0, 1fr); }
+.task { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 18px 4px; gap: 12px; }
+.task:hover { background: rgba(238,233,223,.025); }
+.task .t-ico { width: 28px; height: 28px; background: transparent; }
+.task .t-name { font-size: var(--fs-sm); font-weight: 450; }
+.task .t-meta { font-size: var(--fs-xs); margin-top: 6px; color: var(--ink-3); }
+.task > svg { width: 14px; color: var(--ink-3); }
+.dot-s { width: 6px; height: 6px; }
+.dot-s.running { background: var(--ink-2); box-shadow: none; animation: none; }
+.empty { padding: 24px 0; text-align: left; border: 0; border-top: 1px solid var(--line); border-radius: 0; font-size: var(--fs-sm); line-height: 1.7; }
+.btn { border-radius: var(--r-sm); min-height: 44px; }
+.btn.small { min-height: 36px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--ink); }
+.context-toggle { color: var(--ink-2); background: transparent; border-color: transparent; font-size: 12px; }
+.context-toggle[aria-expanded='true'] { color: var(--ink); background: var(--elevated); }
+.pill.live { color: var(--ink); background: var(--accent-soft); border-color: var(--line-2); }
+.rail .card { padding: 24px; }
+.card h2 { font-size: var(--fs-md); font-weight: 500; }
+.chatpage .bubble.you { background: var(--elevated); border-radius: var(--r-lg); }
+.thread-head { padding-block: 12px 24px; }
+.thread-head h1 { font-size: var(--fs-input); font-weight: 500; }
+.agent-thinking .agent-state { animation: none; }
+.activity { background: var(--bg-2); border-left: 1px solid var(--line); box-shadow: none; }
+.act-head { flex-wrap: wrap; padding: 20px 16px; }
+.act-list { padding: 24px 16px; gap: 24px; }
+.act-disclosure summary { cursor: pointer; padding-block: 8px; width: fit-content; }
+.act-row.error .act-label, .act-bad { color: var(--bad); }
+.gblock, .ask-box, .saved-notice { background: var(--card); box-shadow: none; }
+.ask-option.on, .gopt.on { border-color: var(--accent-line); background: var(--accent-soft); }
+.gfollow-b, .gchip[aria-pressed='true'] { color: var(--ink); }
+.gfollow-b:hover:not(:disabled) { background: var(--accent-soft); }
+.fields-bar span, .gprogress span, .bar > i { background: var(--accent); }
+.fields-input:focus { border-color: var(--accent); box-shadow: none; }
+.agent-response a { color: var(--ink); text-decoration-color: var(--accent-line); }
+.agent-response a:hover { text-decoration-color: var(--ink); }
+.drawer-close { display: block; margin: 0 0 24px auto; }
+.page-menu { gap: 8px; }
+.side .nav .mobile-more { display: none; }
+@media (max-width: 1200px) and (min-width: 961px) {
+  .shell { --side-w: 212px; gap: 16px; }
+  .shell.side-collapsed { --side-w: 64px; }
+  .main { padding-inline: 8px; }
+  .hero { padding-top: 48px; }
+}
+@media (max-width: 960px) {
+  .shell { --gap: 10px; gap: 10px; padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .main { padding-inline: 4px; }
+  .workspace-title { font-size: 12px; }
+  .side, .side.collapsed { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--r-xl); bottom: calc(10px + env(safe-area-inset-bottom)); padding: 6px; }
+  .side .nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; overflow: visible; }
+  .side .nav a { display: none; min-width: 0; min-height: 48px; margin: 0; padding: 8px 4px; font-size: var(--fs-2xs); }
+  .side .nav a:nth-child(1), .side .nav a:nth-child(2), .side .nav a:nth-child(5), .side .nav a:nth-child(6), .side .nav .mobile-more { display: flex; }
+  .side .nav a:nth-child(4), .side .nav a:nth-child(10) { margin: 0; }
+  .side .nav .mobile-more { min-width: 0; min-height: 48px; justify-content: center; padding: 8px 4px; font-size: var(--fs-2xs); }
+  .hero { padding-top: 40px; padding-bottom: 24px; }
+  .hero h1 { font-size: var(--fs-2xl); line-height: 1.3; letter-spacing: -.03em; }
+  .hero h1 span { display: block; }
+  .hero p { font-size: 14px; margin-top: 12px; }
+  .caps { column-gap: 24px; margin-top: 24px; }
+  .cap { gap: 10px; }
+  .cap-description { display: none; }
+  .sect { margin-top: 36px; }
+  .home-workspace .composer textarea { min-height: 104px; font-size: var(--fs-input); }
+  .composer .respond .chip { min-height: 38px; }
+  .shell:has(.chatpage) { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .chatpage { --chrome: calc(10px + 64px + 96px + env(safe-area-inset-bottom)); }
+  .chatpage .dock { bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .activity { z-index: 45; }
+}
+@media (max-width: 480px) {
+  .main { padding-inline: 4px; }
+  .caps { column-gap: 20px; }
+  .cap { min-height: 58px; gap: 10px; }
+  .cap > svg:first-child { width: 18px; height: 18px; }
+  .cap-name { font-size: 12px; }
+  .cap > svg:last-child { display: none; }
+  .home-workspace .composer .row .spacer { flex: 1; height: auto; margin: 0; }
+  .home-workspace .composer .row { gap: 6px; }
+  .home-workspace .composer .respond { order: 2; }
+  .home-workspace .composer .row > .chip { font-size: 0; width: 36px; height: 44px; padding: 8px; border-color: transparent; }
+  .home-workspace .composer .row > .chip svg { width: 18px; height: 18px; }
+  .home-workspace .composer .actions { order: 3; }
+  .home-workspace .composer .respond .chip { padding-inline: 8px; min-height: 38px; }
+  .act-head { gap: 8px; }
+  .act-head .faint { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* The transcript owns scrolling; controls occupy their own non-overlapping area. */
+.chatpage { height: calc(100dvh - var(--chrome)); }
+.chatpage .thread-col { height: 100%; min-height: 0; }
+.chatpage .thread-col .thread { flex: 1 1 0%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.chatpage .dock { position: relative; bottom: auto; flex: none; background: var(--bg); padding-top: 12px; }
+
+/* Chat stage: the Lumina film is a picture with its own place, never wallpaper under text. Wide screens put it left of the conversation column;
+   narrower ones put it above. Text always sits on the app's own dark surface, so its contrast never depends on the drawing.
+   --chrome is what the pane gives up (top bar, gaps, and the stage when it sits above), so the page never gains scroll height. */
+.chatpage { --stage-h: clamp(140px, 22dvh, 260px); --col-w: clamp(440px, 36vw, 560px); --activity-w: 0px; --topbar-h: 56px;
+  --chrome: calc(var(--gap) + 64px + var(--stage-h)); margin-top: var(--stage-h); }
+.chatpage:has(> .activity) { --activity-w: 400px; }
+.scene-art { position: absolute; inset: 0; }
+.scene-poster, .scene-video { object-fit: cover; object-position: 50% 58%; }
+/* Above the conversation (default): a banner under the top bar; the pane is shortened by its height so nothing scrolls the page. */
+.scene { top: var(--topbar-h); left: calc(var(--side-w, 0px) + var(--gap) + 8px); right: var(--gap); height: var(--stage-h); }
+.scene-art { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); }
+@media (max-width: 960px) {
+  .chatpage { --chrome: calc(10px + 64px + 96px + env(safe-area-inset-bottom) + var(--stage-h)); }
+  .scene { left: 0; right: 0; }
+}
+/* Beside the conversation: stage on the left, column on the right. Needs room for both. */
+@media (min-width: 1180px) {
+  .chatpage { --stage-h: 0px; }
+  .chatpage .thread-col { margin: 0 0 0 auto; max-width: var(--col-w); }
+  /* The whole 16:9 composition, centred in the space left of the column; its paper edges dissolve into the surface. */
+  .scene { top: 50%; bottom: auto; height: auto; aspect-ratio: 16 / 9; max-height: 96dvh; transform: translateY(-50%);
+    left: calc(var(--side-w, 268px) + var(--gap) + 8px); right: calc(var(--col-w) + var(--activity-w) + 48px); }
+  .scene-art { -webkit-mask-image: radial-gradient(ellipse 72% 72% at 50% 50%, #000 50%, transparent 100%); mask-image: radial-gradient(ellipse 72% 72% at 50% 50%, #000 50%, transparent 100%); }
+}
+/* With the activity panel open there is not room for both side by side below 1700px: the stage goes back above the column. */
+@media (min-width: 1180px) and (max-width: 1699px) {
+  .chatpage:has(> .activity) { --stage-h: clamp(140px, 22dvh, 260px); }
+  .chatpage:has(> .activity) .scene { top: var(--topbar-h); bottom: auto; height: var(--stage-h); aspect-ratio: auto; max-height: none; transform: none;
+    left: calc(var(--side-w, 268px) + var(--gap) + 8px); right: calc(var(--activity-w) + var(--gap)); }
+  .chatpage:has(> .activity) .scene-art { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); }
+}
+/* What the character is doing, in words. It names the same real state the drawing shows. */
+.stage-caption { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); margin: 0; padding: 6px 14px; border-radius: var(--r-pill); max-width: calc(100% - 24px);
+  background: rgba(17,18,17,.82); color: var(--ink); font-size: var(--fs-sm); line-height: 1.3; letter-spacing: 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.stage-caption[data-state='needs_user'] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+@media (max-width: 960px) { .stage-caption { bottom: 20px; } }
+
+/* Chat on phones and touch screens: the composer takes one compact block so the conversation keeps its room, and every control reaches 44px.
+   The empty chat keeps the roomier composer (its capability chips need their names). */
+@media (max-width: 640px) {
+  .chatpage .thread-col:not(.fresh) .composer { padding: 8px 10px 6px; }
+  .chatpage .thread-col:not(.fresh) .composer textarea { min-height: 44px; }
+  .chatpage .thread-col:not(.fresh) .composer .row { margin-top: 0; }
+  .chatpage .thread-col:not(.fresh) .composer .row .spacer { flex: 1; height: auto; margin: 0; }
+  .chatpage .thread-col:not(.fresh) .composer .row > .chip { font-size: 0; width: 44px; height: 44px; padding: 10px; border-color: transparent; }
+  .chatpage .thread-col:not(.fresh) .composer .row > .chip svg { width: 18px; height: 18px; }
+  .chatpage .thread-col:not(.fresh) .composer .respond { order: 2; margin-right: 0; }
+  .chatpage .thread-col:not(.fresh) .composer .actions { order: 3; }
+  .chatpage .hint.keys { display: none; }          /* keyboard instructions mean nothing on a touch screen; errors and notices still show */
+}
+@media (pointer: coarse) {
+  .chatpage .thread-head .btn, .chatpage .composer .respond .chip { min-height: 44px; }
+}
+/* A phone on its side has no height to spare: the conversation wins and the stage steps aside. */
+@media (max-height: 520px) and (max-width: 1179px) {
+  .chatpage { --stage-h: 0px; }
+  .scene { display: none; }
+}
+
+/* Quieter edges: the transcript dissolves at its top and bottom instead of being cut off; scrollbar and selection take the palette. */
+.chatpage .thread { -webkit-mask-image: linear-gradient(180deg, transparent, #000 20px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(180deg, transparent, #000 20px, #000 calc(100% - 14px), transparent);
+  scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.chatpage .thread::-webkit-scrollbar { width: 8px; }
+.chatpage .thread::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+.chatpage ::selection { background: var(--accent-line); color: var(--ink); }
+.scene-scrim { background: transparent; }
+.chatpage .hint { font-size: var(--fs-label, 12px); }
+.chatpage .thread:focus-visible { outline-offset: -2px; }   /* the edge fade would clip an outside ring */

@@ -12,7 +12,8 @@ describe('SceneBackground', () => {
     const { container } = render(<SceneBackground task={undefined} ready />);
     expect(container.querySelector('video')).toBeNull();
     expect(container.querySelector('img.scene-poster')?.getAttribute('src')).toMatch(/scenes\/idle\.jpg$/);
-    expect(container.querySelector('.scene')?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('.scene-art')?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('.stage-caption')?.textContent).toBe('Ready');
   });
   it('is decorative: it plays muted videos hidden from assistive technology', () => {
     settings.reducedMotion = false;
