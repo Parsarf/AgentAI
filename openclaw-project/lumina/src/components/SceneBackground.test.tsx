@@ -26,11 +26,13 @@ describe('SceneBackground', () => {
   });
   it('shows a still picture of the scene when motion is reduced', async () => {
     settings.reducedMotion = true;
-    const { container } = render(<SceneBackground task={undefined} ready />);
+    const slot = document.createElement('div'); document.body.appendChild(slot);
+    const { container } = render(<SceneBackground task={undefined} ready statusEl={slot} />);
     expect(container.querySelector('video')).toBeNull();
     expect(container.querySelector('img.scene-poster')?.getAttribute('src')).toMatch(/scenes\/idle\.jpg$/);
     expect(container.querySelector('.scene-art')?.getAttribute('aria-hidden')).toBe('true');
-    expect(container.querySelector('.stage-caption')?.textContent).toBe('Ready');
+    expect(slot.querySelector('.thread-status-line')?.textContent).toBe('Ready when you are.');
+    slot.remove();
   });
   it('is decorative: it plays muted videos hidden from assistive technology', () => {
     settings.reducedMotion = false;

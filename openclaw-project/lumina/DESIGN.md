@@ -1,25 +1,28 @@
 ---
-name: Lumina Obsidian
-description: Neutral graphite surfaces and warm ivory for the existing agent workspace.
+name: Lumina Parchment
+description: The drawing's own warm paper, brown ink and an amber signal taken from the creature's glow, for a private agent workspace.
 colors:
-  bg: "#111211"
-  bg-2: "#171817"
-  card: "#1c1d1c"
-  elevated: "#272827"
-  ink: "#eee9df"
-  ink-2: "#b5b2a8"
-  ink-3: "#929187"
-  line: "rgba(238,233,223,.10)"
-  line-2: "rgba(238,233,223,.20)"
-  accent: "#e5e2da"
-  accent-soft: "rgba(229,226,218,.07)"
-  accent-line: "rgba(229,226,218,.26)"
-  on-accent: "#1a1b19"
-  ok: "#b3bdb2"
-  warn: "#cfbd9e"
-  bad: "#d7a69e"
-  info: "#c2c5c3"
-  creative: "#c6c3be"
+  bg: "#f1e8d8"
+  bg-2: "#eee3d1"
+  card: "#f7f4ed"
+  elevated: "#eadecd"
+  ink: "#24190e"
+  ink-2: "#5c4c38"
+  ink-3: "#6f5f4a"
+  line: "rgba(62,45,31,.12)"
+  line-2: "rgba(62,45,31,.22)"
+  accent: "#3e2d1f"
+  accent-soft: "rgba(62,45,31,.07)"
+  accent-line: "rgba(62,45,31,.30)"
+  on-accent: "#f7efe2"
+  signal: "#f4a514"
+  signal-soft: "#f7d8a5"
+  signal-ink: "#8a5a00"
+  ok: "#55704f"
+  warn: "#98650f"
+  bad: "#a3392e"
+  info: "#56677a"
+  creative: "#7a6483"
 typography:
   display:
     fontFamily: "'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
@@ -58,7 +61,7 @@ components:
   button-primary-hover:
     backgroundColor: "{colors.ink}"
   button-secondary:
-    backgroundColor: "rgba(255,255,255,.04)"
+    backgroundColor: "rgba(62,45,31,.05)"
     textColor: "{colors.ink}"
     rounded: "{rounded.r-sm}"
     padding: "9px 16px"
@@ -73,7 +76,7 @@ components:
     rounded: "7px"
     padding: "8px 12px"
   chip-selected:
-    backgroundColor: "{colors.elevated}"
+    backgroundColor: "{colors.signal-soft}"
     textColor: "{colors.ink}"
   navigation-current:
     backgroundColor: "{colors.elevated}"
@@ -84,39 +87,43 @@ components:
     rounded: "{rounded.r-lg}"
 ---
 
-# Design System: Lumina Obsidian
+# Design System: Lumina Parchment
 
 ## Overview
 
-**Creative North Star: "A quiet working room"**
+**Creative North Star: "A page of the sketchbook"**
 
-Obsidian is a quiet working room: neutral near-black layers, warm ivory text, subtle boundaries and useful space. The existing agent workspace stays operational; hierarchy comes from type, spacing and surface tone.
+Lumina lives inside its own drawing. The whole workspace is the warm paper the mascot is drawn on: ivory parchment surfaces, brown ink, one amber signal lifted from the creature's glow. The character stands on the page itself, bottom left of the conversation, with no frame around it; the film's paper is multiplied onto the page so there is no edge. The assistant speaks in a serif; the interface stays in Inter.
 
-The composer leads the starting surface. Navigation stays integrated into the edge, and actual task state supplies the detail. This records the approved visual refinement of the existing app; audience and positioning are unspecified.
+The composer is a light card at the bottom right. Navigation sits on the same paper with a fine rule. Actual workspace and task state supply the detail: the character's scene, a quiet status line when nothing is running, and the orb's label while work runs. This world was pinned by the owner's reference image (it replaces the earlier Obsidian dark world, which stays available as `data-theme="obsidian"` on `<html>`).
 
 **Key Characteristics:**
-- Neutral surfaces and ivory actions.
-- Readable secondary text and restrained metadata.
-- Intrinsic message heights with separate transcript and composer areas.
-- State-driven orb motion with reduced-motion support.
+- One paper, one ink: no dark panels, no glass.
+- Amber is the only chromatic voice (current page, status dot, selected mode, the sparkle mark).
+- A serif for the assistant's words, a sans for controls.
+- State-driven scene and orb with reduced-motion support.
 
 ## Colors
 
 ### Primary
 
-Warm ivory action (`accent`) pairs with dark action text (`on-accent`). The softer accent tokens support selection and focus boundaries.
+Deep brown (`accent`) fills primary actions and carries links; its text is warm ivory (`on-accent`). The softer accent tokens give selection and focus boundaries.
+
+### Signal
+
+Amber (`signal`) marks the current page, the status dot and the sparkle mark; `signal-soft` fills a selected mode chip; `signal-ink` is the amber dark enough for small text on paper.
 
 ### Neutral
 
-`bg`, `bg-2`, `card` and `elevated` progress from canvas to raised controls. `ink` carries reading text; `ink-2` carries secondary copy; `ink-3` carries hints and metadata. `line` and `line-2` separate surfaces without heavy framing.
+`bg`, `bg-2`, `card` and `elevated` run from page paper to raised cards. `ink` carries reading text, `ink-2` secondary copy, `ink-3` hints (all at or above 4.5:1 on `bg`). `line` and `line-2` separate surfaces with brown hairlines.
 
-Subdued `ok`, `warn` and `bad` accompany status labels. `info`, `creative` and the chart aliases distinguish data with legends and accessible tables. Legacy capability and accent aliases remain implementation compatibility names, not separate identity colours.
+Muted `ok`, `warn` and `bad` accompany status labels; `info`, `creative` and the chart aliases distinguish data with legends and accessible tables.
 
-**The Neutral Action Rule.** Use ivory for primary actions and focus. Reserve subdued semantic colours for labelled status and data, never capability decoration.
+**The One Signal Rule.** Amber is used for place and state, never for decoration or as a button fill; primary actions are brown.
 
 ## Typography
 
-Inter Variable is shared by display, body and controls, with the platform sans-serif stack as fallback. The frontmatter records the desktop greeting, page heading, body and toolbar label roles. The Home greeting becomes two lines on narrow screens (30px, weight 450, line-height 1.3); its desktop size is intentionally modest. Home composer text uses 17px/1.6 on desktop and 16px on narrow screens. Conversation prose uses 15.5px/1.65. Section headings use 15px/500, capability names 13px/500, and hints 11px/1.6. Keep metadata subordinate without using colour alone to convey state.
+Inter Variable carries controls, navigation and labels. The assistant's replies, the empty-chat greeting and recent-chat titles are set in a system serif (`--serif`: Charter, Iowan Old Style, Georgia), no web font needed; replies are 17px on a 1.6 line. The frontmatter records the desktop greeting, page heading, body and toolbar label roles. The Home greeting becomes two lines on narrow screens (30px, weight 450, line-height 1.3); its desktop size is intentionally modest. Home composer text uses 17px/1.6 on desktop and 16px on narrow screens. Conversation prose uses 15.5px/1.65. Section headings use 15px/500, capability names 13px/500, and hints 11px/1.6. Keep metadata subordinate without using colour alone to convey state.
 
 **Size steps.** Beside the four documented roles, the code uses nine named steps, now tokens in `tokens.css`: `--fs-2xs` 10, `--fs-xs` 11, `--fs-label` 12, `--fs-sm` 13, `--fs-md` 15, `--fs-input` 16 (inputs never go below it on touch), `--fs-lead` 17, `--fs-lg` 18, `--fs-xl` 20, `--fs-2xl` 30. Reach for a step before writing a literal size.
 

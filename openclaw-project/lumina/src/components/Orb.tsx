@@ -18,7 +18,7 @@ function register(id: string) {
  * Lumina's "thinking" indicator: the thinking-orbs drawing engine, driven by one shared 15 fps clock (lib/frameClock.ts) instead of a 60 fps loop
  * per orb. Drawn only while on screen and never while the page scrolls or you type; a still frame when Lumina's Reduce motion setting is on
  * (that setting starts from the system's and is the one switch for the planet and the orbs alike, so turning animations on in Lumina turns
- * them on everywhere); at most MAX_ANIMATED_ORBS animate at once. Lumina is always dark, so the light-ink palette is fixed.
+ * them on everywhere); at most MAX_ANIMATED_ORBS animate at once. The palette follows the theme: dark ink on parchment.
  * Decorative by default: put the meaning in the text beside it, or pass `label` to make it an image with a name.
  */
 export default function Orb({ state = 'breathing', size = 20, label, still = false }: { state?: OrbState; size?: 20 | 48 | 64; label?: string; still?: boolean }) {
@@ -70,7 +70,7 @@ export default function Orb({ state = 'breathing', size = 20, label, still = fal
       const scale = dpr * size / presetSize;
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
       ctx.globalAlpha = previous ? blend : 1;
-      draw(ctx, presetSize, motionTime.current * speed, true, opts);
+      draw(ctx, presetSize, motionTime.current * speed, document.documentElement.dataset.theme === 'obsidian', opts);   // dark ink on the parchment, light ink on the old dark world
       ctx.globalAlpha = 1;
       if (fraction === 1) previous = null;
     };

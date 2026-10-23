@@ -64,14 +64,14 @@ describe('clip order', () => {
 
 describe('captionFor', () => {
   it('names the real state in plain words', () => {
-    expect(captionFor('sleeping', 'asleep', undefined, [])).toBe('Asleep');
-    expect(captionFor('idle', 'awake', undefined, [])).toBe('Ready');
+    expect(captionFor('sleeping', 'asleep', undefined, [])).toBe('Asleep. Send a message to wake Lumina.');
+    expect(captionFor('idle', 'awake', undefined, [])).toBe('Ready when you are.');
     expect(captionFor('idle', 'asleep', { state: 'waiting' }, [])).toBe('Waking up');
     expect(captionFor('idle', 'waking', { state: 'waiting' }, [])).toBe('Waking up');
     expect(captionFor('waiting', 'awake', { state: 'waiting', paused: true }, [])).toBe('Paused');
     expect(captionFor('waiting', 'awake', { state: 'waiting' }, [])).toBe('Waiting its turn');
     expect(captionFor('blocked', 'awake', { state: 'uncertain' }, [])).toBe('Reconnecting');
-    expect(captionFor('stopped', 'awake', { state: 'cancelled' }, [])).toBe('Stopped');
+    expect(captionFor('stopped', 'awake', { state: 'cancelled' }, [])).toBe('Stopped. Send a message to continue.');
   });
   it('tells an answer from an approval', () => {
     expect(captionFor('needs_user', 'awake', running, [{ kind: 'progress', payload: { step: 'asking' } }])).toBe('Needs your answer');

@@ -32,7 +32,7 @@ Lumina is a private AI assistant each customer owns: a chat where they ask for w
 
 ## Brand Commitments
 - Name: Lumina.
-- Existing visual and motion commitments (Obsidian palette, the pencil-on-parchment mascot film) are documented in `DESIGN.md` and the film package; they were not confirmed as binding in this interview.
+- The visual world is the mascot's own: warm parchment, brown ink, an amber signal from the creature's glow, a serif for the assistant's voice. The owner pinned it with a reference image (`image.png`, 23 Oct 2026); `DESIGN.md` records it. The earlier Obsidian dark world remains as `data-theme="obsidian"`.
 
 ## Evidence on Hand
 - Real product behaviour and constraints: `platform/UI_CONTRACT.md`, `platform/CHAT.md`, `lumina/AGENTS.md`.

@@ -18,6 +18,7 @@ import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 import Orb from '../components/Orb';
 import SceneBackground from '../components/SceneBackground';
+import { Spark } from '../components/Icons';
 import { Emojified } from '../components/Emoji';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
@@ -32,6 +33,7 @@ export default function Chat() {
   const stick = useRef(true); const [newBelow, setNewBelow] = useState(false);
   const onTranscriptScroll = (el: HTMLDivElement) => { stick.current = el.scrollHeight - el.clientHeight - el.scrollTop < 260; if (stick.current) setNewBelow(false); };
   const bottom = useRef<HTMLDivElement>(null); const lastCount = useRef(0);
+  const [statusEl, setStatusEl] = useState<HTMLDivElement | null>(null);
 
   const loadList = refreshChats;
   const loadThread = useCallback(async () => {
@@ -103,7 +105,7 @@ export default function Chat() {
 
   return (
     <div className="chatpage">
-      <SceneBackground task={latest} ready={loaded || !id} />
+      <SceneBackground task={latest} ready={loaded || !id} statusEl={statusEl} />
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
         {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{latest && isActive(latest.state) && <button className="btn small danger" onClick={() => cancel(latest.id)}>Stop</button>}{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</header>}
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
@@ -112,7 +114,8 @@ export default function Chat() {
           {id && !loaded && <p className="muted">Loading…</p>}
           {msgs.map(m => (
             <div key={m.id} className="turn">
-              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} layout={layoutOf(m.id)} cardsStored={blocks.some(b => b.anchor_message_id === m.id && b.kind !== 'display')} /> : <Emojified text={m.content} />}</div>
+              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' && <span className="agent-mark" aria-hidden><Spark /></span>}{m.provenance === 'agent' ? <AgentResponse content={m.content} layout={layoutOf(m.id)} cardsStored={blocks.some(b => b.anchor_message_id === m.id && b.kind !== 'display')} /> : <Emojified text={m.content} />}</div>
+              {m.provenance !== 'agent' && Number.isFinite(Date.parse(m.created_at)) && <time className="stamp" dateTime={m.created_at}>{new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>}
               {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <AgentThinking task={byRequest.get(m.request_id)!} />}
               {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && isActive(byRequest.get(m.request_id)!) && <ChatQuestion taskId={m.request_id} active onChanged={reload} />}
               {m.provenance === 'agent' && m.request_id && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
@@ -121,6 +124,7 @@ export default function Chat() {
             </div>))}
           {drafting && !tasks.some(t => isActive(t)) && <div className="agent-thinking" role="status" data-orb-state="weaving"><Orb state="weaving" size={48} /><span>Planning…</span></div>}
           {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
+          <div className="thread-status" ref={setStatusEl} />
           <div ref={bottom} />
         </div>
         </ChatActionsContext.Provider>

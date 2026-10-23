@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../lib/api';
 import { isActive } from '../lib/tasks';
 import { useTaskEvents } from '../lib/useTaskEvents';
@@ -54,7 +55,7 @@ function useSceneEvent(task: ThreadTask | undefined, events: { kind: string; pay
  * latest task, its tool calls) and never by a timer. A scene finishes its current loop, plays its exit, then the next scene's entrance.
  * Two stacked videos hand over to each other so the next clip is already loaded when the current one ends.
  */
-export default function SceneBackground({ task, ready }: { task: ThreadTask | undefined; ready: boolean }) {
+export default function SceneBackground({ task, ready, statusEl }: { task: ThreadTask | undefined; ready: boolean; statusEl?: HTMLElement | null }) {
   const { reducedMotion } = useSettings();
   const [paused, setPaused] = useState(() => { try { return localStorage.getItem('lumina.filmPaused') === '1'; } catch { return false; } });
   const togglePause = () => setPaused(p => { const next = !p; try { localStorage.setItem('lumina.filmPaused', next ? '1' : '0'); } catch { /* private mode: it just resets next visit */ } return next; });
@@ -110,6 +111,7 @@ export default function SceneBackground({ task, ready }: { task: ThreadTask | un
 
   const still = reducedMotion || paused || failed;
   return (
+    <>
     <div className="scene" data-scene={shown} data-want={want}>
       <div className="scene-art" aria-hidden>
         <img className="scene-poster" src={posterUrl(still ? want : shown)} alt="" />
@@ -118,9 +120,11 @@ export default function SceneBackground({ task, ready }: { task: ThreadTask | un
             style={{ opacity: i === frontIdx ? 1 : 0 }} onEnded={() => { if (i === front.current) advance(); }} onError={() => setFailed(true)} />))}
         <div className="scene-scrim" />
       </div>
-      <p className="stage-caption" data-state={want}>{captionFor(want, presence, task, taskEvents)}</p>
-      {!reducedMotion && <button type="button" className="stage-pause" aria-pressed={paused} onClick={togglePause}>{paused ? 'Play animation' : 'Pause animation'}</button>}
-      {/* The orb's label announces what a running task does; this covers the moments with no task: falling asleep, waking, being stopped. */}
-      <span className="sr" role="status" aria-live="polite">{active ? '' : captionFor(want, presence, task, taskEvents)}</span>
-    </div>);
+    </div>
+    {!reducedMotion && <button type="button" className="stage-pause" aria-pressed={paused} onClick={togglePause}>{paused ? 'Play animation' : 'Pause animation'}</button>}
+    {/* With nothing running, say what Lumina is doing as a line in the conversation; running work is told by the orb's own label.
+        The conversation is a polite live region, so falling asleep, waking or being stopped is announced there. */}
+    {statusEl && !active && createPortal(<p className="thread-status-line" data-state={want}><span className="dot" aria-hidden />{captionFor(want, presence, task, taskEvents)}</p>, statusEl)}
+  </>);
+
 }

@@ -164,42 +164,47 @@ input, textarea { caret-color: var(--ink); }
 .chatpage .thread-col .thread { flex: 1 1 0%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .chatpage .dock { position: relative; bottom: auto; flex: none; background: var(--bg); padding-top: 12px; }
 
-/* Chat stage: the Lumina film is a picture with its own place, never wallpaper under text. Wide screens put it left of the conversation column;
-   narrower ones put it above. Text always sits on the app's own dark surface, so its contrast never depends on the drawing.
-   --chrome is what the pane gives up (top bar, gaps, and the stage when it sits above), so the page never gains scroll height. */
-.chatpage { --stage-h: clamp(140px, 22dvh, 260px); --col-w: clamp(440px, 36vw, 560px); --activity-w: 0px; --topbar-h: 56px;
+/* Chat stage: the Lumina film lives on the page's own paper, never on a panel. Wide screens: the character stands at the bottom left and the
+   conversation takes the right two thirds; narrower ones put a banner above the conversation. The film's paper is colour-matched to --bg, so
+   only soft edges are needed. --chrome is what the pane gives up (top bar, gaps, and the stage when it sits above), so the page never scrolls. */
+.chatpage { --stage-h: clamp(140px, 22dvh, 260px); --activity-w: 0px; --topbar-h: 56px;
+  --main-w: calc(100vw - var(--side-w, 268px) - var(--gap) * 2 - 16px - var(--activity-w));
   --chrome: calc(var(--gap) + 64px + var(--stage-h)); margin-top: var(--stage-h); }
 .chatpage:has(> .activity) { --activity-w: 400px; }
 .scene-art { position: absolute; inset: 0; }
 .scene-poster, .scene-video { object-fit: cover; object-position: 50% 58%; }
-/* Above the conversation (default): a banner under the top bar; the pane is shortened by its height so nothing scrolls the page. */
+/* Above the conversation (default): a banner under the top bar. */
 .scene { top: var(--topbar-h); left: calc(var(--side-w, 0px) + var(--gap) + 8px); right: var(--gap); height: var(--stage-h); }
-.scene-art { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); }
+.scene-art { -webkit-mask-image: linear-gradient(180deg, black calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, black calc(100% - 56px), transparent); }
 @media (max-width: 960px) {
   .chatpage { --chrome: calc(10px + 64px + 96px + env(safe-area-inset-bottom) + var(--stage-h)); }
   .scene { left: 0; right: 0; }
 }
-/* Beside the conversation: stage on the left, column on the right. Needs room for both. */
+/* Beside the conversation. The frame is wider than its box and shifted left so the character stands in the left third and the ground runs under
+   the sidebar edge; the box fades toward its top and right. */
 @media (min-width: 1180px) {
   .chatpage { --stage-h: 0px; }
-  .chatpage .thread-col { margin: 0 0 0 auto; max-width: var(--col-w); }
-  /* The whole 16:9 composition, centred in the space left of the column; its paper edges dissolve into the surface. */
-  .scene { top: 50%; bottom: auto; height: auto; aspect-ratio: 16 / 9; max-height: 96dvh; transform: translateY(-50%);
-    left: calc(var(--side-w, 268px) + var(--gap) + 8px); right: calc(var(--col-w) + var(--activity-w) + 48px); }
-  .scene-art { -webkit-mask-image: radial-gradient(ellipse 72% 72% at 50% 50%, #000 50%, transparent 100%); mask-image: radial-gradient(ellipse 72% 72% at 50% 50%, #000 50%, transparent 100%); }
+  .chatpage .thread-col { margin: 0 0 0 auto; width: clamp(520px, 69%, 1040px); max-width: none; }
+  .scene { top: auto; bottom: 0; right: auto; height: auto; aspect-ratio: 5 / 4; overflow: hidden;
+    left: calc(var(--side-w, 268px) + var(--gap) + 8px); width: calc(var(--main-w) * .5);
+    -webkit-mask-image: radial-gradient(ellipse 96% 96% at 18% 100%, black 52%, transparent 100%); mask-image: radial-gradient(ellipse 96% 96% at 18% 100%, black 52%, transparent 100%); }
+  .scene-art { inset: auto auto 0 -41%; width: 142%; height: auto; aspect-ratio: 16 / 9; -webkit-mask-image: none; mask-image: none; }
+  .scene-poster, .scene-video { object-fit: contain; object-position: 50% 100%; }
 }
-/* With the activity panel open there is not room for both side by side below 1700px: the stage goes back above the column. */
+/* With the activity panel open there is not room for both side by side below 1700px: the stage goes back above the conversation. */
 @media (min-width: 1180px) and (max-width: 1699px) {
   .chatpage:has(> .activity) { --stage-h: clamp(140px, 22dvh, 260px); }
-  .chatpage:has(> .activity) .scene { top: var(--topbar-h); bottom: auto; height: var(--stage-h); aspect-ratio: auto; max-height: none; transform: none;
+  .chatpage:has(> .activity) .thread-col { width: auto; margin: 0; }
+  .chatpage:has(> .activity) .scene { top: var(--topbar-h); bottom: auto; height: var(--stage-h); aspect-ratio: auto; overflow: visible; width: auto; -webkit-mask-image: none; mask-image: none;
     left: calc(var(--side-w, 268px) + var(--gap) + 8px); right: calc(var(--activity-w) + var(--gap)); }
-  .chatpage:has(> .activity) .scene-art { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent); }
+  .chatpage:has(> .activity) .scene-art { inset: 0; width: auto; height: auto; aspect-ratio: auto; -webkit-mask-image: linear-gradient(180deg, black calc(100% - 56px), transparent); mask-image: linear-gradient(180deg, black calc(100% - 56px), transparent); }
+  .chatpage:has(> .activity) .scene-poster, .chatpage:has(> .activity) .scene-video { object-fit: cover; object-position: 50% 58%; }
 }
-/* What the character is doing, in words. It names the same real state the drawing shows. */
-.stage-caption { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); margin: 0; padding: 6px 14px; border-radius: var(--r-pill); max-width: calc(100% - 24px);
-  background: rgba(17,18,17,.82); color: var(--ink); font-size: var(--fs-sm); line-height: 1.3; letter-spacing: 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-.stage-caption[data-state='needs_user'] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
-@media (max-width: 960px) { .stage-caption { bottom: 20px; } }
+/* What the assistant is doing when nothing is running, as a quiet line in the conversation. Running work shows in the orb's own label. */
+.thread-status:empty { display: none; }
+.thread-status-line { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--ink-2); font-size: var(--fs-md); line-height: 1.4; }
+.thread-status-line .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--signal); flex: none; }
+.thread-status-line[data-state='sleeping'] .dot, .thread-status-line[data-state='stopped'] .dot { background: var(--ink-3); }
 
 /* Chat on phones and touch screens: the composer takes one compact block so the conversation keeps its room, and every control reaches 44px.
    The empty chat keeps the roomier composer (its capability chips need their names). */
@@ -224,7 +229,7 @@ input, textarea { caret-color: var(--ink); }
 }
 
 /* Quieter edges: the transcript dissolves at its top and bottom instead of being cut off; scrollbar and selection take the palette. */
-.chatpage .thread { -webkit-mask-image: linear-gradient(180deg, transparent, #000 20px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(180deg, transparent, #000 20px, #000 calc(100% - 14px), transparent);
+.chatpage .thread { -webkit-mask-image: linear-gradient(180deg, transparent, black 20px, black calc(100% - 14px), transparent); mask-image: linear-gradient(180deg, transparent, black 20px, black calc(100% - 14px), transparent);
   scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 .chatpage .thread::-webkit-scrollbar { width: 8px; }
 .chatpage .thread::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
@@ -233,10 +238,40 @@ input, textarea { caret-color: var(--ink); }
 .chatpage .hint { font-size: var(--fs-label, 12px); }
 .chatpage .thread:focus-visible { outline-offset: -2px; }   /* the edge fade would clip an outside ring */
 
-/* Pausing the film is its own control: the global motion toggle also stills the orbs and the planet. */
-.stage-pause { position: absolute; top: 8px; right: 8px; z-index: 1; pointer-events: auto; padding: 0 12px; min-height: 32px; border: 1px solid var(--line-2); border-radius: var(--r-pill);
-  background: rgba(17,18,17,.72); color: var(--ink-2); font: inherit; font-size: var(--fs-label); cursor: pointer; }
+/* Pausing the film is its own control: the global motion toggle also stills the orbs and the planet. It sits outside the film so the blend never touches it. */
+.stage-pause { position: fixed; z-index: 1; top: calc(var(--topbar-h) + 8px); right: calc(var(--gap) + 8px); display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; min-height: 36px; border: 1px solid var(--line-2); border-radius: var(--r-pill);
+  background: var(--bg-2); color: var(--ink-2); font: inherit; font-size: var(--fs-label); cursor: pointer; }
 .stage-pause:hover { color: var(--ink); border-color: var(--accent-line); }
+.stage-pause::before { content: ''; width: 9px; height: 11px; border-left: 3px solid currentColor; border-right: 3px solid currentColor; box-sizing: border-box; }
+.stage-pause[aria-pressed='true']::before { border: 0; width: 10px; height: 12px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+@media (max-width: 960px) { .stage-pause { right: 8px; } }
 @media (pointer: coarse) { .stage-pause { min-height: 44px; } }
-@media (min-width: 1180px) { .chatpage { --col-w: clamp(420px, 32vw, 520px); } }
+@media (min-width: 1180px) { .stage-pause { top: auto; right: auto; bottom: 22px; left: calc(var(--side-w, 268px) + var(--gap) + 8px + 24px); } }
+@media (min-width: 1180px) and (max-width: 1699px) { .chatpage:has(> .activity) .stage-pause { top: calc(var(--topbar-h) + 8px); bottom: auto; left: auto; right: calc(400px + var(--gap) + 8px); } }
+
+/* The film's paper is pushed to white and multiplied onto the page, so the drawing takes the page's own colour whatever it is. */
+.shell:has(.chatpage) { background: var(--bg); }
+.scene { mix-blend-mode: multiply; }
+:root[data-theme='obsidian'] .scene { mix-blend-mode: normal; }
+
+/* Parchment voice: the assistant speaks in a serif; the interface stays in Inter. The sparkle mark, amber signal and tan selection come from the drawing. */
+.side { background: var(--bg); }
+@media (max-width: 960px) { .side, .side.collapsed { background: var(--bg-2); } }
+.side .nav a { position: relative; }
+.nav a[aria-current='page'] { background: var(--elevated); }
+.nav a[aria-current='page']::before { content: ''; position: absolute; left: -16px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--signal); }
+.side.collapsed .nav a[aria-current='page']::before { left: -8px; }
+@media (max-width: 960px) { .nav a[aria-current='page']::before { display: none; } }
+.side .chatitem, .side .chatlist .chatitem span { font-family: var(--serif); font-size: var(--fs-sm); }
+.chatpage .bubble.agent { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 16px; align-items: start; }
+.chatpage .bubble.agent .agent-response { font-family: var(--serif); font-size: var(--fs-lead); line-height: 1.6; color: var(--ink); }
+.agent-mark { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--card); border: 1px solid var(--line-2); color: var(--signal-deep); }
+.agent-mark svg { width: 22px; height: 22px; }
+.chatpage .bubble.you { background: var(--elevated); color: var(--ink); }
+.chatpage .stamp { justify-self: end; margin: -6px 6px 0 0; font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.greeting h1 { font-family: var(--serif); font-weight: 500; }
+.composer { background: var(--card); border-color: var(--line); box-shadow: var(--shadow); }
+.composer .respond .chip[aria-pressed='true'] { background: var(--signal-soft); color: var(--ink); }
+.send { background: var(--accent); color: var(--on-accent); }
+.agent-thinking { color: var(--ink-2); }
 
