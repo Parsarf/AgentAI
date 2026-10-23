@@ -9,11 +9,10 @@ backend.getlumina.pro {
             header_up -Forwarded
         }
     }
-    # Chat background videos: Caddy serves them straight from the installed UI bundle (byte ranges for Safari, no load on the web app's single worker).
+    # Chat background videos: Caddy serves them from their own public folder, /var/www/lumina-scenes (byte ranges for Safari, no load on the web app's single worker). The state directory holding the database stays private, so Caddy cannot read the UI bundle; bin/deploy-lumina.py refreshes this folder on every frontend deploy.
     @scenes path_regexp scenes ^/app/scenes/[a-z_-]+\.(mp4|jpg)$
     handle @scenes {
-        uri strip_prefix /app
-        root * /var/lib/agentai-platform/ui
+        root * /var/www/lumina-scenes
         header Cache-Control "public, max-age=86400"
         file_server
     }
