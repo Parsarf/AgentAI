@@ -473,3 +473,8 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .live-tap { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid var(--neon); pointer-events: none; animation: live-tap .6s ease-out forwards; }
 @keyframes live-tap { from { opacity: .95; transform: scale(.4); } to { opacity: 0; transform: scale(1.5); } }
 @media (prefers-reduced-motion: reduce) { .live-tap { animation: none; opacity: .8; transform: none; } }
+
+/* Chat background: the Lumina film, behind everything. The scrim keeps the light-on-dark interface readable over the ivory drawing. */
+.scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #1a1b19; pointer-events: none; }
+.scene-poster, .scene-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scene-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(17,18,17,.38), rgba(17,18,17,.58) 60%, rgba(17,18,17,.78)); }

@@ -39,6 +39,30 @@ def features(request):
 
 
 @endpoint(['GET'])
+def presence(request):
+    """Whether the assistant's workspace is asleep, waking or awake. Read-only; drives the chat scene.
+
+    `waking` is a stopped workspace with a request waiting for it: the lifecycle worker is about to start it.
+    """
+    denied = customer(request)
+    if denied:
+        return denied
+    with connection.cursor() as c:
+        c.execute('SELECT observed_state FROM lifecycle_cells WHERE account_id=%s', [request.account_id])
+        row = c.fetchone()
+        c.execute("SELECT 1 FROM customer_requests WHERE account_id=%s AND state='waiting' AND paused=0 LIMIT 1", [request.account_id])
+        queued = c.fetchone() is not None
+    observed = row[0] if row else 'absent'
+    if observed == 'running':
+        state = 'awake'
+    elif observed == 'stopped':
+        state = 'waking' if queued else 'asleep'
+    else:
+        state = 'unknown'
+    return JsonResponse({'state': state})
+
+
+@endpoint(['GET'])
 def app(request):
     """Signed-in bootstrap: who, what is available, where the account stands. One round trip for any shell."""
     denied = customer(request)

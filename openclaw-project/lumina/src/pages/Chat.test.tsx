@@ -5,6 +5,7 @@ import Chat from './Chat';
 const data = { app: { user: { email: 'test@example.com' }, limits: { max_message_chars: 16000 }, features: { execution: true } }, chats: [], refreshChats: vi.fn(async () => {}), refresh: vi.fn(async () => {}) };
 vi.mock('../state/data', () => ({ useData: () => data }));
 vi.mock('../components/Orb', () => ({ default: () => <span data-testid="thinking-orb" /> }));
+vi.mock('../components/SceneBackground', () => ({ default: () => null }));   // the film has its own tests; these count fetches
 const Switch = () => { const nav = useNavigate(); return <><button onClick={() => nav('/chat/a')}>Open A</button><button onClick={() => nav('/chat/b')}>Open B</button><Chat /></>; };
 const msg = (id: number, content: string, provenance = 'agent') => ({ id, content, provenance, request_id: null, created_at: '' });
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });

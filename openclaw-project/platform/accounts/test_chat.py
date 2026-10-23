@@ -227,6 +227,21 @@ class ArchiveChecks(ChatHTTPChecks):
 
 
 class UiContractChecks(ChatHTTPChecks):
+    def test_presence_follows_the_workspace(self):
+        anon = self.new_client()
+        self.assertEqual(anon.get('/v1/assistant/presence', secure=True).status_code, 401)
+        mine, other = self.clients
+        state = lambda client: client.get('/v1/assistant/presence', secure=True).json()['state']
+        self.assertEqual(state(mine), 'unknown')                                  # no workspace bound yet
+        with connection.cursor() as c:
+            c.execute("INSERT INTO lifecycle_cells(account_id,deployment_id,tenant_ref,profile_revision,observed_state) VALUES (%s,%s,'t-presence','p','stopped')",
+                      [self.account_ids[0], 'deployment-' + self.account_ids[0]])
+        self.assertEqual(state(mine), 'asleep')
+        with connection.cursor() as c:
+            c.execute("UPDATE lifecycle_cells SET observed_state='running' WHERE account_id=%s", [self.account_ids[0]])
+        self.assertEqual(state(mine), 'awake')
+        self.assertEqual(state(other), 'unknown')                                 # another account's workspace is never reported
+
     def test_csrf_bootstrap_and_shell(self):
         import tempfile, os
         from django.test import override_settings

@@ -15,6 +15,7 @@ import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 import Orb from '../components/Orb';
+import SceneBackground from '../components/SceneBackground';
 import { Emojified } from '../components/Emoji';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
@@ -88,6 +89,7 @@ export default function Chat() {
 
   return (
     <div className="chatpage">
+      <SceneBackground task={latest} ready={loaded || !id} />
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
         {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{latest && isActive(latest.state) && <button className="btn small danger" onClick={() => cancel(latest.id)}>Stop</button>}{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</header>}
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
