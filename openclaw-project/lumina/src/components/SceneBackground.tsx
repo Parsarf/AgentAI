@@ -56,6 +56,8 @@ function useSceneEvent(task: ThreadTask | undefined, events: { kind: string; pay
  */
 export default function SceneBackground({ task, ready }: { task: ThreadTask | undefined; ready: boolean }) {
   const { reducedMotion } = useSettings();
+  const [paused, setPaused] = useState(() => { try { return localStorage.getItem('lumina.filmPaused') === '1'; } catch { return false; } });
+  const togglePause = () => setPaused(p => { const next = !p; try { localStorage.setItem('lumina.filmPaused', next ? '1' : '0'); } catch { /* private mode: it just resets next visit */ } return next; });
   const active = !!task && isActive(task);
   const { presence, known } = usePresence(task);
   const { taskId, events } = useTaskEvents(task?.id, active);
@@ -98,14 +100,15 @@ export default function SceneBackground({ task, ready }: { task: ThreadTask | un
   }, [clearEvent, preload]);
 
   useEffect(() => {                                              // open on the right scene once the first state is known
-    if (reducedMotion || failed || head.current || !ready || !known) return;
+    if (reducedMotion || paused || failed || head.current || !ready || !known) return;
     const v = videos[0].current; if (!v) return;
+    front.current = 0; setFrontIdx(0);
     const clip = firstClip(wanted.current); head.current = clip; setShown(clip.scene);
     setSource(v, clip); v.play().then(preload).catch(() => setFailed(true));
-  }, [reducedMotion, failed, preload, ready, known]);                                                        // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (reducedMotion) { head.current = null; setShown(want); } else preload(); }, [want, event, reducedMotion]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reducedMotion, paused, failed, preload, ready, known]);                                                        // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (reducedMotion || paused) { head.current = null; setShown(want); } else preload(); }, [want, event, reducedMotion, paused]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const still = reducedMotion || failed;
+  const still = reducedMotion || paused || failed;
   return (
     <div className="scene" data-scene={shown} data-want={want}>
       <div className="scene-art" aria-hidden>
@@ -116,5 +119,8 @@ export default function SceneBackground({ task, ready }: { task: ThreadTask | un
         <div className="scene-scrim" />
       </div>
       <p className="stage-caption" data-state={want}>{captionFor(want, presence, task, taskEvents)}</p>
+      {!reducedMotion && <button type="button" className="stage-pause" aria-pressed={paused} onClick={togglePause}>{paused ? 'Play animation' : 'Pause animation'}</button>}
+      {/* The orb's label announces what a running task does; this covers the moments with no task: falling asleep, waking, being stopped. */}
+      <span className="sr" role="status" aria-live="polite">{active ? '' : captionFor(want, presence, task, taskEvents)}</span>
     </div>);
 }

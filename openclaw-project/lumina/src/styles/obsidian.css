@@ -232,3 +232,11 @@ input, textarea { caret-color: var(--ink); }
 .scene-scrim { background: transparent; }
 .chatpage .hint { font-size: var(--fs-label, 12px); }
 .chatpage .thread:focus-visible { outline-offset: -2px; }   /* the edge fade would clip an outside ring */
+
+/* Pausing the film is its own control: the global motion toggle also stills the orbs and the planet. */
+.stage-pause { position: absolute; top: 8px; right: 8px; z-index: 1; pointer-events: auto; padding: 0 12px; min-height: 32px; border: 1px solid var(--line-2); border-radius: var(--r-pill);
+  background: rgba(17,18,17,.72); color: var(--ink-2); font: inherit; font-size: var(--fs-label); cursor: pointer; }
+.stage-pause:hover { color: var(--ink); border-color: var(--accent-line); }
+@media (pointer: coarse) { .stage-pause { min-height: 44px; } }
+@media (min-width: 1180px) { .chatpage { --col-w: clamp(420px, 32vw, 520px); } }
+
