@@ -6,8 +6,9 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { canonical } from './lib/path';
 import { DataProvider } from './state/data';
-import { SettingsProvider } from './state/settings';
+import { applyTheme, SettingsProvider, storedTheme } from './state/settings';
 
+applyTheme(storedTheme());
 const fix = canonical(location.pathname, location.search, location.hash);
 if (fix) history.replaceState(null, '', fix);
 

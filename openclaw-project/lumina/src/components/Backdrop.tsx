@@ -16,8 +16,8 @@ const lowPowerDevice = () => (navigator as any).deviceMemory ? (navigator as any
 
 /** Decorative only: never blocks the interface. Static fallback when WebGL fails, is unavailable, or motion is reduced. */
 export default function Backdrop() {
-  const { reducedMotion } = useSettings();
-  const dark = document.documentElement.dataset.theme === 'obsidian';
+  const { reducedMotion, theme } = useSettings();
+  const dark = theme === 'obsidian';
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const idle = (window as any).requestIdleCallback || ((fn: () => void) => setTimeout(fn, 400));

@@ -252,7 +252,9 @@ input, textarea { caret-color: var(--ink); }
 /* The film's paper is pushed to white and multiplied onto the page, so the drawing takes the page's own colour whatever it is. */
 .shell:has(.chatpage) { background: var(--bg); }
 .scene { mix-blend-mode: multiply; }
-:root[data-theme='obsidian'] .scene { mix-blend-mode: normal; }
+/* The film is drawn on white paper: on the dark world it is inverted (ink becomes chalk, paper becomes black) and screened onto the page. */
+:root[data-theme='obsidian'] .scene { mix-blend-mode: screen; }
+:root[data-theme='obsidian'] .scene-art { filter: invert(1) hue-rotate(180deg) brightness(.9); }
 
 /* Parchment voice: the assistant speaks in a serif; the interface stays in Inter. The sparkle mark, amber signal and tan selection come from the drawing. */
 .side { background: var(--bg); }

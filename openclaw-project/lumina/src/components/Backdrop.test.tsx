@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import Backdrop from './Backdrop';
 
-const settings = vi.hoisted(() => ({ reducedMotion: false }));
+const settings = vi.hoisted(() => ({ reducedMotion: false, theme: 'obsidian' }));
 vi.mock('../state/settings', () => ({ useSettings: () => settings }));
 vi.mock('./Globe', () => ({ default: () => <div data-testid="loaded-globe" /> }));
-beforeEach(() => { document.documentElement.dataset.theme = 'obsidian'; });   // the planet belongs to the old dark world
-afterEach(() => { delete document.documentElement.dataset.theme; cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); settings.reducedMotion = false; });
+beforeEach(() => { settings.theme = 'obsidian'; });   // the planet belongs to the dark world
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); settings.reducedMotion = false; });
 
 describe('decorative backdrop', () => {
   it('draws nothing on parchment', () => {
-    delete document.documentElement.dataset.theme;
+    settings.theme = 'parchment';
     const { container } = render(<Backdrop />);
     expect(container.querySelector('.globe')).toBeNull();
   });

@@ -36,6 +36,7 @@ export function Settings() {
   return (
     <div className="center"><h1 className="page-title">Settings</h1>
       <section className="panel card" style={{ marginBottom: 14 }}><h2>Appearance</h2>
+        <p style={{ marginTop: 12 }}>Look: <button className="btn" aria-pressed={s.theme === 'obsidian'} onClick={() => s.setTheme('obsidian')}>Dark</button> <button className="btn" aria-pressed={s.theme === 'parchment'} onClick={() => s.setTheme('parchment')}>Parchment</button></p>
         <p style={{ marginTop: 12 }}><label><input type="checkbox" checked={s.reducedMotion} onChange={e => s.setReducedMotion(e.target.checked)} /> Reduce motion (stops the planet and animations)</label></p>
         <p style={{ marginTop: 8 }}><label><input type="checkbox" checked={s.compact} onChange={e => s.setCompact(e.target.checked)} /> Compact layout</label></p></section>
       <section className="panel card" style={{ marginBottom: 14 }}><h2>Usage this period</h2>

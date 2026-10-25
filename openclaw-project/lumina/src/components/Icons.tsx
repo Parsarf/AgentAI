@@ -16,6 +16,7 @@ export const Gear = make(<><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0
 export const Search = make(<><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>);
 export const Bell = make(<><path d="M6 9a6 6 0 1112 0c0 6 2.5 7 2.5 7h-17S6 15 6 9z" /><path d="M10 20a2 2 0 004 0" /></>);
 export const Motion = make(<><path d="M4 12c3-6 5-6 8 0s5 6 8 0" /></>);
+export const Theme = make(<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 010 16z" fill="currentColor" /></>);
 export const Mic = make(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3" /></>);
 export const Up = make(<path d="M12 19V5M5 12l7-7 7 7" />);
 export const Plus = make(<path d="M12 5v14M5 12h14" />);

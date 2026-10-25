@@ -44,7 +44,7 @@ export default function Shell() {
   const hasRail = pathname === '/home' || pathname.startsWith('/tasks');
   const [railOpen, setRailOpen] = useState(false);
   const rail = hasRail && railOpen;
-  const { requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState<'chats' | 'pages' | null>(null);
+  const { requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen, theme, setTheme } = useSettings(); const [drawer, setDrawer] = useState<'chats' | 'pages' | null>(null);
   const drawerOpener = useRef<HTMLElement | null>(null);
   const drawerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -92,6 +92,7 @@ export default function Shell() {
                   : <p className="muted" style={{ padding: 6 }}>Nothing needs your attention.</p>}
               </div>)}
           </div>
+          <button className="iconbtn" aria-label={theme === 'obsidian' ? 'Switch to the parchment look' : 'Switch to the dark look'} title={theme === 'obsidian' ? 'Dark' : 'Parchment'} onClick={() => setTheme(theme === 'obsidian' ? 'parchment' : 'obsidian')}><I.Theme /></button>
           <button className="iconbtn" aria-label={reducedMotion ? 'Turn animations on' : 'Reduce motion'} aria-pressed={reducedMotion} title={reducedMotion ? 'Animations off' : 'Animations on'} onClick={() => setReducedMotion(!reducedMotion)}><I.Motion /></button>
         </div>
         <Outlet />
