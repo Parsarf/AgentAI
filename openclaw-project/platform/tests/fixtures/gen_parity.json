@@ -1,0 +1,1212 @@
+{
+ "generatedBy": "lumina/src/gen/export.test.ts (do not edit by hand)",
+ "valid": [
+  {
+   "version": "1.0",
+   "responseId": "resp_all_0",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "a_text",
+     "type": "text",
+     "variant": "lead",
+     "props": {
+      "title": "Text",
+      "content": "Plain prose with **markdown**, a list and a [link](https://example.com/).\n\n- one\n- two"
+     }
+    },
+    {
+     "id": "a_heading",
+     "type": "heading",
+     "props": {
+      "text": "A heading",
+      "level": 3
+     }
+    },
+    {
+     "id": "a_list",
+     "type": "list",
+     "props": {
+      "title": "Checklist",
+      "items": [
+       {
+        "text": "Gather sources",
+        "checked": true
+       },
+       {
+        "text": "Compare prices",
+        "checked": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_callout",
+     "type": "callout",
+     "props": {
+      "tone": "warning",
+      "title": "Heads up",
+      "content": "This renders as an alert for assistive technology."
+     }
+    },
+    {
+     "id": "a_quote",
+     "type": "quote",
+     "props": {
+      "content": "Simple answers stay simple.",
+      "source": "Design principle"
+     }
+    },
+    {
+     "id": "a_cites",
+     "type": "citation_list",
+     "variant": "detailed",
+     "props": {
+      "title": "Sources",
+      "sources": [
+       {
+        "label": "Example page",
+        "url": "https://example.com/a",
+        "snippet": "A supporting snippet.",
+        "publisher": "example.com"
+       },
+       {
+        "label": "Second source"
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_code",
+     "type": "code_block",
+     "props": {
+      "language": "python",
+      "filename": "sum.py",
+      "code": "def total(xs):\n    return sum(xs)\n"
+     }
+    },
+    {
+     "id": "a_term",
+     "type": "terminal_output",
+     "props": {
+      "command": "npm test",
+      "lines": [
+       "> vitest run",
+       " ✓ 12 passed"
+      ]
+     }
+    },
+    {
+     "id": "a_json",
+     "type": "json_viewer",
+     "props": {
+      "json": "{\"ok\":true,\"items\":[1,2,3]}"
+     }
+    },
+    {
+     "id": "a_diff",
+     "type": "diff_viewer",
+     "props": {
+      "filename": "a.txt",
+      "diff": "@@ -1,2 +1,2 @@\n-old line\n+new line\n unchanged"
+     }
+    },
+    {
+     "id": "a_info",
+     "type": "info_card",
+     "variant": "expandable",
+     "props": {
+      "title": "Information card",
+      "subtitle": "One entity",
+      "badge": "New",
+      "body": "Details open on demand.",
+      "facts": [
+       {
+        "label": "Price",
+        "value": "$95"
+       },
+       {
+        "label": "Rating",
+        "value": "4.1"
+       }
+      ],
+      "link": {
+       "label": "Open page",
+       "url": "https://example.com/"
+      },
+      "actions": [
+       {
+        "label": "Tell me more",
+        "action": {
+         "kind": "agent.request",
+         "message": "Tell me more about this option"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_metric",
+     "type": "metric_card",
+     "props": {
+      "label": "Open tasks",
+      "value": 12,
+      "format": "number",
+      "delta": {
+       "value": -3,
+       "label": "this week"
+      }
+     }
+    },
+    {
+     "id": "a_status",
+     "type": "status_card",
+     "props": {
+      "status": "success",
+      "label": "All checks passed",
+      "detail": "Verified from the task log."
+     }
+    },
+    {
+     "id": "a_progress",
+     "type": "progress",
+     "variant": "annotated",
+     "props": {
+      "label": "Migration",
+      "value": 6,
+      "max": 10,
+      "steps": [
+       {
+        "label": "Export",
+        "done": true
+       },
+       {
+        "label": "Import",
+        "done": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_grid",
+     "type": "card_grid",
+     "props": {
+      "title": "Card grid",
+      "cards": [
+       {
+        "title": "Alpha",
+        "subtitle": "$120",
+        "facts": [
+         {
+          "label": "Rating",
+          "value": "4.6"
+         }
+        ]
+       },
+       {
+        "title": "Beta",
+        "subtitle": "$95"
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_table",
+     "type": "table",
+     "dataRef": "options",
+     "variant": "striped",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "a_line",
+     "type": "line_chart",
+     "dataRef": "revenue",
+     "props": {
+      "title": "Line chart",
+      "xKey": "month",
+      "series": [
+       {
+        "key": "revenue",
+        "label": "Revenue"
+       }
+      ],
+      "unit": "$"
+     }
+    },
+    {
+     "id": "a_area",
+     "type": "area_chart",
+     "variant": "stacked",
+     "dataRef": "revenue",
+     "props": {
+      "title": "Area chart (stacked)",
+      "xKey": "month",
+      "series": [
+       {
+        "key": "revenue"
+       },
+       {
+        "key": "costs"
+       }
+      ],
+      "unit": "$"
+     }
+    },
+    {
+     "id": "a_bar",
+     "type": "bar_chart",
+     "variant": "comparative",
+     "dataRef": "revenue",
+     "props": {
+      "title": "Bar chart",
+      "xKey": "month",
+      "series": [
+       {
+        "key": "revenue"
+       },
+       {
+        "key": "costs"
+       }
+      ],
+      "unit": "$"
+     }
+    },
+    {
+     "id": "a_pie",
+     "type": "pie_chart",
+     "props": {
+      "title": "Donut chart",
+      "donut": true,
+      "labelKey": "part",
+      "valueKey": "share",
+      "data": [
+       {
+        "part": "Search",
+        "share": 45
+       },
+       {
+        "part": "Direct",
+        "share": 30
+       },
+       {
+        "part": "Social",
+        "share": 25
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_1",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "a_scatter",
+     "type": "scatter_chart",
+     "props": {
+      "title": "Scatter plot",
+      "xKey": "price",
+      "yKey": "rating",
+      "labelKey": "name",
+      "data": [
+       {
+        "name": "A",
+        "price": 80,
+        "rating": 3.7
+       },
+       {
+        "name": "B",
+        "price": 95,
+        "rating": 4.1
+       },
+       {
+        "name": "C",
+        "price": 120,
+        "rating": 4.6
+       },
+       {
+        "name": "D",
+        "price": 150,
+        "rating": 4.8
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_form",
+     "type": "form",
+     "variant": "grouped",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "kind",
+        "type": "segmented",
+        "label": "Kind",
+        "group": "Basics",
+        "required": true,
+        "default": "a",
+        "options": [
+         {
+          "label": "A",
+          "value": "a"
+         },
+         {
+          "label": "B",
+          "value": "b"
+         }
+        ]
+       },
+       {
+        "id": "budget",
+        "type": "slider",
+        "label": "Budget",
+        "group": "Basics",
+        "min": 0,
+        "max": 500,
+        "step": 10,
+        "default": 100,
+        "unit": "USD"
+       },
+       {
+        "id": "extras",
+        "type": "toggle",
+        "label": "Include extras",
+        "group": "Options",
+        "default": false
+       },
+       {
+        "id": "when",
+        "type": "date",
+        "label": "Date",
+        "group": "Options",
+        "showIf": {
+         "field": "extras",
+         "equals": true
+        }
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "a_buttons",
+     "type": "button_group",
+     "props": {
+      "title": "Next steps",
+      "buttons": [
+       {
+        "id": "go",
+        "label": "Show details",
+        "style": "primary",
+        "action": {
+         "kind": "agent.request",
+         "message": "Show the details"
+        }
+       },
+       {
+        "id": "open",
+        "label": "Open files",
+        "style": "ghost",
+        "action": {
+         "kind": "navigate.internal",
+         "path": "/files"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_follow",
+     "type": "follow_up",
+     "props": {
+      "suggestions": [
+       "What changed since last month?"
+      ]
+     }
+    },
+    {
+     "id": "a_tabs",
+     "type": "tabs",
+     "props": {
+      "title": "Tabs",
+      "tabs": [
+       {
+        "id": "t1",
+        "label": "Summary",
+        "blocks": [
+         {
+          "id": "t1a",
+          "type": "text",
+          "props": {
+           "content": "First tab content."
+          }
+         }
+        ]
+       },
+       {
+        "id": "t2",
+        "label": "Details",
+        "blocks": [
+         {
+          "id": "t2a",
+          "type": "text",
+          "props": {
+           "content": "Second tab content."
+          }
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_acc",
+     "type": "accordion",
+     "props": {
+      "title": "Accordion",
+      "items": [
+       {
+        "id": "i1",
+        "title": "Open by default",
+        "open": true,
+        "blocks": [
+         {
+          "id": "i1a",
+          "type": "text",
+          "props": {
+           "content": "Visible at first."
+          }
+         }
+        ]
+       },
+       {
+        "id": "i2",
+        "title": "Closed",
+        "blocks": [
+         {
+          "id": "i2a",
+          "type": "text",
+          "props": {
+           "content": "Hidden at first."
+          }
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_section",
+     "type": "section",
+     "layout": {
+      "columns": 2
+     },
+     "props": {
+      "title": "Section",
+      "blocks": [
+       {
+        "id": "s1",
+        "type": "metric_card",
+        "props": {
+         "label": "A",
+         "value": 1
+        }
+       },
+       {
+        "id": "s2",
+        "type": "metric_card",
+        "props": {
+         "label": "B",
+         "value": 2
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_divider",
+     "type": "divider",
+     "props": {}
+    },
+    {
+     "id": "a_timeline",
+     "type": "timeline",
+     "props": {
+      "title": "Timeline",
+      "events": [
+       {
+        "title": "Kick-off",
+        "time": "Mon",
+        "state": "done"
+       },
+       {
+        "title": "Review",
+        "time": "Wed",
+        "state": "active",
+        "detail": "In progress"
+       },
+       {
+        "title": "Launch",
+        "time": "Fri",
+        "state": "pending"
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_exec",
+     "type": "execution_timeline",
+     "variant": "expanded",
+     "props": {
+      "title": "Execution timeline",
+      "requestId": "fixture_run"
+     }
+    },
+    {
+     "id": "a_inspect",
+     "type": "tool_call_inspector",
+     "variant": "inspector",
+     "props": {
+      "requestId": "fixture_run"
+     }
+    },
+    {
+     "id": "a_agent",
+     "type": "agent_status",
+     "props": {
+      "requestId": "fixture_run"
+     }
+    },
+    {
+     "id": "a_plan",
+     "type": "plan_viewer",
+     "variant": "expanded",
+     "props": {
+      "planBlockId": "plan_demo"
+     }
+    },
+    {
+     "id": "a_approval",
+     "type": "approval_request",
+     "variant": "approval",
+     "props": {
+      "planBlockId": "plan_demo",
+      "phaseId": "deploy",
+      "reason": "Publishing is visible to your customers."
+     }
+    },
+    {
+     "id": "a_retry",
+     "type": "error_retry",
+     "props": {
+      "planBlockId": "plan_demo",
+      "phaseId": "checks"
+     }
+    },
+    {
+     "id": "a_done",
+     "type": "completion_summary",
+     "props": {
+      "requestId": "fixture_run"
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_sample",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "intro",
+     "type": "text",
+     "props": {
+      "content": "Revenue grew in five of six months. **Sample data for the component gallery. Not a real result.**"
+     }
+    },
+    {
+     "id": "metric",
+     "type": "metric_card",
+     "variant": "compact",
+     "props": {
+      "label": "June revenue",
+      "value": 24500,
+      "format": "currency",
+      "currency": "USD",
+      "delta": {
+       "value": 6.1,
+       "label": "vs May"
+      },
+      "trend": [
+       18200,
+       19900,
+       21400,
+       20800,
+       23100,
+       24500
+      ],
+      "source": "sample fixture"
+     }
+    },
+    {
+     "id": "trend",
+     "type": "line_chart",
+     "variant": "comparative",
+     "dataRef": "revenue",
+     "props": {
+      "title": "Revenue and costs",
+      "xKey": "month",
+      "series": [
+       {
+        "key": "revenue",
+        "label": "Revenue"
+       },
+       {
+        "key": "costs",
+        "label": "Costs"
+       }
+      ],
+      "unit": "$"
+     }
+    },
+    {
+     "id": "compare",
+     "type": "table",
+     "dataRef": "options",
+     "props": {
+      "title": "Options compared",
+      "sortable": true,
+      "highlightRow": 2,
+      "rowHeader": "name"
+     }
+    },
+    {
+     "id": "approval",
+     "type": "approval_request",
+     "props": {
+      "planBlockId": "plan_demo",
+      "phaseId": "deploy",
+      "reason": "Publishing is visible to your customers."
+     }
+    },
+    {
+     "id": "next",
+     "type": "follow_up",
+     "props": {
+      "suggestions": [
+       "Compare against last year",
+       "Show costs by category"
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "invalid": [
+  {
+   "name": "html in text",
+   "block": {
+    "id": "a",
+    "type": "text",
+    "props": {
+     "content": "hi <script>alert(1)</script>"
+    }
+   }
+  },
+  {
+   "name": "unknown prop",
+   "block": {
+    "id": "a",
+    "type": "text",
+    "props": {
+     "content": "x",
+     "style": "color:red"
+    }
+   }
+  },
+  {
+   "name": "css-like shell field",
+   "block": {
+    "id": "a",
+    "type": "text",
+    "style": "x",
+    "props": {
+     "content": "x"
+    }
+   }
+  },
+  {
+   "name": "javascript url",
+   "block": {
+    "id": "a",
+    "type": "citation_list",
+    "props": {
+     "sources": [
+      {
+       "label": "x",
+       "url": "javascript:alert(1)"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "credentials in url",
+   "block": {
+    "id": "a",
+    "type": "citation_list",
+    "props": {
+     "sources": [
+      {
+       "label": "x",
+       "url": "https://u:p@example.com/"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "bad variant",
+   "block": {
+    "id": "a",
+    "type": "metric_card",
+    "variant": "horizontal",
+    "props": {
+     "label": "x",
+     "value": 1
+    }
+   }
+  },
+  {
+   "name": "unknown type",
+   "block": {
+    "id": "a",
+    "type": "iframe",
+    "props": {}
+   }
+  },
+  {
+   "name": "bad id",
+   "block": {
+    "id": "Bad Id",
+    "type": "divider",
+    "props": {}
+   }
+  },
+  {
+   "name": "bidi override",
+   "block": {
+    "id": "a",
+    "type": "text",
+    "props": {
+     "content": "abc‮def"
+    }
+   }
+  },
+  {
+   "name": "absolute file path",
+   "block": {
+    "id": "a",
+    "type": "image",
+    "props": {
+     "assetRef": "file:/etc/passwd",
+     "alt": "x"
+    }
+   }
+  },
+  {
+   "name": "path traversal",
+   "block": {
+    "id": "a",
+    "type": "image",
+    "props": {
+     "assetRef": "file:../secrets.png",
+     "alt": "x"
+    }
+   }
+  },
+  {
+   "name": "remote image address",
+   "block": {
+    "id": "a",
+    "type": "image",
+    "props": {
+     "assetRef": "https://evil.example/pixel.png?u=1",
+     "alt": "x"
+    }
+   }
+  },
+  {
+   "name": "too many series",
+   "block": {
+    "id": "a",
+    "type": "line_chart",
+    "props": {
+     "xKey": "x",
+     "series": [
+      {
+       "key": "s0"
+      },
+      {
+       "key": "s1"
+      },
+      {
+       "key": "s2"
+      },
+      {
+       "key": "s3"
+      },
+      {
+       "key": "s4"
+      },
+      {
+       "key": "s5"
+      },
+      {
+       "key": "s6"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "stacked with one series",
+   "block": {
+    "id": "a",
+    "type": "bar_chart",
+    "variant": "stacked",
+    "props": {
+     "xKey": "x",
+     "series": [
+      {
+       "key": "y"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
