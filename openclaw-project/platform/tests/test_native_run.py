@@ -497,3 +497,54 @@ class OutgoingChecks(Base):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DeadContainerRecoveryChecks(Base):
+    def test_cancelled_oom_request_is_closed_without_waiting_for_a_dead_gateway(self):
+        self.gateway.fail_after_ack = True
+        request = self.chat.send(self.a, conversation_id='c-a', message='Test work', key='dead-container')
+        with self.assertRaises(RuntimeError): self.worker.tick()
+        self.chat.cancel(self.a, request['id'])
+        self.gateway.cell_running = lambda: False
+        self.gateway.capabilities = lambda: self.fail('A dead container must not require a websocket handshake')
+        self.gateway.fail_after_ack = False
+        result = self.worker.tick()
+        self.assertTrue(result['reconciled'])
+        with self.store.connect() as con:
+            row = con.execute('SELECT state,outcome FROM customer_requests WHERE id=?', (request['id'],)).fetchone()
+            self.assertEqual(tuple(row), ('cancelled', 'cancelled'))
+            self.assertEqual(con.execute('SELECT count(*) FROM request_slot').fetchone()[0], 0)
+            self.assertEqual(con.execute('SELECT state FROM task_reservations WHERE task_id=?', (request['id'],)).fetchone()[0], 'settled')
+
+    def test_an_unexpected_container_exit_fails_instead_of_replaying_the_work(self):
+        self.gateway.fail_after_ack = True
+        request = self.chat.send(self.a, conversation_id='c-a', message='Test work', key='dead-container')
+        with self.assertRaises(RuntimeError): self.worker.tick()
+        sends = len(self.gateway.calls)
+        self.gateway.cell_running = lambda: False
+        self.gateway.fail_after_ack = False
+        self.assertTrue(self.worker.tick()['reconciled'])
+        self.assertEqual(self.chat.task(self.a, request['id'])['state'], 'failed')
+        self.assertEqual(len(self.gateway.calls), sends)
+
+    def test_a_failed_host_probe_never_proves_a_container_is_stopped(self):
+        def unknown(): raise CapabilityUnavailable('probe unavailable')
+        self.gateway.cell_running = unknown
+        self.assertFalse(self.driver._cell_gone(self.gateway))
+        self.gateway.cell_running = lambda: None
+        self.assertFalse(self.driver._cell_gone(self.gateway))
+
+
+    def test_dead_assistant_does_not_release_a_browser_that_is_still_running(self):
+        self.gateway.fail_after_ack = True
+        request = self.chat.send(self.a, conversation_id='c-a', message='Browse', key='dead-browser')
+        with self.assertRaises(RuntimeError): self.worker.tick()
+        self.chat.cancel(self.a, request['id'])
+        self.gateway.cell_running = lambda: False
+        state = ['running']
+        self.driver.browse_factory = lambda account: lambda op, **kw: {'state': state[0]}
+        self.assertFalse(self.worker.tick()['reconciled'])
+        self.assertEqual(self.chat.task(self.a, request['id'])['state'], 'uncertain')
+        state[0] = 'cancelled'
+        self.assertTrue(self.worker.tick()['reconciled'])
+        self.assertEqual(self.chat.task(self.a, request['id'])['state'], 'cancelled')

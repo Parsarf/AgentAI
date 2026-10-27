@@ -47,6 +47,15 @@ class NativeGatewayChecks(unittest.TestCase):
         self.assertFalse(down.capabilities().send)
         self.assertFalse(NativeGateway(Rpc(hello={'protocol': 5, 'methods': METHODS})).capabilities().send)
 
+    def test_host_container_probe_is_independent_of_runtime_capabilities(self):
+        for state in (True, False):
+            rpc = Rpc(**{'cell.status': {'running': state}})
+            self.assertIs(NativeGateway(rpc).cell_running(), state)
+            self.assertEqual(rpc.calls, [('cell.status', {})])
+        for state in (None, 0, 'false'):
+            with self.assertRaises(CapabilityUnavailable):
+                NativeGateway(Rpc(**{'cell.status': {'running': state}})).cell_running()
+
     def test_send_passes_the_key_as_the_run_id_and_flags_a_repeat(self):
         rpc = Rpc(**{'chat.send': lambda p: {'runId': p['idempotencyKey'], 'status': 'ok' if p['idempotencyKey'] == 'old' else 'started'}})
         gw = NativeGateway(rpc)

@@ -331,6 +331,8 @@ class ChatDriver:
             try:
                 result = gateway.wait(delivery['native_run_id'] or delivery['idempotency_key'], self.wait_ms)
             except CapabilityUnavailable:
+                if self._cell_gone(gateway):
+                    return self._interrupted(claim, gateway)
                 # The cell went away for a moment (a restart, a reconnect). The run is the runtime's, so this is waiting, not failing: for a while.
                 outage = outage if outage is not None else self.clock()
                 if self.clock() - outage > self.outage_limit:
@@ -539,8 +541,10 @@ class ChatDriver:
 
     def _stop(self, claim, gateway, session):
         """The customer pressed Stop (or was revoked). Abort, wait for the runtime to confirm, pause the goal, then close as cancelled."""
-        self._abort_all(claim, gateway, session)
         self._stop_browser_jobs(claim)
+        if self._cell_gone(gateway):
+            return self._interrupted(claim, gateway)
+        self._abort_all(claim, gateway, session)
         self._pause_goal(claim, gateway, session, 'Stopped by the customer.')
         self._emit(claim, 'progress', {'summary': 'Cancellation confirmed by the runtime.'}, 'gateway')
         self._mirror(claim, gateway, session, set())
@@ -820,6 +824,49 @@ class ChatDriver:
         return self._close(claim, 'failed', 'The assistant could not be reached for this request, so it was stopped. Please try again.', _Blind(), None,
                            verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant could not be reached.', ''))
 
+    @staticmethod
+    def _cell_gone(gateway):
+        probe = getattr(gateway, 'cell_running', None)
+        try:
+            return probe is not None and probe() is False
+        except Exception:
+            return False                         # a timeout or refusal proves nothing about execution
+
+    def _browser_stopped(self, claim):
+        """An external browser must also stop before releasing the execution slot."""
+        with self.store.connect() as con:
+            jobs = [claim.request_id] + [r[0] for r in con.execute('SELECT job_id FROM browse_sessions WHERE account_id=? AND request_id=?', (claim.account_id, claim.request_id)).fetchall()]
+            active = con.execute("SELECT 1 FROM browse_runs WHERE account_id=? AND request_id=? AND status IN ('queued','running','handoff','paused','asking')", (claim.account_id, claim.request_id)).fetchone()
+        if self.browse_factory is None:
+            return active is None
+        from .browse.client import BrowseJobUnknown
+        rpc = self.browse_factory(claim.account_id)
+        for job in jobs:
+            try:
+                state = rpc('poll', request_id=job, since=0).get('state')
+            except BrowseJobUnknown:
+                continue                         # service restart destroyed this job
+            except Exception:
+                return False
+            if state not in ('done', 'error', 'cancelled', 'blocked', 'budget', 'deadline', 'max_steps', 'stuck', 'stopped'):
+                return False
+        return True
+
+    def _interrupted(self, claim, gateway):
+        """Only called after the host confirms the container is stopped. No model calls or replay."""
+        cancelled = self._cancel_requested(claim)
+        self._stop_browser_jobs(claim)             # an external browser can outlive the assistant
+        if not self._browser_stopped(claim):
+            raise CapabilityUnavailable('waiting for browser cancellation confirmation')
+        for delivery in self._deliveries(claim, states=LIVE_STATES):
+            self._set_delivery(claim, delivery['attempt'], 'aborted' if cancelled else 'failed',
+                               ended=int(self.clock()), status='container_stopped')
+        state = 'cancelled' if cancelled else 'failed'
+        note = 'Stopped at your request.' if cancelled else 'The assistant stopped unexpectedly. Please try again.'
+        self._emit(claim, 'progress' if cancelled else 'error', {'summary': note}, 'reconciler')
+        verdict = outcome_mod.judge(native={}, cancelled=True) if cancelled else outcome_mod.Verdict('failed', 'unverified', note, '')
+        return self._close(claim, state, note, gateway, self._before(claim), verdict=verdict)
+
     def reconcile(self, claim: RequestClaim):
         """A request left uncertain (crash, lease loss). The run is the runtime's, so there is nothing to guess: if the runtime can be reached, supervision simply carries on from
         the stored deliveries (a send whose outcome was unknown is repeated under the same key, which cannot start a second run); if no input was ever recorded, nothing ran."""
@@ -828,8 +875,11 @@ class ChatDriver:
         if not self._deliveries(claim):
             return self._close(claim, 'failed', 'Your request could not be started. Nothing was charged. Please send it again.',
                                verdict=outcome_mod.Verdict('failed', 'unverified', 'It could not be started.', ''))
+        gateway = self.gateway_factory(claim)
+        if self._cell_gone(gateway):
+            return self._interrupted(claim, gateway)
         try:
-            self._require(self.gateway_factory(claim))
+            self._require(gateway)
         except CapabilityUnavailable:
             return None
         return Recover()

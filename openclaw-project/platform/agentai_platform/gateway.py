@@ -70,7 +70,7 @@ class NativeGateway:
     The callable is the bridge client (the app never holds a cell token or a docker handle). Raises CapabilityUnavailable for any refusal or malformed reply.
     """
     METHODS = ('hello', 'sessions.create', 'sessions.describe', 'chat.send', 'chat.history', 'chat.abort', 'agent.wait', 'sessions.goal.update', 'sessions.goal.clear',
-               'usage.snapshot', 'workspace.collect')
+               'usage.snapshot', 'workspace.collect', 'cell.status')
 
     def __init__(self, rpc):
         self._rpc = rpc
@@ -207,6 +207,13 @@ class NativeGateway:
         self.require('goals')
         self._call('sessions.goal.clear', {'sessionKey': session_ref(session), 'goalId': session_ref(goal_id), 'operationId': session_ref(operation_id),
                                            'issuedAtMs': int(issued_ms if issued_ms is not None else time.time() * 1000)})
+
+    def cell_running(self):
+        """Host-observed container state, independent of the runtime websocket. Unknown is never stopped."""
+        state = self._call('cell.status').get('running')
+        if type(state) is not bool:
+            raise CapabilityUnavailable('cell status unavailable')
+        return state
 
     def usage_snapshot(self):
         return int(self._call('usage.snapshot')['spend_microusd'])

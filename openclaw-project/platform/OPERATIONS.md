@@ -259,3 +259,9 @@ Turning it on, in this order (nothing changes for a customer until the last step
 - **Still to measure with real models and the real cell image** (not possible from a developer machine): JEV's accuracy on the cell browser's page descriptions, the assistant's cost and step count when it
   drives a page, Chromium memory per cell and under several cells, Live view frame rate in a gVisor cell. Until those are measured the host stage stays the default engine.
 
+
+### Browser OOM and cancellation recovery
+
+An embedded Chromium instance shares the assistant container's 2 GiB cap. On 2026-10-27 a real browser launch exhausted that cap and Docker confirmed `OOMKilled=true`; the browser timed out and the native websocket became unreachable. The affected account was moved from the `native` override in `/etc/agentai-supervisor/browse-engine.json` to the existing `runner` default. That separate hardened browser stage has its own 1.5 GiB limit within the existing host-capacity reservation. The override file is read for each new job; no customer shopping action is replayed. Keep embedded-browser rollout separate from ordinary deployment until its combined memory envelope is validated.
+
+`NativeGateway.cell_running()` reads the host's `cell.status`, independently of the assistant websocket. If it confirms the container has stopped, request reconciliation closes cancelled work as cancelled (or unexpected exits as failed), reconciles usage, and frees the execution slot. An unreachable/invalid probe never proves termination. An external browser must also confirm a terminal state before that slot is released. Do not repair this condition by merely rewriting a request to completed or dropping its reservation.
