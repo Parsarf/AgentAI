@@ -8,7 +8,7 @@ from agentai_platform.lifecycle.coordinator import Coordinator, identifier
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import NotFound, Principal
 
-from . import data as datacards, schema
+from . import data as datacards, document, schema
 
 
 def _public(row, con=None) -> dict:
@@ -52,9 +52,10 @@ def _card(row) -> dict:
 
 
 class BlockStore:
-    def __init__(self, store, *, clock=time.time):
+    def __init__(self, store, *, clock=time.time, images=None):
         self.store, self.clock = store, clock
         self.coordinator = Coordinator(store, clock=clock)
+        self.images = images             # genui.images.CardImages, or None: comparison cards then carry no pictures
 
     # -- creation: server code only, never reachable from a client request body -------------------------------------
     def create_form(self, account_id, conversation_id, spec, *, key, anchor_message_id=None, source_request_id=None, con=None) -> dict:
@@ -142,14 +143,42 @@ class BlockStore:
                     'WHERE account_id=? AND id=?', (status, request_id, int(self.clock()), account_id, block_id))
 
     # -- read-only data cards extracted from an assistant answer (server code only) ----------------------------------
+    def add_display(self, account_id, conversation_id, request_id, style, plan=None) -> bool:
+        """Record how the request's plain-text reply should be laid out (routing/display.py), anchored to that reply. Only when the request stored no card."""
+        if style not in ('steps', 'answer', 'list'):
+            return False
+        with self.coordinator.transaction() as con:
+            if con.execute('SELECT 1 FROM data_blocks WHERE account_id=? AND source_request_id=?', (account_id, request_id)).fetchone():
+                return False
+            row = con.execute("SELECT id FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance='agent' ORDER BY id DESC LIMIT 1",
+                              (account_id, conversation_id, request_id)).fetchone()
+            if row is None:
+                return False
+            con.execute('INSERT INTO data_blocks(account_id,id,conversation_id,anchor_message_id,kind,spec_json,source_request_id,position,created_epoch) VALUES (?,?,?,?,?,?,?,?,?)',
+                        (account_id, uuid.uuid4().hex, conversation_id, row['id'], 'display', json.dumps({'schemaVersion': '1.0', 'type': 'display', 'style': style, **({'presentationPlan': plan} if plan else {})}), request_id, 0, int(self.clock())))
+        return True
+
     def attach_cards(self, account_id, conversation_id, request_id) -> int:
-        """Move ```lumina fences out of this request's agent messages into validated cards. Returns how many cards were stored."""
+        """Move ```lumina fences out of this request's agent messages into validated cards. Returns how many cards were stored.
+        Pictures for comparison cards are found first, with no database transaction open (fetching can take seconds); the write then re-checks that nobody got there first."""
+        with self.store.connect() as con:
+            rows = [dict(r) for r in con.execute("SELECT id,content FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance='agent' "
+                                                 "AND content LIKE '%```lumina%' ORDER BY id", (account_id, conversation_id, request_id)).fetchall()]
+        prepared = []
+        for row in rows:
+            clean, specs = datacards.extract(row['content'])
+            clean = datacards.trim_repeats(clean, specs)                 # the same places or products listed again above their card are shown once, in the card
+            if self.images is not None:
+                specs = [self.images.enrich(account_id, spec) if spec['type'] in datacards.WITH_PICTURES else spec for spec in specs]
+            clean, docs = document.extract_documents(clean)              # a composed answer (```lumina-doc): validated here, stored once, shown from the stored copy
+            specs = specs[:3] + docs
+            prepared.append((row, clean, specs))
         made = 0
         with self.coordinator.transaction() as con:
-            rows = con.execute("SELECT id,content FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance='agent' "
-                               "AND content LIKE '%```lumina%' ORDER BY id", (account_id, conversation_id, request_id)).fetchall()
-            for row in rows:
-                clean, specs = datacards.extract(row['content'])
+            for row, clean, specs in prepared:
+                now = con.execute('SELECT content FROM chat_messages WHERE account_id=? AND id=?', (account_id, row['id'])).fetchone()
+                if now is None or now['content'] != row['content']:
+                    continue                                   # already handled (or edited) while pictures were being fetched
                 for spec in specs:
                     cur = con.execute('SELECT coalesce(max(position),-1)+1 FROM data_blocks WHERE account_id=? AND source_request_id=?', (account_id, request_id)).fetchone()[0]
                     con.execute('INSERT OR IGNORE INTO data_blocks(account_id,id,conversation_id,anchor_message_id,kind,spec_json,source_request_id,position,created_epoch) '

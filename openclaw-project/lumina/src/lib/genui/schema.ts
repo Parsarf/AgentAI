@@ -1,7 +1,6 @@
 // Mirrors platform/agentai_platform/genui/schema.py. The server is authoritative; this lets the UI reject anything unexpected
 // before drawing it (unknown keys, unknown field types, oversized trees) and fall back to a read-only summary.
 import { z } from 'zod';
-import type { CardKind } from './data';
 
 const id = z.string().regex(/^[a-z][a-z0-9_-]{0,47}$/);
 const text = (max: number, min = 1) => z.string().min(min).max(max);
@@ -36,7 +35,7 @@ export type PhaseState = 'pending' | 'running' | 'awaiting_approval' | 'complete
 export interface PhaseRun { state: PhaseState; attempts: number; request_id: string | null; summary: string | null; approved: boolean; started_epoch: number | null; finished_epoch: number | null }
 
 export interface Block {
-  id: string; conversation_id: string; anchor_message_id: number | null; kind: 'form' | 'task_plan' | 'display' | CardKind; schema_version: string;
+  id: string; conversation_id: string; anchor_message_id: number | null; kind: 'form' | 'task_plan' | 'table' | 'chart' | 'comparison' | 'document'; schema_version: string;
   spec: unknown; state: any; version: number; status: 'draft' | 'submitted' | 'launched' | 'superseded' | 'final'; launched_request_id: string | null;
   run?: Record<string, PhaseRun>; run_status?: 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'stopped';
 }

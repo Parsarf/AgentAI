@@ -2,14 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Composer from '../components/Composer';
 import ChatActions from '../components/ChatActions';
-import { loadMessages, refreshFinished, type Message as Msg } from '../lib/conversations';
+import { loadMessages, type Message as Msg } from '../lib/conversations';
 import type { ChatSummary } from '../lib/chats';
-import AgentResponse, { type ReplyLayout } from '../components/response/AgentResponse';
+import AgentResponse from '../components/response/AgentResponse';
 import ActivityPanel from '../components/ActivityPanel';
 import AgentThinking, { type ThreadTask } from '../components/AgentThinking';
-import ChatQuestion from '../components/ChatQuestion';
-import { ChatActionsContext } from '../lib/chatActions';
 import BlockView from '../components/genui/BlockView';
+import type { Bridge } from '../gen/ChatBridge';
 import { api } from '../lib/api';
 import { download } from './Files';
 import { humanSize, type ArtifactRow } from '../lib/files';
@@ -17,8 +16,6 @@ import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 import Orb from '../components/Orb';
-import SceneBackground from '../components/SceneBackground';
-import { Spark } from '../components/Icons';
 import { Emojified } from '../components/Emoji';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
@@ -29,11 +26,10 @@ export default function Chat() {
   const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]); const [err, setErr] = useState(''); const [loaded, setLoaded] = useState(false);
   const [detail, setDetail] = useState<ChatSummary | null>(null);
-  const threadId = useRef(id); threadId.current = id; const loadVersion = useRef(0); const cachedMessages = useRef<Msg[]>([]); const settled = useRef<Set<string>>(new Set());
+  const threadId = useRef(id); threadId.current = id; const loadVersion = useRef(0); const cachedMessages = useRef<Msg[]>([]);
   const stick = useRef(true); const [newBelow, setNewBelow] = useState(false);
-  const onTranscriptScroll = (el: HTMLDivElement) => { stick.current = el.scrollHeight - el.clientHeight - el.scrollTop < 260; if (stick.current) setNewBelow(false); };
+  useEffect(() => { const onScroll = () => { stick.current = document.documentElement.scrollHeight - window.innerHeight - window.scrollY < 260; if (stick.current) setNewBelow(false); }; window.addEventListener('scroll', onScroll, { passive: true }); return () => window.removeEventListener('scroll', onScroll); }, []);
   const bottom = useRef<HTMLDivElement>(null); const lastCount = useRef(0);
-  const [statusEl, setStatusEl] = useState<HTMLDivElement | null>(null);
 
   const loadList = refreshChats;
   const loadThread = useCallback(async () => {
@@ -48,19 +44,14 @@ export default function Chat() {
       ]);
       if (!currentLoad()) return;
       // A refresh while a task runs usually changes nothing: keep the same objects so the thread does not re-render (that froze scrolling).
-      const firstRead = cachedMessages.current.length === 0;
       if (m.messages.length) { cachedMessages.current = [...cachedMessages.current, ...m.messages]; setMsgs(cachedMessages.current); }
-      if (firstRead) m.tasks.forEach(t => { if (!isActive(t)) settled.current.add(t.id); });          // read after they finished: already final
-      else {
-        const merged = await refreshFinished(id, cachedMessages.current, m.tasks, settled.current, t => !isActive(t), currentLoad);
-        if (merged) { cachedMessages.current = merged; setMsgs(merged); }
-      }
       setTasks(prev => same(prev, [...m.tasks].sort((a, b) => a.created_epoch - b.created_epoch))); setBlocks(prev => same(prev, b.blocks)); setDetail(prev => same(prev, c.conversation)); setErr(''); setLoaded(true);
     } catch { if (currentLoad()) { setErr('This chat could not be loaded. Please try again.'); setLoaded(true); } }
   }, [id]);
   const reload = useCallback(() => { void loadThread(); void loadList(); void refresh(); }, [loadThread, loadList, refresh]);
+  const bridge = useMemo<Bridge>(() => ({ conversationId: id ?? '', tasks: tasks as unknown as Bridge['tasks'], blocks, reload }), [id, tasks, blocks, reload]);
 
-  useEffect(() => { cachedMessages.current = []; settled.current = new Set(); setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); void loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
+  useEffect(() => { cachedMessages.current = []; setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); void loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
   useEffect(() => { void loadList(); }, [loadList]);
   const drafting = blocks.some(b => b.status === 'submitted');
   const working = tasks.some(t => isActive(t)) || drafting || blocks.some(b => b.run_status === 'running');
@@ -88,14 +79,8 @@ export default function Chat() {
   const byRequest = new Map(tasks.map(t => [t.id, t]));
   const current = chats.find(c => c.id === id) ?? detail;
 
-  const cardActions = useMemo(() => ({
-    send: async (message: string) => { if (!id) throw new Error('no chat'); try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'auto' }); } finally { reload(); } },
-  }), [id, reload]);
-  /** The layout JEV chose for a plain-text reply (a `display` block anchored to it), if any. Unknown values are ignored: the reply then shows as it is. */
-  const layoutOf = (messageId: number): ReplyLayout | undefined => {
-    const style = (blocks.find(b => b.kind === 'display' && b.anchor_message_id === messageId)?.spec as { style?: string } | undefined)?.style;
-    return style === 'steps' || style === 'answer' || style === 'list' ? style : undefined;
-  };
+  const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text' }); } finally { reload(); } };
+  const lastAgent = [...msgs].reverse().find(m => m.provenance === 'agent');
   const fresh = !id || (loaded && !msgs.length && !err);          // nothing said yet: the composer floats in the middle, then settles at the bottom
   const sent = (r: any) => {
     if (id) { reload(); return; }
@@ -105,29 +90,29 @@ export default function Chat() {
 
   return (
     <div className="chatpage">
-      <SceneBackground task={latest} ready={loaded || !id} statusEl={statusEl} />
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
         {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{latest && isActive(latest.state) && <button className="btn small danger" onClick={() => cancel(latest.id)}>Stop</button>}{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</header>}
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
-        <ChatActionsContext.Provider value={cardActions}>
-        <div className="thread" role="region" aria-label="Conversation" tabIndex={0} aria-live="polite" onScroll={e => onTranscriptScroll(e.currentTarget)}>
+        <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}
           {msgs.map(m => (
             <div key={m.id} className="turn">
-              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' && <span className="agent-mark" aria-hidden><Spark /></span>}{m.provenance === 'agent' ? <AgentResponse content={m.content} layout={layoutOf(m.id)} cardsStored={blocks.some(b => b.anchor_message_id === m.id && b.kind !== 'display')} /> : <Emojified text={m.content} />}</div>
-              {m.provenance !== 'agent' && Number.isFinite(Date.parse(m.created_at)) && <time className="stamp" dateTime={m.created_at}>{new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>}
+              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : <Emojified text={m.content} />}</div>
               {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <AgentThinking task={byRequest.get(m.request_id)!} />}
-              {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && isActive(byRequest.get(m.request_id)!) && <ChatQuestion taskId={m.request_id} active onChanged={reload} />}
               {m.provenance === 'agent' && m.request_id && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
                 <div className="filechips" aria-label="Files from this answer">{mine.map(a => <button key={a.display_name} className="chip small" title={humanSize(a.size_bytes)} onClick={() => download(a.id, a.version).catch(() => undefined)}>⬇ {a.display_name}</button>)}</div>); })()}
-              {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
+              {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} bridge={bridge} />)}
+              {m === lastAgent && !working && m.id > 0 && m.content.length > 160 && !blocks.some(b => b.anchor_message_id === m.id) && (
+                <div className="quick" aria-label="Show this differently">
+                  <button className="chip small" onClick={() => askAgain('Show your last answer as a table.')}>Show as table</button>
+                  <button className="chip small" onClick={() => askAgain('Show your last answer as a chart.')}>Show as chart</button>
+                  <button className="chip small" onClick={() => askAgain('Compare the options from your last answer side by side.')}>Compare side by side</button>
+                </div>)}
             </div>))}
           {drafting && !tasks.some(t => isActive(t)) && <div className="agent-thinking" role="status" data-orb-state="weaving"><Orb state="weaving" size={48} /><span>Planning…</span></div>}
-          {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} />)}
-          <div className="thread-status" ref={setStatusEl} />
+          {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} bridge={bridge} />)}
           <div ref={bottom} />
         </div>
-        </ChatActionsContext.Provider>
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }}>Jump to latest ↓</button>}
         <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
       </section>
