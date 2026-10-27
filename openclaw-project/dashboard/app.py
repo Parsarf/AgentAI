@@ -1423,7 +1423,7 @@ def overview_data() -> dict | None:
 
 
 SERVICES = [("agentai-platform-app", "Customer app"), ("agentai-request-worker", "Task runner"), ("agentai-lifecycle-worker", "Assistant manager"),
-            ("agentai-cell-bridge", "Assistant bridge"), ("agentai-browse", "Browser service"), ("agentai-model-proxy", "Model gateway"),
+            ("agentai-cell-bridge", "Assistant bridge"), ("agentai-browse", "Browser service"), ("agentai-tool-relay", "Browser tool for assistants"), ("agentai-model-proxy", "Model gateway"),
             ("agentai-billing-worker.timer", "Billing worker"), ("agentai-ops-backup.timer", "Nightly backup"), ("agentai-ops-monitor.timer", "Health monitor"),
             ("caddy", "Web front door")]
 

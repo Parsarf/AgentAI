@@ -296,6 +296,44 @@ class TaskControlHttpChecks(ChatHTTPChecks):
         return client.post(path, data='{}', content_type='application/json', secure=True).status_code
 
 
+class GoalHttpChecks(ChatHTTPChecks):
+    """Keep working until complete, over HTTP: the send flag, the goal controls, ownership and what a task reports about its end."""
+    switch_on = ExecutionSwitchChecks.switch_on
+
+    def test_the_send_flag_starts_a_goal_task_and_a_task_reports_how_it_ended(self):
+        self.switch_on()
+        conversation = self.conversation(); a, b = self.clients
+        sent = self.post(a, '/v1/conversations/' + conversation + '/send', {'message': 'finish the quarterly report', 'key': 'g1', 'goal': 'true'})
+        self.assertEqual(sent.status_code, 202, sent.content)
+        rid = sent.json()['request']['id']
+        self.assertTrue(sent.json()['request']['goal'])
+        task = a.get('/v1/tasks/' + rid, secure=True).json()['task']
+        self.assertEqual((task['goal_mode'], task['outcome'], task['outcome_note'], task['verification'], task['parked_reason'], task['continues']), (1, None, None, None, None, None))
+        listed = a.get('/v1/requests', secure=True).json()['requests'][0]
+        self.assertTrue(listed['goal']); self.assertIsNone(listed['outcome'])
+        other = self.post(b, '/v1/conversations/' + self.conversation(1) + '/send', {'message': 'a plain question', 'key': 'g2', 'goal': 'no'})      # (the trial allowance funds one task at a time per account)
+        self.assertEqual(other.status_code, 202, other.content)
+        self.assertFalse(other.json()['request']['goal'])                                           # a form value that is not an on-word is not a goal
+        self.assertEqual(self.post(a, '/v1/conversations/' + conversation + '/send', {'message': 'a plan', 'key': 'g3', 'mode': 'plan', 'goal': 'true'}).status_code, 400)
+
+    def test_goal_controls_are_scoped_validated_and_funded_like_any_task(self):
+        self.switch_on()
+        conversation = self.conversation(); a, b = self.clients
+        path = '/v1/conversations/' + conversation + '/goal'
+        self.assertEqual(self.post(b, path, {'action': 'resume', 'key': 'r1'}).status_code, 404)                    # not theirs, and nothing learned
+        self.assertEqual(self.post(a, path, {'action': 'explode', 'key': 'r1'}).status_code, 400)
+        self.assertEqual(self.post(a, path, {'action': 'clear', 'key': 'r2'}).status_code, 409)                      # there is no goal to clear
+        resumed = self.post(a, path, {'action': 'resume', 'key': 'r3'})
+        self.assertEqual(resumed.status_code, 202, resumed.content)
+        request = resumed.json()['request']
+        self.assertEqual((request['admission'], request['execution_enabled']), ('reserved', True))                  # admitted and funded: its own reservation
+        self.assertEqual(self.post(a, path, {'action': 'resume', 'key': 'r3'}).json()['request']['id'], request['id'])   # a double click is one task
+        self.assertEqual(self.client_without_csrf(a, path), 403)
+
+    def client_without_csrf(self, client, path):
+        return client.post(path, data='{"action":"resume","key":"x"}', content_type='application/json', secure=True).status_code
+
+
 class OpenApiDriftChecks(ChatHTTPChecks):
     """Every public route must be documented, and nothing undocumented may be advertised: a new UI is built from this file."""
     DISABLED = {'streams', 'exports', 'memory', 'schedules', 'integrations', 'controls'}   # routes that answer 404 by design
@@ -323,9 +361,11 @@ class GenUiHttpChecks(ChatHTTPChecks):
         a, b = self.clients
         plain = self.send(a, conversation, 'What is React?', 'g0')
         self.assertEqual(plain.status_code, 202); self.assertEqual(plain.json()['request']['response_type'], 'text')
-        sent = self.send(a, conversation, 'Build me an e-commerce website', 'g1')
-        self.assertEqual(sent.status_code, 202, sent.content)
-        block = sent.json()['request']['block']
+        building = self.send(a, conversation, 'Build me an e-commerce website', 'g1')
+        self.assertEqual((building.status_code, building.json()['request']['response_type']), (202, 'text'))        # no keyword guessing: the assistant answers and may offer Plan mode
+        from agentai_platform.genui import intent
+        from .chat import service
+        block = service().blocks.create_form(self.account_ids[0], conversation, intent.website_form(), key='g1f')
         self.assertEqual((block['kind'], block['version']), ('form', 1))
         listed = a.get('/v1/conversations/' + conversation + '/blocks', secure=True).json()['blocks']
         self.assertEqual([x['id'] for x in listed], [block['id']])
@@ -342,9 +382,7 @@ class GenUiHttpChecks(ChatHTTPChecks):
         self.assertEqual(self.post(a, '/v1/blocks/' + block['id'] + '/launch', {'version': 2}).status_code, 409)                                 # a form cannot be launched
         no_csrf = a.post('/v1/blocks/' + block['id'] + '/state', json.dumps({'version': 2, 'state': {}}), content_type='application/json', secure=True)
         self.assertEqual(no_csrf.status_code, 403)
-        again = self.send(a, conversation, 'Build me an e-commerce website', 'g1')
-        self.assertEqual(again.status_code, 202, again.content)
-        self.assertEqual(again.json()['request']['block']['id'], block['id'])       # idempotent
+        self.assertEqual(service().blocks.create_form(self.account_ids[0], conversation, intent.website_form(), key='g1f')['id'], block['id'])       # idempotent by key
 
 
 class ChatListChecks(ChatHTTPChecks):
@@ -414,10 +452,149 @@ class BrowseHttpChecks(ChatHTTPChecks):
     def test_control_validates_input_and_needs_the_service(self):
         self.seed('handoff')
         a, b = self.clients
-        for bad in [{'action': 'click'}, {'action': 'click', 'x': 2000, 'y': 1}, {'action': 'type'}, {'action': 'nope'}, {'action': 'type', 'text': 'x' * 501}]:
+        for bad in [{'action': 'click'}, {'action': 'click', 'x': 2000, 'y': 1}, {'action': 'type'}, {'action': 'nope'}, {'action': 'type', 'text': 'x' * 501}, {'action': 'goto'}, {'action': 'goto', 'text': 'x' * 2049}, {'action': 'reload', 'text': 'x' * 501}]:
             self.assertEqual(self.post(a, '/v1/browse/br1/control', bad).status_code, 400, bad)
         self.assertEqual(self.post(b, '/v1/browse/br1/control', {'action': 'scroll', 'text': 'down'}).status_code, 404)
         self.assertIn(self.post(a, '/v1/browse/br1/control', {'action': 'scroll', 'text': 'down'}).status_code, (409, 503))   # no browse service in tests
+
+    def test_a_question_is_answered_only_by_its_owner_with_valid_input_and_saved_choices_are_private(self):
+        self.seed('asking')
+        a, b = self.clients
+        url = '/v1/browse/br1/answer'
+        for bad in [{}, {'question_id': 'q'}, {'question_id': 'q', 'option': 'o1', 'resume': True}, {'question_id': 'q', 'option': 'o' * 20}, {'question_id': 'q', 'option': 'o1', 'remember': 'yes'}, {'question_id': 3, 'option': 'o1'}]:
+            self.assertEqual(self.post(a, url, bad).status_code, 400, bad)
+        self.assertEqual(self.post(b, url, {'question_id': 'q', 'option': 'o1'}).status_code, 404)           # someone else's task
+        self.assertEqual(self.post(a, url, {'question_id': 'q', 'option': 'o1'}).status_code, 409)           # no browse service in tests
+        from agentai_platform import saved
+        from accounts.lifecycle import AccountStore
+        with AccountStore(connection.settings_dict['NAME']).transaction() as con:
+            saved.remember(con, self.account_ids[0], 'Size', 'M')
+        self.assertEqual(a.get('/v1/saved', secure=True).json()['saved'], [{'field': 'size', 'value': 'M'}])
+        self.assertEqual(b.get('/v1/saved', secure=True).json()['saved'], [])
+        self.assertEqual(self.post(b, '/v1/saved/size/forget', {}).status_code, 200)
+        self.assertEqual(len(a.get('/v1/saved', secure=True).json()['saved']), 1)                            # another account's forget changes nothing
+        self.assertEqual(self.post(a, '/v1/saved/size/forget', {}).status_code, 200)
+        self.assertEqual(a.get('/v1/saved', secure=True).json()['saved'], [])
+
+    def test_saved_logins_and_cards_need_the_key_and_the_notice_and_never_come_back(self):
+        import os
+        import tempfile
+        from django.test import override_settings
+        from agentai_platform import vault
+        a, b = self.clients
+        card = {'number': '4242424242424242', 'exp_month': 12, 'exp_year': 2090 - 60, 'name': 'A'}
+        self.assertEqual(self.post(a, '/v1/vault/add', {'kind': 'card', 'secret': card, 'accepted': True}).status_code, 409)          # no key file: the vault is off
+        self.assertEqual(a.get('/v1/vault', secure=True).json()['enabled'], False)
+        with tempfile.TemporaryDirectory() as d:
+            key = os.path.join(d, 'vault.key'); open(key, 'w').write(vault.Keyring.generate() + '\n'); os.chmod(key, 0o600)
+            with override_settings(VAULT_KEY_FILE=key):
+                self.assertEqual(self.post(a, '/v1/vault/add', {'kind': 'card', 'secret': card}).status_code, 400)                      # notice not accepted
+                self.assertEqual(self.post(a, '/v1/vault/add', {'kind': 'card', 'secret': card, 'accepted': 'yes'}).status_code, 400)
+                self.assertEqual(self.post(a, '/v1/vault/add', {'kind': 'card', 'secret': {**card, 'cvv': '123'}, 'accepted': True}).status_code, 400)
+                self.assertEqual(self.post(a, '/v1/vault/add', {'kind': 'card', 'secret': card, 'extra': 1, 'accepted': True}).status_code, 400)
+                made = self.post(a, '/v1/vault/add', {'kind': 'card', 'secret': card, 'accepted': True})
+                self.assertEqual(made.status_code, 200); item = made.json()['item']
+                self.assertEqual(item['label'], 'Visa ending 4242')
+                self.assertNotIn('4242424242424242', made.content.decode())
+                listed = a.get('/v1/vault', secure=True); self.assertNotIn('4242424242424242', listed.content.decode())
+                self.assertEqual([i['id'] for i in listed.json()['items']], [item['id']])
+                self.assertEqual(b.get('/v1/vault', secure=True).json()['items'], [])                                                   # private to the account
+                self.assertEqual(self.post(b, f"/v1/vault/{item['id']}/delete", {}).status_code, 200)
+                self.assertEqual(len(a.get('/v1/vault', secure=True).json()['items']), 1)                                               # another account cannot delete it
+                self.assertEqual(self.post(a, f"/v1/vault/{item['id']}/delete", {}).status_code, 200)
+                self.assertEqual(a.get('/v1/vault', secure=True).json()['items'], [])
+
+    def test_a_saved_login_is_opened_only_for_a_yes_to_that_question_and_only_goes_to_the_service(self):
+        import os
+        import tempfile
+        from unittest import mock
+        from django.test import override_settings
+        from agentai_platform import vault
+        a, b = self.clients
+        self.seed('asking')
+        with tempfile.TemporaryDirectory() as d:
+            key = os.path.join(d, 'vault.key'); open(key, 'w').write(vault.Keyring.generate() + '\n'); os.chmod(key, 0o600)
+            with override_settings(VAULT_KEY_FILE=key):
+                item = self.post(a, '/v1/vault/add', {'kind': 'login', 'site': 'shop.test', 'secret': {'username': 'ada', 'password': 'PW-SECRET'}, 'accepted': True}).json()['item']
+                sent = []
+                def rpc(op, **kw):
+                    sent.append((op, kw))
+                    if op == 'poll':
+                        return {'question': {'id': 'q1', 'use': 'login', 'options': [{'id': 'o1', 'label': 'Use it', 'item': item['id']}, {'id': 'o2', 'label': 'Myself'}]}}
+                    return {'ok': True, 'field': '', 'label': 'Use it'}
+                with mock.patch('accounts.browse._rpc', lambda request: rpc):
+                    yes = self.post(a, '/v1/browse/br1/answer', {'question_id': 'q1', 'option': 'o1'})
+                    self.assertEqual(yes.status_code, 200); self.assertNotIn('PW-SECRET', yes.content.decode())
+                    answered = [kw for op, kw in sent if op == 'answer'][-1]
+                    self.assertEqual(answered['secret'], {'username': 'ada', 'password': 'PW-SECRET'})
+                    sent.clear()
+                    self.post(a, '/v1/browse/br1/answer', {'question_id': 'q1', 'option': 'o2'})
+                    self.assertNotIn('secret', [kw for op, kw in sent if op == 'answer'][-1])                 # "I will do it myself" opens nothing
+                    sent.clear()
+                    self.post(a, '/v1/browse/br1/answer', {'question_id': 'stale', 'option': 'o1'})
+                    self.assertNotIn('secret', [kw for op, kw in sent if op == 'answer'][-1])                 # a question that is no longer open opens nothing
+                    sent.clear()
+                    self.seed_other = None
+                    self.assertEqual(self.post(b, '/v1/browse/br1/answer', {'question_id': 'q1', 'option': 'o1'}).status_code, 404)
+
+    def test_details_for_a_form_are_forwarded_and_saved_only_when_the_customer_ticked_save(self):
+        from unittest import mock
+        from agentai_platform import saved
+        from .lifecycle import AccountStore
+        self.seed('asking')
+        a, b = self.clients; url = '/v1/browse/br1/answer'
+        sent = []
+        def rpc(op, **kw):
+            sent.append((op, kw))
+            return {'ok': True, 'field': '', 'label': None, 'keys': {'f1': 'full name', 'f2': 'email address'}} if op == 'answer' else {'question': None}
+        bad = [{'question_id': 'q', 'fields': {}}, {'question_id': 'q', 'fields': 'x'}, {'question_id': 'q', 'fields': {'f1': 5}}, {'question_id': 'q', 'fields': {'f1': 'x' * 201}},
+               {'question_id': 'q', 'fields': {'f1': 'a'}, 'resume': True}, {'question_id': 'q', 'fields': {'f1': 'a'}, 'option': 'o1'}, {'question_id': 'q', 'fields': {'f1': 'a'}, 'remember_fields': 'f1'},
+               {'question_id': 'q', 'fields': {'f' * 9: 'a'}}, {'question_id': 'q', 'resume': True, 'option': 'o1'}, {'question_id': 'q'}]
+        with mock.patch('accounts.browse._rpc', lambda request: rpc):
+            for body in bad: self.assertEqual(self.post(a, url, body).status_code, 400, body)
+            self.assertEqual(self.post(b, url, {'question_id': 'q', 'fields': {'f1': 'a'}}).status_code, 404)                  # someone else's task
+            ok = self.post(a, url, {'question_id': 'q', 'fields': {'f1': 'Ada L', 'f2': 'ada@example.test'}, 'remember_fields': ['f1']})
+            self.assertEqual(ok.status_code, 200); self.assertEqual(ok.json()['saved_fields'], ['full name'])
+        forwarded = [kw for op, kw in sent if op == 'answer'][-1]
+        self.assertEqual(forwarded['fields'], {'f1': 'Ada L', 'f2': 'ada@example.test'})
+        with AccountStore(connection.settings_dict['NAME']).connect() as con:
+            self.assertEqual(saved.choices(con, self.account_ids[0]), {'full name': 'Ada L'})                                 # only the ticked one; the other was typed and forgotten
+            self.assertEqual(saved.choices(con, self.account_ids[1]), {})
+
+    def test_the_live_view_follows_a_later_browser_session_of_the_same_request(self):
+        import tempfile
+        from unittest import mock
+        from django.test import override_settings
+        from agentai_platform.browse import sessions
+        from agentai_platform.live import ticket
+        rid = 'c' * 32
+        job = sessions.job_id(rid, 2)
+        with connection.cursor() as c:
+            c.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch) VALUES (%s,%s,'a',%s,'k3','h3','compare wings','running',1)", [self.account_ids[0], rid, self.project()])
+            c.execute("INSERT INTO browse_runs(account_id,request_id,goal,status,url,created_epoch,updated_epoch) VALUES (%s,%s,'compare wings','running','https://shop.test/',1,1)", [self.account_ids[0], rid])
+            c.execute("INSERT INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (%s,%s,1,'opened','{}',1)", [self.account_ids[0], rid])
+            c.execute("INSERT INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (%s,%s,2,'step','{}',1)", [self.account_ids[0], rid])
+            c.execute("INSERT INTO browse_sessions(account_id,request_id,session,job_id,n_offset,created_epoch) VALUES (%s,%s,2,%s,2,1)", [self.account_ids[0], rid, job])
+        a, b = self.clients
+        seen = []
+        def rpc(op, **kw):
+            seen.append((op, kw))
+            if op == 'poll':
+                return {'state': 'running', 'url': 'https://other.test/', 'events': [{'n': 1, 'kind': 'opened'}, {'n': 2, 'kind': 'step'}]}
+            return {'ok': True}
+        with mock.patch('accounts.browse._rpc', lambda request: rpc):
+            body = a.get(f'/v1/browse/{rid}?since=3', secure=True).json()
+            self.assertEqual([e['n'] for e in body['events']], [3, 4])                        # the second session's steps continue the request's numbering
+            self.assertEqual(seen[-1], ('poll', {'request_id': job, 'since': 1}))               # the service is asked by its own job id, in its own numbering
+            self.assertEqual(self.post(a, f'/v1/browse/{rid}/pause', {}).status_code, 200)
+            self.assertEqual(seen[-1][1]['request_id'], job)
+            self.assertEqual(b.get(f'/v1/browse/{rid}', secure=True).status_code, 404)         # still scoped to the owner
+        with tempfile.NamedTemporaryFile() as f:
+            f.write(b'k' * 48); f.flush()
+            with override_settings(LIVE_SECRET_FILE=f.name):
+                got = self.post(a, f'/v1/browse/{rid}/live', {}).json()
+                self.assertEqual(got['path'], f'/v1/live/{job}/frame')                         # the frame gateway serves the run folder of the job
+                self.assertEqual(ticket.verify(b'k' * 48, got['ticket'], job), self.account_ids[0])
 
     def test_pause_resume_and_live_ticket_are_scoped_gated_and_degrade_without_the_service(self):
         import os

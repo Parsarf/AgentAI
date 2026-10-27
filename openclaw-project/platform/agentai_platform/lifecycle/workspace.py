@@ -10,8 +10,9 @@ import re
 import stat
 
 ALLOWED_EXT = {'.txt', '.md', '.csv', '.json', '.py', '.js', '.ts', '.tsx', '.jsx', '.html', '.css', '.sql', '.pdf', '.png', '.jpg', '.jpeg'}
-SKIP_DIRS = {'node_modules', '.git', '__pycache__', '.venv', 'venv', '.cache', '.npm', 'dist', 'build'}
-SKIP_NAMES = {'AGENTS.md'}
+SKIP_DIRS = {'node_modules', '.git', '__pycache__', '.venv', 'venv', '.cache', '.npm', 'dist', 'build', 'memory'}
+# The runtime seeds these into a fresh workspace and keeps them itself (persona, first-run ritual, memory): they are its files, not something the customer asked for.
+SKIP_NAMES = {'AGENTS.md', 'SOUL.md', 'USER.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md'}
 MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES, MAX_DEPTH = 10, 2 * 1024 * 1024, 8 * 1024 * 1024, 4
 NAME_OK = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._ -]{0,100}$')
 

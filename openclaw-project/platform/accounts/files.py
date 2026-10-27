@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import connection
 from django.http import JsonResponse, FileResponse
 from django.views.decorators.csrf import csrf_exempt
+from agentai_platform import safety as sf
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat import ChatService
 from agentai_platform.files import FileService, Rejected, MAX_PREVIEW_BYTES
@@ -22,6 +23,15 @@ from .views import endpoint, customer
 
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _limits_on(request):
+    """The account's `upload_limits` switch (agentai_platform/safety.py). Fails closed: any error means the limit applies."""
+    try:
+        with AccountStore(connection.settings_dict['NAME']).connect() as con:
+            return sf.is_on(con, request.account_id, 'upload_limits')
+    except Exception:
+        return True
 
 
 def _ready():
@@ -92,7 +102,7 @@ def upload(request, project_id):
         for index, item in enumerate(field):
             # Upload handlers may hand over an UploadedFile or raw bytes.
             data = item.read() if hasattr(item, 'read') else item
-            if len(data) > MAX_UPLOAD_BYTES:
+            if len(data) > MAX_UPLOAD_BYTES and _limits_on(request):
                 return JsonResponse({'error': 'rejected', 'reason': 'file exceeds 10MiB'}, status=422)
             name = getattr(item, 'name', '') or (hints[index] if index < len(hints) else '')
             entries.append((name or 'upload.bin', getattr(item, 'content_type', '') or '', data))

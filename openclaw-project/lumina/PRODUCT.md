@@ -14,37 +14,30 @@ Lumina is a private AI assistant each customer owns: a chat where they ask for w
 
 ## Positioning
 - **Honest, observable activity.** The interface shows what the assistant is actually doing (tool use, browsing, terminal output it really reported) and never invents reasoning or simulated progress.
-- **A living character.** A mascot whose scene mirrors the real state of the assistant and the task (asleep, waking, planning, working, waiting, blocked, needs you, stopped, completed, failed).
+- **Calm and premium.** A near-black, Apple-inspired workspace with one restrained violet accent.
 
 ## Operating Context
 - Served at `https://getlumina.pro/app/` by the account backend; single-page app, same-origin API under `/v1`, cookie session.
-- Chat is the main surface. Around it: Home, Tasks, Live view (watch and take over the browser agent), Files, History, Calendar, Automations, Integrations, Settings.
+- Chat is the main surface. Around it: Home, Chat history, Task activity, Live view (watch and take over the browser agent), Files, Calendar, Automations, Integrations, Settings.
 - Each customer has an isolated assistant workspace that sleeps when idle and wakes when work arrives.
-- Customers answer the assistant's questions and approvals in the chat; sensitive input (passwords, payment) stays with the customer.
 
 ## Capabilities and Constraints
 - `features` from `GET /v1/app` decides which screens and buttons exist (`platform/UI_CONTRACT.md`).
 - Product name stays **Lumina**.
-- The UI must map real task and workspace state; it never simulates progress on a timer (`lumina/AGENTS.md`).
-- Reduce-motion support is required: animations (orbs, film background) have a still-frame fallback.
+- The UI maps real task and workspace state; it never simulates progress on a timer (`AGENTS.md`).
+- Reduce-motion support is required: orbs and the planet have a still fallback.
 - Frontend rules: no inline scripts or styles, no CDN, same-origin only (backend CSP).
-- Undecided: pricing and billing presentation beyond the `billing_mode` switch.
 
 ## Brand Commitments
-- Name: Lumina.
-- The visual world is the mascot's own: warm parchment, brown ink, an amber signal from the creature's glow, a serif for the assistant's voice. The owner pinned it with a reference image (`image.png`, 23 Oct 2026); `DESIGN.md` records it. The earlier Obsidian dark world remains as `data-theme="obsidian"`.
-
-## Evidence on Hand
-- Real product behaviour and constraints: `platform/UI_CONTRACT.md`, `platform/CHAT.md`, `lumina/AGENTS.md`.
-- Mascot film package: `lumina-environment-v3-clips.zip` (nine state loops, enter and exit clips, six event clips), bundled at `lumina/public/scenes/`.
-- No testimonials, customer counts, benchmarks or pricing claims exist in the repository; future work must not fabricate them.
+- Name: Lumina; the four-point spark mark and the spaced wordmark.
+- Visual world: the dark, Apple-inspired system recorded in `DESIGN.md` (reference image approved by the owner, 25 Oct 2026).
 
 ## Product Principles
 1. Show the truth: every indicator reflects real state, and errors stay visible.
 2. Never make the customer feel lost: always say what the assistant is doing and what it needs from them.
 3. Privacy first: sensitive text is masked, never stored client-side, and never shown to the wrong account.
 4. Calm for non-experts: plain words, no jargon, nothing that needs configuring to get a first result.
-5. The character earns its place by being accurate, not decorative.
+5. Never present anything as a feature that does not exist; sample data is labelled as such.
 
 ## Accessibility & Inclusion
-Reduced motion is honoured everywhere; interactive elements are keyboard reachable; decorative media is hidden from assistive technology.
+Reduced motion is honoured everywhere; every interactive element is keyboard reachable with a visible focus ring; text meets 4.5:1 contrast; decorative media is hidden from assistive technology.

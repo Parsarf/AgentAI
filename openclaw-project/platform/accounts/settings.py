@@ -112,9 +112,16 @@ ROUTING_CONFIG_FILE = os.environ.get('AGENTAI_ROUTING_CONFIG_FILE', '/var/lib/ag
 TYPESAFE_KEY_FILE = os.environ.get('AGENTAI_TYPESAFE_KEY_FILE', '/var/lib/agentai-platform/routing/typesafe.key')
 UI_BUNDLE_DIR = os.environ.get('AGENTAI_UI_BUNDLE_DIR', '/var/lib/agentai-platform/ui')
 BROWSE_SOCKET = os.environ.get('AGENTAI_BROWSE_SOCKET', '/run/agentai-browse/browse.sock')
+# Native execution: the browser tool relay cells reach over the bridge address (see agentai_platform/tool_relay.py), and how long a "keep working until complete" goal may run.
+TOOL_RELAY_BIND = os.environ.get('AGENTAI_TOOL_RELAY_BIND', '10.77.0.1')
+TOOL_RELAY_PORT = int(os.environ.get('AGENTAI_TOOL_RELAY_PORT', '4100'))
+GOAL_CHAIN_LIMIT = int(os.environ.get('AGENTAI_GOAL_CHAIN_LIMIT', '20'))      # turns of one goal before the customer decides whether to resume it
 # Live view: the frame gateway is a separate process; this file holds the secret both sides use to sign and check watch tickets.
 LIVE_SECRET_FILE = os.environ.get('AGENTAI_LIVE_SECRET_FILE', '')
 LIVE_PATH = os.environ.get('AGENTAI_LIVE_PATH', '/v1/live')
+SAFETY_SNAPSHOT_FILE = os.environ.get('AGENTAI_SAFETY_SNAPSHOT', str(STATE_DIR / 'safety-switches.json'))   # the switch settings other processes read (the browse service, the supervisor); written by the app on every change
+SAFETY_OWNER_ACCOUNT = os.environ.get('AGENTAI_SAFETY_OWNER_ACCOUNT', '')   # the one account that may see and change its own safety switches; empty = nobody
+VAULT_KEY_FILE = os.environ.get('AGENTAI_VAULT_KEY_FILE', '')          # saved logins and cards; without this root-only key file the vault is off
 CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
 
 # Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.

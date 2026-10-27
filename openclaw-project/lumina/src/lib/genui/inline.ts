@@ -1,11 +1,7 @@
-import type { z } from 'zod';
-import { CARD_SCHEMAS, type CardKind } from './data';
+import { chartSpec, comparisonSpec, tableSpec } from './data';
 
-/** One card, tagged with its kind so code can narrow on `kind` and get that kind's spec type. */
-export type InlineCard = { [K in CardKind]: { kind: K; spec: z.infer<(typeof CARD_SCHEMAS)[K]> } }[CardKind];
-
-/** Only bounded, schema-validated cards may replace a JSON block: the `type` picks the one schema it must pass. */
-export function inlineCard(value: string): InlineCard | null {
+/** Only bounded, schema-validated read-only cards may replace a JSON block. */
+export function inlineCard(value: string) {
   if (value.length > 50_000 || !value.trim().startsWith('{')) return null;
   try {
     let spec: unknown = JSON.parse(value);
@@ -15,10 +11,12 @@ export function inlineCard(value: string): InlineCard | null {
     if (['bar', 'line', 'pie', 'donut'].includes(String(record.type)) && !('chart' in record)) {
       spec = { ...record, type: 'chart', chart: record.type };
     }
-    const kind = String((spec as Record<string, unknown>).type) as CardKind;
-    if (!(kind in CARD_SCHEMAS)) return null;
-    const parsed = CARD_SCHEMAS[kind].safeParse(spec);
-    if (parsed.success) return { kind, spec: parsed.data } as InlineCard;
+    const chart = chartSpec.safeParse(spec);
+    if (chart.success) return { kind: 'chart' as const, spec: chart.data };
+    const table = tableSpec.safeParse(spec);
+    if (table.success) return { kind: 'table' as const, spec: table.data };
+    const comparison = comparisonSpec.safeParse(spec);
+    if (comparison.success) return { kind: 'comparison' as const, spec: comparison.data };
   } catch { /* ordinary or malformed JSON stays literal; never execute it */ }
   return null;
 }

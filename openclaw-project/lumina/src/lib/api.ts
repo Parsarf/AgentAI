@@ -38,5 +38,8 @@ export interface AppInfo {
   features: { chat: boolean; execution: boolean; files: boolean; uploads: boolean; telegram: boolean; connectors: boolean; billing_mode: string; requests: boolean; usage: boolean; browse?: boolean };
   limits: { max_message_chars: number; max_projects: number; max_conversations_per_project: number };
 }
-export interface RequestRow { id: string; message: string; state: string; cancel_requested: number; result: string | null; created_epoch: number; conversation_id?: string | null; paused?: boolean; ahead?: number | null; retry_of?: string | null }
+/** `outcome` is how the task ended for the customer (completed, partial, blocked, failed, cancelled), apart from `state`, which only says the run is over; `verification` says whether
+ *  anything Lumina can check supports "done"; `parked` is set while the run waits for a person; `goal` marks a "keep working until complete" task and `continuing` that the next turn is on its way. */
+export interface RequestRow { id: string; message: string; state: string; cancel_requested: number; result: string | null; created_epoch: number; conversation_id?: string | null; paused?: boolean; ahead?: number | null; retry_of?: string | null;
+  outcome?: 'completed' | 'partial' | 'blocked' | 'failed' | 'cancelled' | null; outcome_note?: string | null; verification?: 'verified' | 'unverified' | 'not_applicable' | null; parked?: string | null; goal?: boolean; continuing?: boolean }
 export interface EventRow { sequence?: number; id?: number; kind: string; payload?: { summary?: string; category?: string; status?: string; tool?: string; ref?: string }; created_at: string }

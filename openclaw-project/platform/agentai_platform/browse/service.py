@@ -18,10 +18,9 @@ import traceback
 import uuid
 import logging
 
-from . import llm as llm_mod
 from agentai_platform.live import now as live_now
-from .ladder import JevChooser, Ladder, Refused
-from .goals import goal_parts, instruction_text
+from .ladder import Decision, Handover, Ladder, Refused, parse_decision, render
+from .goals import goal_parts
 from .loop import BrowseRunner, Policy
 from .session import Session
 from .trace import NULL, Trace
@@ -42,6 +41,7 @@ SNAPSHOT_EVERY_SECONDS = 4
 SCREENSHOT_RETENTION_SECONDS = 24 * 3600    # pages can show personal data: screenshots are deleted a day after the task
 PURGE_EVERY_SECONDS = 900                     # ...and this is how often the service looks for them, whether or not any task is running
 MAX_CALLS = 60
+MAX_URL_CHARS = 2048                          # an address typed in the live view's address bar
 # A 16k request plus 12k of saved context and JSON quoting overhead.
 MAX_GOAL_CHARS = 48_000
 MAX_RPC_BYTES = 1 << 20  # bounded wire size, including escaped Unicode
@@ -80,14 +80,42 @@ def watch_purge(service, stop, every=PURGE_EVERY_SECONDS, sleep=time.sleep):
         sleep(every)
 
 
-# What the owner reads to judge the JEV-first ladder. jev_asked / jev_agree are shadow mode's (how often JEV picked the same step as Haiku or Sonnet);
-# the others count live mode: acted steps by who decided them (jev_acted + haiku_step + sonnet_step = steps taken), and how often JEV handed over.
-STAT_KEYS = ('jev_asked', 'jev_agree', 'jev_acted', 'jev_typed_from_goal', 'haiku_text', 'haiku_answer', 'haiku_step', 'sonnet_step',
-             'jev_needs_user', 'jev_too_complex', 'jev_misses', 'no_change_loops')
+# What the owner reads to judge JEV and the hand-over to the assistant: acted steps by who decided them (jev_acted + agent_step = steps taken), how often JEV handed over
+# (jev_too_complex, jev_misses, no_change_loops, claude_page_takeovers), and what the assistant did for JEV (agent_text, agent_answer).
+STAT_KEYS = ('ask_answered', 'ask_remembered', 'jev_acted', 'jev_typed_from_goal', 'agent_step', 'agent_text', 'agent_answer', 'jev_needs_user', 'jev_too_complex', 'jev_misses',
+             'jev_ask', 'no_change_loops', 'claude_page_takeovers', 'other_step')
 
 
 class BrowseError(Exception):
     pass
+
+
+ASK_SECONDS = 300                              # a question waits this long for an answer (each click on the page while choosing renews it)
+AGENT_WAIT_SECONDS = 180                       # how long the loop waits for the assistant's next step before it gives the task up
+AGENT_RETRIES = 3                              # an invalid step is handed back to the assistant to correct this many times in a row
+AGENT_STEP_FIELDS = ('action', 'ref', 'value', 'answer', 'reason', 'question', 'field', 'options', 'fields')
+MAX_OBSERVATION = 9000
+MAX_PREFS = 40
+
+
+def clean_vault(items):
+    """The readable part of what the customer keeps, so the run can offer it on a sign-in or payment page. A secret is never part of this."""
+    out = []
+    if isinstance(items, list):
+        for i in items[:30]:
+            if isinstance(i, dict) and i.get('kind') in ('login', 'card') and isinstance(i.get('id'), str) and i['id'] and all(isinstance(i.get(k, ''), str) for k in ('label', 'site')):
+                out.append({'id': i['id'][:40], 'kind': i['kind'], 'label': i.get('label', '')[:80], 'site': i.get('site', '')[:120]})
+    return out
+
+
+def clean_prefs(prefs):
+    """Saved choices the host hands to a run: short plain words by field. Never secrets (logins and cards do not travel this way)."""
+    out = {}
+    if isinstance(prefs, dict):
+        for k, v in list(prefs.items())[:MAX_PREFS]:
+            if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip():
+                out[k.strip().lower()[:30]] = v.strip()[:80]
+    return out
 
 
 class Job:
@@ -97,10 +125,16 @@ class Job:
         self.state, self.reason, self.answer, self.url, self.pending = 'queued', '', None, '', None
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
+        self.engine = 'runner'                      # 'runner' (the host's Docker stage) | 'native' (the cell's own browser); recorded on the job, never switched mid-run
         self.last_shot = 0.0
         self.trace = NULL                           # set when the run starts: the operator's record (trace.py)
         self.pause_req = threading.Event()          # the user asked for the wheel; the loop acknowledges at the next step boundary (state -> 'paused')
         self.stats = dict.fromkeys(STAT_KEYS, 0)
+        self.observation, self.obs_n = None, 0      # while the assistant is asked for the next step: {'n', 'text'}
+        self.agent_box, self.agent_ev = None, threading.Event()
+        self.vault = []                             # the customer's saved logins and cards, readable part only (label, site, hint): the secrets never travel with the task
+        self.prefs = {}                             # what the customer chose before, by field (size -> M); handed to the loop so it does not ask twice
+        self.question, self.answer_box, self.answer_ev = None, None, threading.Event()      # a question waiting for the customer: {'id','title','field','options','menu'}
 
     def add(self, kind, data):
         with self.lock:
@@ -108,15 +142,20 @@ class Job:
 
 
 class BrowseService:
-    def __init__(self, *, spawn, llm_for, jev_for=lambda account: None, root, jev_mode='shadow', clock=time.monotonic,
-                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep):
-        """spawn(job_id, out_dir) -> transport; llm_for(account) -> callable(tier, system, user); jev_for(account) -> JevChooser|None."""
-        self.spawn, self.llm_for, self.jev_for, self.root, self.jev_mode, self.clock = spawn, llm_for, jev_for, Path(root), jev_mode, clock
+    def __init__(self, *, spawn, jev_for=lambda account: None, root, jev_mode='live', clock=time.monotonic,
+                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep, native_spawn=None, engine_for=lambda account: 'runner', switch_for=None):
+        """spawn(job_id, out_dir) -> transport; jev_for(account) -> JevChooser|None. The only model the service itself calls is JEV: every step JEV hands over goes to the
+        account's own assistant, which answers through agent_step().
+        native_spawn(account, job_id, out_dir) -> transport on the account's own cell browser; engine_for(account) -> 'runner' | 'native' says which a new job uses;
+        switch_for(account) -> switch(key) -> bool reads the account's safety switches (read again at every step, so a change in the menu applies at once)."""
+        self.spawn, self.jev_for, self.root, self.jev_mode, self.clock = spawn, jev_for, Path(root), jev_mode, clock
+        self.native_spawn, self.engine_for, self._account_slots = native_spawn, engine_for, {}
+        self.switch_for = switch_for or (lambda account: (lambda key: True))      # switch_for(account) -> switch(key) -> bool: the account's safety switches (agentai_platform/safety.py); everything is on unless the owner turned it off
         self.free_memory, self.sleep = free_memory or available_memory, sleep
         self.takeover_seconds, self.jobs, self._slot, self._guard = takeover_seconds, {}, threading.Semaphore(1), threading.Lock()
 
     # ------------------------------------------------------------------ public operations (all scoped to the caller's account)
-    def start(self, account, request_id, goal, *, start_url=None, max_cost_microusd=1_000_000, max_steps=25, max_seconds=600):
+    def start(self, account, request_id, goal, *, start_url=None, max_cost_microusd=1_000_000, max_steps=25, max_seconds=600, prefs=None, vault=None):
         if not REQUEST_ID.fullmatch(request_id or '') or not isinstance(goal, str) or not 3 <= len(goal) <= MAX_GOAL_CHARS:
             raise BrowseError('invalid job')
         max_cost = min(int(max_cost_microusd), 5_000_000)
@@ -127,6 +166,9 @@ class BrowseService:
                     raise BrowseError('unavailable')
                 return {'ok': True, 'state': existing.state}            # idempotent
             job = Job(account, request_id, goal, start_url, max_cost, min(int(max_steps), 40), min(int(max_seconds), 900))
+            job.prefs = clean_prefs(prefs)
+            job.vault = clean_vault(vault)
+            job.engine = 'native' if self.native_spawn is not None and self.engine_for(account) == 'native' else 'runner'
             self.jobs[request_id] = job
             self._make_room(job)
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
@@ -157,8 +199,9 @@ class BrowseService:
         with job.lock:
             events = [e for e in job.events if e['n'] > since]
         return {'state': job.state, 'reason': job.reason, 'answer': job.answer, 'url': job.url, 'pending_action': job.pending,
-                'cost_microusd': job.cost, 'events': events, 'takeover': job.state in ('handoff', 'paused') and self.clock() < job.takeover_until,
-                'pausing': job.state == 'running' and job.pause_req.is_set(), 'jev': dict(job.stats)}
+                'cost_microusd': job.cost, 'events': events, 'takeover': job.state in ('handoff', 'paused', 'asking') and self.clock() < job.takeover_until,
+                'pausing': job.state == 'running' and job.pause_req.is_set(), 'jev': dict(job.stats), 'question': self._public_question(job),
+                'observation': job.observation if job.state == 'running' else None}
 
     def cancel(self, account, request_id):
         job = self._job(account, request_id)
@@ -179,7 +222,7 @@ class BrowseService:
         """Hop in at any time: the agent finishes the step it is on, then waits; the user can then click and type. Returns at once
         (the state turns 'paused' when the agent has stopped; until then control is refused so two hands never share the page)."""
         job = self._job(account, request_id)
-        if job.state not in ('queued', 'running', 'paused', 'handoff'):
+        if job.state not in ('queued', 'running', 'paused', 'handoff', 'asking'):
             raise BrowseError('not available')
         if job.state in ('queued', 'running'):                     # a task still waiting for the stage pauses at its first step boundary
             job.pause_req.set()
@@ -193,6 +236,144 @@ class BrowseService:
         if job.state == 'handoff':
             job.takeover_until = 0
         return {'ok': True}
+
+    def agent_step(self, account, request_id, step):
+        """The assistant's next step, while the loop is waiting for it. Only the fields of a step are kept, bounded; the loop turns it into a decision and runs every rule on it."""
+        job = self._job(account, request_id)
+        if not isinstance(step, dict):
+            raise BrowseError('invalid step')
+        clean = {k: step[k] for k in AGENT_STEP_FIELDS if k in step}
+        for key in ('action', 'value', 'answer', 'reason', 'question', 'field'):
+            if key in clean and (not isinstance(clean[key], str) or len(clean[key]) > 4000):
+                raise BrowseError('invalid step')
+        if 'ref' in clean and (isinstance(clean['ref'], bool) or not isinstance(clean['ref'], (int, str)) or len(str(clean['ref'])) > 8):
+            raise BrowseError('invalid step')
+        for key in ('options', 'fields'):
+            if key in clean and (not isinstance(clean[key], list) or len(clean[key]) > 20 or any(isinstance(v, bool) or not isinstance(v, (int, str)) or len(str(v)) > 8 for v in clean[key])):
+                raise BrowseError('invalid step')
+        with job.lock:
+            if job.observation is None or job.state != 'running':
+                raise BrowseError('not waiting for a step')
+            job.observation = None
+            job.agent_box = clean
+            job.agent_ev.set()
+        job.trace.emit('agent', what='gave a step', action=clean.get('action'))
+        return {'ok': True}
+
+    def agent_release(self, account, request_id):
+        """The request that handed a page to its assistant is over and no step is coming: end the job now instead of after the wait. Only a job that is waiting for the assistant is touched."""
+        job = self._job(account, request_id)
+        with job.lock:
+            waiting = job.observation is not None
+        if waiting:
+            job.trace.emit('agent', what='released: the request ended')
+            job.cancel.set()
+        return {'ok': True, 'released': waiting}
+
+    @staticmethod
+    def _public_question(job):
+        q = job.question
+        if not q:
+            return None
+        return {'id': q['id'], 'title': q['title'], 'field': q['field'], 'menu': q['menu'], 'use': q.get('use', ''), 'kind': q.get('kind', 'choice'),
+                'options': [{'id': o['id'], 'label': o['label'], **({'item': o['item']} if o.get('item') else {})} for o in q['options']],
+                **({'fields': [{'id': f['id'], 'label': f['label'], 'key': f['key'], 'sensitive': f['sensitive'], 'input_type': f['input_type'], 'prefill': f.get('prefill', '')} for f in q['fields']]} if q.get('fields') else {})}
+
+    def _ask_gate(self, job):
+        """The loop reached a choice the customer should make. Block here (the page stays as it is) until they answer, press Continue after choosing on the page,
+        or the wait runs out. -> (answer | None, seconds waited)."""
+        def gate(question, step):
+            began = self.clock()
+            with job.lock:
+                job.answer_ev.clear()
+                job.answer_box = None
+                job.question = {**question, 'id': uuid.uuid4().hex[:12]}
+                job.state = 'asking'
+                job.takeover_until = began + ASK_SECONDS
+            job.add('status', {'state': 'asking', 'reason': 'waiting for your choice'})
+            job.trace.emit('ask_wait', options=len(question['options']), field=question.get('field'))
+            while not job.answer_ev.is_set() and not job.cancel.is_set() and self.clock() < job.takeover_until:
+                job.answer_ev.wait(0.05) if self.sleep is time.sleep else self.sleep(0.05)
+            with job.lock:
+                answer, job.answer_box, job.question = job.answer_box, None, None
+                job.state = 'running'
+            job.add('status', {'state': 'running', 'reason': 'Lumina continues'})
+            return answer, self.clock() - began
+        return gate
+
+    def answer(self, account, request_id, question_id, *, option=None, resume=False, secret=None, fields=None):
+        """The customer's reply to the open question: one of its options, or `resume` after choosing on the page themselves."""
+        job = self._job(account, request_id)
+        with job.lock:
+            q = job.question
+            if job.state != 'asking' or not q or q['id'] != question_id:
+                raise BrowseError('not available')
+            if fields is not None:                                  # the details of a form, typed by the customer one field at a time
+                if q.get('kind') != 'fields' or option is not None or resume or not isinstance(fields, dict):
+                    raise BrowseError('invalid answer')
+                allowed = {f['id']: f for f in q['fields'] if not f['sensitive']}
+                clean = {}
+                for k, v in fields.items():
+                    if k not in allowed or not isinstance(v, str) or len(v) > 200:
+                        raise BrowseError('invalid answer')
+                    if v.strip():
+                        clean[k] = v.strip()
+                if not clean:
+                    raise BrowseError('invalid answer')
+                job.answer_box = {'fields': clean}
+                job.answer_ev.set()
+                keys = {k: allowed[k]['key'] for k in clean}
+                job.trace.emit('user', what='gave the details a form needed', fields=len(clean))
+                return {'ok': True, 'field': '', 'label': None, 'keys': keys}
+            if q.get('kind') == 'fields' and option is not None:
+                raise BrowseError('invalid answer')
+            chosen = next((o for o in q['options'] if o['id'] == option), None) if option is not None else None
+            if option is not None and chosen is None:
+                raise BrowseError('invalid answer')
+            if option is None and not resume:
+                raise BrowseError('invalid answer')
+            if chosen is not None and chosen.get('item') and not (isinstance(secret, dict) and 0 < len(secret) <= 8 and all(isinstance(v, (str, int)) for v in secret.values())):
+                raise BrowseError('invalid answer')               # using a saved item needs the item
+            job.answer_box = ({'option': chosen['id'], **({'secret': dict(secret)} if chosen.get('item') else {})}) if chosen else {'resume': True}
+            job.answer_ev.set()
+        job.trace.emit('user', what='approved using a saved ' + str(q.get('use')) if chosen and chosen.get('item') else 'answered a question' if chosen else 'continued after choosing on the page')
+        return {'ok': True, 'field': q['field'], 'label': chosen['label'] if chosen else None}
+
+    def _agent_gate(self, job):
+        """The loop reached a step JEV could not take. Show the assistant the page and wait for its answer (a step it sends through agent_step). An invalid step is handed back
+        with the reason, a few times; no answer within the wait ends the task. Nothing the assistant sends skips a rule: the loop gates the decision like any other."""
+        def gate(goal, history, page, candidates, handover, look):
+            began = self.clock()
+            body = render(goal, history, page, candidates)
+            if not candidates:
+                body += '\n\n(This page lists no controls you can use. You can scroll, go back, wait, ask, or stop.)'
+            problem = ''
+            for _ in range(AGENT_RETRIES):
+                text = f'Handed to you because: {handover.why}.' + (f'\n{handover.hint}' if handover.hint else '') + (f'\nYour last step was not valid ({problem}). Send a valid one.' if problem else '') + '\n\n' + body
+                with job.lock:
+                    job.agent_ev.clear()
+                    job.agent_box = None
+                    job.obs_n += 1
+                    job.observation = {'n': job.obs_n, 'text': text[:MAX_OBSERVATION], **({'image': look.shot['data']} if look is not None and look.shot else {})}
+                job.add('status', {'state': 'running', 'reason': 'the assistant is choosing the next step'})
+                while not job.agent_ev.is_set() and not job.cancel.is_set() and self.clock() - began < AGENT_WAIT_SECONDS:
+                    job.agent_ev.wait(0.05) if self.sleep is time.sleep else self.sleep(0.05)
+                with job.lock:
+                    box, job.agent_box, job.observation = job.agent_box, None, None
+                if job.cancel.is_set():
+                    return Decision('stop', 'rule', 'stopped by you')
+                if box is None:
+                    return Decision('stop', 'rule', 'the assistant did not send a next step')
+                try:
+                    d = parse_decision(json.dumps(box), candidates, 'agent')
+                    if d.kind == 'ask' and not d.question:
+                        raise ValueError('ask without a question')
+                    return d
+                except ValueError as exc:
+                    problem = str(exc)[:80]
+                    job.trace.emit('agent', what='invalid step', why=problem)
+            return Decision('stop', 'rule', 'the assistant sent steps that could not be used')
+        return gate
 
     def _pause_gate(self, job):
         def gate():
@@ -214,17 +395,19 @@ class BrowseService:
     def control(self, account, request_id, action, *, x=None, y=None, text=None):
         """Takeover: after a hand-off, or while paused, only while the window is open, one action at a time."""
         job = self._job(account, request_id)
-        if job.state not in ('handoff', 'paused') or self.clock() >= job.takeover_until or job.session is None:
+        if job.state not in ('handoff', 'paused', 'asking') or self.clock() >= job.takeover_until or job.session is None:
             raise BrowseError('not available')
-        if action not in ('click', 'type', 'key', 'scroll'):
+        if action not in ('click', 'type', 'key', 'scroll', 'goto', 'back', 'forward', 'reload'):
             raise BrowseError('invalid action')
+        if action == 'goto' and not (isinstance(text, str) and len(text) <= MAX_URL_CHARS and Policy(read_only=True).url_ok(text)):
+            raise BrowseError('address not allowed')          # the same domain rules as the agent; the stage also refuses private and internal addresses on every request
         with job.lock:
-            if job.state not in ('handoff', 'paused'):             # re-checked under the lock: the agent may have just resumed
+            if job.state not in ('handoff', 'paused', 'asking'):             # re-checked under the lock: the agent may have just resumed
                 raise BrowseError('not available')
             reply = job.session.call('xy', action=action, x=x, y=y, text=text)
         if reply.get('ok'):
-            job.takeover_until = self.clock() + (self._window() if job.state == 'handoff' else self.takeover_seconds)
-            if job.state == 'paused':
+            job.takeover_until = self.clock() + (self._window() if job.state == 'handoff' else ASK_SECONDS if job.state == 'asking' else self.takeover_seconds)
+            if job.state in ('paused', 'asking'):
                 job.add('control', {'action': action, 'by': 'you'})        # the live view shows the result; the record keeps what kind of input, never the text typed
             elif self.clock() - job.last_shot >= SNAPSHOT_EVERY_SECONDS:
                 # The live picture shows the result at once; this stored snapshot is only the fallback for a viewer without live frames, so
@@ -239,7 +422,7 @@ class BrowseService:
         """Kill switch: stop every queued or running browser task now."""
         n = 0
         for job in list(self.jobs.values()):
-            if job.state in ('queued', 'running', 'handoff', 'paused') and not job.cancel.is_set():
+            if job.state in ('queued', 'running', 'handoff', 'paused', 'asking') and not job.cancel.is_set():
                 job.cancel.set(); n += 1
         return n
 
@@ -266,14 +449,22 @@ class BrowseService:
             return 0
         for path in entries:
             job = self.jobs.get(path.name)
-            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in ('queued', 'running', 'handoff', 'paused')):
+            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in ('queued', 'running', 'handoff', 'paused', 'asking')):
                 continue
             try:
-                if now() - path.stat().st_mtime > max_age:
+                if now() - path.stat().st_mtime > max_age and self._may_purge(path, job):
                     shutil.rmtree(path, ignore_errors=True); removed += 1
             except OSError:
                 continue
         return removed
+
+    def _may_purge(self, path, job):
+        """False only when the folder's account switched `screenshot_retention` off (its pictures are then kept until it is switched back on). An unknown owner is purged."""
+        try:
+            account = job.account if job is not None else (path / 'account').read_text().strip()
+        except OSError:
+            return True
+        return self.switch_for(account)('screenshot_retention') if account else True
 
     # ------------------------------------------------------------------ job thread
     def _admit(self, job):
@@ -282,28 +473,15 @@ class BrowseService:
                 return False
             if kind == 'jev':
                 return job.calls < MAX_CALLS * 2
-            est = llm_mod.MAX_CALL_ESTIMATE[kind]
-            if job.cost + est > job.max_cost or job.calls >= MAX_CALLS:
-                return False
-            job.calls += 1
-            return True
+            return False
         return admit
 
-    def _pick_start(self, job, llm):
+    def _pick_start(self, job):
+        """Where the browser begins: the address the task names. The assistant always names the site (the tool requires it), so nothing here has to guess one."""
         found = URL_IN_TEXT.search(goal_parts(job.goal)[0])
         candidate = job.start_url or (found.group(0).rstrip('.,;') if found else None)
         if candidate:
             return candidate
-        if not self._admit(job)('haiku'):
-            raise Refused('haiku')
-        try:
-            reply = llm('haiku', 'Reply with ONLY one https:// URL: the best well-known website to start this task. No other text.', instruction_text(job.goal, context_chars=2000))
-            job.cost += reply.get('cost_microusd', 0)
-            m = URL_IN_TEXT.search(reply['text'])
-            if m:
-                return m.group(0).rstrip('.,;')
-        except Exception:
-            pass
         raise BrowseError('Could not choose a starting page. Please include the website URL in your request.')
 
     def _crash_trace(self, job, exc, what):
@@ -311,18 +489,26 @@ class BrowseService:
         frames = [f'{Path(f.filename).name}:{f.lineno} {f.name}' for f in traceback.extract_tb(exc.__traceback__)][-8:]
         try:
             (job.trace if job.trace is not NULL else Trace(self.root / job.id / 'trace.jsonl')).emit('crash', what=what, error=type(exc).__name__, why=str(exc), frames=frames)
-            log.warning('browse: %s failed (%s: %s); trace %s', job.id, type(exc).__name__, scrub(str(exc), 120), self.root / job.id / 'trace.jsonl')
+            log.warning('browse: %s failed (%s: %s); trace %s', job.id, type(exc).__name__, scrub(str(exc), 120, force=True), self.root / job.id / 'trace.jsonl')
         except Exception:
             pass
 
+    def _slot_for(self, job):
+        """The host's one Docker stage for a runner job; for a native job the browser is the account's own (in its cell), so the only thing to wait for is that account's previous browser job."""
+        if job.engine != 'native':
+            return self._slot
+        with self._guard:
+            return self._account_slots.setdefault(job.account, threading.Semaphore(1))
+
     def _run(self, job):
-        self._slot.acquire()
+        slot = self._slot_for(job)
+        slot.acquire()
         stage = None
         try:
             if job.cancel.is_set():
                 job.state, job.reason = 'cancelled', 'stopped by you'
                 return
-            if not self._wait_for_memory(job):
+            if job.engine != 'native' and not self._wait_for_memory(job):
                 job.state = 'cancelled' if job.cancel.is_set() else 'error'
                 job.reason = 'stopped by you' if job.cancel.is_set() else 'the server is busy right now; please try again in a minute'
                 job.add('status', {'state': job.state, 'reason': job.reason})
@@ -331,35 +517,20 @@ class BrowseService:
             out_dir = self.root / job.id / 'out'
             out_dir.mkdir(parents=True, exist_ok=True)
             os.chmod(out_dir, 0o777)               # the stage runs as uid 1000; the directory holds only screenshots
+            marker = self.root / job.id / 'account'          # which account owns this folder, for the purge after a restart (the `screenshot_retention` switch is the account's)
+            marker.write_text(job.account); os.chmod(marker, 0o600)
             job.trace = trace = Trace(self.root / job.id / 'trace.jsonl')
-            trace.emit('start', jev_mode=self.jev_mode, goal_chars=len(job.goal), max_steps=job.max_steps, max_seconds=job.max_seconds, max_cost_microusd=job.max_cost,
+            trace.emit('start', engine=job.engine, jev_mode=self.jev_mode, goal_chars=len(job.goal), max_steps=job.max_steps, max_seconds=job.max_seconds, max_cost_microusd=job.max_cost,
                        where=_where(job.start_url or ''))
-            llm = self.llm_for(job.account)
-            start = self._pick_start(job, llm)
-            transport = self.spawn(job.id, out_dir)
+            start = self._pick_start(job)
+            transport = self.native_spawn(job.account, job.id, out_dir) if job.engine == 'native' else self.spawn(job.id, out_dir)
             stage = transport
             job.session = session = Session(transport, trace=trace)
             jev = self.jev_for(job.account) if self.jev_mode != 'off' else None
             trace.emit('ready', start=_where(start), jev=jev is not None)
-
-            def tracked(tier, system, user):
-                began = time.monotonic()
-                try:
-                    reply = llm(tier, system, user)
-                except Exception as exc:
-                    trace.emit('llm', tier=tier, outcome='error', ms=int((time.monotonic() - began) * 1000), why=type(exc).__name__ + (f': {exc}' if str(exc) else ''), prompt_chars=len(user))
-                    raise
-                job.cost += reply.get('cost_microusd', 0)
-                trace.emit('llm', tier=tier, outcome='ok', ms=int((time.monotonic() - began) * 1000), cost_microusd=reply.get('cost_microusd', 0), prompt_chars=len(user),
-                           reply_chars=len(reply.get('text') or ''), finish=reply.get('finish'))
-                return {**reply, 'cost_microusd': 0}      # cost is added once here; the loop's own sum stays 0
-
-            ladder = Ladder(tracked, admit=self._admit(job), jev=jev, shadow=(self.jev_mode == 'shadow'), trace=trace)
+            ladder = Ladder(admit=self._admit(job), jev=jev, agent=self._agent_gate(job), max_cost=job.max_cost, trace=trace)
 
             def on_event(kind, data):
-                if kind == 'step' and data.get('agree') is not None:
-                    job.stats['jev_asked'] += 1
-                    job.stats['jev_agree'] += 1 if data['agree'] else 0
                 job.add(kind, data)
                 if kind in ('opened', 'step') and data.get('url'):
                     job.url = data['url']
@@ -373,8 +544,8 @@ class BrowseService:
                 now_seq[0] += 1
                 live_now.write(out_dir, now_seq[0], by, mode, note)      # who is deciding, for the live view (codes only)
 
-            result = BrowseRunner(session, ladder, policy=Policy(read_only=True), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
-                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), trace=trace, on_now=on_now).run(job.goal, start)
+            result = BrowseRunner(session, ladder, policy=Policy(read_only=True, switch=self.switch_for(job.account)), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
+                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
             job.url = result.url or job.url
@@ -385,7 +556,7 @@ class BrowseService:
                     job.add('screenshot', {'file': shot['file'], 'by': 'lumina'})
             job.state = result.status
             job.trace.emit('final', state=job.state, reason=job.reason, stats=dict(job.stats), cost_microusd=job.cost)
-            log.info('browse: %s ended %s (%s); trace %s', job.id, job.state, scrub(job.reason, 120), self.root / job.id / 'trace.jsonl')
+            log.info('browse: %s ended %s (%s); trace %s', job.id, job.state, scrub(job.reason, 120, force=True), self.root / job.id / 'trace.jsonl')
             job.add('status', {'state': job.state, 'reason': job.reason, 'stats': dict(job.stats)})       # kept with the run in browse_steps: no schema change needed
             while job.state == 'handoff' and self.clock() < job.takeover_until and not job.cancel.is_set():
                 time.sleep(0.2)                    # the user may take over; the stage stays up only for this window
@@ -404,7 +575,7 @@ class BrowseService:
             elif stage is not None:
                 stage.close()
             job.session = None
-            self._slot.release()
+            slot.release()
             self.purge()
 
 
@@ -431,17 +602,23 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
                 rid = req.get('request_id')
                 if op == 'start':
                     out = service.start(account, rid, req['goal'], start_url=req.get('start_url'), max_cost_microusd=req.get('max_cost_microusd', 1_000_000),
-                                        max_steps=req.get('max_steps', 25), max_seconds=req.get('max_seconds', 600))
+                                        max_steps=req.get('max_steps', 25), max_seconds=req.get('max_seconds', 600), prefs=req.get('prefs'), vault=req.get('vault'))
                 elif op == 'poll':
                     out = service.poll(account, rid, int(req.get('since', 0)))
                 elif op == 'cancel':
                     out = service.cancel(account, rid)
                 elif op == 'release':
                     out = service.release(account, rid)
+                elif op == 'agent_release':
+                    out = service.agent_release(account, rid)
+                elif op == 'agent_step':
+                    out = service.agent_step(account, rid, req.get('step'))
                 elif op == 'pause':
                     out = service.pause(account, rid)
                 elif op == 'resume':
                     out = service.resume(account, rid)
+                elif op == 'answer':
+                    out = service.answer(account, rid, str(req.get('question_id') or ''), option=req.get('option'), resume=bool(req.get('resume')), secret=req.get('secret'), fields=req.get('fields'))
                 elif op == 'shot':
                     out = {'jpeg_b64': base64.b64encode(service.shot(account, rid, req.get('file'))).decode()}
                 elif op == 'control':

@@ -1,5 +1,7 @@
 # Lumina UI requirements
 
+**Visual design:** read `DESIGN.md` before any UI change. Colours, radii, type and spacing come from the tokens in `src/styles/tokens.css`; use the shared components in `src/styles/ui.css` and `src/components/ui/` (Menu, Toggle) instead of writing new buttons, menus or switches. `npm run check:design` (part of `npm run build`) rejects hardcoded colours. Do not build features the product does not have just because a mock shows them.
+
 Messages and assistant thinking indicators must size to their content. Spare pane height belongs
 between the transcript and composer, never inside message rows. Any grid filling
 the chat pane must pack its rows at the start; nested turns must not stretch their

@@ -11,14 +11,10 @@ import json
 import time
 from urllib.parse import urlparse, parse_qs
 ROOT = Path(__file__).resolve().parents[1] / 'dist'
-PRESENCE = {'state': 'awake'}          # GET /__presence/asleep (or waking, awake) changes what the background film is told
 class Preview(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path.startswith('/__presence/'):
-            PRESENCE['state'] = path.rsplit('/', 1)[1]
-            self.send_response(204); self.end_headers(); return
         scenario = path.split('/')[3] if path.startswith('/v1/conversations/') else 'working'
         now = int(time.time())
         chat = {'id': scenario, 'title': 'hey', 'project_id': 'fixture', 'created_at': '2026-10-13T00:00:00Z', 'last_activity': '2026-10-13T00:00:00Z', 'active': 1}
@@ -29,7 +25,6 @@ class Preview(SimpleHTTPRequestHandler):
             data = {}
             if path == '/v1/app':
                 data = {'api_version': '1', 'user': {'email': 'preview@example.com', 'role': 'owner'}, 'assistant': {'state': 'running'}, 'features': {'execution': True, 'chat': True, 'billing_mode': 'open', 'files': False}, 'limits': {'max_message_chars': 16000}}
-            elif path == '/v1/assistant/presence': data = {'state': PRESENCE['state']}
             elif path == '/v1/requests': data = {'requests': []}
             elif path == '/v1/conversations': data = {'conversations': [dict(chat, id=x) for x in ['working', 'completed', 'long', 'multiple']]}
             elif path.endswith('/messages'):

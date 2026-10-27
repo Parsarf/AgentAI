@@ -21,7 +21,7 @@ EXTRA_SECRETS = [
 
 CATEGORY = {
     'web_search': 'search', 'search': 'search', 'brave_search': 'search',
-    'web_fetch': 'read', 'fetch': 'read', 'browser': 'browse',
+    'web_fetch': 'read', 'fetch': 'read', 'browser': 'browse', 'lumina_browser': 'browse', 'lumina__lumina_browser': 'browse',
     'exec': 'command', 'bash': 'command', 'shell': 'command', 'process': 'command',
     'write': 'file', 'edit': 'file', 'apply_patch': 'file', 'read': 'file',
 }
@@ -90,7 +90,7 @@ def describe(name, args):
         path = _first(args, 'path', 'file', 'file_path', 'filename').replace(WORKSPACE, '')
         return category, f'{FILE_VERBS.get(tool, "Worked with")} a file', clean(path, MAX_DETAIL)
     if category == 'browse':
-        return category, 'Used the browser', clean(_first(args, 'action', 'url'), MAX_DETAIL)
+        return category, 'Used the browser', clean(_first(args, 'site', 'action', 'url', 'task'), MAX_DETAIL)
     label = clean(re.sub(r'[_-]+', ' ', tool), 40) or 'tool'
     return 'other', f'Used {label}', ''
 
@@ -98,7 +98,8 @@ def describe(name, args):
 def extract(raw_messages):
     """Raw runtime history rows -> [{ref, tool, category, label, detail, output, status}] in call order.
 
-    status is 'running' until the matching result row is present, then 'done' or 'failed'.
+    status is 'running' until the matching result row is present, then 'done' or 'failed'. `run_id` and `after` (the input it followed) say whose call it was (not part of what is shown):
+    the driver keeps only the calls of the runs and inputs it owns.
     """
     calls, order = {}, []
     for message in raw_messages or []:
@@ -121,7 +122,7 @@ def extract(raw_messages):
                     args = args.get('args') if isinstance(args.get('args'), dict) else {}
                 category, label, detail = describe(name, args)
                 calls[ref] = {'ref': ref, 'tool': clean(name, 40), 'category': category, 'label': label,
-                              'detail': detail, 'output': '', 'status': 'running'}
+                              'detail': detail, 'output': '', 'status': 'running', 'run_id': (message.get('__openclaw') or {}).get('runId'), 'after': message.get('__after')}
                 order.append(ref)
         elif role in ('toolResult', 'tool'):
             ref = message.get('toolCallId') or message.get('tool_call_id')

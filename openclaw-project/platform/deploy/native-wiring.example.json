@@ -7,5 +7,8 @@
   "firewall_rules": "/etc/agentai-cells/agentai_cells.nft",
   "cell_pool": "10.78.0.0/16",
   "bridge_gateway": "10.77.0.1",
-  "model_proxy_port": null
+  "model_proxy_port": null,
+  "tool_relay_port": 4100,
+  "native_browser": false,
+  "safety_file": "/var/lib/agentai-platform/safety-switches.json"
 }

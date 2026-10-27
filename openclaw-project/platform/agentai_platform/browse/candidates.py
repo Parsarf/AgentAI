@@ -50,9 +50,18 @@ def build(snapshot_text: str, limit: int = 20, elements: list | None = None) -> 
             if input_type == 'password':
                 c['value'] = ''                                       # belt and braces: the runner already sends none
         out.append(c)
-        if len(out) >= limit:
-            break
-    return out
+    return _within(out, limit)
+
+
+def _within(cands: list[dict], limit: int) -> list[dict]:
+    """The first `limit` in page order. A panel or popup added at the end of the page (a cart drawer, a dialog) would never make that cut,
+    so controls on screen with nothing on top of them take the place of covered ones, last first; the list stays in page order."""
+    head, rest = cands[:limit], cands[limit:]
+    free = [c for c in rest if c.get('in_view') and c.get('covered') is False]
+    covered = [i for i, c in enumerate(head) if c.get('covered')]
+    for i, c in zip(reversed(covered), free):
+        head[i] = c
+    return sorted(head, key=lambda c: c['ref'])
 
 
 def page_is_payment(url: str, snapshot_text: str, page_text: str) -> bool:

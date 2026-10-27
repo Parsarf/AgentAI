@@ -37,15 +37,13 @@ export const ORB_LABELS: Record<OrbState, string> = {
 
 export interface ActivityEvent {
   kind: string;
-  payload?: { category?: string; status?: string; tool?: string; ref?: string; step?: string };
+  payload?: { category?: string; status?: string; tool?: string; ref?: string };
 }
 export function agentActivityFor(taskState: string, events: ActivityEvent[]): { orb: OrbState; label: string } | null {
   if (['completed', 'failed', 'cancelled'].includes(taskState)) return null;
-  if (taskState === 'waiting') return events.some(e => e.payload?.step === 'waking') ? { orb: 'connecting', label: 'Waking your assistant' } : { orb: 'breathing', label: 'Queued' };
+  if (taskState === 'waiting') return { orb: 'breathing', label: 'Queued' };
   if (taskState === 'starting') return { orb: 'connecting', label: 'Getting ready' };
   if (taskState === 'uncertain') return { orb: 'connecting', label: 'Reconnecting' };
-  // The browser is waiting for the customer's answer: say so, not "Thinking".
-  if ([...events].reverse().find(e => e.kind === 'progress' && e.payload?.step)?.payload?.step === 'asking') return { orb: 'listening', label: 'Waiting for your answer' };
   // Tool updates carry the same ref: a completion replaces its running event.
   // Retain other running calls so parallel activity still has a truthful state.
   const calls = new Map<string, ActivityEvent>();

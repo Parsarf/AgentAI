@@ -10,6 +10,7 @@ import hashlib
 import json
 import time
 import uuid
+from agentai_platform import safety
 from agentai_platform.lifecycle.coordinator import Coordinator, identifier
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import NotFound
@@ -76,7 +77,7 @@ class BudgetLedger:
             if not con.execute('SELECT 1 FROM conversations WHERE account_id=? AND project_id=? AND id=?',(account,project,conversation)).fetchone():
                 raise NotFound()
             queued=con.execute("SELECT count(*) FROM tasks WHERE account_id=? AND state='queued'",(account,)).fetchone()[0]
-            if queued>=limits['max_queued_tasks']:raise BudgetDenied('queue full')
+            if queued>=limits['max_queued_tasks'] and safety.is_on(con,account,'queue_limit'):raise BudgetDenied('queue full')       # the plan's queue limit is the same `queue_limit` switch as the queue's own
             holds=self._holds(con,account)
             for bound,since in [('period_microusd',limits['period_start_epoch']),('daily_microusd',self.clock()-86400)]:
                 if self._spend(con,account,since)+holds+amount_microusd>limits[bound]:raise BudgetDenied('account allowance exhausted')

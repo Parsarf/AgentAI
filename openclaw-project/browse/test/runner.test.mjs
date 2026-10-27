@@ -91,6 +91,19 @@ test('takeover commands click, type and scroll by coordinates with strict bounds
   assert.equal((await r.handle({ cmd: 'xy', action: 'type', text: 'x'.repeat(501) })).error, 'bad_value');
 });
 
+test('takeover address bar, back, forward and reload, with the same address rules as every other request', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  assert.equal((await r.handle({ cmd: 'xy', action: 'goto', text: base + '/checkout' })).ok, true);
+  assert.ok(r.page.url().endsWith('/checkout'));
+  assert.equal((await r.handle({ cmd: 'xy', action: 'back' })).ok, true); assert.ok(!r.page.url().endsWith('/checkout'));
+  assert.equal((await r.handle({ cmd: 'xy', action: 'forward' })).ok, true); assert.ok(r.page.url().endsWith('/checkout'));
+  assert.equal((await r.handle({ cmd: 'xy', action: 'reload' })).ok, true);
+  for (const bad of ['javascript:alert(1)', 'file:///etc/passwd', 'http://10.0.0.1/', 'http://169.254.169.254/', 'http://user:pw@example.com/', 'http://box.local/', 'x'.repeat(2049), '', undefined])
+    assert.equal((await r.handle({ cmd: 'xy', action: 'goto', text: bad })).error, 'url_blocked');
+  for (const key of ['ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End', 'PageDown', 'PageUp']) assert.equal((await r.handle({ cmd: 'xy', action: 'key', text: key })).ok, true);
+  assert.equal((await r.handle({ cmd: 'xy', action: 'key', text: 'Control+L' })).error, 'key_not_allowed');
+});
+
 const els = snap => Object.fromEntries(snap.elements.map(e => [e.label, e]));
 
 test('a covered element is not clicked: the banner on top gets the click nowhere', async () => {

@@ -2,20 +2,15 @@ import type { ActivityItem } from './activity';
 
 export interface RunRow { request_id: string; goal: string; status: string; url: string | null; created_epoch: number }
 export interface RunEvent { n: number; kind: string; [k: string]: unknown }
-/** A choice the browser stopped for. The options are the page's own controls; the box can only send back one of their ids. */
-export interface QField { id: string; label: string; key: string; sensitive: boolean; input_type: string; prefill: string }
-export interface Question { id: string; title: string; field: string; menu: boolean; kind?: 'choice' | 'fields'; options: { id: string; label: string }[]; fields?: QField[] }
-/** What the box sends back: a choice, the details of a form (and which of them to remember), or "I did it on the page". */
-export type Answer = { option: string; remember: boolean } | { fields: Record<string, string>; remember_fields: string[] } | { resume: true };
-export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; pending_action: { label?: string } | null; question?: Question | null; events: RunEvent[] }
+export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; pending_action: { label?: string } | null; events: RunEvent[] }
 
 export type Mode = 'screen' | 'terminal' | 'files';
 export const MODE_LABEL: Record<Mode, string> = { screen: 'Screen', terminal: 'Terminal', files: 'Files' };
 
 /** Browser-task states in which the page is still alive: the live picture is worth showing. */
-export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused', 'asking'];
+export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused'];
 export const STATE_LABEL: Record<string, string> = {
-  queued: 'Starting', running: 'Working', handoff: 'Waiting for you', paused: 'You have the wheel', asking: 'Waiting for your choice',
+  queued: 'Starting', running: 'Working', handoff: 'Waiting for you', paused: 'You have the wheel',
   done: 'Done', failed: 'Stopped', cancelled: 'Cancelled', completed: 'Done',
 };
 
@@ -44,15 +39,8 @@ export type KeyAction = { kind: 'text'; text: string } | { kind: 'key'; text: st
 export function keyAction(e: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): KeyAction {
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   if (e.key.length === 1) return { kind: 'text', text: e.key };
-  if (['Enter', 'Tab', 'Escape', 'Backspace', 'Delete', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp'].includes(e.key)) return { kind: 'key', text: e.key };
+  if (['Enter', 'Tab', 'Escape', 'Backspace', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return { kind: 'key', text: e.key };
   return null;
-}
-
-/** What was typed in the address bar -> a full address: a missing scheme becomes https. Empty or over-long input gives ''. The server and the browser check the address again. */
-export function addressFrom(input: string): string {
-  const raw = input.trim();
-  if (!raw || /\s/.test(raw) || raw.length > 2000) return '';
-  return /^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^[^/]*:\d+(\/|$)/.test(raw) ? raw : 'https://' + raw;
 }
 
 /** Wait before the next frame request after `failures` problems in a row: quick at first, then calm, never a hammer. */
@@ -76,16 +64,3 @@ export function parseNow(get: (name: string) => string | null): Now | null {
 export const nowLabel = (n: Now) => n.by === 'claude' ? 'Claude' : n.mode === 'picture' ? 'JEV · picture' : 'JEV';
 /** How long a notice stays before the pill goes back to its short label. */
 export const NOTICE_MS = 4000;
-
-/** What the box asks. A question with no list of options (Lumina could not read them) sends the customer to the page itself. */
-export const questionTitle = (q: Question) => q.title || (q.options.length ? 'Which one do you want?' : 'Lumina needs you to choose on the page');
-/** The line next to the tick box; empty when there is nothing sensible to remember (no field name, or no option picked). */
-export const rememberText = (q: Question, optionId: string | null) => {
-  const label = q.options.find(o => o.id === optionId)?.label;
-  return q.field && label ? `Remember ${q.field}: ${label} for next time` : '';
-};
-
-/** The label of a field as a person would ask for it: no star, no trailing colon. */
-export const fieldLabel = (label: string) => label.replace(/[*:]+\s*$/, '').replace(/\s+/g, ' ').trim() || 'Details';
-/** Which kind of text box a field needs. */
-export const inputKind = (t: string): 'email' | 'tel' | 'text' => (t === 'email' ? 'email' : t === 'tel' ? 'tel' : 'text');

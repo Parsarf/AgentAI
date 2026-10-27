@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { TaskRow } from './Home';
 import { api, ApiError, type EventRow, type RequestRow } from '../lib/api';
 import { elapsed, title } from '../lib/format';
-import { controls, dotClass, phase, queueLine, statusLabel, visibleEvents, type Phase } from '../lib/tasks';
+import { controls, dotClass, outcomeLine, phase, queueLine, statusLabel, visibleEvents, type Phase } from '../lib/tasks';
 import { useData } from '../state/data';
 
 const FILTERS: { key: 'all' | Phase; label: string }[] = [
@@ -33,6 +33,13 @@ function Detail({ id, onClose }: { id: string; onClose(): void }) {
     catch (e) { setErr(e instanceof ApiError && e.status === 402 ? 'Your plan allowance or task budget cannot fund another run right now.' : 'Could not retry this task.'); }
     setBusy(false);
   };
+  const goal = async (action: 'resume' | 'clear') => {
+    if (!conversation) return;
+    setBusy(true); setErr('');
+    try { await api('POST', `/v1/conversations/${conversation}/goal`, { action, key: crypto.randomUUID().replace(/-/g, '') }); await refresh(); }
+    catch (e) { setErr(e instanceof ApiError && e.status === 402 ? 'Your plan allowance cannot fund another turn right now.' : action === 'resume' ? 'Could not resume the goal.' : 'Could not clear the goal.'); }
+    setBusy(false);
+  };
   const [conversation, setConversation] = useState<string | null>(null); const nav = useNavigate();
   useEffect(() => { let stop = false; setConversation(null); api<{ task: { conversation_id: string | null } }>('GET', `/v1/tasks/${id}`).then(r => { if (!stop) { setConversation(r.task.conversation_id); if (r.task.conversation_id) void nav(`/chat/${r.task.conversation_id}`, { replace: true }); } }).catch(() => {}); return () => { stop = true; }; }, [id, nav]);
   const p = row ? phase(row.state) : null; const can = row ? controls(row) : null;
@@ -43,6 +50,7 @@ function Detail({ id, onClose }: { id: string; onClose(): void }) {
           <h2>{title(row.message, 120)}</h2>
           <p className="muted"><span className={`dot-s ${dotClass(row)}`} /> {statusLabel(row)} · {p === 'running' || p === 'queued' ? `elapsed ${elapsed(row.created_epoch)}` : new Date(row.created_epoch * 1000).toLocaleString()}</p>
           {queueLine(row) && <p className="muted" role="status">{queueLine(row)}</p>}
+          {outcomeLine(row) && <p className="muted" role="status">{outcomeLine(row)}</p>}
           {p === 'running' && <p className="faint" style={{ fontSize: 13 }}>A running task cannot be paused, because the assistant has no safe place to stop partway. You can cancel it.</p>}
           {row.retry_of && <p className="faint" style={{ fontSize: 13 }}>This is a retry of an earlier task.</p>}
           <div className="result" style={{ marginTop: 14 }}><small className="faint">Your request</small><br />{row.message}</div>
@@ -54,6 +62,8 @@ function Detail({ id, onClose }: { id: string; onClose(): void }) {
             {can?.pause && <button className="btn" disabled={busy} onClick={() => hold('pause')}>Pause</button>}
             {can?.resume && <button className="btn primary" disabled={busy} onClick={() => hold('resume')}>Resume</button>}
             {can?.retry && <button className="btn primary" disabled={busy} onClick={retry}>Retry</button>}
+            {can?.goalResume && <button className="btn primary" disabled={busy || !conversation} onClick={() => goal('resume')}>Resume goal</button>}
+            {can?.goalResume && <button className="btn" disabled={busy || !conversation} onClick={() => goal('clear')}>Clear goal</button>}
             {can?.cancel && <button className="btn danger" onClick={cancel}>Cancel task</button>}
             <button className="btn" onClick={onClose}>Close</button>{conversation && <button className="btn primary" onClick={() => nav(`/chat/${conversation}`)}>Continue chat</button>}
           </p></>)}

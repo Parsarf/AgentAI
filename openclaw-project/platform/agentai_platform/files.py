@@ -14,6 +14,7 @@ import time
 import uuid
 from .lifecycle.coordinator import Coordinator, identifier
 from .lifecycle.types import Conflict
+from . import safety
 from .security import NotFound, Principal
 from .storage import RootStore
 
@@ -75,15 +76,17 @@ class FileService:
     def upload(self, principal: Principal, project_id: str, entries):
         """entries: iterable of (display_name, declared_type, data bytes)."""
         entries = list(entries)
-        if not 1 <= len(entries) <= MAX_BATCH_FILES:
+        with self.store.connect() as con:
+            limits = safety.is_on(con, principal.account_id, 'upload_limits')      # the account's `upload_limits` switch: size and count only; the content checks always apply
+        if not entries or (limits and len(entries) > MAX_BATCH_FILES):
             raise Rejected('batch must contain 1 to 10 files')
-        if sum(len(e[2]) for e in entries) > MAX_BATCH_BYTES:
+        if limits and sum(len(e[2]) for e in entries) > MAX_BATCH_BYTES:
             raise Rejected('batch exceeds 25MiB')
         identifier(project_id)
         accepted, rejections = [], []
         for name, declared, data in entries:
             try:
-                accepted.append(self._validate_one(name, declared, data))
+                accepted.append(self._validate_one(name, declared, data, limits))
             except Rejected as error:
                 rejections.append({'name': name[:128], 'reason': str(error)})
         if rejections and not accepted:
@@ -113,7 +116,7 @@ class FileService:
         return {'accepted': [{k: v for k, v in a.items() if k != 'data'} for a in accepted],
                 'rejected': rejections}
 
-    def _validate_one(self, name, declared, data) -> dict:
+    def _validate_one(self, name, declared, data, limits=True) -> dict:
         if not isinstance(name, str) or not name.strip() or len(name) > 128 or '/' in name or '\\' in name or '\x00' in name:
             raise Rejected('invalid file name')
         if name.startswith('.'):
@@ -124,7 +127,7 @@ class FileService:
             raise Rejected('file type not in the launch allowlist')
         if not isinstance(data, (bytes, bytearray)) or not data:
             raise Rejected('empty file')
-        if len(data) > MAX_FILE_BYTES:
+        if limits and len(data) > MAX_FILE_BYTES:
             raise Rejected('file exceeds 10MiB')
         kind = sniff(data)
         allowed_kinds = ALLOWLIST[ext]

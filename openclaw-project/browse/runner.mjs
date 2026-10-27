@@ -13,6 +13,8 @@ const OUT = process.env.BROWSE_OUT || '/tmp/out';
 const ALLOW_LOOPBACK = process.env.BROWSE_ALLOW_LOOPBACK === '1';   // tests only; never set in the stage
 const MAX_ELEMENTS = 80, MAX_TEXT = 6000, MAX_PAGES = 3, MAX_VALUE = 500;
 const KEYS = new Set(['Enter', 'Tab', 'Escape']);
+const TAKEOVER_KEYS = new Set(['Backspace', 'Delete', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp']);   // what the customer's own keyboard may send; no shortcuts
+const MAX_URL = 2048;
 // Live view: Chrome pushes JPEG frames only when the page changes; we keep ONLY the newest one (live.jpg, replaced atomically) and only
 // while the host has recently touched OUT/watching. Nobody watching = no screencast, no CPU, no disk writes.
 const LIVE = { fps: 15, quality: 60, width: 1280, height: 800, watchSeconds: 6, pollMs: 250 };
@@ -294,8 +296,15 @@ export class Runner {
         try {
           if (action === 'click') { await this.page.mouse.move(x, y, { steps: 4 }); await this.page.mouse.click(x, y, { delay: 40 }); }
           else if (action === 'type') { if (typeof text !== 'string' || text.length > MAX_VALUE) return { ok: false, error: 'bad_value' }; await this.page.keyboard.type(text, { delay: 5 }); }
-          else if (action === 'key') { if (!KEYS.has(text) && !['Backspace', 'ArrowDown', 'ArrowUp'].includes(text)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(text); }
+          else if (action === 'key') { if (!KEYS.has(text) && !TAKEOVER_KEYS.has(text)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(text); }
           else if (action === 'scroll') await this.page.mouse.wheel(0, Number(text) > 0 ? 500 : -500);
+          else if (action === 'goto') {      // the address bar: the same address rules as every request this browser makes (public http/https only)
+            if (typeof text !== 'string' || text.length > MAX_URL || !urlAllowed(text, ALLOW_LOOPBACK)) return { ok: false, error: 'url_blocked' };
+            await this.page.goto(text, { waitUntil: 'commit', timeout: 15000 });
+          }
+          else if (action === 'back') await this.page.goBack({ waitUntil: 'commit', timeout: 15000 });
+          else if (action === 'forward') await this.page.goForward({ waitUntil: 'commit', timeout: 15000 });
+          else if (action === 'reload') await this.page.reload({ waitUntil: 'commit', timeout: 15000 });
           else return { ok: false, error: 'bad_action' };
         } catch (e) { return { ok: false, error: 'action_failed' }; }
         return { ok: true, url: this.page.url() };     // no waiting for the page to settle: the next input must not queue behind a slow load

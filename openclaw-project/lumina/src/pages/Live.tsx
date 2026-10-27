@@ -1,22 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { ICON } from '../lib/activity';
 import { ago, elapsed, title as clip } from '../lib/format';
-import { LIVE_STATES, MODE_LABEL, STATE_LABEL, followMode, addressFrom, keyAction, modesFor, type Answer, type Mode, type RunDetail, type RunEvent } from '../lib/live';
-import { isActive, phase, queueLine } from '../lib/tasks';
+import { LIVE_STATES, MODE_LABEL, STATE_LABEL, followMode, keyAction, modesFor, type Mode, type RunDetail, type RunEvent } from '../lib/live';
+import { isActive, phase } from '../lib/tasks';
 import { useActivity } from '../lib/useActivity';
 import { useData } from '../state/data';
-import QuestionPanel from '../components/QuestionPanel';
 import LiveScreen from '../components/LiveScreen';
 import { LiveFiles, LiveTerminal } from '../components/LiveTerminal';
 
-
-/** The newest thing that happened, in words, so the page is never silent: received, waking, ready, working, then each tool as it is used. */
-const rightNow = (rows: { label: string; detail: string; category: string; status: string }[]) => {
-  const last = rows[rows.length - 1];
-  return last ? `${last.label}${last.detail && last.category !== 'note' ? ` · ${last.detail.slice(0, 80)}` : ''}` : 'Message received. Waiting for your assistant…';
-};
 
 /** Everything Lumina is doing, in one place: its browser, its terminal and its files, live. Hop in on a browser task at any time. */
 
@@ -25,7 +18,7 @@ function LiveRun({ id }: { id: string }) {
   const request = requests.find(r => r.id === id);
   const [run, setRun] = useState<RunDetail | null>(null); const [isBrowse, setIsBrowse] = useState<boolean | null>(app?.features.browse ? null : false);
   const [events, setEvents] = useState<RunEvent[]>([]); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [stamp, setStamp] = useState(0);
-  const [address, setAddress] = useState(''); const [showText, setShowText] = useState(false); const [menuOpen, setMenuOpen] = useState(false); const [answering, setAnswering] = useState(false);
+  const [showText, setShowText] = useState(false);
   const controlQueue = useRef<Promise<void>>(Promise.resolve()); const runStatus = useRef<string | undefined>(undefined);
   const [pinned, setPinned] = useState<Mode | null>(null); const [now, setNow] = useState(Date.now());
   const since = useRef(0); const buffer = useRef(''); const flushTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -46,9 +39,6 @@ function LiveRun({ id }: { id: string }) {
   useEffect(() => { void load(); }, [load]);
 
   runStatus.current = run?.status;
-  const asking = run?.status === 'asking' && run.question ? run.question : null;
-  const [params] = useSearchParams();
-  useEffect(() => { setMenuOpen(params.get('hands') === '1'); }, [asking?.id]);          // coming from the chat's "enter it myself": the page is ready to use
   const browseLive = !!run && LIVE_STATES.includes(run.status);
   const taskLive = isBrowse ? browseLive : !!request && isActive(request);
   const { rows, err: actErr } = useActivity(id, taskLive);
@@ -58,9 +48,8 @@ function LiveRun({ id }: { id: string }) {
 
   const browse = isBrowse === true;
   const modes = modesFor(browse); const followed = followMode(rows, browse);
-  const hasWheel = !!run?.takeover && (run.status === 'paused' || run.status === 'handoff');
-  const mode: Mode = pinned && modes.includes(pinned) ? pinned : hasWheel || asking ? 'screen' : followed;
-  useEffect(() => { if (hasWheel || asking) setPinned(null); }, [hasWheel, !!asking]);
+  const mode: Mode = pinned && modes.includes(pinned) ? pinned : run?.takeover && (run.status === 'paused' || run.status === 'handoff') ? 'screen' : followed;
+  useEffect(() => { if (run?.takeover && (run.status === 'paused' || run.status === 'handoff')) setPinned(null); }, [run?.takeover, run?.status]);
 
   const send = useCallback((body: Record<string, unknown>) => {
     const next = controlQueue.current.then(async () => {
@@ -77,14 +66,7 @@ function LiveRun({ id }: { id: string }) {
     await load();
   };
   const flush = useCallback(() => { clearTimeout(flushTimer.current); const t = buffer.current; buffer.current = ''; return t ? send({ action: 'type', text: t.slice(0, 500) }) : controlQueue.current; }, [send]);
-  const driving = hasWheel || (!!asking && menuOpen && !!run?.takeover);
-  const answer = async (body: Answer) => {
-    if (!asking) return;
-    setAnswering(true); await flush();
-    try { await api('POST', `/v1/browse/${id}/answer`, { question_id: asking.id, ...body }); setErr(''); }
-    catch { setErr('That answer did not go through. If the question has gone, Lumina has already moved on.'); }
-    setAnswering(false); await load();
-  };
+  const driving = !!run?.takeover && (run.status === 'paused' || run.status === 'handoff');
   const onKey = (e: React.KeyboardEvent) => {
     if (!driving || mode !== 'screen' || (e.target as HTMLElement).tagName === 'INPUT') return;
     const a = keyAction(e); if (!a) return; e.preventDefault();
@@ -110,8 +92,6 @@ function LiveRun({ id }: { id: string }) {
         <div className="live-meta"><span className={`pill${taskLive ? ' live' : ''}`}>{status}</span>{taskLive && started > 0 && <span className="faint">{elapsed(started, now)}</span>}{run?.url && <span className="faint">{new URL(run.url, 'http://x').hostname}</span>}
           {taskLive && <button className="btn small danger" onClick={stop}>Stop</button>}</div>
       </header>
-      {taskLive && !(browse && run && LIVE_STATES.includes(run.status) && run.status !== 'queued') && (
-        <p className="live-now-line" role="status" aria-live="polite"><span className="dot-s running" aria-hidden="true" />{request && phase(request.state) === 'queued' && queueLine(request) ? queueLine(request) + ' ' : ''}{rightNow(rows)}</p>)}
       <div className="live-grid">
         <section className="panel live-main">
           <div className="live-tabs" role="tablist" aria-label="What to watch">
@@ -123,21 +103,12 @@ function LiveRun({ id }: { id: string }) {
             <div className="live-bar">{run.pausing
               ? <span className="muted" role="status">Pausing after Lumina’s current step…</span>
               : <><button className="btn primary" onClick={() => act('pause')}>Take control</button><span className="faint">Pause Lumina, then use the browser yourself.</span></>}</div>)}
-          {browse && run && driving && !asking && (
+          {browse && run && driving && (
             <div className="live-bar col live-assistance" role="region" aria-label="Your assistance is needed"><h3>{run.status === 'paused' ? 'You are in control' : 'Lumina needs your help'}</h3>
               <p className="muted">{run.status === 'paused'
-                ? 'You have the wheel. Lumina is waiting. Click the screen to point, type to enter text, scroll with the wheel, or use the address bar and arrows below.'
+                ? 'You have the wheel. Lumina is waiting. Click the screen to point, type to enter text, scroll with the wheel.'
                 : `${run.pending_action?.label ? `Lumina stopped before: ${run.pending_action.label}. ` : 'Lumina stopped at a step that needs you. '}Complete the remaining steps in the browser below yourself. End the browser session when you are finished.`}</p>
               {mode !== 'screen' ? <button className="btn primary" onClick={() => setPinned('screen')}>Return to browser</button> : <form className="live-type" autoComplete="off" onSubmit={e => { e.preventDefault(); if (text) { flush(); void send({ action: 'type', text }); setText(''); } }}>
-                <div className="live-nav" role="group" aria-label="Browser navigation">
-                  <button className="btn" type="button" aria-label="Back" title="Back" onClick={() => { flush(); void send({ action: 'back' }); }}>←</button>
-                  <button className="btn" type="button" aria-label="Forward" title="Forward" onClick={() => { flush(); void send({ action: 'forward' }); }}>→</button>
-                  <button className="btn" type="button" aria-label="Reload" title="Reload" onClick={() => { flush(); void send({ action: 'reload' }); }}>↻</button>
-                  <label className="sr" htmlFor="tk-addr">Address</label>
-                  <input id="tk-addr" type="text" inputMode="url" autoComplete="off" spellCheck={false} value={address} maxLength={2000} placeholder="Go to an address" onChange={e => setAddress(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const url = addressFrom(address); if (url) { flush(); void send({ action: 'goto', text: url }); setAddress(''); } } }} />
-                  <button className="btn" type="button" disabled={!addressFrom(address)} onClick={() => { const url = addressFrom(address); if (url) { flush(); void send({ action: 'goto', text: url }); setAddress(''); } }}>Go</button>
-                </div>
                 <label className="sr" htmlFor="tk">Text to type into the page</label>
                 <input id="tk" type={showText ? 'text' : 'password'} autoComplete="off" spellCheck={false} value={text} maxLength={500} onChange={e => setText(e.target.value)} placeholder="Type into the selected field" />
                 <button className="btn" type="submit" disabled={!text}>Type into page</button><label className="live-show-text"><input type="checkbox" checked={showText} onChange={e => setShowText(e.target.checked)} />Show text</label>
@@ -148,7 +119,6 @@ function LiveRun({ id }: { id: string }) {
               </form>}
             </div>)}
           {isBrowse === false && rows.some(r => r.category === 'browse' && r.status === 'failed') && <div className="live-assistance" role="status"><h3>Browser could not start</h3><p>This task did not open an interactive browser session. Its recorded steps are shown below.</p><Link className="btn small" to={request?.conversation_id ? `/chat/${request.conversation_id}` : '/chat'}>Open chat for help</Link></div>}
-          {browse && asking && <QuestionPanel question={asking} menuOpen={menuOpen} busy={answering} onMenu={() => setMenuOpen(true)} onAnswer={answer} onCancel={stop} />}
           <div className="live-stage" tabIndex={driving && mode === 'screen' ? 0 : -1} onKeyDown={onKey} aria-label={driving ? 'The page you are controlling. Click to point, type to enter text.' : undefined}>
             {mode === 'screen' && <LiveScreen id={id} enabled={browse && browseLive} fallback={fallback} interactive={driving} onPoint={p => { flush(); void send({ action: 'click', ...p }); }} onWheel={dir => void send({ action: 'scroll', text: dir })} />}
             {mode === 'terminal' && <LiveTerminal rows={rows} active={taskLive} />}
@@ -187,7 +157,7 @@ export default function Live() {
     <header className="live-workspace-head">
       <div><p className="live-eyebrow">LUMINA WORKSPACE</p><h1>Live view</h1><p className="muted">Watch the tools in use. Step in when Lumina needs you.</p></div>
       <div className="live-task-picker"><label htmlFor="live-task">Task</label>
-        <select id="live-task" value={selected ?? ''} onChange={e => nav(`/live/${e.target.value}`)}>
+        <select id="live-task" className="input" value={selected ?? ''} onChange={e => nav(`/live/${e.target.value}`)}>
           {!selected && <option value="">No tasks yet</option>}
           {id && !tasks.some(t => t.id === id) && <option value={id}>Selected task</option>}
           {tasks.slice(0, 50).map(t => <option key={t.id} value={t.id}>{isActive(t) ? '● Live · ' : ''}{clip(t.message, 70)}</option>)}

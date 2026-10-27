@@ -1,3 +1,48 @@
+# Safety menu: two scopes, granted access, 16 wired switches, terminal console (27 Oct 2026, deployed as `safety1`)
+
+Read `platform/OPERATIONS.md` ("Safety menu") and `lumina/src/components/safety/README.md`.
+
+- **Deployed 27 Oct 2026 (06:44 UTC) as `safety1`:** platform tree through `deploy/release.py` (dry run first: build, migrated copy, canary all passed; the previous release cannot read the new schema, so rollback of the app needs the backup), supervisor tree built from the same package, frontend through `bin/deploy-lumina.py --apply` (this shipped the uncommitted redesign in the working tree too), all seven services restarted, no warnings in any journal, probes 200/200/200/401/401/405.
+  Host changes: `AGENTAI_SAFETY_OWNER_ACCOUNT` added to `/etc/agentai-platform/accounts.env`; `"safety_file"` added to `/etc/agentai-supervisor/native-wiring.json`. The snapshot file appears the first time the owner opens the menu.
+  **Rollback:** frontend `cd /var/lib/agentai-platform && mv ui ui.bad && mv ui.prev ui`. Supervisor: `ln -sfn releases/native4 /opt/agentai-supervisor/current`, restore `/etc/agentai-supervisor/native-wiring.json.bak-safety1` (the old code rejects the new key), restart the supervisor services. App: stop `agentai-platform-app` and `agentai-request-worker`, restore `/var/lib/agentai-platform/backup-20261027T064400Z-premigrate-safety1.sqlite3` over `platform.sqlite3` (delete its `-wal`/`-shm`), `ln -sfn releases/native4 /opt/agentai-platform/current`, start them (this loses what happened after 06:44 UTC). Env: `/etc/agentai-platform/accounts.env.bak-safety1`.
+- **New:** a tab bar at the top of the menu: "My account" and "All users" (owner only). "All users" sets the default for every account; an account's own setting wins, and an account can exempt itself from an "off for everyone".
+- **New:** the owner can grant other accounts the menu by email ("Who can open this menu"). A granted account sees only its own switches. Revoking also clears the switches it set.
+- **New:** switches are now `gate` (changeable), `shared` (server-wide) or `core`; the privacy ones cannot be switched off for everyone. The menu shows the locked ones disabled, with the reason.
+- **Changed:** "off for everyone" for `rate_limits` reaches account-keyed limits only; sign-in, sign-up, recovery, token and anonymous limits and the menu's own stay on.
+- **Needs a migration:** `0014_safety_overrides` and `0015_safety_access` (use `deploy/release.py`, or run `manage.py migrate`). `safety_overrides` and `safety_access` are never restored from a backup.
+- **Wired:** 16 switches are now read by code (`budget_caps`, `rate_limits`, `queue_limit`, `project_chat_limits`, `upload_limits`, `secret_redaction`, `vault_notice`, `payment_stop`, `sensitive_approval`, `denied_sites`, `untrusted_page_text`, `personal_data_scrub`, `assistant_output_cleaning`, `ssrf_guard`, `tool_ceilings`, `screenshot_retention`); a test fails if a switch says wired and nothing reads it. See OPERATIONS.md for where.
+- **Not wired, on purpose:** `routing_policy`, `confirmations` and `web_limits` describe protections that are not in the live code (they say so). `message_length_limit` and `cell_limits` can't be a per-account switch (a database constraint; a whole-host protection) and are now `shared`; `session_epochs` and `block_validation` are now `core`.
+- **New switches:** `screenshot_retention` (privacy; wired) and three server-wide ones shown read-only: `bridge_restrictions`, `cell_key_limits`, `cell_firewall`.
+- **How the browse service and supervisor see the switches:** the app writes `safety-switches.json` after every change (see OPERATIONS.md). Deploy: add `"safety_file": "/var/lib/agentai-platform/safety-switches.json"` to `native-wiring.json` (the browse service's default already points there).
+
+# Browser: JEV, then the assistant; the cell's own browser as the hands (26 Oct 2026, deployed 26-27 Oct as `native1`..`native4`; the relay-secret fix is in `native4`)
+
+Read `docs/architecture/native-execution.md` ("The browser: hands and brain") and `platform/OPERATIONS.md` ("Browser engine").
+
+- **Removed:** the Haiku and Sonnet tiers of the browse ladder, the browse service's model client (`browse/llm.py`) and its start-page guess, shadow mode. The browse service calls one model: JEV.
+- **New:** when JEV cannot take a step (too complex, two misses, a loop, no JEV) the job hands the page, its numbered controls and a picture of the window to the customer's own assistant, which
+  answers with the new tool `lumina_browser_step`; for one-off needs (text for a field, confirming "done", an open choice) it hands over a single step. Every step still passes the code rules.
+  `lumina_browser` now requires `site`.
+- **New, off until switched on:** the `native` browser engine: a job's hands are the cell's own OpenClaw browser, reached through the cell bridge's new admin-scoped connection (root callers only;
+  fixed routes; the cell's own profile; named page scripts). Cell config switch `native_browser`; per-account `browse-engine.json`. Cells with a live browser job or an open hand-off window are not
+  slept. The host Docker stage stays the default and stays in the tree until the native engine is measured on real cells and models.
+- **Fixed after the first canary (27 Oct 2026):** the cell's browser could not start because the sandbox rejects the plugin's atomic write of its extension relay secret. The host now writes that secret before every start (`ensure_browser_relay_secret`), the image's Chromium path is pinned in the cell config, and a failed browser command leaves its error code in the job trace (`detail`).
+- **To deploy (nothing changes for customers until the last step):** release both trees; restart bridge, browse service, tool relay, request worker, app; later `native_browser` and
+  `browse-engine.json` for a canary account. `--jev-mode` is now `off` or `live` (default `live`; `shadow` is retired and runs as `live`). Not verified: the real cell image/gVisor, memory, real models.
+
+# Native execution (26 Oct 2026, not yet deployed)
+
+OpenClaw now owns each customer run end to end; Lumina admits, supervises and settles it. Read `docs/architecture/native-execution.md`.
+
+- **Removed:** the `lumina-step` text protocol, JEV tool choice and search nudges, the round loop, transcript polling, Pursuit (and its switch and report), the browser's progress review,
+  the unused `HttpGateway`, the `jev_services` switch. Migration `0028` drops `pursuit_state` and rebuilds `chat_deliveries`.
+- **New:** steering (a message sent while a task runs joins that run), Stop confirmed by the runtime, "Keep working until complete" on the runtime's own goals, honest outcomes
+  (completed / partial / blocked / failed / cancelled, plus verified / unverified), requests that wait for a person give up the running slot, recovery after a cell restart with one run and
+  one charge, the browser as a native tool (`agentai-tool-relay`, port 4100).
+- **Fixed on the way:** the runtime's seeded `SOUL.md`/`BOOTSTRAP.md`/`IDENTITY.md`/`USER.md` were offered to customers as downloads; a stopped cell is now woken for Browse mode.
+- **To deploy:** install `agentai-tool-relay.service`, set `tool_relay_port` in `native-wiring.json`, run `cells-docker/agentai-cells-routes.sh`, restart the lifecycle and request workers,
+  then restart cells (they take the new config at their next start). Not yet verified: a real model, real cells, real Chromium.
+
 # Release notes: 13-14 October 2026
 
 Latest: **live8** (16 Oct, adds diagnostics and one retry to live7). Before it: **live7** (16 Oct, JEV-first browser agent, JEV mode **live**), **live6** (14 Oct, evening). Sections marked *(live5)* and *(live6)* below are newer than the live1-live4 table.
@@ -111,3 +156,83 @@ the web app (`/opt/agentai-platform/current`) is still on live4, which is fine b
 - The web app release is behind the browser service by design (see releases table).
 - Two stale `queued` rows from earlier failed browser runs remain in `browse_runs` (harmless).
 - `accounts.test_streams` and `tests.test_chat_history` fail on a clean checkout (older issues, unrelated to the above).
+
+---
+
+## live18, deployed 21 Oct 2026 00:56 UTC: pursuit (plans, supervision, verification, resume)
+
+Deployed as one release, `live18`, from the working tree on the owner's Mac (branch `product-phases-6-11`; **not committed or tagged**, like live9 to live17). The web app went out through `deploy/release.py`
+(canary on a database copy, backup, migration `0026_pursuit.sql`, switch, probes: all passed); the request worker and the browse service were restarted afterwards (`/opt/agentai-platform/current` and
+`/opt/agentai-supervisor/current` both point at `releases/live18`). The browser runner and the Lumina UI were already current and were not redeployed. The `pursuit` owner switch is **off**.
+See `plans/pursuit-architecture.md` for the design and `plans/pursuit-validation.md` for how it is checked.
+
+**What it adds, behind the owner switch `pursuit` (off by default):**
+- The assistant's plan is stored with success criteria; a task that needs several websites can run several browser sessions in one message.
+- A progress review of each browser run (rules first, one JEV question when they cannot decide) that can change approach or ask for a new plan.
+- A result counts as done only when it is checked against the plan's criteria; every ending is described as `Checked`, `Done, but I couldn't confirm`, or `Stopped`.
+- Retry carries on from what was already done. `python -m agentai_platform.ops.pursuit_report --db <app db>` reports verified completion and cost per verified success.
+
+**Rollback:** the previous release cannot read the new schema, so rolling back the web app means restoring `/var/lib/agentai-platform/backup-20261021T005635Z-premigrate-live18.sqlite3` over `platform.sqlite3`
+(stop `agentai-platform-app` and `agentai-request-worker`, delete `platform.sqlite3-wal`/`-shm`, point `/opt/agentai-platform/current` at `releases/live16`, start both), which loses what customers did after the release.
+The browse service alone rolls back by pointing `/opt/agentai-supervisor/current` at `releases/live17` and restarting `agentai-browse`. Turning the `pursuit` switch off needs no rollback.
+**Before turning the switch on:** run `plans/pursuit-smoke-test.md` and the model probe, on the owner's own account first.
+
+**(Original release plan, kept for reference)** Needs: migration `0026_pursuit.sql` on the web app's database before the new code runs; both the web app and the browse service/worker updated together; then turn the switch on for the owner's own account first.
+**Also fixed (applies with the switch off):** a plain follow-up question no longer re-runs the previous turn's browser step.
+
+---
+
+## live19, deployed 21 Oct 2026: product and place pictures
+
+Pictures reach the chat only on a comparison card (the page behind each option's `link` supplies the picture). In production only a handful of cards had ever been made, so almost nothing showed a picture. live19 tells
+the assistant to show any 2 to 6 products, places or similar things as a comparison card, however it found them (its search, pages it read, or a browser result), with a real link per option taken from its results
+(never a search-results page, never an invented address). Changed files: `agentai_platform/agent_protocol.py` (sent with every message, effective at once) and `agentai_platform/lifecycle/cell_config.py` (the assistant's rules
+file, rewritten each time the assistant starts). No migration. Web app through `deploy/release.py` (canary and probes passed; the previous release can still read the database, so a rollback is only the link switch);
+request worker, lifecycle worker and supervisor restarted; the browse service was left running. Deployed from the working tree (not committed or tagged).
+Rollback: point `/opt/agentai-platform/current` and `/opt/agentai-supervisor/current` back at `releases/live18` and restart `agentai-platform-app agentai-request-worker agentai-lifecycle-worker agentai-supervisor-native`.
+Not changed: sites that block automated fetches (for example Yelp) still give no picture; an image-search fallback needs a Brave image key (`AGENTAI_BRAVE_IMAGE_KEY_FILE`).
+
+---
+
+## live20, deployed 21 Oct 2026: interactive follow-ups on cards
+
+Replaces the hard-coded "Find the cheapest reliable place to order this" button with follow-ups the assistant writes per card and per option (details in `platform/CHAT.md`). Changed: `genui/data.py` (accepts and cleans `actions`),
+`lumina/` (new `FollowUps` component, schema, styles, tests), `cell_config.py` (rules), `agent_protocol.py` (per-message instructions). No migration. Deploy order: the UI first, then the web app, worker and lifecycle services
+(done in that order: all probes passed; the previous release can still read the database). Rollback is `ui.prev` for the UI and the `live19` links for the code. Deployed from the working tree (not committed or tagged).
+
+---
+
+## live21, deployed 21 Oct 2026 02:02 UTC: answers laid out for what they are
+
+New cards (places, products, steps, answer, choice, callout, timeline, sources), a presentation guide for the assistant, the fixed "Show as table / chart / compare" chips removed, and a JEV layout fallback for
+plain-text replies behind the owner switch `jev_display` (off). Details in `platform/CHAT.md`. **Migration `0027_more_cards.sql`** (data_blocks rebuilt to accept the new kinds; existing cards copied unchanged): after the
+release the previous code cannot read the database, so rolling the web app back means restoring the pre-migration backup. Deployed in that order (UI, web app with migration, worker, lifecycle services); all probes passed and the 11 existing cards were kept. Pre-migration backup: `/var/lib/agentai-platform/backup-20261021T020249Z-premigrate-live21.sqlite3`. `jev_display` is off. Deployed from the working tree (not committed or tagged).
+
+---
+
+## live22 (UI only), deployed 21 Oct 2026: a card no longer shows twice
+
+The chat cached a reply while it arrived and never re-read it, so after the server moved the card's data out of the reply (into a stored card) the stale text drew the card a second
+time, and a closing line added afterwards stayed hidden until a reload. Now the chat re-reads a task's messages once when the task finishes (`lumina/src/lib/conversations.ts`
+`refreshFinished`), and a reply whose card is stored never draws it again from its own text (`AgentResponse` `cardsStored`). No restart, no database change. Undo: `mv ui ui.bad && mv ui.prev ui`.
+
+---
+
+## live23, deployed 21 Oct 2026: places and products shown once, in their card
+
+The assistant sometimes listed the same places or products as bullets above their card, so they showed twice (once without pictures). When a reply stores a places, products or comparison
+card, bullet lines naming two or more of its items are now removed from the text (`genui/data.py` `trim_repeats`; intro and closing sentences kept, a single mention never touched), and the
+assistant is told to write one or two sentences above such a card instead. No migration, UI unchanged; all probes passed. Rollback: point both `current` links back at `releases/live21`.
+Answers given before this release keep their text. Deployed from the working tree (not committed or tagged).
+
+
+---
+
+## live24 (browse only), deployed 21 Oct 2026 05:38 UTC: Sonnet backup works again, cart panels get listed
+
+Every Sonnet call from the browser failed with HTTP 400 (`claude-sonnet-5-5` accepts no `temperature` but its default), so a run that needed the backup tier stopped with "the assistant gave
+no usable next step". Sonnet is now sent no temperature (`browse/llm.py` `TEMPERATURE`; Haiku keeps 0), and a 400 turns pictures off only when the same question without the picture succeeds.
+Only the first 20 controls in page order were listed, so a panel added at the end of the page (a cart drawer, a dialog) never made the list and the run clicked covered controls until it stopped;
+now on-screen controls with nothing on top take the place of covered ones, page order kept (`browse/candidates.py` `_within`). `releases/live24` is `live23` with these two files; only
+`/opt/agentai-supervisor/current` was switched and only `agentai-browse` restarted (`/opt/agentai-platform/current` stays on `live23`). Rollback: point `/opt/agentai-supervisor/current` back at
+`releases/live23` and restart `agentai-browse`. Deployed from the working tree (not committed or tagged).

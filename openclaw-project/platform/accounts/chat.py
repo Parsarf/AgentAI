@@ -9,6 +9,7 @@ import uuid
 from django.db import connection
 from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import render
+from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.budget import BudgetLedger, BudgetDenied
 from agentai_platform.chat import ChatService, denial_category
 from agentai_platform.request_queue import RequestQueue
@@ -39,6 +40,9 @@ def browse_on():
     return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('browse_tasks')
 
 
+from agentai_platform.events import EventService
+
+
 def service():
     from django.conf import settings
     from agentai_platform.chat import FixedRoute
@@ -47,8 +51,11 @@ def service():
     browse = browse_on()
     # Without the owner switch no route is priced, so a send waits unfunded exactly as before.
     kwargs = {'pricer': FixedRoute(settings.CUSTOMER_RESERVATION_MICROUSD, 'plan-reservation-v1')} if live else {}
+    from agentai_platform.bridge_client import BridgeRpc
+    from agentai_platform.gateway import NativeGateway
+    gateway = (lambda account: NativeGateway(BridgeRpc(account, settings.CELL_BRIDGE_SOCKET))) if live else None      # steering and goal controls talk to the customer's own cell
     return ChatService(store, queue=RequestQueue(store, require_cell=live), ledger=BudgetLedger(store, service_limit_microusd=settings.SERVICE_ALLOCATION_MICROUSD if live else None),
-                       execution=live, browse=browse, **kwargs)
+                       execution=live, browse=browse, events=EventService(store), gateway_factory=gateway, **kwargs)
 
 
 def principal(request):
@@ -155,15 +162,16 @@ def chat_messages(request, conversation_id):
         raise Denied()
 
 
-@endpoint(['POST'], ['message', 'key', 'mode'], field_limits={'message': 16000})
+@endpoint(['POST'], ['message', 'key', 'mode', 'goal'], field_limits={'message': 16000})
 def chat_send(request, conversation_id):
     denied = customer(request)
     if denied:
         return denied
+    goal = str(request.input.get('goal', '')).lower() in ('1', 'true', 'on', 'yes')          # fields are strings (a form sends 'on')
     try:
         result = service().send(principal(request), conversation_id=conversation_id,
                                 message=request.input.get('message', ''), key=request.input.get('key', ''),
-                                mode=request.input.get('mode', 'auto'))
+                                mode=request.input.get('mode', 'auto'), goal=goal)
         request.form_redirect = '/account/chat/?conversation=' + conversation_id
         return JsonResponse({'request': result}, status=202)
     except NotFound:
@@ -179,6 +187,26 @@ def chat_send(request, conversation_id):
         if request.content_type == 'application/x-www-form-urlencoded':
             return HttpResponseRedirect(request.form_redirect)
         return JsonResponse({'error': 'budget_denied', 'category': category, 'execution_enabled': False}, status=402)
+
+
+@endpoint(['POST'], ['action', 'key'])
+def chat_goal(request, conversation_id):
+    """The customer's controls on a "Keep working until complete" goal: resume a paused, blocked or budget-limited one, or clear it."""
+    denied = customer(request)
+    if denied:
+        return denied
+    rate('task.create', request.account_id, 30, 3600)
+    try:
+        result = service().goal_action(principal(request), conversation_id, request.input.get('action', ''), key=request.input.get('key', ''))
+        return JsonResponse({'goal': result.get('goal'), **({'request': result} if 'id' in result else {})}, status=202)
+    except NotFound:
+        raise Denied()
+    except (Conflict, CapabilityUnavailable):
+        return JsonResponse({'error': 'request_conflict'}, status=409)
+    except ValueError:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    except BudgetDenied as error:
+        return JsonResponse({'error': 'budget_denied', 'category': denial_category(error), 'execution_enabled': False}, status=402)
 
 
 @endpoint(['GET'])

@@ -87,6 +87,8 @@ class Session:
         fields = {'ok': bool(reply.get('ok')), 'ms': int((time.monotonic() - started) * 1000)}
         if reply.get('error'):
             fields['error'] = reply['error']
+            if reply.get('detail'):
+                fields['detail'] = reply['detail']                       # the cell browser's error code (never page content)
         for key in ('page_fp', 'status'):
             if reply.get(key) is not None:
                 fields[key] = reply[key]

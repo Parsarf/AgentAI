@@ -1,30 +1,10 @@
-import { useContext, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Emojified } from '../Emoji';
-import { ChatActionsContext } from '../../lib/chatActions';
 import { filterRows, formatCell, niceMax, shares, sortRows, toCsv, type ChartSpec, type ComparisonSpec, type TableSpec } from '../../lib/genui/data';
 
-export const em = (t: ReactNode) => (typeof t === 'string' ? <Emojified text={t} /> : t);       // emoji in card text show as OpenMoji pictures
-const COLORS = Array.from({ length: 6 }, (_, i) => `var(--chart-${i + 1})`);
-export const link = (href: string, text: string) => <a href={href} target="_blank" rel="noopener noreferrer nofollow">{text} ↗</a>;
-
-/** Follow-ups the assistant chose for this card (or this option). A press sends exactly the sentence on the button as the person's next message; the assistant answers, often with a new card, so what
- *  is offered changes with the conversation. Outside a chat there is no way to send, so nothing is drawn. */
-export function FollowUps({ items, scope }: { items?: string[]; scope: 'card' | 'option' }) {
-  const chat = useContext(ChatActionsContext);
-  const [sent, setSent] = useState<string[]>([]); const [failed, setFailed] = useState(false);
-  if (!chat || !items?.length) return null;
-  const go = async (text: string) => {
-    if (sent.includes(text)) return;
-    setSent(s => [...s, text]); setFailed(false);
-    try { await chat.send(text); } catch { setSent(s => s.filter(x => x !== text)); setFailed(true); }
-  };
-  return (
-    <div className={`gfollow gfollow-${scope}`} role="group" aria-label="Ask next">
-      {items.map(text => (
-        <button key={text} type="button" className="gfollow-b" disabled={sent.includes(text)} onClick={() => go(text)}>{sent.includes(text) ? '✓ ' : ''}{em(text)}</button>))}
-      {failed && <p className="err small" role="alert">That did not go through. Try again.</p>}
-    </div>);
-}
+const em = (t: ReactNode) => (typeof t === 'string' ? <Emojified text={t} /> : t);       // emoji in card text show as OpenMoji pictures
+const COLORS = ['#7b78ff', '#35d0ba', '#ffb454', '#ff6b8b', '#8fb4ff', '#b8f27c'];
+const link = (href: string, text: string) => <a href={href} target="_blank" rel="noopener noreferrer nofollow">{text} ↗</a>;
 
 export function TableCard({ spec }: { spec: TableSpec }) {
   const [sort, setSort] = useState<{ col: string; dir: 1 | -1 } | null>(null); const [q, setQ] = useState(''); const [copied, setCopied] = useState(false);
@@ -50,7 +30,6 @@ export function TableCard({ spec }: { spec: TableSpec }) {
             return <td key={c.id} className={num ? 'num' : ''}>{c.type === 'link' && typeof v === 'string' ? link(v, 'Open') : em(formatCell(v, c.type, c.unit))}</td>;
           })}</tr>))}
           {!rows.length && <tr><td colSpan={spec.columns.length} className="faint">No rows match.</td></tr>}</tbody></table></div>
-      <FollowUps items={spec.actions} scope="card" />
       {(spec.caption || rows.length !== spec.rows.length) && <p className="gcard-cap">{spec.caption}{rows.length !== spec.rows.length ? ` Showing ${rows.length} of ${spec.rows.length}.` : ''}</p>}
     </section>);
 }
@@ -101,30 +80,18 @@ export function ChartCard({ spec }: { spec: ChartSpec }) {
               onMouseEnter={() => setHover(`${spec.labels[k]} · ${s.name}: ${fmt(v)}`)} onMouseLeave={() => setHover(null)}><title>{`${spec.labels[k]}: ${fmt(v)}`}</title></circle>)}</g>)}
         </svg>)}
       {!pie && spec.series.length > 1 && <ul className="glegend">{spec.series.map((s, i) => <li key={i}><button aria-pressed={!off.has(i)} onClick={() => toggle(i)}><i style={{ background: COLORS[i % COLORS.length], opacity: off.has(i) ? 0.3 : 1 }} />{s.name}</button></li>)}</ul>}
-      <FollowUps items={spec.actions} scope="card" />
       {spec.caption && <p className="gcard-cap">{spec.caption}</p>}
     </section>);
 }
 
-/** The option's picture, from our own origin. If it will not load the figure disappears and the card is as it was without one. */
-export function OptionPicture({ image, name }: { image: NonNullable<ComparisonSpec['items'][number]['image']>; name: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  return (
-    <figure className="gopt-img">
-      <img src={`/v1/media/${image.id}`} alt={name} width={image.w} height={image.h} loading="lazy" decoding="async" onError={() => setFailed(true)} />
-      {image.source && <figcaption>{image.source}</figcaption>}
-    </figure>);
-}
-
 export function ComparisonCard({ spec }: { spec: ComparisonSpec }) {
+  const [pick, setPick] = useState<number | null>(spec.bestIndex ?? null);
   return (
     <section className="gcard gcard-comparison" aria-label={spec.title}>
       <header className="gcard-h"><h3>{em(spec.title)}</h3><span className="gcompare-count">{spec.items.length} options</span></header>
       <div className="gcompare" data-count={spec.items.length}>
         {spec.items.map((it, i) => (
-          <article key={i} className={`gopt${spec.bestIndex === i ? ' on' : ''}`}>
-            {it.image && <OptionPicture image={it.image} name={it.name} />}
+          <article key={i} className={`gopt${pick === i ? ' on' : ''}`}>
             <div className="gopt-heading">
               {(it.badge || spec.bestIndex === i) && <span className="gbadge">{it.badge ?? 'Best pick'}</span>}
               <h4>{em(it.name)}</h4>{it.subtitle && <p className="gopt-subtitle">{em(it.subtitle)}</p>}{it.price && <p className="gprice">{em(it.price)}</p>}
@@ -132,11 +99,12 @@ export function ComparisonCard({ spec }: { spec: ComparisonSpec }) {
             {it.facts.length > 0 && <dl>{it.facts.map((f, k) => <div key={k}><dt>{em(f.label)}</dt><dd>{em(f.value)}</dd></div>)}</dl>}
             {it.pros.length > 0 && <ul className="pros" aria-label="Advantages">{it.pros.map((p, k) => <li key={k}>{em(p)}</li>)}</ul>}
             {it.cons.length > 0 && <ul className="cons" aria-label="Tradeoffs">{it.cons.map((p, k) => <li key={k}>{em(p)}</li>)}</ul>}
-            {it.link && <footer className="gopt-actions">{link(it.link, 'View details')}</footer>}
-            <FollowUps items={it.actions} scope="option" />
+            <footer className="gopt-actions">
+              <button className="gopt-pick" aria-pressed={pick === i} aria-label={`Select ${it.name}`} onClick={() => setPick(pick === i ? null : i)}>{pick === i ? 'Selected' : 'Select option'}</button>
+              {it.link && link(it.link, 'View details')}
+            </footer>
           </article>))}
       </div>
-      <FollowUps items={spec.actions} scope="card" />
       {spec.caption && <p className="gcard-cap">{spec.caption}</p>}
     </section>);
 }

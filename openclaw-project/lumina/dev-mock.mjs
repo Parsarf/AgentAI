@@ -58,6 +58,7 @@ http.createServer(async (req, res) => {
       features: { chat: true, execution: true, files: false, uploads: false, telegram: false, connectors: false, billing_mode: 'open', requests: true, usage: true }, limits: { max_message_chars: 16000 } });
     if (p === '/v1/requests') return json(res, 200, { requests });
     if (p === '/v1/conversations' && req.method === 'POST') return json(res, 201, { conversation: { id: 'cnew', project_id: 'p1' } });
+    { const m = p.match(/^\/v1\/conversations\/(c\d)$/); if (m && req.method === 'GET') return json(res, 200, { conversation: { id: m[1], project_id: 'p1', created_at: new Date().toISOString(), title: m[1] === 'c1' ? 'Search for the best cheap carbon pickleball rackets' : 'What is 17 times 3?', last_activity: new Date().toISOString(), active: 1 } }); }
     if (p === '/v1/conversations') return json(res, 200, { conversations: [
       { id: 'c1', project_id: 'p1', created_at: new Date().toISOString(), title: 'Search for the best cheap carbon pickleball rackets', last_activity: new Date().toISOString(), active: 1 },
       { id: 'c2', project_id: 'p1', created_at: new Date(Date.now() - 86400000).toISOString(), title: 'What is 17 times 3?', last_activity: new Date(Date.now() - 86400000).toISOString(), active: 0 },

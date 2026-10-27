@@ -11,6 +11,7 @@ import urllib.request
 from .fleet_driver import FleetCliDriver, FleetCustody, HeadroomAdmission, linux_mem_available
 from .maintenance import HostIsolation
 from .cell_config import CellProvisioner
+from ..safety import Reader
 from .litellm_admin import LiteLLMAdmin
 from .netpolicy import NetPolicy
 from .secrets_custody import ProviderKeys, SecretStore
@@ -37,13 +38,14 @@ def http_health(port, *, timeout=90, interval=2, opener=urllib.request.urlopen):
 def build_native_backend(wiring_path):
     path = Path(wiring_path)
     wiring = json.loads(path.read_text())
-    if type(wiring) is not dict or set(wiring) - {'litellm_env', 'search_key_file'} != KEYS:
+    if type(wiring) is not dict or set(wiring) - {'litellm_env', 'search_key_file', 'tool_relay_port', 'native_browser', 'safety_file'} != KEYS:
         raise ValueError('unsupported wiring file')
     for name in KEYS - {'cell_pool', 'bridge_gateway', 'model_proxy_port'}:
         if type(wiring[name]) is not str or not Path(wiring[name]).is_absolute():
             raise ValueError('wiring paths must be absolute')
     custody = FleetCustody(json.loads(Path(wiring['fleet_custody']).read_text()))
-    policy = NetPolicy(wiring['cell_pool'], wiring['bridge_gateway'], wiring['model_proxy_port'])
+    policy = NetPolicy(wiring['cell_pool'], wiring['bridge_gateway'], wiring['model_proxy_port'], tool_relay_port=wiring.get('tool_relay_port'))
+    tool_url = f"http://{wiring['bridge_gateway']}:{wiring['tool_relay_port']}/mcp" if wiring.get('tool_relay_port') else None
     run = default_run
     cells_docker = custody.env.get('DOCKER_HOST')
 
@@ -58,7 +60,8 @@ def build_native_backend(wiring_path):
         if type(wiring['litellm_env']) is not str or not Path(wiring['litellm_env']).is_absolute():
             raise ValueError('wiring paths must be absolute')
         provisioner = CellProvisioner(ProviderKeys(LiteLLMAdmin(wiring['litellm_env']).http, secrets), secrets, wiring['cell_state_root'], run=isolation_run,
-                                      search_key_file=wiring.get('search_key_file'))
+                                      search_key_file=wiring.get('search_key_file'), tool_relay_url=tool_url, native_browser=wiring.get('native_browser') is True,
+                                      safety=Reader(wiring['safety_file']) if isinstance(wiring.get('safety_file'), str) and Path(wiring['safety_file']).is_absolute() else None)
     driver = FleetCliDriver(
         custody,
         secrets=secrets,

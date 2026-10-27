@@ -80,7 +80,7 @@ ITEM = {'url': 'https://shop.example/item', 'snap': '[1] <a> "Add to cart"', 'te
 
 def runner(session, jev_script, llm_steps=(), trace=tr.NULL, **kw):
     transport = PictureJev(*jev_script)
-    ladder = Ladder(scripted_llm(list(llm_steps)), jev=JevChooser('https://x', MODEL, 'k', transport), trace=trace)
+    ladder = Ladder(agent=scripted_llm(list(llm_steps)), jev=JevChooser('https://x', MODEL, 'k', transport), trace=trace)
     events = []
     return BrowseRunner(session, ladder, on_event=lambda k, d: events.append((k, d)), trace=trace, **kw), transport, events
 
@@ -88,6 +88,14 @@ def runner(session, jev_script, llm_steps=(), trace=tr.NULL, **kw):
 class ModeRules(unittest.TestCase):
     def snap(self, covered=(), **kw):
         return {'window': 800, 'height': 800, 'scroll': 0, 'elements': [{'in_view': True, 'covered': c} for c in covered], **kw}
+
+    def test_a_panel_at_the_end_of_the_page_makes_the_list_in_place_of_what_it_covers(self):
+        lines = '\n'.join(f'[{i}] <button> "B{i}"' for i in range(1, 26))
+        state = lambda covered: [{'ref': i, 'label': f'B{i}', 'in_view': True, 'covered': covered if i < 23 else False} for i in range(1, 26)]   # 23-25: the drawer
+        refs = lambda els: [c['ref'] for c in cand.build(lines, elements=els)]
+        self.assertEqual(refs(state(True)), list(range(1, 18)) + [23, 24, 25])     # the drawer's own buttons replace the last covered ones, in page order
+        self.assertEqual(refs(state(False)), list(range(1, 21)))                     # nothing covered: plain page order
+        self.assertEqual(refs(None), list(range(1, 21)))                                   # an older runner sends no state
 
     def test_the_position_is_put_in_words_and_nothing_is_claimed_when_the_runner_does_not_say(self):
         snap = lambda scroll: {'scroll': scroll, 'height': 3000, 'window': 800}
@@ -124,7 +132,7 @@ class ModeRules(unittest.TestCase):
         self.assertIn('repeated the same step 2 times', modes.claude_reason([step(), step()]))
         self.assertEqual(modes.claude_reason([step(), step(label='Other')]), '')                                      # a different step
         self.assertEqual(modes.claude_reason([step(changed=True), step(changed=True)]), '')                           # the page moved: not stuck
-        self.assertEqual(modes.claude_reason([step(), step(by='haiku')]), '')                                         # Claude's step ends JEV's run
+        self.assertEqual(modes.claude_reason([step(), step(by='agent')]), '')                                         # the assistant's step ends JEV's run
         self.assertIn('could not be carried out (stale)', modes.claude_reason([step(result='stale', changed=None)]))
         self.assertEqual(modes.claude_reason([step(result='covered', changed=None)]), '')                             # a refused click gets a picture first, not Claude
         self.assertIn('last 3 JEV steps changed nothing', modes.claude_reason([step(label='A'), step(label='B'), step(label='C')]))
@@ -194,7 +202,7 @@ class Pointing(unittest.TestCase):
 
 
 class PictureSteps(unittest.TestCase):
-    def test_no_controls_means_a_picture_and_with_controls_again_the_next_step_is_back_to_controls(self):
+    def test_no_controls_means_a_picture_only_and_with_controls_the_next_step_sees_the_picture_and_the_list(self):
         s = PictureSession({'start': COVERED, 'shop': SHOP, 'item': ITEM}, hits={(640, 400): hit('Accept')})
         r, jev, events = runner(s, [{'operation': 'click', 'at': (0.5, 0.5)}, {'operation': 'click', 'click_target': 'c1'}, {'operation': 'done'}], ['{"action":"done","answer":"ok"}'], max_steps=4)
         out = r.run('buy briefs', 'https://shop.example/')
@@ -202,11 +210,12 @@ class PictureSteps(unittest.TestCase):
         self.assertEqual(s.acts, [('clickat', None, None, 640, 400), ('click', 1, None, None, None)])               # the point first, then the numbered control
         first, second = jev.calls[0], jev.calls[1]
         self.assertIn('assets', first[0]); self.assertEqual(first[1], IMAGE_HEADERS)
-        self.assertNotIn('assets', second[0]); self.assertIsNone(second[1]); self.assertIn('Page text', second[0]['state'])
+        self.assertIn('assets', second[0]); self.assertEqual(second[1], IMAGE_HEADERS); self.assertIn('Page text', second[0]['state'])                  # with controls: the picture AND the list
+        self.assertIn('click_target', second[0]['questions']); self.assertIn('The picture shows the browser window right now', second[0]['state'])
         self.assertEqual(out.steps[0]['label'], 'Accept'); self.assertEqual(out.steps[0]['action'], 'click')           # the history says what was done, not how
         seen = [d for k, d in events if k == 'screenshot' and d.get('seen_by') == 'jev']
         self.assertEqual(len(seen), 1); self.assertEqual(seen[0]['why'], 'the page lists no controls'); self.assertRegex(seen[0]['file'], r'^shot-\d{3}\.jpg$')
-        self.assertEqual([d.get('mode') for k, d in events if k == 'step'], ['picture', None])                         # the customer's step list can say "looked at a picture"
+        self.assertEqual([d.get('mode') for k, d in events if k == 'step'], ['picture', 'picture'])                     # the customer's step list can say "looked at a picture"
 
     def test_a_button_that_places_an_order_is_never_pressed_from_a_picture(self):
         for label, kw in (('Place an order', {}), ('Pin', {'secret': True, 'type': 'password', 'editable': True})):
@@ -224,15 +233,16 @@ class PictureSteps(unittest.TestCase):
 
     def test_a_weak_spot_is_a_miss_and_claude_takes_that_step(self):
         s = PictureSession({'start': COVERED, 'shop': SHOP}, hits={})
-        r, jev, _ = runner(s, [{'operation': 'click', 'found': 0.1, 'spot': 0.9}], ['{"action":"scroll"}'], max_steps=1)
+        weak = {'operation': 'click', 'found': 0.1, 'spot': 0.9}
+        r, jev, _ = runner(s, [weak, weak], ['{"action":"scroll"}'], max_steps=2)
         out = r.run('g', 'https://shop.example/')
-        self.assertEqual([h['by'] for h in out.steps], ['haiku']); self.assertEqual(s.acts, [('scroll', None, None, None, None)])      # Claude saw no controls either, so it could only scroll
+        self.assertEqual([h['by'] for h in out.steps], ['rule', 'agent']); self.assertEqual(s.acts[-1], ('scroll', None, None, None, None))      # the first weak spot was looked at again; the second handed over, and with no controls to name the assistant could only scroll
 
     def test_when_the_picture_cannot_be_taken_claude_decides_instead(self):
         s = PictureSession({'start': COVERED}); s.view = lambda save=False: {'ok': False, 'error': 'no_picture'}
         r, jev, _ = runner(s, [], ['{"action":"scroll"}'], max_steps=1)
         out = r.run('g', 'https://shop.example/')
-        self.assertEqual(jev.calls, []); self.assertEqual([h['by'] for h in out.steps], ['haiku'])
+        self.assertEqual(jev.calls, []); self.assertEqual([h['by'] for h in out.steps], ['agent'])
 
     def test_the_trace_records_the_mode_and_the_probe_without_page_text(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -252,7 +262,7 @@ CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 @unittest.skipUnless(Path(CHROME).exists(), 'needs Chrome and Node')
 class RealRunner(unittest.TestCase):
-    def test_a_popup_that_hides_every_control_is_seen_in_the_picture_accepted_and_the_next_step_is_back_to_controls(self):
+    def test_a_popup_that_hides_every_control_is_seen_in_the_picture_accepted_and_the_next_step_sees_the_list_too(self):
         import os
         import subprocess
         import time
@@ -265,13 +275,13 @@ class RealRunner(unittest.TestCase):
         time.sleep(1.5)
         events = []
         transport = PictureJev({'operation': 'click', 'at': (0.5, 0.45)}, {'operation': 'done'})
-        ladder = Ladder(scripted_llm(['{"action":"done","answer":"ok"}']), jev=JevChooser('https://x', MODEL, 'k', transport))
+        ladder = Ladder(agent=scripted_llm(['{"action":"done","answer":"ok"}']), jev=JevChooser('https://x', MODEL, 'k', transport))
         out = BrowseRunner(session, ladder, on_event=lambda k, d: events.append((k, d)), max_steps=4).run('find a paddle', f'http://127.0.0.1:{port}/blocked')
         self.assertEqual(out.status, 'done', out.reason)
         self.assertEqual([(h['by'], h['action'], h['label'], h['result']) for h in out.steps], [('jev', 'click', 'Accept', 'ok')])        # the popup's button was found under the point and clicked
         first, second = transport.calls[0][0], transport.calls[1][0]
         (asset,) = first['assets'].values(); self.assertTrue(asset['data_base64'].startswith('/9j/'))                                  # a real JPEG of the real window
-        self.assertNotIn('assets', second); self.assertIn('Paddle Shop', json.dumps(second['questions']['click_target']))              # the cover is gone: the page lists its controls again
+        self.assertIn('assets', second); self.assertIn('Paddle Shop', json.dumps(second['questions']['click_target']))                  # the cover is gone: the page lists its controls, and JEV still sees the window
         self.assertTrue(any(k == 'screenshot' and d.get('seen_by') == 'jev' for k, d in events))
 
 
@@ -282,14 +292,14 @@ class WhoIsDeciding(unittest.TestCase):
         r, _, _ = runner(session, jev_script, llm_steps, max_steps=max_steps, on_now=lambda by, mode, note: seen.append((by, mode, note)), **kw)
         return r.run('g', 'https://shop.example/'), seen
 
-    def test_a_picture_is_announced_once_and_going_back_to_controls_just_changes_the_label(self):
+    def test_a_picture_is_announced_once_and_stays_because_jev_now_sees_the_window_every_step(self):
         s = PictureSession({'start': COVERED, 'shop': SHOP, 'item': ITEM}, hits={(640, 400): hit('Accept')})
         _, seen = self.calls(s, [{'operation': 'click', 'at': (0.5, 0.5)}, {'operation': 'click', 'click_target': 'c1'}, {'operation': 'done'}], ['{"action":"done","answer":"ok"}'])
-        self.assertEqual(seen, [('jev', 'picture', 'picture'), ('jev', 'controls', '')])
+        self.assertEqual(seen, [('jev', 'picture', 'picture')])                                                          # told once; the label stays while JEV keeps looking at the window
 
     def test_one_step_taken_by_claude_is_a_notice_and_then_jev_is_back_quietly(self):
         s = FpSession(FLAT, iter(range(1, 99)))
-        _, seen = self.calls(s, ['oops', {'operation': 'click', 'click_target': 'c2'}], [HAIKU], max_steps=2)
+        _, seen = self.calls(s, [{'operation': 'done'}, {'operation': 'click', 'click_target': 'c2'}], [HAIKU], max_steps=2)       # JEV says done, the assistant disagrees and takes that one step
         self.assertEqual(seen, [('claude', 'controls', 'help'), ('jev', 'controls', '')])
 
     def test_claude_taking_a_page_and_giving_it_back_are_both_announced(self):
@@ -312,25 +322,25 @@ class ClaudeTakesThePage(unittest.TestCase):
         return r.run('g', 'https://shop.example/'), jev, events
 
     def test_jev_repeating_a_step_with_nothing_happening_hands_the_page_to_claude_until_a_claude_step_moves_it(self):
-        s = FpSession(FLAT, iter([7, 7, 7, 8, 9, 10, 11]))             # the page stays the same for JEV's two clicks, then Haiku's step changes it
-        out, jev, _ = self.run_loop([self.click('c1'), self.click('c1'), self.click('c2')], ['{"action":"click","ref":3}'], s, max_steps=4)     # Haiku does something else
-        self.assertEqual([h['by'] for h in out.steps], ['jev', 'jev', 'haiku', 'jev'])
-        self.assertEqual(len(jev.calls), 3)                              # JEV was not asked for the Claude step
+        s = FpSession(FLAT, iter([7, 7, 7, 8, 9, 10, 11]))             # the page stays the same for JEV's two clicks, then the assistant's step changes it
+        out, jev, _ = self.run_loop([self.click('c1'), self.click('c1'), self.click('c2')], ['{"action":"click","ref":3}'], s, max_steps=4)     # the assistant does something else
+        self.assertEqual([h['by'] for h in out.steps], ['jev', 'jev', 'agent', 'jev'])
+        self.assertEqual(len(jev.calls), 3)                              # JEV was not asked for the assistant's step
 
     def test_a_step_jev_could_not_carry_out_goes_to_claude_for_that_page(self):
         s = FpSession(FLAT, iter(range(1, 99)), errors={('click', 2): 'stale'})
         out, jev, _ = self.run_loop([self.click('c2'), self.click('c1')], [HAIKU], s, max_steps=3)
-        self.assertEqual([(h['by'], h['result']) for h in out.steps], [('jev', 'stale'), ('haiku', 'ok'), ('jev', 'ok')])
+        self.assertEqual([(h['by'], h['result']) for h in out.steps], [('jev', 'stale'), ('agent', 'ok'), ('jev', 'ok')])
 
     def test_the_ladder_says_why_it_skipped_jev(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'trace.jsonl'
-            ladder = Ladder(scripted_llm([HAIKU]), jev=JevChooser('https://x', MODEL, 'k', PictureJev()), trace=tr.Trace(path))
+            ladder = Ladder(agent=scripted_llm([HAIKU]), jev=JevChooser('https://x', MODEL, 'k', PictureJev()), trace=tr.Trace(path))
             c = cand.build('[1] <a> "Alpha"')
             d = ladder.decide('g', [], {'url': 'https://shop.example/', 'title': 't', 'text': ''}, c, look=Look(claude='JEV repeated the same step 2 times and nothing happened'))
             rows = tr.read(path)
-        self.assertEqual(d.by, 'haiku'); route = next(x for x in rows if x['kind'] == 'route')
-        self.assertFalse(route['jev_asked']); self.assertIn('Claude has this page: JEV repeated the same step', route['skipped'])
+        self.assertEqual(d.by, 'agent'); route = next(x for x in rows if x['kind'] == 'route')
+        self.assertFalse(route['jev_asked']); self.assertIn('the page needs more than controls: JEV repeated the same step', route['skipped'])
 
     def test_a_run_of_scrolls_gets_the_position_and_the_hint_and_then_claude(self):
         class Scrolling(FpSession):

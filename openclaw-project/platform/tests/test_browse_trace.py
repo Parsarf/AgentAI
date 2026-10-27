@@ -9,7 +9,7 @@ from agentai_platform.browse import trace as tr
 from agentai_platform.browse.ladder import JevChooser
 from agentai_platform.browse.session import RunnerError, Session
 from tests.test_browse import ScriptedJev
-from tests.test_browse_service import FakeTransport, RID, llm_for, wait
+from tests.test_browse_service import FakeTransport, RID, ScriptedService, llm_for, wait
 
 
 class TraceFile(unittest.TestCase):
@@ -79,7 +79,7 @@ class RunTrace(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
 
     def service(self, script, jev=None, mode='off', **kw):
-        return svc.BrowseService(spawn=lambda j, o: FakeTransport(o, **kw), llm_for=llm_for(script), root=self.tmp.name, jev_mode=mode, takeover_seconds=1,
+        return ScriptedService(spawn=lambda j, o: FakeTransport(o, **kw), llm_for=llm_for(script), root=self.tmp.name, jev_mode=mode, takeover_seconds=1,
                                  jev_for=(lambda account: JevChooser('https://x', 'jev-1.13.0', 'k', jev)) if jev else (lambda account: None))
 
     def rows(self):
@@ -89,14 +89,14 @@ class RunTrace(unittest.TestCase):
         s = self.service(['{"action":"click","ref":2}', '{"action":"click","ref":1}'])
         s.start('acct', RID, 'buy a paddle at https://shop.example/'); wait(s, ('handoff',))
         kinds = [r['kind'] for r in self.rows()]
-        for kind in ('start', 'ready', 'snapshot', 'route', 'llm', 'decision', 'runner', 'act', 'floor', 'end', 'final'):
+        for kind in ('start', 'ready', 'snapshot', 'route', 'handover', 'decision', 'runner', 'act', 'floor', 'end', 'final'):
             self.assertIn(kind, kinds)
         floor = next(r for r in self.rows() if r['kind'] == 'floor'); self.assertEqual(floor['rule'], 'sensitive control')
         end = next(r for r in self.rows() if r['kind'] == 'end'); self.assertEqual(end['status'], 'handoff'); self.assertEqual(end['where'], 'shop.example/cart')
 
     def test_the_trace_holds_no_request_text_no_query_string_and_no_page_text(self):
         pages = {'start': {'url': 'https://shop.example/?token=SECRETQUERY#frag', 'snap': '[1] <a> "Next"', 'text': 'PAGE BODY WORDS', 'go': {1: 'start'}}}
-        s = self.service(['{"action":"click","ref":1}', '{"action":"stop","reason":"enough"}'] * 3, transport_kw=None) if False else svc.BrowseService(
+        s = self.service(['{"action":"click","ref":1}', '{"action":"stop","reason":"enough"}'] * 3, transport_kw=None) if False else ScriptedService(
             spawn=lambda j, o: FakeTransport(o, pages=pages), llm_for=llm_for(['{"action":"stop","reason":"done here"}']), root=self.tmp.name, jev_mode='off', takeover_seconds=1)
         s.start('acct', RID, 'find my private goal words at https://shop.example/?token=SECRETQUERY'); wait(s, ('stopped', 'done', 'error'))
         raw = (Path(self.tmp.name) / RID / 'trace.jsonl').read_text()

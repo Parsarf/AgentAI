@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeTask, controls, dotClass, isActive, phase, queueLine, statusLabel } from './tasks';
+import { activeTask, controls, dotClass, isActive, outcomeLine, phase, queueLine, statusLabel } from './tasks';
 
 describe('task control wording and rules', () => {
   it('says where a waiting task stands in the line', () => {
@@ -30,12 +30,41 @@ describe('task control wording and rules', () => {
   });
 
   it('offers only what the backend will accept', () => {
-    expect(controls({ state: 'waiting' })).toEqual({ pause: true, resume: false, cancel: true, retry: false });
-    expect(controls({ state: 'waiting', paused: true })).toEqual({ pause: false, resume: true, cancel: true, retry: false });
-    expect(controls({ state: 'running' })).toEqual({ pause: false, resume: false, cancel: true, retry: false });   // no safe place to stop a running task
-    expect(controls({ state: 'uncertain' })).toEqual({ pause: false, resume: false, cancel: true, retry: false });
-    expect(controls({ state: 'failed' })).toEqual({ pause: false, resume: false, cancel: false, retry: true });
-    expect(controls({ state: 'cancelled' })).toEqual({ pause: false, resume: false, cancel: false, retry: true });
-    expect(controls({ state: 'completed' })).toEqual({ pause: false, resume: false, cancel: false, retry: false });
+    expect(controls({ state: 'waiting' })).toEqual({ pause: true, resume: false, cancel: true, retry: false, goalResume: false });
+    expect(controls({ state: 'waiting', paused: true })).toEqual({ pause: false, resume: true, cancel: true, retry: false, goalResume: false });
+    expect(controls({ state: 'running' })).toEqual({ pause: false, resume: false, cancel: true, retry: false, goalResume: false });   // no safe place to stop a running task
+    expect(controls({ state: 'uncertain' })).toEqual({ pause: false, resume: false, cancel: true, retry: false, goalResume: false });
+    expect(controls({ state: 'failed' })).toEqual({ pause: false, resume: false, cancel: false, retry: true, goalResume: false });
+    expect(controls({ state: 'cancelled' })).toEqual({ pause: false, resume: false, cancel: false, retry: true, goalResume: false });
+    expect(controls({ state: 'completed' })).toEqual({ pause: false, resume: false, cancel: false, retry: false, goalResume: false });
+  });
+
+  it('says honestly how a task ended, apart from whether the run is over', () => {
+    expect(statusLabel({ state: 'completed', outcome: 'completed' })).toBe('Completed');
+    expect(statusLabel({ state: 'completed', outcome: 'partial' })).toBe('Partly done');
+    expect(statusLabel({ state: 'completed', outcome: 'blocked' })).toBe('Blocked');
+    expect(statusLabel({ state: 'completed', outcome: 'partial', goal: true, continuing: true })).toBe('Working towards your goal');
+    expect(statusLabel({ state: 'running', goal: true })).toBe('Working towards your goal');
+    expect(statusLabel({ state: 'running', parked: 'browser_question' })).toBe('Waiting for you');
+    expect(dotClass({ state: 'completed', outcome: 'blocked' })).toBe('failed');
+    expect(dotClass({ state: 'completed', outcome: 'partial' })).toBe('paused');
+    expect(dotClass({ state: 'completed', outcome: 'completed' })).toBe('completed');
+    expect(dotClass({ state: 'running', parked: 'browser_question' })).toBe('paused');
+  });
+
+  it('shows the fixed sentence for a task that did not simply succeed, and nothing for one that did', () => {
+    expect(outcomeLine({ state: 'completed', outcome: 'partial', outcome_note: 'The browser stopped where it needs you.' })).toBe('The browser stopped where it needs you.');
+    expect(outcomeLine({ state: 'completed', outcome: 'completed', verification: 'unverified', outcome_note: "Done, but I couldn't confirm it from the page." })).toMatch(/couldn't confirm/);
+    expect(outcomeLine({ state: 'completed', outcome: 'completed', verification: 'verified', outcome_note: 'Done.' })).toBe('');
+    expect(outcomeLine({ state: 'running', parked: 'browser_question' })).toMatch(/until you answer/);
+    expect(outcomeLine({ state: 'failed' })).toBe('');
+  });
+
+  it('offers to resume a goal only when it is held, never while the next turn is on its way', () => {
+    expect(controls({ state: 'completed', goal: true, outcome: 'partial' }).goalResume).toBe(true);
+    expect(controls({ state: 'completed', goal: true, outcome: 'blocked' }).goalResume).toBe(true);
+    expect(controls({ state: 'completed', goal: true, outcome: 'partial', continuing: true }).goalResume).toBe(false);
+    expect(controls({ state: 'completed', goal: true, outcome: 'completed' }).goalResume).toBe(false);
+    expect(controls({ state: 'completed', outcome: 'partial' }).goalResume).toBe(false);
   });
 });

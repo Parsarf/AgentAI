@@ -57,12 +57,12 @@ class ActivityChecks(unittest.TestCase):
 
     def test_payload_passes_event_allowlist(self):
         for item in activity.extract(ROWS):
-            normalize('activity', item)
+            normalize('activity', {k: v for k, v in item.items() if k not in ('run_id', 'after')})      # run_id only scopes the call to its run; the driver does not publish it
 
     def test_native_gateway_exposes_activity_without_changing_rows(self):
         gw = NativeGateway(lambda m, p: {'hello': {}, 'protocol': 4, 'methods': ['chat.send', 'chat.history', 'chat.abort']} if m == 'hello' else
                            {'kind': 'tail', 'messages': ROWS, 'sessionInfo': {}})
-        page = gw.history('abc', None)
+        page = gw.history('abc')
         self.assertEqual(len(page['activity']), 4)
         self.assertEqual(page['messages'], [])        # rows without runtime ids are not transcript rows
 

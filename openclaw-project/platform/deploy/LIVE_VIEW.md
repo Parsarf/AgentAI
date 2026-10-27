@@ -45,3 +45,11 @@ Roll back: remove `AGENTAI_LIVE_SECRET_FILE` and restart the app (the page falls
 * Coding and computer tasks: the Terminal and Files views follow the agent's tool events (about 1.5 s behind, output trimmed and redacted).
   A true live terminal or a full desktop (with hop-in) needs new runtime support inside the agent's cell and is a separate piece of work.
 * The browse service runs one browser stage at a time on this server; live view does not change that.
+
+## With the native browser engine
+
+When a job runs on the cell's own browser (`browse-engine.json`, see `platform/OPERATIONS.md`), nothing in this chapter changes for the customer or the proxy: the frame gateway still serves
+`live.jpg` from the job's folder and the `watching` marker still switches the stream on. What differs is who writes `live.jpg`: the browse service's `NativeTransport` asks the cell, through the
+bridge (`browser.live`, `browser.frame`), for the newest frame of the browser's screencast and writes it atomically. The relay program inside the cell mints the stream's single-use ticket on its
+own gateway connection, keeps only the newest frame, and shuts the stream off after 10 seconds without a request, so with nobody watching nothing streams. Frame rate and picture size under
+real load in a gVisor cell are not yet measured (the screencast is paced by the browser at about 20 frames per second; the host stage's runner is capped at 15).

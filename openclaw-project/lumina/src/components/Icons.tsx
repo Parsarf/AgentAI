@@ -11,12 +11,10 @@ export const Files = make(<><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 
 export const Calendar = make(<><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>);
 export const Bolt = make(<path d="M13 2L5 14h6l-1 8 8-12h-6z" />);
 export const Cube = make(<><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></>);
-export const Shield = make(<><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" /><path d="M9 12l2 2 4-4" /></>);
 export const Gear = make(<><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-.9a7 7 0 002 1.2l.4 2.6h4l.4-2.6a7 7 0 002-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z" /></>);
 export const Search = make(<><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>);
 export const Bell = make(<><path d="M6 9a6 6 0 1112 0c0 6 2.5 7 2.5 7h-17S6 15 6 9z" /><path d="M10 20a2 2 0 004 0" /></>);
 export const Motion = make(<><path d="M4 12c3-6 5-6 8 0s5 6 8 0" /></>);
-export const Theme = make(<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 010 16z" fill="currentColor" /></>);
 export const Mic = make(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3" /></>);
 export const Up = make(<path d="M12 19V5M5 12l7-7 7 7" />);
 export const Plus = make(<path d="M12 5v14M5 12h14" />);
@@ -30,3 +28,6 @@ export const Spark = (p: SVGProps<SVGSVGElement>) => (
   <svg width="30" height="30" viewBox="0 0 32 32" fill="currentColor" aria-hidden {...p}><path d="M16 1c1 8 3 12 15 15-12 3-14 7-15 15-1-8-3-12-15-15C13 13 15 9 16 1z" /></svg>);
 export const Panel = make(<><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9.5 4.5v15" /></>);
 export const Edit = make(<><path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16v4z" /></>);
+export const ChevronDown = make(<path d="M6 9l6 6 6-6" />);
+export const Grid = make(<><rect x="4" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" /></>);
+export const More = make(<><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></>);

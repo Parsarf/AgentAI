@@ -127,7 +127,7 @@ class HostIsolation:
 
     def _apply(self, subnets):
         policy = NetPolicy(self.base.cell_pool, self.base.bridge_gateway,
-                           self.base.model_proxy_port, tuple(subnets))
+                           self.base.model_proxy_port, tuple(subnets), self.base.tool_relay_port)
         tmp = self.ruleset_file.with_suffix('.new')
         tmp.write_text(policy.ruleset())
         code, _ = self.run(['nft', '-c', '-f', str(tmp)])

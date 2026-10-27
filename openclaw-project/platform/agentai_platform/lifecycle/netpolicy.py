@@ -9,7 +9,7 @@ widen what Docker permits. It is loaded by a host unit, not by the app.
 
 Allowed by default: public internet egress (translated by this table's postrouting chain). Allowed to the host: nothing except
 the optional model-proxy endpoint, which is authenticated by a per-account
-virtual key. Quarantined (restored) cells get all egress dropped.
+virtual key, and the optional tool-relay endpoint (Lumina's native tools), which checks the cell's own model key. Quarantined (restored) cells get all egress dropped.
 """
 from dataclasses import dataclass
 import ipaddress
@@ -25,6 +25,7 @@ class NetPolicy:
     bridge_gateway: str               # dedicated cells bridge address, e.g. 10.77.0.1
     model_proxy_port: int | None = None
     quarantined: tuple[str, ...] = () # cell subnets with all egress dropped
+    tool_relay_port: int | None = None # the one other door: Lumina's native tools (the sandboxed browser), authenticated per cell by its own model key
 
     def __post_init__(self):
         pool = ipaddress.ip_network(self.cell_pool)
@@ -33,9 +34,11 @@ class NetPolicy:
         gateway = ipaddress.ip_address(self.bridge_gateway)
         if gateway.version != 4 or not gateway.is_private:
             raise ValueError('bridge gateway must be private IPv4')
-        if self.model_proxy_port is not None and (type(self.model_proxy_port) is not int
-                or isinstance(self.model_proxy_port, bool) or not 1 <= self.model_proxy_port <= 65535):
-            raise ValueError('invalid model proxy port')
+        for port in (self.model_proxy_port, self.tool_relay_port):
+            if port is not None and (type(port) is not int or isinstance(port, bool) or not 1 <= port <= 65535):
+                raise ValueError('invalid port')
+        if self.tool_relay_port is not None and self.tool_relay_port == self.model_proxy_port:
+            raise ValueError('the model proxy and the tool relay need different ports')
         for subnet in self.quarantined:
             net = ipaddress.ip_network(subnet)
             if net.version != 4 or not net.subnet_of(pool):
@@ -64,6 +67,8 @@ class NetPolicy:
         ]
         if self.model_proxy_port is not None:
             lines.append(f'    ip daddr {self.bridge_gateway} tcp dport {self.model_proxy_port} return')
+        if self.tool_relay_port is not None:
+            lines.append(f'    ip daddr {self.bridge_gateway} tcp dport {self.tool_relay_port} return')
         lines += [
             '    counter drop comment "cell to host services"',
             '  }',

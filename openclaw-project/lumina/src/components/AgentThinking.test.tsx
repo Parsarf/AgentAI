@@ -44,17 +44,6 @@ describe('assistant thinking indicator', () => {
     expect(screen.getByText(text)).toBeTruthy();
     expect(screen.queryByTestId('orb')).toBeNull();
   });
-  it('puts the state beside the orb in one row and swaps it in place when it changes', async () => {
-    vi.mocked(api).mockResolvedValue({ events: [] });
-    const { container, rerender } = render(<AgentThinking task={{ ...task, state: 'waiting' }} />);
-    const first = await screen.findByText('Queued…');
-    expect(container.querySelector('.agent-thinking')?.children.length).toBe(2);                                // the orb and one state label: nothing hangs off it
-    expect(first.className).toBe('agent-state');
-    rerender(<AgentThinking task={{ ...task, state: 'starting' }} />);
-    const second = await screen.findByText('Getting ready…');
-    expect(screen.queryByText('Queued…')).toBeNull(); expect(second).not.toBe(first);                           // a new element, so the swap animates in the same spot
-    expect(container.querySelectorAll('.agent-thinking').length).toBe(1);
-  });
 });
 
 it('shows the server explanation for a failed task', () => {

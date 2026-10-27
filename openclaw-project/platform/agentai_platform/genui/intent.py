@@ -1,40 +1,6 @@
-"""Deterministic intent detection and requirement templates. No model call: cheap, predictable and testable.
-
-Returns what kind of response a message deserves: plain text, a compact requirements form, or a generated plan.
-JEV could later choose among these templates; it is not needed for the decision rules below and is not used.
-"""
+"""The website-requirements form (a template). Nothing here guesses what a message means: the assistant reads every message itself, and Plan mode is chosen by the customer
+(or offered to them by the assistant when a request is a big build)."""
 from __future__ import annotations
-import re
-
-BUILD = re.compile(r'\b(build|create|make|develop|design|set up|setup|launch)\b', re.I)
-THING = re.compile(r'\b(website|web site|landing page|web ?app|application|app|saas|platform|store|e-?commerce|portal|dashboard|system)\b', re.I)
-WEBSITE = re.compile(r'\b(website|web site|landing page|web ?app|saas|store|e-?commerce|portal)\b', re.I)
-HEAVY = re.compile(r'\b(complete|full|end[- ]to[- ]end|from scratch|migrat\w+|roll ?out|strategy|roadmap|launch plan|pipeline)\b', re.I)
-QUESTION = re.compile(r'^\s*(what|who|when|where|why|how|is|are|can|does|do|explain|define|tell me)\b', re.I)
-
-
-ACT_ON_SITE = re.compile(r'\b(order|reorder|book|reserve|purchase|buy|add .{1,60} to (?:my |the )?(?:cart|basket)|fill (?:out|in)|sign up for|go to|open|visit|navigate to|log ?in to)\b', re.I)
-SITE_HINT = re.compile(r'(https?://|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|app)\b|\b(pizza|food|dinner|lunch|delivery|takeout|restaurant|hotel|flight|ticket|table|cart|basket|amazon|walmart|ebay|doordash|ubereats|grubhub|opentable|booking)\b)', re.I)
-
-
-def detect(message: str, *, mode: str = 'auto', browse: bool = False) -> str:
-    """'text' | 'requirements' | 'plan' | 'browse'. mode 'text' forces plain text, 'plan' a plan, 'browse' a browser run (when enabled)."""
-    if mode == 'text':
-        return 'text'
-    if mode == 'plan':
-        return 'plan'
-    if mode == 'browse':
-        return 'browse' if browse else 'text'
-    text = message.strip()
-    if browse and len(text) >= 12 and ACT_ON_SITE.search(text) and SITE_HINT.search(text) and not re.match(r'^\s*(what|who|why|how (?:do|does|to)|explain)\b', text, re.I):
-        return 'browse'
-    if len(text) < 12 or (QUESTION.search(text) and not BUILD.search(text)):
-        return 'text'
-    if BUILD.search(text) and WEBSITE.search(text):
-        return 'requirements'
-    if (BUILD.search(text) and THING.search(text)) or (HEAVY.search(text) and len(text) > 40):
-        return 'plan'
-    return 'text'
 
 
 def website_form() -> dict:
@@ -61,6 +27,3 @@ def website_form() -> dict:
         'submit': {'label': 'Create the plan', 'action': 'submit_requirements'},
     }
 
-
-def requirements_template(message: str) -> dict | None:
-    return website_form() if WEBSITE.search(message) else None

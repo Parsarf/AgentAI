@@ -164,6 +164,9 @@ class FleetCliDriver:
                 argv=argv+['--gateway-token',self.secrets.gateway_token(binding.tenant_ref)]
             if self.provisioner is not None:
                 argv=argv+self.provisioner.prepare(binding)
+        if claim.kind=='start' and self.provisioner is not None and hasattr(self.provisioner,'before_start'):
+            try: self.provisioner.before_start(binding)
+            except Exception: pass   # bringing an older assistant up to date is best effort: the start itself must not fail because of it
         code,stdout=self._run(argv)
         if code!=0: raise OutcomeUncertain('native executor rejected')
         if claim.kind=='create' and self.provisioner is not None:

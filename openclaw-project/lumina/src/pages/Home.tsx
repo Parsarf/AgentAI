@@ -7,10 +7,10 @@ import { ago, displayName, greeting, title } from '../lib/format';
 import { dotClass, phase, statusLabel } from '../lib/tasks';
 
 const CAPS = [
-  { key: 'Web', name: 'Search Web', text: 'Find, analyze and summarize anything.', icon: I.Browser, color: 'var(--web)' },
-  { key: 'Code', name: 'Build & Code', text: 'Create and deploy applications.', icon: I.Code, color: 'var(--code)' },
-  { key: 'Data', name: 'Analyze Data', text: 'Turn your data into clear insights.', icon: I.Chart, color: 'var(--data)' },
-  { key: 'Automate', name: 'Automate', text: 'Create workflows and recurring tasks.', icon: I.Bolt, color: 'var(--automate)' },
+  { key: 'Web', name: 'Search Web', text: 'Find, analyze and summarize anything.', icon: I.Browser },
+  { key: 'Code', name: 'Build & Code', text: 'Create and deploy applications.', icon: I.Code },
+  { key: 'Data', name: 'Analyze Data', text: 'Turn your data into clear insights.', icon: I.Chart },
+  { key: 'Automate', name: 'Automate', text: 'Create workflows and recurring tasks.', icon: I.Bolt },
 ];
 
 export function TaskRow({ r, onOpen }: { r: { id: string; message: string; state: string; created_epoch: number; paused?: boolean; ahead?: number | null }; onOpen(): void }) {
@@ -30,18 +30,15 @@ export default function Home() {
   const [seed, setSeed] = useState<{ text: string; n: number } | null>(null);
   const name = displayName(app?.user.email ?? '');
   return (
-    <div className="center home-workspace">
-      <header className="hero"><h1>{greeting(new Date())}, <span>{name}.</span></h1><p>What would you like to do today?</p></header>
-      <Composer showCapabilities={false} seed={seed} onSent={r => nav(`/chat/${r.conversation_id}`)} />
-      <div className="caps" role="list" aria-label="Start a task">
+    <div className="center">
+      <header className="hero"><div><h1>{greeting(new Date())}, {name}</h1><p>What would you like to do today?</p></div><time className="hero-date" dateTime={new Date().toISOString().slice(0, 10)}>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</time></header>
+      <Composer seed={seed} onSent={r => nav(`/chat/${r.conversation_id}`)} />
+      <div className="caps" role="list">
         {CAPS.map(c => (
-          <div key={c.key} role="listitem">
-            <button className="cap" onClick={() => setSeed({ text: TEMPLATES[c.key], n: Date.now() })}>
-              <c.icon width={20} height={20} />
-              <span className="cap-copy"><span className="cap-name">{c.name}</span><span className="cap-description">{c.text}</span></span>
-              <I.Chevron width={16} height={16} />
-            </button>
-          </div>))}
+          <button key={c.key} role="listitem" className="cap" onClick={() => setSeed({ text: TEMPLATES[c.key], n: Date.now() })}>
+            <span className="ico"><c.icon width={30} height={30} /></span><span className="go"><I.Chevron width={16} height={16} /></span>
+            <span><h3>{c.name}</h3><p>{c.text}</p></span>
+          </button>))}
       </div>
       <div className="sect"><h2>Recent Tasks</h2><Link to="/tasks">View all →</Link></div>
       {requests.length === 0

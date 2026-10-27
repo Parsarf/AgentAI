@@ -19,7 +19,7 @@ TEXT_LIMIT = 300
 
 def _clean(value):
     if isinstance(value, str):
-        return scrub(value, TEXT_LIMIT)
+        return scrub(value, TEXT_LIMIT, force=True)
     if isinstance(value, dict):
         return {str(k)[:40]: _clean(v) for k, v in list(value.items())[:30]}
     if isinstance(value, (list, tuple)):
@@ -28,7 +28,7 @@ def _clean(value):
         return value
     if isinstance(value, float):
         return round(value, 4) if value == value and abs(value) != float('inf') else None
-    return scrub(repr(value), TEXT_LIMIT)
+    return scrub(repr(value), TEXT_LIMIT, force=True)
 
 
 class Trace:

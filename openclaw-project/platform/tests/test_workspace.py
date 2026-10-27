@@ -21,6 +21,13 @@ class WorkspaceChecks(unittest.TestCase):
         got = dict(collect(self.ws, time.time() - 60))
         self.assertEqual(sorted(got), ['slug.py', 'sub/page.html'])
 
+    def test_the_runtimes_own_seeded_files_are_not_deliverables(self):
+        for name in ('AGENTS.md', 'SOUL.md', 'USER.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md'):
+            (self.ws / name).write_text('the runtime wrote this')
+        (self.ws / 'memory').mkdir(); (self.ws / 'memory' / '2026-10-26.md').write_text('daily log')
+        (self.ws / 'report.md').write_text('the customer asked for this')
+        self.assertEqual(sorted(dict(collect(self.ws, 0))), ['report.md'])
+
     def test_symlinks_never_followed(self):
         os.symlink(self.outside, self.ws / 'link.txt')
         os.symlink(self.tmp.name, self.ws / 'dirlink')

@@ -27,8 +27,20 @@ class CellConfigChecks(unittest.TestCase):
         provider = cfg['models']['providers']['litellm']
         self.assertEqual(provider['baseUrl'], 'http://10.77.0.1:4000')
         self.assertEqual(provider['apiKey']['id'], 'LITELLM_API_KEY')               # the key is never written into the file
-        self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-haiku-4-5')
+        self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5')            # the assistant that plans and answers
+        ids = {m['id']: m for m in provider['models']}
+        self.assertEqual(set(ids), {'claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-sonnet-4-6'}); self.assertFalse(ids['claude-sonnet-5-5']['reasoning'])      # no hidden thinking tokens
         self.assertEqual(cfg['gateway'], {'mode': 'local'})
+
+    def test_the_cells_own_browser_is_switched_on_only_when_asked_and_stays_out_of_the_assistants_reach(self):
+        off = patch({})
+        self.assertEqual(off['browser'], {'enabled': False})
+        on = patch({}, native_browser=True)
+        self.assertTrue(on['browser']['enabled']); self.assertTrue(on['browser']['headless']); self.assertTrue(on['browser']['noSandbox'])
+        self.assertNotIn('ssrfPolicy', on['browser'])                                         # the default policy blocks private and internal addresses; nothing here opens it
+        self.assertIn('browser', on['tools']['deny'])                                         # the assistant itself still cannot call it: it goes through Lumina's rules
+        self.assertEqual(on['browser']['executablePath'], '/home/node/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome')       # the plugin is told where the image's Chromium is
+        self.assertNotIn('ssrfPolicy', patch({'browser': {'ssrfPolicy': {'dangerouslyAllowPrivateNetwork': True}}}, native_browser=True)['browser'])      # never inherited from an earlier config
 
     def test_provisioner_issues_one_key_and_patches_config_atomically(self):
         calls = []
@@ -43,11 +55,41 @@ class CellConfigChecks(unittest.TestCase):
         self.assertEqual(prov.prepare(binding), ['--env', 'LITELLM_API_KEY=sk-testkey-0123456789abcdef'])
         self.assertEqual(prov.prepare(binding), ['--env', 'LITELLM_API_KEY=sk-testkey-0123456789abcdef'])   # retry reuses the key
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][2]['max_budget'], 25); self.assertIn('claude-haiku-4-5', calls[0][2]['models'])
+        self.assertEqual(calls[0][2]['max_budget'], 25); self.assertEqual(calls[0][2]['models'], ['claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-sonnet-4-6'])
         prov.finish(binding)
         cfg = json.loads((cells / TENANT / 'openclaw.json').read_text())
         self.assertIn('litellm', cfg['models']['providers']); self.assertEqual(set(owners), {(1000, 1000)})
         self.assertNotIn('sk-testkey', json.dumps(cfg))
+
+    def test_an_existing_assistant_is_brought_up_to_date_before_each_start(self):
+        calls = []
+        def http(method, path, body=None):
+            calls.append((method, path, body)); return 200, {'key': 'sk-testkey-0123456789abcdef'}
+        secrets = SecretStore(self.root / 'sec'); cells = self.root / 'cells'; (cells / TENANT).mkdir(parents=True)
+        old = patch({'gateway': {'port': 1}}, default_model='litellm/claude-haiku-4-5'); old['models']['providers']['litellm']['models'] = old['models']['providers']['litellm']['models'][1:]   # created under the old setup
+        (cells / TENANT / 'openclaw.json').write_text(json.dumps(old))
+        prov = CellProvisioner(ProviderKeys(http, secrets), secrets, cells, chown=lambda p, u, g: None)
+        binding = SimpleNamespace(tenant_ref=TENANT, account_id='acct')
+        prov.prepare(binding); calls.clear()
+        prov.before_start(binding)
+        cfg = json.loads((cells / TENANT / 'openclaw.json').read_text())
+        self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5'); self.assertEqual(cfg['gateway'], {'port': 1})       # only the model setup changed
+        self.assertEqual([(m, path, body['models']) for m, path, body in calls], [('POST', '/key/update', ['claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-sonnet-4-6'])])
+        before = (cells / TENANT / 'openclaw.json').read_text(); prov.before_start(binding)
+        self.assertEqual((cells / TENANT / 'openclaw.json').read_text(), before)                                                                         # idempotent
+
+    def test_a_failure_in_the_update_never_blocks_the_start(self):
+        def http(method, path, body=None): raise OSError('gateway down')
+        secrets = SecretStore(self.root / 'sec'); cells = self.root / 'cells'; (cells / TENANT).mkdir(parents=True)
+        secrets.store_provider_key(TENANT, 'sk-testkey-0123456789abcdef')
+        (cells / TENANT / 'openclaw.json').write_text('not json')
+        CellProvisioner(ProviderKeys(http, secrets), secrets, cells, chown=lambda p, u, g: None).before_start(SimpleNamespace(tenant_ref=TENANT, account_id='a'))   # no exception
+        old = patch({'gateway': {'port': 1}}, default_model='litellm/claude-haiku-4-5'); (cells / TENANT / 'openclaw.json').write_text(json.dumps(old))
+        CellProvisioner(ProviderKeys(http, secrets), secrets, cells, chown=lambda p, u, g: None).before_start(SimpleNamespace(tenant_ref=TENANT, account_id='a'))
+        self.assertEqual(json.loads((cells / TENANT / 'openclaw.json').read_text()), old)                      # the key update failed, so the assistant keeps the model it can use
+        self.assertEqual(ProviderKeys(lambda *a: (200, {}), secrets).ensure_models(TENANT.replace(TENANT[-1], '0'), ['x']), False)       # a tenant with no key is left alone
+        with self.assertRaises(Exception): ProviderKeys(lambda *a: (500, {}), secrets).ensure_models(TENANT, ['x'])
+        with self.assertRaises(Exception): ProviderKeys(lambda *a: (200, {}), secrets).ensure_models(TENANT, [])
 
     def test_admin_reads_master_key_at_call_time_and_converts_spend(self):
         env = self.root / 'l.env'; env.write_text('X=1\nLITELLM_MASTER_KEY=sk-master\n')
@@ -62,6 +104,67 @@ class CellConfigChecks(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class BrowserRelaySecretChecks(unittest.TestCase):
+    """The browser plugin's own start writes a small secret with a rename-without-replace the sandbox rejects, so the host writes it first, exactly as the plugin's reader demands."""
+    NAME = 'browser-extension-relay.secret'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup); self.root = Path(self.tmp.name)
+        (self.root / TENANT).mkdir(parents=True)
+        self.owners = []
+        self.binding = SimpleNamespace(tenant_ref=TENANT, account_id='a')
+
+    def prov(self, browser=True):
+        return CellProvisioner(None, None, self.root, native_browser=browser, chown=lambda p, u, g: self.owners.append((Path(p).name, u, g)))
+
+    def secret(self): return self.root / TENANT / 'credentials' / self.NAME
+
+    def test_it_is_a_private_64_hex_file_owned_by_the_cells_user(self):
+        self.prov().ensure_browser_relay_secret(self.binding)
+        path = self.secret()
+        self.assertRegex(path.read_text(), r'^[0-9a-f]{64}$')
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600); self.assertEqual((path.parent.stat().st_mode & 0o777), 0o700)
+        self.assertIn((self.NAME, 1000, 1000), self.owners); self.assertIn(('credentials', 1000, 1000), self.owners)
+        self.assertEqual([p.name for p in path.parent.iterdir()], [self.NAME])                       # no temporary file is left behind
+
+    def test_a_valid_secret_is_kept_and_a_broken_one_is_replaced(self):
+        prov = self.prov(); prov.ensure_browser_relay_secret(self.binding)
+        first = self.secret().read_text()
+        prov.ensure_browser_relay_secret(self.binding)
+        self.assertEqual(self.secret().read_text(), first)                                            # every start runs this; the token stays
+        for broken in ('', 'not hex', 'ab' * 20, 'G' * 64):
+            self.secret().write_text(broken)
+            prov.ensure_browser_relay_secret(self.binding)
+            self.assertRegex(self.secret().read_text(), r'^[0-9a-f]{64}$', broken)
+            self.assertEqual(self.secret().stat().st_mode & 0o777, 0o600)
+
+    def test_a_link_in_its_place_is_never_followed(self):
+        outside = self.root / 'outside'; outside.write_text('keep')
+        (self.root / TENANT / 'credentials').mkdir()
+        self.secret().symlink_to(outside)
+        self.prov().ensure_browser_relay_secret(self.binding)
+        self.assertEqual(outside.read_text(), 'keep'); self.assertFalse(self.secret().is_symlink())
+        self.assertRegex(self.secret().read_text(), r'^[0-9a-f]{64}$')
+
+    def test_nothing_is_written_when_the_cells_browser_is_off(self):
+        self.prov(browser=False).ensure_browser_relay_secret(self.binding)
+        self.assertFalse((self.root / TENANT / 'credentials').exists())
+
+    def test_it_runs_on_every_start_and_after_create_and_a_failure_never_blocks_a_start(self):
+        (self.root / TENANT / 'openclaw.json').write_text('{}')
+        prov = self.prov(); prov.finish(self.binding)
+        self.assertTrue(self.secret().is_file())                                                      # after create
+        self.secret().unlink()
+        class NoKeys:
+            def ensure_models(self, *a): return False                                                  # a cell with no key in custody returns early from before_start
+        started = CellProvisioner(NoKeys(), None, self.root, native_browser=True, chown=lambda *a: None)
+        started.before_start(self.binding)
+        self.assertTrue(self.secret().is_file())                                                      # before every start, whatever else is true of the cell
+        def refuse(*a): raise OSError('read-only')
+        broken = CellProvisioner(NoKeys(), None, self.root, native_browser=True, chown=refuse)
+        broken.before_start(self.binding)                                                              # no exception: the start itself goes on
 
 
 class ResolverChecks(unittest.TestCase):
@@ -100,6 +203,31 @@ class RulesChecks(unittest.TestCase):
         text = (Path(tmp.name) / TENANT / 'workspace' / 'AGENTS.md').read_text()
         self.assertIn('web_search', text); self.assertIn('never invent prices', text); self.assertIn('do not scrape search-engine pages', text)
         self.assertEqual({o[1:] for o in owners}, {(1000, 1000)})
+
+    def test_the_rules_tell_the_assistant_to_show_products_and_places_as_a_card_with_a_real_link_each(self):
+        from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
+        section = rules[rules.index('## Products, places'):]
+        for must in ('comparison', 'web_search', "browser reported", 'every option a `link`', 'never a search-results page', 'never an address you made up',
+                     'leave `link` out', 'plain text'):
+            self.assertIn(must, section, must)
+        self.assertIn('"type":"comparison"', rules)                                  # the card shape is still taught
+        self.assertEqual(rules.count('## Products, places'), 1)
+
+    def test_the_rules_ask_for_follow_ups_that_fit_each_answer_and_not_one_fixed_prompt(self):
+        from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
+        section = rules[rules.index('## Follow-ups on a card'):]
+        for must in ('`actions`', 'on each item', 'exactly that sentence', 'never offer the same sentence on every option', 'new card with new follow-ups'):
+            self.assertIn(must, section, must)
+        self.assertNotIn('cheapest reliable', rules)                                  # no canned prompt in the instructions
+
+    def test_every_example_card_in_the_rules_is_one_the_server_accepts_and_plain_text_stays_the_default(self):
+        import json, re
+        from agentai_platform.genui import data
+        from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
+        examples = re.findall(r'```lumina\n(.*?)\n```', rules, re.S)
+        kinds = [data.validate_data(json.loads(e))['type'] for e in examples]                # an example the server would refuse teaches the assistant to fail
+        self.assertEqual(set(kinds), set(data.KINDS))                                         # and every kind is shown once
+        self.assertIn('Most answers are plain text', rules); self.assertIn('Use plain text whenever that reads best', rules)
 
 
 class SearchSetupChecks(unittest.TestCase):

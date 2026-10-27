@@ -2114,7 +2114,7 @@
   },
   "/v1/conversations/{id}/send": {
    "post": {
-    "summary": "Submit one actionable chat request (Phase 5 admission; idempotent by key)",
+    "summary": "Submit one actionable chat request (idempotent by key). While a task of the conversation is running, a plain message joins that run (steered: the response says steered=true and names the running task)",
     "parameters": [
      {
       "name": "id",
@@ -2146,7 +2146,15 @@
            "plan",
            "browse"
           ],
-          "description": "auto picks text, a requirements form or a plan; text forces a plain answer"
+          "description": "auto lets the assistant decide, text forces a plain answer, plan drafts a plan, browse asks it to use the browser"
+         },
+         "goal": {
+          "type": "string",
+          "enum": [
+           "true",
+           "false"
+          ],
+          "description": "\"true\" = keep working until complete: the message becomes the objective of a session goal, and each turn is admitted and funded as its own task"
          }
         },
         "required": [
@@ -3596,6 +3604,207 @@
     }
    }
   },
+  "/v1/browse/{id}/answer": {
+   "post": {
+    "summary": "Answer a question the browser stopped to ask: pick an option, or continue after choosing on the page (optionally remember the choice)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/saved": {
+   "get": {
+    "summary": "Choices you asked Lumina to remember (size, usual drink)",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/saved/{field}/forget": {
+   "post": {
+    "summary": "Forget one remembered choice",
+    "parameters": [
+     {
+      "name": "field",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/vault": {
+   "get": {
+    "summary": "Your saved logins and cards (no secrets are ever returned) and whether saving is set up",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/vault/add": {
+   "post": {
+    "summary": "Save a login or card, encrypted, after you accept the notice (the card security code is never saved)",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/vault/{item_id}/delete": {
+   "post": {
+    "summary": "Delete one saved login or card",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
   "/v1/browse/{id}/live": {
    "post": {
     "summary": "Short-lived view-only ticket for the live frame gateway",
@@ -3790,6 +3999,211 @@
      }
     },
     "security": []
+   }
+  },
+  "/v1/media/{image_id}": {
+   "get": {
+    "summary": "A picture on a comparison card, kept by Lumina so the browser never contacts the original site",
+    "parameters": [
+     {
+      "name": "image_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The picture itself (image/jpeg, image/png or image/webp), sandboxed and never sniffed"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/goal": {
+   "post": {
+    "summary": "Control the conversation's \"keep working until complete\" goal: resume (admitted and funded like a task) or clear it",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "action": {
+          "type": "string",
+          "enum": [
+           "resume",
+           "clear"
+          ]
+         },
+         "key": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "action",
+         "key"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Resume admitted (request) or goal cleared (goal null)"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "402": {
+      "description": "budget_denied with category"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     },
+     "409": {
+      "description": "There is no goal, or a task is still running"
+     }
+    }
+   }
+  },
+  "/v1/safety": {
+   "get": {
+    "summary": "The owner's Safety menu: every safety switch for your account (?scope=mine, the default) or, for the owner only, the default for all users (?scope=all). 404 for any account without access",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/safety/change": {
+   "post": {
+    "summary": "Change safety switches for your account (scope mine) or, owner only, for all users (scope all); needs your password; shared, core and (for all users) privacy switches are refused",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/safety/access": {
+   "get": {
+    "summary": "Owner only: the accounts that may open the Safety menu",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/safety/access/change": {
+   "post": {
+    "summary": "Owner only: grant or revoke an account's access to the Safety menu by email; needs your password; revoking also drops the settings that account made",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
    }
   }
  },

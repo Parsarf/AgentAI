@@ -1,0 +1,64 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import AgentThinking from './AgentThinking';
+import { api } from '../lib/api';
+vi.mock('../lib/api', () => ({ api: vi.fn() }));
+vi.mock('./Orb', () => ({ default: ({ state }: { state: string }) => <span data-testid="orb" data-state={state} /> }));
+const task = { id: 'a', state: 'running', created_epoch: 0 };
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+describe('assistant thinking indicator', () => {
+  it('shows an assistant orb and state without the old card or inline controls', async () => {
+    vi.mocked(api).mockResolvedValue({ events: [{ sequence: 1, kind: 'activity', payload: { category: 'search', status: 'running' } }] });
+    const { container, rerender } = render(<AgentThinking task={task} />);
+    await screen.findByText('Searching…');
+    expect(screen.getByTestId('orb').dataset.state).toBe('searching');
+    expect(container.querySelector('.taskstrip')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    rerender(<AgentThinking task={{ ...task, state: 'completed' }} />);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+  it('says a held task is paused instead of showing the working orb, and makes no activity calls', () => {
+    render(<AgentThinking task={{ ...task, state: 'waiting', paused: true }} />);
+    expect(screen.getByRole('status').textContent).toMatch(/Paused/);
+    expect(screen.queryByTestId('orb')).toBeNull();
+    expect(api).not.toHaveBeenCalled();
+  });
+  it('drains more than 200 events before selecting the latest activity', async () => {
+    vi.mocked(api).mockImplementation(async (_method, url) => ({ events: url.includes('after=0&') ? Array.from({ length: 200 }, (_, i) => ({ sequence: i + 1, kind: 'progress' })) : [{ sequence: 201, kind: 'activity', payload: { category: 'file', status: 'running' } }] }) as any);
+    render(<AgentThinking task={task} />);
+    await screen.findByText('Writing…');
+    expect(api).toHaveBeenCalledWith('GET', '/v1/tasks/a/events?after=200&limit=200');
+  });
+  it('does not let a late old task response replace the new state', async () => {
+    let release!: (value: any) => void;
+    vi.mocked(api).mockImplementation(async (_method, url) => url.includes('/a/') ? new Promise(resolve => { release = resolve; }) : { events: [{ sequence: 1, kind: 'activity', payload: { category: 'design', status: 'running' } }] } as any);
+    const { rerender } = render(<AgentThinking task={task} />);
+    await waitFor(() => expect(release).toBeDefined());
+    rerender(<AgentThinking task={{ ...task, id: 'b' }} />);
+    await screen.findByText('Designing…');
+    release({ events: [{ sequence: 1, kind: 'activity', payload: { category: 'search', status: 'running' } }] });
+    await waitFor(() => expect(screen.queryByText('Searching…')).toBeNull());
+  });
+  it.each([['failed', 'Something went wrong. Open Activity for details.'], ['cancelled', 'Stopped.']])('ends animation for %s', (state, text) => {
+    render(<AgentThinking task={{ ...task, state }} />);
+    expect(screen.getByText(text)).toBeTruthy();
+    expect(screen.queryByTestId('orb')).toBeNull();
+  });
+  it('puts the state beside the orb in one row and swaps it in place when it changes', async () => {
+    vi.mocked(api).mockResolvedValue({ events: [] });
+    const { container, rerender } = render(<AgentThinking task={{ ...task, state: 'waiting' }} />);
+    const first = await screen.findByText('Queued…');
+    expect(container.querySelector('.agent-thinking')?.children.length).toBe(2);                                // the orb and one state label: nothing hangs off it
+    expect(first.className).toBe('agent-state');
+    rerender(<AgentThinking task={{ ...task, state: 'starting' }} />);
+    const second = await screen.findByText('Getting ready…');
+    expect(screen.queryByText('Queued…')).toBeNull(); expect(second).not.toBe(first);                           // a new element, so the swap animates in the same spot
+    expect(container.querySelectorAll('.agent-thinking').length).toBe(1);
+  });
+});
+
+it('shows the server explanation for a failed task', () => {
+  render(<AgentThinking task={{ ...task, state: 'failed', result: 'The browser task was interrupted. Please try again.' }} />);
+  expect(screen.getByText('The browser task was interrupted. Please try again.')).toBeTruthy();
+  expect(screen.queryByTestId('orb')).toBeNull();
+});

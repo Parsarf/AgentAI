@@ -4,9 +4,10 @@ from pathlib import Path
 import tempfile
 import unittest
 from agentai_platform.budget import BudgetLedger, BudgetDenied
-from agentai_platform.chat import ChatService, ChatDriver, FixedRoute, UnmeasuredRoute, synthetic_gateway_factory
+from agentai_platform.chat import ChatService, FixedRoute, UnmeasuredRoute
+from agentai_platform.chat_driver import ChatDriver, synthetic_gateway_factory
 from agentai_platform.gateway import SyntheticGateway
-from agentai_platform.request_queue import RequestQueue
+from agentai_platform.request_queue import Recover, RequestQueue
 from agentai_platform.security import Principal, NotFound
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.capacity import CapacityResult
@@ -199,17 +200,16 @@ class ChatChecks(unittest.TestCase):
 
     def test_assistant_tool_use_becomes_activity_events_for_this_request_only(self):
         from agentai_platform.events import EventService
-        old = {'ref': 'old1', 'tool': 'exec', 'category': 'command', 'label': 'Ran a command', 'detail': 'ls', 'output': '', 'status': 'done'}
-        new_run = {'ref': 'new1', 'tool': 'web_search', 'category': 'search', 'label': 'Searched the web', 'detail': 'pickleball', 'output': '', 'status': 'running'}
+        other = {'ref': 'old1', 'tool': 'exec', 'category': 'command', 'label': 'Ran a command', 'detail': 'ls', 'output': '', 'status': 'done', 'run_id': 'an-earlier-run', 'after': 'an-earlier-request-a1'}
         class Tools(SyntheticGateway):
-            reads = 0
-            def history(self, session, cursor):
+            def history(self, session, cursor=None):
                 page = super().history(session, cursor)
-                Tools.reads += 1
-                page['activity'] = [old] if Tools.reads == 1 else [old, new_run, {**new_run, 'status': 'done'}][:3]
+                run = next(iter(self.runs), 'none')
+                mine = {'ref': 'new1', 'tool': 'web_search', 'category': 'search', 'label': 'Searched the web', 'detail': 'pickleball', 'output': '', 'status': 'running', 'run_id': run, 'after': run}
+                page['activity'] = [other, mine, {**mine, 'status': 'done'}]
                 return page
         self.send()
-        tools = Tools()
+        tools = Tools(polls=1)
         key, _, _ = tools.open_session('op', 'chat-x')                  # an existing session with an earlier turn's tool use
         with self.store.connect() as con:
             con.execute("UPDATE conversations SET native_session_ref=? WHERE account_id='a' AND id='c-a'", (key,))
@@ -219,7 +219,8 @@ class ChatChecks(unittest.TestCase):
                             clock=lambda: self.now, sleep=lambda s: None, events=events)
         self.queue.finish(claim, driver.execute(claim))
         rows = [e['payload'] for e in events.events(self.a, claim.request_id)['events'] if e['kind'] == 'activity']
-        self.assertEqual([(r['ref'], r['status']) for r in rows], [('new1', 'running'), ('new1', 'done')])
+        self.assertEqual([(r['ref'], r['status']) for r in rows], [('new1', 'running'), ('new1', 'done')])      # the earlier run's call is not this request's, and nothing is shown twice
+        self.assertNotIn('run_id', rows[0]); self.assertNotIn('after', rows[0])
 
     def test_files_the_assistant_wrote_become_versioned_downloads(self):
         from agentai_platform.artifacts import ArtifactService
@@ -268,16 +269,17 @@ class ChatChecks(unittest.TestCase):
         self.assertEqual([tuple(r) for r in self.rows("SELECT amount_microusd,price_version FROM provider_receipts")],
                          [(500, 'reservation-upper-bound-v1')])
 
-    def test_run_that_never_goes_idle_is_aborted_and_failed(self):
-        gateway = SyntheticGateway(active_pages=10**6)
+    def test_run_that_never_ends_is_stopped_at_its_time_limit_and_failed(self):
+        gateway = SyntheticGateway(polls=10**6)
         def advance(seconds): self.now += 300
         self.send()
         claim = self.queue.claim(owner='w', capacity=CAPACITY)
         driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(gateway),
                             clock=lambda: self.now, sleep=advance, run_timeout=900)
         receipt = driver.execute(claim)
-        self.assertEqual(receipt.state, 'failed')
-        self.assertTrue(gateway.abort_requests)
+        self.assertEqual((receipt.state, receipt.outcome), ('failed', 'failed'))
+        self.assertTrue([c for c in gateway.calls if c[0] == 'abort'])                      # the runtime was told to stop and confirmed it
+        self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0][0], 'aborted')
 
     def driver(self):
         return ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(self.gateway), clock=lambda:self.now)
@@ -295,78 +297,92 @@ class ChatChecks(unittest.TestCase):
         self.assertIsNone(self.queue.claim(owner='w', capacity=CAPACITY))
         self.assertEqual(sum(1 for call in self.gateway.calls if call[0] == 'send'), 2)
 
-    def test_driver_cancel_before_send_records_aborted_delivery(self):
+    def test_driver_cancel_before_send_sends_nothing(self):
         result = self.send(key='r1')
         claim = self.queue.claim(owner='w', capacity=CAPACITY)
         # Claimed (starting): cancel records intent that the driver honours before any effect.
         self.service.cancel(self.a, result['id'])
         receipt = self.driver().execute(claim)
-        self.assertEqual(receipt.state, 'cancelled')
+        self.assertEqual((receipt.state, receipt.outcome), ('cancelled', 'cancelled'))
         self.assertTrue(self.queue.finish(claim, receipt))
-        self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0][0], 'aborted')
+        self.assertFalse(self.rows('SELECT 1 FROM chat_deliveries'))                      # nothing was handed to the runtime, so there is nothing to abort
         self.assertEqual(self.rows('SELECT state FROM tasks')[0][0], 'cancelled')
         self.assertEqual(self.gateway.calls, [])
 
-    def test_driver_cancel_during_run_aborts_scoped_run(self):
+    def test_driver_cancel_during_run_aborts_and_waits_for_the_runtime_to_confirm(self):
         result = self.send(key='r1')
         request_id = result['id']
 
-        def set_cancel():
+        def set_cancel(run):
             with self.store.connect() as con:
                 con.execute('UPDATE customer_requests SET cancel_requested=1 WHERE id=?', (request_id,))
-        self.gateway.active_pages = 2
-        self.gateway.on_history = set_cancel
+        self.gateway.polls = 5
+        self.gateway.on_wait = set_cancel
         claim = self.queue.claim(owner='w', capacity=CAPACITY)
         receipt = self.driver().execute(claim)
-        self.assertEqual(receipt.state, 'cancelled')
+        self.assertEqual((receipt.state, receipt.outcome), ('cancelled', 'cancelled'))
         self.assertTrue(self.queue.finish(claim, receipt))
-        self.assertTrue(self.gateway.abort_requests)
-        self.assertEqual(self.gateway.abort_requests[0][1], self.rows('SELECT native_run_id FROM chat_deliveries')[0][0])
-        self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0][0], 'aborted')
+        aborts = [c for c in self.gateway.calls if c[0] == 'abort']
+        self.assertEqual(len(aborts), 1)
+        self.assertEqual(self.rows('SELECT state,native_status FROM chat_deliveries')[0][:], ('aborted', 'aborted'))
+        self.assertEqual(self.gateway.runs[self.rows('SELECT native_run_id FROM chat_deliveries')[0][0]]['error'], 'aborted')
 
     def test_unsupported_abort_stays_uncertain_with_intent(self):
         self.gateway.abort_supported = False
         result = self.send(key='r1')
         request_id = result['id']
 
-        def set_cancel():
+        def set_cancel(run):
             with self.store.connect() as con:
                 con.execute('UPDATE customer_requests SET cancel_requested=1 WHERE id=?', (request_id,))
-        self.gateway.active_pages = 2
-        self.gateway.on_history = set_cancel
+        self.gateway.polls = 5
+        self.gateway.on_wait = set_cancel
         claim = self.queue.claim(owner='w', capacity=CAPACITY)
         with self.assertRaises(CapabilityUnavailable):
             self.driver().execute(claim)
         self.queue.uncertain(claim)
         self.assertEqual(self.queue.get(self.a, request_id)['state'], 'uncertain')
         self.assertEqual(self.rows('SELECT cancel_requested FROM customer_requests')[0][0], 1)
-        self.assertFalse(self.gateway.abort_requests)
+        self.assertFalse([c for c in self.gateway.calls if c[0] == 'abort'])
 
-    def test_timeout_after_write_reconciles_without_resend(self):
+    def test_unknown_outcome_send_is_settled_by_sending_the_same_key_again(self):
         self.gateway.timeout_after_write = True
         result = self.send(key='r1')
         claim = self.queue.claim(owner='w', capacity=CAPACITY)
         with self.assertRaises(TimeoutError):
             self.driver().execute(claim)
         self.queue.uncertain(claim)
-        self.assertEqual(len(self.rows('SELECT 1 FROM chat_deliveries')), 1)
         self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0][0], 'uncertain')
-        self.assertTrue(self.queue.reconcile(self.driver(), claim))
+        outcome = self.queue.reconcile(self.driver(), claim)
+        self.assertIsInstance(outcome, Recover)                                    # the runtime is reachable: supervision carries on
+        again = self.queue.recover(claim, owner='w')
+        self.assertTrue(self.queue.finish(again, self.driver().execute(again)))
         self.assertEqual(self.queue.get(self.a, result['id'])['state'], 'completed')
-        self.assertEqual(sum(1 for call in self.gateway.calls if call[0] == 'send'), 1)
-        self.assertEqual(len(self.rows('SELECT 1 FROM chat_messages')), 1)
+        self.assertEqual(len(self.gateway.runs), 1)                                # the repeat did not start a second run
+        self.assertEqual(len([r for r in self.gateway.sessions[self.rows('SELECT native_session_ref FROM conversations WHERE id="c-a"')[0][0]]['rows'] if r['role'] == 'customer']), 1)
+        self.assertEqual(len(self.rows("SELECT 1 FROM chat_messages WHERE provenance='agent'")), 1)
 
-    def test_fail_after_ack_reconciles_terminal_history(self):
+    def test_fail_after_ack_is_recovered_without_a_second_run(self):
         self.gateway.fail_after_ack = True
         result = self.send(key='r1')
         claim = self.queue.claim(owner='w', capacity=CAPACITY)
         with self.assertRaises(RuntimeError):
             self.driver().execute(claim)
         self.queue.uncertain(claim)
-        self.assertTrue(self.queue.reconcile(self.driver(), claim))
+        self.assertIsInstance(self.queue.reconcile(self.driver(), claim), Recover)
+        again = self.queue.recover(claim, owner='w')
+        self.queue.finish(again, self.driver().execute(again))
         self.assertIn('ack ', self.queue.get(self.a, result['id'])['result'])
         self.assertEqual(len(self.rows("SELECT 1 FROM chat_messages WHERE provenance='agent'")), 1)
-        self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0][0], 'acknowledged')
+        self.assertEqual(self.rows('SELECT state FROM chat_deliveries')[0][0], 'completed')
+        self.assertEqual(len(self.gateway.runs), 1)
+
+    def test_a_request_that_never_reached_the_runtime_is_failed_without_charge_on_reconcile(self):
+        self.send(key='r1')
+        claim = self.queue.claim(owner='w', capacity=CAPACITY)
+        self.queue.uncertain(claim)
+        self.assertTrue(self.queue.reconcile(self.driver(), claim))
+        self.assertEqual(self.rows('SELECT state,outcome FROM customer_requests')[0][:], ('failed', 'failed'))
 
     def test_execute_requires_admission_and_probe(self):
         self.service.pricer = UnmeasuredRoute()

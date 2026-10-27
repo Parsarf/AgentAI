@@ -16,6 +16,7 @@ import time
 import uuid
 from .lifecycle.coordinator import Coordinator, identifier
 from .lifecycle.types import Conflict
+from . import safety
 from .security import NotFound, Principal
 
 MAX_PAYLOAD_BYTES = 32 * 1024
@@ -39,7 +40,7 @@ EVENT_KINDS = {
     'error': {'summary', 'category'},
     'budget': {'remaining_microusd', 'held_microusd', 'note'},
     'artifact': {'artifact_id', 'version', 'name', 'sha256'},
-    'result': {'summary'},
+    'result': {'summary', 'outcome', 'verify_level'},        # outcome (completed | partial | blocked | failed | cancelled) and verify_level (verified | unverified | not_applicable) from outcome.py
     'activity': {'ref', 'tool', 'category', 'label', 'detail', 'output', 'status'},
 }
 
@@ -69,10 +70,10 @@ def redact(value):
     return value
 
 
-def normalize(kind: str, payload: dict | None) -> dict:
+def normalize(kind: str, payload: dict | None, redact_on: bool = True) -> dict:
     if kind not in EVENT_KINDS:
         raise ValueError('unknown event kind')
-    payload = redact(payload or {})
+    payload = redact(payload or {}) if redact_on else dict(payload or {})
     if not isinstance(payload, dict):
         raise ValueError('event payload must be an object')
     unknown = set(payload) - EVENT_KINDS[kind]
@@ -98,7 +99,9 @@ class EventService:
         identifier(account_id)
         identifier(task_id)
         identifier(source)
-        public = normalize(kind, payload)
+        with self.store.connect() as con:
+            redact_on = safety.is_on(con, account_id, 'secret_redaction')      # the account's `secret_redaction` switch: stored event records only
+        public = normalize(kind, payload, redact_on)
         now = int(self.clock())
         with self.coordinator.transaction() as con:
             if not con.execute('SELECT 1 FROM tasks WHERE account_id=? AND id=?',

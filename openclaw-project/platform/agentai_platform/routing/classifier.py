@@ -1,7 +1,9 @@
 """JEV task classifier. Sends a sanitized, truncated request; returns a validated Decision or raises. Never executes."""
 from __future__ import annotations
+import http.client
 import json
 import re
+import socket
 import time
 import urllib.request
 
@@ -22,10 +24,44 @@ def sanitize(text: str) -> str:
     return scrub(text, MAX_CHARS)
 
 
+class _V4Connection(http.client.HTTPSConnection):
+    """Connects over IPv4. The server has no working IPv6, and Python tries each of a host's IPv6 addresses first and waits about 3 seconds for each to fail
+    (two of them for JEV's host) before it reaches IPv4: a call that takes 0.1 s over IPv4 took 3 to 6 s, on every browser step. A host with no IPv4 address
+    at all falls back to the normal connection."""
+    def connect(self):
+        try:
+            found = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
+        except OSError:
+            found = []
+        if not found:
+            return super().connect()
+        last = None
+        for family, kind, proto, _name, address in found:
+            sock = socket.socket(family, kind, proto)
+            try:
+                sock.settimeout(self.timeout)
+                sock.connect(address)
+                break
+            except OSError as exc:
+                sock.close()
+                last = exc
+        else:
+            raise last
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _V4Handler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_V4Connection, req, context=self._context)
+
+
+_OPENER = urllib.request.build_opener(_V4Handler())
+
+
 def http_post(endpoint: str, body: dict, credential: str, deadline_s: float, headers: dict | None = None) -> str:
     req = urllib.request.Request(endpoint, data=json.dumps(body).encode(), method='POST',
                                  headers={'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json', **(headers or {})})
-    with urllib.request.urlopen(req, timeout=deadline_s) as response:
+    with _OPENER.open(req, timeout=deadline_s) as response:
         return response.read(200_000).decode()
 
 

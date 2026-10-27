@@ -5,6 +5,7 @@ URL credentials and long token-like strings. It is deliberately aggressive: thos
 """
 from __future__ import annotations
 import re
+from contextvars import ContextVar
 
 STREET = r'(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way|Place|Pl|Terrace|Highway|Hwy)'
 PATTERNS = [re.compile(p, re.I | re.S) for p in (
@@ -26,8 +27,23 @@ PATTERNS = [re.compile(p, re.I | re.S) for p in (
 )]
 
 
-def scrub(text, limit=None):
+# Whether scrub() actually removes things in this thread of work. A browse job sets it per step from the account's `personal_data_scrub` safety switch (browse/loop.py), so the
+# text sent to the browser model can go unscrubbed for an account that switched it off. Everything else (stored traces, logs) calls scrub(..., force=True) and is never affected.
+_ACTIVE: ContextVar[bool] = ContextVar('agentai_scrub_active', default=True)
+
+
+def set_scrubbing(on: bool):
+    """-> a token for reset_scrubbing."""
+    return _ACTIVE.set(bool(on))
+
+
+def reset_scrubbing(token) -> None:
+    _ACTIVE.reset(token)
+
+
+def scrub(text, limit=None, *, force=False):
     out = str(text or '')
-    for pattern in PATTERNS:
-        out = pattern.sub('[redacted]', out)
+    if force or _ACTIVE.get():
+        for pattern in PATTERNS:
+            out = pattern.sub('[redacted]', out)
     return out if limit is None else out[:limit]

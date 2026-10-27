@@ -1,6 +1,7 @@
 """Cell bridge entry point (root). Serves the app's private socket; see cell_bridge.py."""
 import argparse
 import grp
+import hmac
 import json
 import os
 from pathlib import Path
@@ -60,10 +61,26 @@ def main():
             raise RuntimeError('no provider key')
         return litellm.key_spend_microusd(key)
 
+    def identify(credential):
+        """Which account does this cell credential belong to? A cell proves itself with its own model key (the one it was provisioned with), so the tool relay needs no secret of its own.
+        Every running binding is compared in constant time; none is skipped early."""
+        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
+        try:
+            rows = con.execute("SELECT account, tenant FROM bindings WHERE state='running'").fetchall()
+        finally:
+            con.close()
+        found = None
+        for account, tenant in rows:
+            key = secrets.provider_key(tenant)
+            if key and hmac.compare_digest(key.encode(), credential.encode()):
+                found = account
+        return found
+
     app = pwd.getpwnam(args.app_user)
-    bridge = CellBridge(lookup, lambda tenant, token: DockerRelay(tenant, token, docker_host=docker_host), spend,
-                        binding=binding, probe=probe, ready_timeout=100, workspace_root=wiring.get('cell_state_root'))
-    server = serve(bridge, str(args.socket), allowed_uids={app.pw_uid}, group_gid=grp.getgrnam(args.app_user).gr_gid)
+    # root (the browse service) may connect too, and only root may use the browser methods; the app user keeps exactly the methods it had.
+    bridge = CellBridge(lookup, lambda tenant, token, scopes=None: DockerRelay(tenant, token, docker_host=docker_host, scopes=scopes), spend,
+                        binding=binding, probe=probe, ready_timeout=100, workspace_root=wiring.get('cell_state_root'), identify=identify, browser_callers={0})
+    server = serve(bridge, str(args.socket), allowed_uids={app.pw_uid, 0}, group_gid=grp.getgrnam(args.app_user).gr_gid)
     try:
         server.serve_forever()
     finally:

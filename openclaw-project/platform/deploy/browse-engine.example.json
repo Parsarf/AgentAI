@@ -1,0 +1,6 @@
+{
+  "default": "runner",
+  "native": [
+    "<account id of a canary customer>"
+  ]
+}

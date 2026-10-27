@@ -1,0 +1,85 @@
+/* The Safety console: a text-only terminal window, in grayscale, with its own palette on purpose (the design check allows colours in this file only; the rest of Lumina
+   keeps using tokens.css). Black, soft white, muted gray and dark-gray lines; one monospace font; no colour, no gradients, no shadows, no glow. Hover brightens text a little;
+   a state is told by its words ([x] [ ] [ON] [OFF]) and a small difference in brightness. Everything is a plain button or a line of text. */
+.safety-layer { display: grid; place-items: center; padding: var(--space-4); }
+.safety-layer:has(.con-max) { padding: 0; }
+
+.con-window {
+  --con-bg: #000000; --con-fg: #e5e5e5; --con-dim: #888888; --con-line: #333333; --con-hi: #ffffff;
+  width: min(900px, 100%); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; outline: none;
+  background: var(--con-bg); color: var(--con-fg); border: 1px solid var(--con-line); border-radius: 6px;
+  font: 13px/1.4 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; letter-spacing: 0;
+}
+.con-window.con-max { width: 100%; height: 100%; max-height: none; border-radius: 0; }
+.con-window.con-min { max-height: none; }
+:where(.con-window button) { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; text-align: left; cursor: pointer; border-radius: 0; }      /* zero specificity: every rule below wins */
+.con-window :focus-visible { outline: 1px dotted var(--con-dim); outline-offset: 1px; }
+.con-window .dim { color: var(--con-dim); }
+
+/* title bar */
+.con-titlebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--con-line); }
+.con-titlebar::before { content: ''; }
+.con-title { color: var(--con-dim); }
+.con-controls { justify-self: end; display: flex; gap: 2px; }
+.con-controls button { color: var(--con-dim); padding: 0 10px; transition: color .12s; }
+.con-controls button:hover { color: var(--con-hi); }
+
+.con-body { padding: 18px 24px 20px; overflow: auto; scrollbar-color: var(--con-line) var(--con-bg); }
+.con-head { display: flex; align-items: center; gap: 20px; }
+.con-logo { font-size: 22px; white-space: nowrap; color: var(--con-fg); }
+.con-vrule { align-self: stretch; width: 1px; background: var(--con-line); }
+.con-h { margin: 0; font: inherit; letter-spacing: .04em; color: var(--con-dim); }
+.con-rule { border: 0; border-top: 1px solid var(--con-line); margin: 14px 0; }
+.con-intro { margin: 6px 0 10px; }
+.con-tabs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2ch; margin: 4px 0; }
+.con-tab { color: var(--con-dim); white-space: pre; transition: color .12s; }
+.con-tab[aria-selected='true'] { color: var(--con-hi); }
+.con-bulk { display: flex; flex-wrap: wrap; gap: 0 2ch; margin: 4px 0 12px; }
+
+/* the tree */
+.con-cat { margin-bottom: 10px; }
+.con-row { display: block; width: 100%; color: var(--con-fg); transition: color .12s; }
+.con-row:disabled { cursor: default; color: var(--con-dim); }
+button.con-row:hover:not(:disabled) { color: var(--con-hi); }
+button.con-row:hover:not(:disabled) .con-text { text-decoration: underline; text-decoration-color: var(--con-dim); text-underline-offset: 3px; }
+.con-line { display: grid; grid-template-columns: minmax(0, 1fr) 27ch; column-gap: 2ch; }
+.con-cell { display: flex; min-width: 0; }
+.con-tree { flex: none; white-space: pre; color: var(--con-dim); }
+.con-text { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.con-side { color: var(--con-dim); white-space: nowrap; }
+.con-caret { display: inline-block; width: 2ch; }
+.con-row[aria-checked='true'] .con-side { color: var(--con-fg); }
+.con-note, .con-ask { color: var(--con-dim); }
+.con-note { display: block; }
+button.con-ask:hover:not(:disabled) { color: var(--con-fg); }
+.con-help { color: var(--con-fg); }
+.con-helpline, .con-help > .con-line { display: block; }
+
+/* values, prompts, messages */
+.con-select { margin: 6px 0; }
+.con-list { margin: 2px 0 6px 2ch; }
+.con-opt { display: block; white-space: pre; color: var(--con-dim); transition: color .12s; }
+.con-opt[aria-selected='true'] { color: var(--con-fg); }
+.con-opt:hover { color: var(--con-hi); }
+.con-custom { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 2ch; margin: 4px 0 0 2ch; }
+.con-input { font: inherit; color: var(--con-fg); background: transparent; border: 0; border-bottom: 1px solid var(--con-line); border-radius: 0; padding: 0 2px; min-width: 22ch; outline: none; }
+.con-input:focus { border-bottom-color: var(--con-dim); }
+.con-input::placeholder { color: var(--con-dim); }
+.con-act { color: var(--con-fg); white-space: pre; transition: color .12s; }
+.con-act:hover:not(:disabled) { color: var(--con-hi); text-decoration: underline; text-decoration-color: var(--con-dim); text-underline-offset: 3px; }
+.con-act:disabled { color: var(--con-dim); cursor: default; }
+.con-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 2ch; margin-top: 6px; }
+.con-bar-actions { display: flex; flex-wrap: wrap; gap: 0 2ch; }
+.con-prompt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 2ch; margin-top: 10px; }
+.con-prompt > .dim { flex-basis: 100%; }
+.con-msg { margin: 10px 0 0; }
+.con-bad { color: var(--con-fg); }
+
+@media (max-width: 640px) {
+  .con-body { padding: 14px; }
+  .con-line { grid-template-columns: minmax(0, 1fr) auto; }
+  .con-head { flex-wrap: wrap; gap: 8px 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .con-row, .con-act, .con-tab, .con-opt, .con-controls button { transition: none; }
+}

@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from agentai_platform.adapters import CapabilityUnavailable
+from agentai_platform.adapters import CapabilityUnavailable, GatewayCapabilities
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.capacity import CapacityResult
-from agentai_platform.chat import ChatDriver, ChatService, FixedRoute, synthetic_gateway_factory
+from agentai_platform.chat import ChatService, FixedRoute
+from agentai_platform.chat_driver import ChatDriver, synthetic_gateway_factory
 from agentai_platform.gateway import SyntheticGateway
 from agentai_platform.request_queue import RequestQueue
 from agentai_platform.request_worker import RequestWorker
@@ -66,7 +67,7 @@ class RequestWorkerChecks(unittest.TestCase):
         state = self.worker._uncertain_claim()
         self.assertIsNotNone(state)
         self.gateway.fail_after_ack = False
-        self.assertEqual(self.worker.tick(), {'reconciled': True})              # recovered from the cell transcript
+        self.assertEqual(self.worker.tick(), {'ran': 1, 'finished': True})      # the run is the runtime's: supervision carried on and closed it
         self.assertIsNone(self.worker._uncertain_claim())
 
 
@@ -86,7 +87,7 @@ class RecoveryChecks(RequestWorkerChecks):
 
     def test_unreachable_runtime_is_abandoned_after_the_grace_period_with_the_reserved_charge(self):
         class Down(SyntheticGateway):
-            def history(self, session, cursor): raise CapabilityUnavailable('down')
+            def capabilities(self): return GatewayCapabilities('unverified', 0, False, False, False, False, False)
         self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1'); self.hold_cell()
         good = self.worker
         self.gateway.fail_after_ack = True
@@ -118,7 +119,7 @@ class RecoveredUsageChecks(RequestWorkerChecks):
             con.execute("INSERT INTO lifecycle_slot VALUES (1,'a','d-a','op1','active')")
         with self.assertRaises(RuntimeError): worker.tick()
         gateway.fail_after_ack = False
-        self.assertEqual(worker.tick(), {'reconciled': True})
+        self.assertEqual(worker.tick(), {'ran': 1, 'finished': True})
         with self.store.connect() as con:
             self.assertEqual([tuple(r) for r in con.execute('SELECT amount_microusd,price_version FROM provider_receipts')], [(700, 'litellm-reported-v1')])
 

@@ -1,9 +1,8 @@
 import json
 import tempfile
 import unittest
-from unittest.mock import Mock
 from agentai_platform.browse.goals import HISTORY_HEADER, CURRENT_MARKER, goal_parts, instruction_text
-from agentai_platform.browse.ladder import render, JevChooser, Refused
+from agentai_platform.browse.ladder import render, JevChooser
 from agentai_platform.browse.service import BrowseService, BrowseError, Job
 from agentai_platform.browse.loop import Policy
 
@@ -38,31 +37,20 @@ class GoalChecks(unittest.TestCase):
 
     def test_start_page_uses_current_urls_not_history_urls(self):
         with tempfile.TemporaryDirectory() as root:
-            service = BrowseService(spawn=None, llm_for=None, root=root)
-            model = Mock(side_effect=AssertionError('No model call should be needed'))
+            service = BrowseService(spawn=None, root=root)
             job = Job('a', 'a' * 32, wrapped('Use https://www.doordash.com/'), None, 100000, 25, 600)
-            self.assertEqual(service._pick_start(job, model), 'https://www.doordash.com/')
-            model.assert_not_called()
+            self.assertEqual(service._pick_start(job), 'https://www.doordash.com/')
+            named = Job('a', 'b' * 32, wrapped('Use DoorDash'), 'https://www.doordash.com/', 100000, 25, 600)       # the tool always names the site
+            self.assertEqual(service._pick_start(named), 'https://www.doordash.com/')
 
-    def test_named_site_and_long_request_reach_start_picker_and_are_budgeted(self):
+    def test_a_task_that_names_no_site_is_refused_instead_of_guessing_one(self):
         with tempfile.TemporaryDirectory() as root:
-            service = BrowseService(spawn=None, llm_for=None, root=root)
-            current = 'x' * 800 + ' Use DoorDash, not the earlier website.'
-            def model(tier, system, text):
-                self.assertIn(current, text)
-                return {'text': 'https://www.doordash.com/', 'cost_microusd': 1000}
-            job = Job('a', 'a' * 32, wrapped(current), None, 100000, 25, 600)
-            self.assertEqual(service._pick_start(job, model), 'https://www.doordash.com/')
-            self.assertEqual(job.calls, 1); self.assertEqual(job.cost, 1000)
-            limited = Job('a', 'b' * 32, 'Use DoorDash', None, 0, 25, 600)
-            with self.assertRaises(Refused): service._pick_start(limited, model)
-
-    def test_failed_start_picker_does_not_silently_open_bing(self):
-        with tempfile.TemporaryDirectory() as root:
-            service = BrowseService(spawn=None, llm_for=None, root=root)
-            job = Job('a', 'a' * 32, 'Use DoorDash', None, 100000, 25, 600)
+            service = BrowseService(spawn=None, root=root)
+            job = Job('a', 'a' * 32, wrapped('Use DoorDash, not the earlier website https://old.example/'), None, 100000, 25, 600)
+            self.assertEqual(service._pick_start(job), 'https://old.example/')                                       # only the current request's own address counts, never one from history
+            plain = Job('a', 'b' * 32, 'Use DoorDash', None, 100000, 25, 600)
             with self.assertRaises(BrowseError):
-                service._pick_start(job, lambda *args: {'text': 'No suitable URL', 'cost_microusd': 1000})
+                service._pick_start(plain)
 
     def test_url_policy_checks_the_actual_host_and_rejects_embedded_credentials(self):
         policy = Policy()

@@ -16,14 +16,12 @@ const lowPowerDevice = () => (navigator as any).deviceMemory ? (navigator as any
 
 /** Decorative only: never blocks the interface. Static fallback when WebGL fails, is unavailable, or motion is reduced. */
 export default function Backdrop() {
-  const { reducedMotion, theme } = useSettings();
-  const dark = theme === 'obsidian';
+  const { reducedMotion } = useSettings();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const idle = (window as any).requestIdleCallback || ((fn: () => void) => setTimeout(fn, 400));
     idle(() => setReady(webglAvailable()));
   }, []);
-  if (!dark) return null;                         // the planet belongs to the old dark world; parchment pages are just paper
   const fallback = <div className="globe-fallback" />;
   return (
     <div className="globe" aria-hidden>

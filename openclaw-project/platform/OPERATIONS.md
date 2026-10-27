@@ -183,3 +183,83 @@ After each task the request worker asks the cell bridge for the files the assist
 ## 18. Sign-ups and customer approval
 
 Public sign-up is behind the owner switch `open_signups` (off by default). Owner actions live in the dashboard **Customers** page, which calls `manage.py signup_admin` as the app user: approve (activates, seeds allowance, queues the assistant create via `host_create`, emails), decline, suspend (ends sessions), resume, and the customer limit (`/var/lib/agentai-platform/signup-settings.json`, default 2, max 200). Unconfirmed sign-ups are removed after 24 h. Check after any change: `deploy/signup_live_check.py`. Rollback of the switch: turn `open_signups` off. Server files added: dashboard `app.py`/`switches.py` (backups `*.bak-signup`).
+
+## Saved logins and cards (the vault)
+
+Customers can keep a login or a card (Settings, Saved info). Each item is sealed with AES-256-GCM, a key per account derived from one master key, a random nonce per item, and the owner/kind/id bound in, so a copied or swapped row will not open. The card security code is refused, never dropped silently. A saved item is opened only when a running task reaches that site's sign-in page (or a payment page) and the customer says yes to that one use; the secret then goes from the web app over the private browse socket straight into the page's fields. It is not given to any model or JEV, and it is not written to the trace, the steps or a picture (the run stops at the payment step afterwards, and the customer enters the code and places the order).
+
+- Key: one line `kid:base64url(32 bytes)` in a root-only (0600) file, named by `AGENTAI_VAULT_KEY_FILE` in `accounts.env`. Make one with `python -c "from agentai_platform.vault import Keyring; print(Keyring.generate())"`. Without the file the vault is off (Settings says so; nothing is saved or opened).
+- Keep a copy of the key file somewhere other than the server and its backups: without it saved items cannot be opened (customers would add them again). Rotating: put a new `kid` line first; older lines still open old items.
+- Backups hold only the sealed rows. `vault_items` is never restored from a backup, so an item a customer deleted cannot come back.
+- Install `cryptography` with the rest of `requirements.lock` (`pip install --require-hashes --no-deps -r requirements.lock`); the lock lists hashes for CPython 3.12-3.14 on Linux x86_64 and aarch64.
+
+## Pictures on comparison cards (off by default)
+
+When the assistant answers with a comparison card, the request worker can attach a picture to each option. The platform fetches the option's own `link` page (its `og:image`, the product's JSON-LD image or the Twitter card image), checks the file, keeps it in the `card_images` table (per account, included in backup/restore) and puts only its id on the card. The browser loads it from `GET /v1/media/<id>` on our own origin, so it never contacts the store or any other third-party site.
+
+- Enable with `AGENTAI_CARD_IMAGES=1` in the request worker's environment (`/etc/agentai-platform/accounts.env`). Without it cards are exactly as before.
+- Optional fallback when a page has no usable picture: `AGENTAI_BRAVE_IMAGE_KEY_FILE=<file holding a Brave key on a plan that includes Image Search>`. The platform does not otherwise hold the Brave key (the assistant's search plugin does), so this is a separate, deliberate grant. Results are used only when their title matches the option's name.
+- Safety: only public addresses (private, loopback, link-local and cloud-metadata ranges are refused, every redirect is re-checked, the connection is pinned to the checked address), ports 80/443 only, page ≤ 300 KB, picture ≤ 700 KB, still JPEG/PNG/WebP only (identified from the bytes; no SVG, GIF or animation), 150–6000 px per side, not a thin banner. There is no resizing (no image library on the platform): a picture is kept as it is or not at all.
+- Cost: at most about 7 seconds is added to finishing an answer that has a comparison card; every failure just leaves that option without a picture. The model cannot supply `image` itself; only this step can.
+- Pictures are not deleted automatically yet; each is at most 700 KB.
+
+## Native execution: running it, watching it, rolling it back
+
+OpenClaw owns each customer run; Lumina admits it, supervises it and settles it (`docs/architecture/native-execution.md`).
+
+- **Units.** `agentai-request-worker` (supervises runs, parks requests that wait for a person, admits the next turn of a goal), `agentai-tool-relay` (app user; serves the
+  `lumina_browser` tool to cells on the cells bridge address, port from `AGENTAI_TOOL_RELAY_PORT`, default 4100) and `agentai-browse` (unchanged). `agentai-tool-relay` is in the
+  monitor's required units and on the owner dashboard. Install the unit, set `tool_relay_port` in `native-wiring.json` (it opens the one firewall rule and makes new cell configs carry the
+  tool), run `cells-docker/agentai-cells-routes.sh` for the ufw rule, then restart `agentai-lifecycle-worker`. **Existing cells pick the tool and the deny list up at their next start**
+  (`CellProvisioner.before_start` rewrites their config); until then they simply have no browser tool.
+- **Switches.** `browse_tasks` turns the browser tool (and Browse mode) on and off; turning it off also stops running browser jobs. `pursuit` and `jev_services` no longer exist; a
+  stored `true` for either is ignored.
+- **A request that looks stuck.** `customer_requests`: `parked_reason` set = waiting for a person (no slot held); `closing=1` = no more steering; `continue_goal=1` = the next goal turn is
+  about to be admitted. `chat_deliveries` lists every input handed to the runtime (kind, key = native run id, state, deadline). `outcome`/`outcome_note`/`verification` are the verdict.
+  A delivery key like `<request>-a1.r<epoch>` means the cell restarted and the input was handed over again under a fresh key (the interrupted original never runs).
+- **Cell restarts.** Supervision waits up to `OUTAGE_LIMIT` (90 s) for an unreachable cell, then leaves the request `uncertain`; the worker recovers it from the stored deliveries and
+  presents the inputs again. A request unreachable for 30 minutes is abandoned at its reserved cost.
+- **Rollback.** There is no hidden fallback to the old loop. To stop customer execution use the `customer_execution` switch; to take the browser away use `browse_tasks`. Migration
+  `0028` is additive except that it drops `pursuit_state` (advisory plan state nothing else read) and rebuilds `chat_deliveries` with the same rows.
+- **Known limits.** The runtime's `ask_user` does not work with the bridge's connection model (a question to the customer is an ordinary reply); with the host stage one browser job
+  runs at a time on the host (with the native browser, one per account).
+
+### Safety menu: who gets it, two scopes (2026-10-27)
+
+The owner's menu of safety switches (sidebar item "Safety"). Code: `agentai_platform/safety.py` (rules), `accounts/safety.py` (routes), `lumina/src/components/safety/` (UI; its README explains the seams).
+
+- **Who.** The account named in `AGENTAI_SAFETY_OWNER_ACCOUNT` (`/etc/agentai-platform/accounts.env`) and any account the owner grants from the menu ("All users" tab, "Who can open this menu"; table `safety_access`). Everyone else, signed in or not, gets the 404 of a route that does not exist. With no owner set, nobody gets it, whatever was granted.
+- **Two scopes.** "My account" (rows in `safety_overrides` under the account id) and "All users" (rows under `*`, owner only). For one account the more specific setting wins: its own row, else the all-users row, else on; an expired "off" counts as no row. A granted account sees only "My account". Every change needs the signed-in password; all-users changes and grants have their own audit actions (`safety.change_all`, `safety.access_grant`, `safety.access_revoke`).
+- **What cannot be switched.** `shared` (server-wide: systemd, Caddy, Docker isolation, provider caps, CSRF, operator two-step, login limits) and `core` (tenant isolation, vault encryption, audit log) are shown and never changed here; the `privacy` ones (personal-data scrub, saved-login notice, secret redaction, SSRF guard) can be switched off for your own account but never for everyone. The routes refuse these with `400 locked`.
+- **What each switch does, and where it is read.** A switch marked `wired` is asked for by code (a test fails if one says wired and nothing reads it); the rest say "not enforced yet" in the menu.
+  - *App layer* (asks `safety.is_on(con, account, key)`): `budget_caps` and `queue_limit` (`budget.py`, `request_queue.py`), `rate_limits` (`accounts/services.py`), `project_chat_limits` (`chat.py`), `upload_limits` (size and count only; the file-type and content checks always apply: `files.py`, `accounts/files.py`), `secret_redaction` (stored event records only: `events.py`; the Activity window's tool-call summaries are always redacted), `vault_notice` (`accounts/vault.py`; a card security code is never stored whatever it says).
+  - *Browse service* (a `switch(key)` on the loop's `Policy`, read at every step): `payment_stop`, `sensitive_approval`, `denied_sites` (banking sites, human checks and sign-in pages), `untrusted_page_text`, `personal_data_scrub` (what goes to JEV only; stored traces always scrub), `screenshot_retention` (the 24-hour purge keeps an account's pictures while it is off; each job folder carries an `account` marker). `ssrf_guard` is read when a native job starts (the cell's network firewall always applies).
+  - *Tool adapter* (`browse/adapter.py`): `assistant_output_cleaning` (the task, steps, search terms and choices the assistant sends to the browser) and `untrusted_page_text` (web text it reads).
+  - *Cell config*, applied the next time a cell starts: `tool_ceilings` (the assistant may use the browser tool itself, outside Lumina's browser rules) and `ssrf_guard` (the cell's browser may reach private addresses; never inherited, set from the switch at every start).
+  - *Nothing to read*: `routing_policy`, `confirmations`, `web_limits` describe protections that are not in the live code; they say so.
+  - *Moved out of the switchable list*: `message_length_limit` (the database enforces it too) and `cell_limits` (they protect the whole host) are `shared`; `session_epochs` (sign-out-everywhere) and `block_validation` (the code builds on the checked result) are `core`.
+- **How other processes read the switches.** The app writes every setting to `safety-switches.json` in its state directory (`AGENTAI_SAFETY_SNAPSHOT`, default `<state dir>/safety-switches.json`, mode 0640) after each change, on the owner's first visit, and after each grant or revoke; a failed write answers `503` so the owner knows the other processes have not heard. The browse service reads it (`--safety-file`, default `/var/lib/agentai-platform/safety-switches.json`) and the supervisor reads it through `"safety_file"` in `native-wiring.json` (add the same path). Nothing but the app ever opens the app's database for this: a root process opening a WAL database the app owns could leave a root-owned `-shm` file the app cannot open. A missing or unreadable file means every switch is on. Off-switches that expire lapse by themselves (the reader judges the stored time).
+- **Revoking** an account's access also deletes the switches it had set, so nobody is left unprotected without the menu. A restore never changes either table (`LIVE` in `ops/restore.py`).
+- **Release note.** This needs Django migrations `0014_safety_overrides` and `0015_safety_access`. A release copied into `releases/<name>` without running them leaves the app refusing the schema; use `deploy/release.py` (it migrates a copy first) or run `manage.py migrate` as part of the release.
+
+### Browser engine: the cell's own browser (2026-10-26)
+
+A browse job's hands are either the host's Docker stage (`runner`, as before) or the customer's own cell browser (`native`: OpenClaw's browser plugin driven by `browse/native_runner.py` through
+the cell bridge). The brain is the same either way: code rules, then JEV, then the assistant (`lumina_browser_step`). The engine is chosen when a job starts and recorded on it (`engine` in its
+trace); a job never switches engine, and a native job that fails fails visibly (there is no silent fallback to the stage).
+
+Turning it on, in this order (nothing changes for a customer until the last step):
+1. Cells need Chromium: the cell image must be the browser build of the pinned runtime (`OPENCLAW_INSTALL_BROWSER=1`), with memory for Chromium (measure before enabling more than a canary account).
+2. Release the supervisor tree and the platform tree (`bin/deploy-*`, `release.py`), restart `agentai-cell-bridge`, `agentai-browse`, `agentai-tool-relay`, `agentai-request-worker`, the app.
+   The bridge now lets root (the browse service) use `browser.*` over its own admin-scoped connection; the app user still cannot.
+3. In `native-wiring.json` set `"native_browser": true`. Each cell takes the browser config at its next start (headless, no sandbox, the default address policy that blocks private and
+   internal addresses, evaluate on; the assistant's own `browser` tool stays denied).
+4. Create `/etc/agentai-supervisor/browse-engine.json` (example: `platform/deploy/browse-engine.example.json`): `{"default": "runner", "native": ["<account id>"]}`. It is read at every job start:
+   add the canary account, run a browse task from it, check the job trace for `engine: native`, the Live view, a hand-off (payment page) and Stop; widen the list; set `"default": "native"` last.
+- **Rollback.** Remove the account from the file (new jobs use the stage at once; a running job finishes where it started). `"native_browser": false` takes the browser out of cells at their next start.
+- **What persists.** The cell's browser profile keeps the customer's own cookies between jobs (their sign-ins), on their own cell volume; a job closes the browser when it ends so a sleeping cell holds
+  no process. A cell with a live browser job, or whose customer still has the wheel in a hand-off window, is not put to sleep.
+- **Found on the first real cell (27 Oct 2026).** The browser plugin's start writes `<state>/credentials/browser-extension-relay.secret` with an atomic rename-without-replace, which the gVisor cell rejects (EINVAL); the whole start then fails as `UNAVAILABLE: SuppressedError: An error was suppressed during disposal` with no other detail. If the file already exists (a regular file the cell user owns, mode 0600, 64 hex characters) the plugin only reads it, so the host writes it before every start (`CellProvisioner.ensure_browser_relay_secret`, only when `native_browser` is on). The image's Chromium (Playwright `chromium-1243`) is pinned with `browser.executablePath`. To see a failure like this again: run the plugin's own start in a throwaway Node process in the cell (`/app/dist/control-service-*.mjs`) and print the nested `error` / `suppressed` / `cause`; the gateway log keeps only the wrapper. Measured: the cell uses about 1.0 GiB of its 2 GiB at idle; Chromium started and stopped cleanly.
+- **Still to measure with real models and the real cell image** (not possible from a developer machine): JEV's accuracy on the cell browser's page descriptions, the assistant's cost and step count when it
+  drives a page, Chromium memory per cell and under several cells, Live view frame rate in a gVisor cell. Until those are measured the host stage stays the default engine.
+

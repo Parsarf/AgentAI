@@ -13,17 +13,12 @@ class GatewayCapabilities:
     events: bool
     abort: bool
     live_probed: bool
+    wait: bool = False       # agent.wait: the runtime says when a run has ended (no guessing from the transcript)
+    goals: bool = False      # sessions.describe + sessions.goal.*: durable per-session objectives
 
     def require(self, operation: str):
-        if operation not in {"send","history","events","abort"} or not self.live_probed or self.protocol_version != 4 or not getattr(self,operation):
+        if operation not in {"send","history","events","abort","wait","goals"} or not self.live_probed or self.protocol_version != 4 or not getattr(self,operation):
             raise CapabilityUnavailable("installed capability not verified")
-
-class GatewayClient(Protocol):
-    # Must bind deployment/account internally, not receive a client-provided URL/key.
-    def capabilities(self) -> GatewayCapabilities: ...
-    def send(self, conversation_id: str, task_id: str, operation_id: str, message: str): ...
-    def history(self, conversation_id: str, cursor: str | None): ...
-    def abort(self, task_id: str, operation_id: str): ...
 
 class DisabledGateway:
     def capabilities(self): return GatewayCapabilities("unverified",4,False,False,False,False,False)

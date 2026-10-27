@@ -138,6 +138,18 @@ class ProviderKeys:
         self.store.store_provider_key(tenant, key)
         return True
 
+    def ensure_models(self, tenant, models):
+        """Make the tenant's key allow exactly `models` (idempotent). A tenant with no key in custody is left alone."""
+        if type(models) is not list or not models or not all(type(m) is str and m for m in models):
+            raise CustodyError('explicit model allowlist required')
+        key = self.store.provider_key(tenant)
+        if key is None:
+            return False
+        status, _ = self.http('POST', '/key/update', {'key': key, 'models': models})
+        if status != 200:
+            raise CustodyError('provider key update failed')
+        return True
+
     def revoke(self, tenant):
         key = self.store.provider_key(tenant)
         if key is None:

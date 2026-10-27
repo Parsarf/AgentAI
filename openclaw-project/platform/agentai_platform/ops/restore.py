@@ -18,9 +18,9 @@ from .crypto import AgeCrypto
 
 # Backup wins on conflict; rows created after the backup are kept.
 RESTORE = ['projects', 'conversations', 'project_files', 'artifacts', 'memory_entries', 'memory_terms', 'skills', 'skill_versions',
-           'ui_blocks', 'data_blocks', 'signups', 'plan_revisions', 'plan_phase_runs', 'watchers', 'schedules', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts']
+           'ui_blocks', 'data_blocks', 'card_images', 'signups', 'plan_revisions', 'plan_phase_runs', 'watchers', 'schedules', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts', 'saved_choices']
 # Live wins; only rows missing live are added (then neutralized).
-MERGE = ['browse_runs', 'browse_steps', 'tasks', 'customer_requests', 'chat_messages', 'chat_deliveries', 'events', 'browser_profiles']
+MERGE = ['browse_runs', 'browse_steps', 'browse_sessions', 'tasks', 'customer_requests', 'chat_messages', 'chat_deliveries', 'events', 'browser_profiles']
 # Append-only history: add what is missing, never change or remove anything.
 LEDGER = ['usage_entries', 'provider_receipts', 'task_reservations', 'audit_events', 'optimization_calls', 'optimization_activations', 'route_decisions', 'plan_launches',
           'accounts_audit', 'accounts_tombstone']
@@ -33,7 +33,9 @@ LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships'
         'telegram_link_codes', 'telegram_outbox', 'telegram_updates', 'download_tickets', 'event_streams',
         'accounts_actiontoken', 'accounts_emailjob', 'accounts_ratebucket', 'auth_group', 'auth_group_permissions', 'auth_permission',
         'auth_user', 'auth_user_groups', 'auth_user_user_permissions', 'django_content_type', 'django_migrations', 'django_session',
-        'otp_totp_totpdevice', 'schema_migrations']
+        'otp_totp_totpdevice', 'schema_migrations',
+        'vault_items',          # saved logins and cards: never brought back from a backup, so a deleted card cannot return
+        'safety_overrides', 'safety_access']   # safety switches and who may open the menu: only the owner changes them, never a restore (an old backup must not bring back an old "off")
 SCOPE = {**{t: 'restore' for t in RESTORE}, **{t: 'merge' for t in MERGE}, **{t: 'ledger' for t in LEDGER}, **{t: 'live' for t in LIVE}}
 NON_TERMINAL_TASK = ('queued', 'running', 'waiting_for_approval', 'paused')
 NON_TERMINAL_REQUEST = ('waiting', 'starting', 'running', 'uncertain')
@@ -143,9 +145,12 @@ def restore_account(backup_db, live_db, account, out_db):
         if 'tasks' in have:
             n['tasks_blocked'] = cur(f"UPDATE main.tasks SET state='blocked' WHERE account_id=? AND state IN {NON_TERMINAL_TASK!r} AND id IN (SELECT id FROM b.tasks WHERE account_id=?)", account, account)
         if 'customer_requests' in have:
-            n['requests_cancelled'] = cur(f"UPDATE main.customer_requests SET state='cancelled',lease_owner=NULL,lease_until=NULL WHERE account_id=? AND state IN {NON_TERMINAL_REQUEST!r} AND id IN (SELECT id FROM b.customer_requests WHERE account_id=?)", account, account)
+            n['requests_cancelled'] = cur(f"UPDATE main.customer_requests SET state='cancelled',outcome='cancelled',parked_reason=NULL,continue_goal=0,lease_owner=NULL,lease_until=NULL WHERE account_id=? AND state IN {NON_TERMINAL_REQUEST!r} AND id IN (SELECT id FROM b.customer_requests WHERE account_id=?)", account, account)
+        if 'customer_requests' in have:
+            # A goal brought back from the backup does not carry on by itself: its next turn was never admitted here, and only the customer's Resume may start one.
+            n['goals_stopped'] = cur("UPDATE main.customer_requests SET continue_goal=0 WHERE account_id=? AND continue_goal=1 AND id IN (SELECT id FROM b.customer_requests WHERE account_id=?)", account, account)
         if 'chat_deliveries' in have:
-            n['deliveries_aborted'] = cur("UPDATE main.chat_deliveries SET state='aborted' WHERE account_id=? AND state IN ('pending','uncertain') AND (request_id,attempt) IN (SELECT request_id,attempt FROM b.chat_deliveries WHERE account_id=?)", account, account)
+            n['deliveries_aborted'] = cur("UPDATE main.chat_deliveries SET state='aborted' WHERE account_id=? AND state IN ('pending','acknowledged','uncertain') AND (request_id,attempt) IN (SELECT request_id,attempt FROM b.chat_deliveries WHERE account_id=?)", account, account)
         if 'task_reservations' in have:
             # A reservation brought back from the backup must not hold allowance for work that will not run.
             marks = ','.join('?' * len(existing_reservations)) or "''"

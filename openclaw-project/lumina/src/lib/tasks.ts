@@ -13,16 +13,33 @@ export function phase(state: string): Phase {
     default: return 'queued';
   }
 }
-type Row = Pick<RequestRow, 'state'> & Partial<Pick<RequestRow, 'paused' | 'ahead' | 'retry_of'>>;
+type Row = Pick<RequestRow, 'state'> & Partial<Pick<RequestRow, 'paused' | 'ahead' | 'retry_of' | 'outcome' | 'outcome_note' | 'verification' | 'parked' | 'goal' | 'continuing'>>;
 
 /** What a person reads under a task. A paused task is held in the queue, so it is still "queued" for filters but never starts until resumed. */
 export function statusLabel(r: Row): string {
   const p = phase(r.state);
   if (p === 'queued') return r.paused ? 'Paused' : 'Queued';
-  return p === 'running' ? 'Working' : p === 'completed' ? 'Completed' : p === 'failed' ? 'Failed' : 'Cancelled';
+  if (p === 'running') return r.parked ? 'Waiting for you' : r.goal ? 'Working towards your goal' : 'Working';
+  if (p === 'completed') return r.outcome === 'blocked' ? 'Blocked' : r.outcome === 'partial' ? (r.continuing ? 'Working towards your goal' : 'Partly done') : 'Completed';
+  return p === 'failed' ? 'Failed' : 'Cancelled';
 }
-/** The colour class for the status dot. */
-export const dotClass = (r: Row) => (phase(r.state) === 'queued' && r.paused ? 'paused' : phase(r.state));
+/** The colour class for the status dot. A task that ended partly or blocked is not shown as plain success or as a failure. */
+export const dotClass = (r: Row) => {
+  const p = phase(r.state);
+  if (p === 'queued' && r.paused) return 'paused';
+  if (p === 'running' && r.parked) return 'paused';
+  if (p === 'completed' && r.outcome === 'blocked') return 'failed';
+  if (p === 'completed' && r.outcome === 'partial' && !r.continuing) return 'paused';
+  return p;
+};
+
+/** One honest sentence under a finished task when it did not simply succeed (from Lumina's fixed vocabulary, never from the assistant): what stopped it, or what could not be confirmed. */
+export function outcomeLine(r: Row): string {
+  if (phase(r.state) === 'running' && r.parked) return 'The task is paused until you answer or take over in the browser view.';
+  if (phase(r.state) !== 'completed') return '';
+  if (r.outcome === 'partial' || r.outcome === 'blocked') return r.outcome_note ?? '';
+  return r.verification === 'unverified' ? (r.outcome_note ?? '') : '';
+}
 
 /** Where a waiting task stands in the line, in words. Empty when it is not waiting its turn. */
 export function queueLine(r: Row): string {
@@ -37,7 +54,8 @@ export function queueLine(r: Row): string {
 export function controls(r: Row) {
   const p = phase(r.state);
   const waiting = r.state === 'waiting';
-  return { pause: waiting && !r.paused, resume: waiting && !!r.paused, cancel: p === 'queued' || p === 'running', retry: r.state === 'failed' || r.state === 'cancelled' };
+  const held = r.state === 'completed' && !!r.goal && !r.continuing && (r.outcome === 'partial' || r.outcome === 'blocked');
+  return { pause: waiting && !r.paused, resume: waiting && !!r.paused, cancel: p === 'queued' || p === 'running', retry: r.state === 'failed' || r.state === 'cancelled', goalResume: held };
 }
 
 /** Is Lumina working on it (or about to)? A held task is queued but nothing is happening, so it does not count: no thinking orb, no live badge. */

@@ -5,14 +5,13 @@ import json
 import os
 from pathlib import Path
 import pwd
-import sqlite3
 import stat
 
-from agentai_platform.lifecycle.secrets_custody import SecretStore
+from agentai_platform.bridge_client import BridgeRpc
 from agentai_platform.routing.classifier import http_post
 
 from .ladder import JevChooser
-from .llm import LiteLLM
+from .native_runner import NativeRunner, NativeTransport
 from .service import BrowseService, serve, stage_argv
 from .session import ProcessTransport
 
@@ -49,11 +48,17 @@ def main():
     parser.add_argument('--socket', type=Path, default=Path('/run/agentai-browse/browse.sock'))
     parser.add_argument('--image', default='openclaw-sandbox-browser:phase4-2026.9.6')
     parser.add_argument('--jev-key-file', type=Path, default=Path('/var/lib/agentai-supervisor-secrets/_shared/typesafe-key'))
-    parser.add_argument('--jev-mode', choices=('off', 'shadow', 'live'), default='shadow')
+    parser.add_argument('--jev-mode', choices=('off', 'live', 'shadow'), default='live')       # 'shadow' is retired (it compared JEV with model tiers that no longer exist): it runs as 'live'
     parser.add_argument('--app-user', default='agentai-platform')
     parser.add_argument('--live-secret-file', type=Path, default=Path('/etc/agentai-platform/live.secret'))
     parser.add_argument('--live-port', type=int, default=18801)
+    parser.add_argument('--bridge-socket', type=Path, default=Path('/run/agentai-cell-bridge/bridge.sock'))
+    parser.add_argument('--engine-file', type=Path, default=Path('/etc/agentai-supervisor/browse-engine.json'))
+    parser.add_argument('--safety-file', type=Path, default=Path('/var/lib/agentai-platform/safety-switches.json'))       # the account's safety switches, written by the app (agentai_platform/safety.py)
     args = parser.parse_args()
+    if args.jev_mode == 'shadow':
+        print('jev-mode shadow is retired; running as live', flush=True)
+        args.jev_mode = 'live'
     info = args.wiring.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
         raise SystemExit('wiring file must be host-owned without group/world writes')
@@ -61,26 +66,8 @@ def main():
     docker_host = (json.loads(Path(wiring['fleet_custody']).read_text()).get('env') or {}).get('DOCKER_HOST')
     if not docker_host:
         raise SystemExit('wiring needs the cell engine socket')
-    secrets = SecretStore(wiring['secrets_dir'])
-    db = args.state_dir / 'custody.sqlite3'
     args.jobs.mkdir(parents=True, exist_ok=True)
     os.chmod(args.jobs, 0o700)
-
-    def tenant_of(account):
-        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
-        try:
-            row = con.execute('SELECT tenant FROM bindings WHERE account=?', (account,)).fetchone()
-        finally:
-            con.close()
-        if not row:
-            raise RuntimeError('no binding')
-        return row[0]
-
-    def llm_for(account):
-        key = secrets.provider_key(tenant_of(account))
-        if not key:
-            raise RuntimeError('no provider key')
-        return LiteLLM(key)
 
     def jev_for(account):
         try:
@@ -93,7 +80,29 @@ def main():
         argv = stage_argv(job_id, str(out_dir), str(args.runner_dir), args.image)
         return ProcessTransport(argv, env={**os.environ, 'DOCKER_HOST': docker_host})
 
-    service = BrowseService(spawn=spawn, llm_for=llm_for, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode)
+    from ..safety import Reader
+    safety = Reader(args.safety_file)
+
+    def native_spawn(account, job_id, out_dir):
+        """The browser of the account's own cell, through the cell bridge (this process is root, the only caller the bridge lets use the browser methods).
+        Its address rules follow the account's `ssrf_guard` switch, read when the job starts."""
+        call = BridgeRpc(account, args.bridge_socket, timeout=75)
+        return NativeTransport(call, out_dir, runner=NativeRunner(call, out_dir, allow_private=not safety.on(account, 'ssrf_guard')))
+
+    def engine_for(account):
+        """Which hands a new job for this account gets: 'native' when the engine file lists the account (or its default is native), else the host stage. Read at every start, so a change needs no restart."""
+        try:
+            config = json.loads(args.engine_file.read_text())
+        except (OSError, ValueError):
+            return 'runner'
+        if not isinstance(config, dict):
+            return 'runner'
+        listed = config.get('native')
+        if isinstance(listed, list) and account in listed:
+            return 'native'
+        return 'native' if config.get('default') == 'native' else 'runner'
+
+    service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account)
     import threading
     from ..switches import SwitchStore
     from .service import watch_kill_switch, watch_purge

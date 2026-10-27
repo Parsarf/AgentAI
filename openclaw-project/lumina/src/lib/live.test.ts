@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityItem } from './activity';
-import { FALLBACK_AFTER, NOTE_TEXT, addressFrom, frameBackoff, followMode, keyAction, modesFor, nowLabel, parseNow, stepText, toBrowser } from './live';
+import { FALLBACK_AFTER, NOTE_TEXT, frameBackoff, followMode, keyAction, modesFor, nowLabel, parseNow, stepText, toBrowser } from './live';
 
 const row = (category: string, key = category): ActivityItem => ({ key, category, label: category, detail: '', output: '', status: 'done', at: '' });
 
@@ -39,22 +39,10 @@ describe('live view helpers', () => {
     expect(keyAction({ key: 'Enter' })).toEqual({ kind: 'key', text: 'Enter' });
     expect(keyAction({ key: 'ArrowLeft' })).toEqual({ kind: 'key', text: 'ArrowLeft' });
     expect(keyAction({ key: 'Backspace' })).toEqual({ kind: 'key', text: 'Backspace' });
-    for (const k of ['Delete', 'Home', 'End', 'PageDown', 'PageUp']) expect(keyAction({ key: k })).toEqual({ kind: 'key', text: k });
-    for (const k of ['F5', 'Shift', 'Meta', 'Dead', 'Insert']) expect(keyAction({ key: k })).toBeNull();
+    for (const k of ['F5', 'Shift', 'Meta', 'Delete', 'Dead']) expect(keyAction({ key: k })).toBeNull();
     expect(keyAction({ key: 'r', metaKey: true })).toBeNull();                                      // Cmd/Ctrl+R stays the browser's own
     expect(keyAction({ key: 'w', ctrlKey: true })).toBeNull();
     expect(keyAction({ key: 'x', altKey: true })).toBeNull();
-  });
-
-  it('turns what is typed in the address bar into an address, adding https when there is no scheme', () => {
-    expect(addressFrom('example.com')).toBe('https://example.com');
-    expect(addressFrom('  example.com/a?b=1 ')).toBe('https://example.com/a?b=1');
-    expect(addressFrom('http://example.com')).toBe('http://example.com');
-    expect(addressFrom('localhost:3000/x')).toBe('https://localhost:3000/x');
-    expect(addressFrom('javascript:alert(1)')).toBe('javascript:alert(1)');          // passed on as typed; the server and the browser refuse it
-    expect(addressFrom('two words')).toBe('');
-    expect(addressFrom('   ')).toBe('');
-    expect(addressFrom('a'.repeat(2001))).toBe('');
   });
 
   it('backs off gently when frames fail and falls back to snapshots after a few misses', () => {

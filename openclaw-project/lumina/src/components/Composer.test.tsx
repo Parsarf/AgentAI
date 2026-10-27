@@ -49,6 +49,23 @@ describe('Composer', () => {
     const sends = calls.filter(c => c.url.endsWith('/send'));
     expect(sends[0].body.key).toBe(sends[1].body.key);
   });
+  it('keeps working until complete only when the customer switches it on, and says so to the server once', async () => {
+    const calls = mockFetch(); setup({ conversationId: 'c9' });
+    const box = await screen.findByLabelText(/message lumina/i);
+    fireEvent.change(box, { target: { value: 'normal question' } });
+    fireEvent.click(screen.getByRole('button', { name: /send message/i }));
+    await waitFor(() => expect(calls.some(c => c.url.endsWith('/send'))).toBe(true));
+    expect(calls.find(c => c.url.endsWith('/send'))!.body.goal).toBeUndefined();                                // off by default
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(''));
+    const toggle = screen.getByRole('button', { name: /keep working until complete/i });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(toggle); expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.change(box, { target: { value: 'finish the report' } });
+    fireEvent.click(screen.getByRole('button', { name: /send message/i }));
+    await waitFor(() => expect(calls.filter(c => c.url.endsWith('/send')).length).toBe(2));
+    expect(calls.filter(c => c.url.endsWith('/send'))[1].body.goal).toBe('true');
+    await waitFor(() => expect(screen.getByRole('button', { name: /keep working until complete/i }).getAttribute('aria-pressed')).toBe('false'));   // one goal per switch-on, not a mode that sticks
+  });
   it('follows up inside an existing chat without creating a new one', async () => {
     const calls = mockFetch(); setup({ conversationId: 'c9' });
     const box = await screen.findByLabelText(/message lumina/i); expect((box as HTMLTextAreaElement).placeholder).toMatch(/follow-up/i);
@@ -69,7 +86,7 @@ describe('Composer', () => {
     const calls = mockFetch(); setup();
     const box = await screen.findByLabelText(/message lumina/i) as HTMLTextAreaElement;
     expect((screen.getByRole('button', { name: /send message/i }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Web' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' })); fireEvent.click(screen.getByRole('menuitemradio', { name: /web search/i }));
     expect(box.value).toMatch(/^Search the web/);
     expect(calls.filter(c => c.url.endsWith('/send'))).toHaveLength(0);
   });
