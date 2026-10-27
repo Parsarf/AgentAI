@@ -45,6 +45,8 @@ export const ALL_BLOCKS: unknown[] = [
   { id: 'a_bar', type: 'bar_chart', variant: 'comparative', dataRef: 'revenue', props: { title: 'Bar chart', xKey: 'month', series: [{ key: 'revenue' }, { key: 'costs' }], unit: '$' } },
   { id: 'a_pie', type: 'pie_chart', props: { title: 'Donut chart', donut: true, labelKey: 'part', valueKey: 'share', data: [{ part: 'Search', share: 45 }, { part: 'Direct', share: 30 }, { part: 'Social', share: 25 }] } },
   { id: 'a_scatter', type: 'scatter_chart', props: { title: 'Scatter plot', xKey: 'price', yKey: 'rating', labelKey: 'name', data: [{ name: 'A', price: 80, rating: 3.7 }, { name: 'B', price: 95, rating: 4.1 }, { name: 'C', price: 120, rating: 4.6 }, { name: 'D', price: 150, rating: 4.8 }] } },
+  { id: 'a_hist', type: 'histogram_chart', props: { title: 'Histogram', valueKey: 'v', bins: 5, data: [1, 2, 2, 3, 3, 3, 4, 4, 5, 9].map(v => ({ v })) } },
+  { id: 'a_gauge', type: 'gauge', props: { label: 'Utilisation', value: 72, unit: '%', zones: [{ upTo: 60, status: 'success' }, { upTo: 85, status: 'warning' }, { upTo: 100, status: 'error' }] } },
   { id: 'a_form', type: 'form', variant: 'grouped', props: { title: 'Form', fields: [
     { id: 'kind', type: 'segmented', label: 'Kind', group: 'Basics', required: true, default: 'a', options: [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }] },
     { id: 'budget', type: 'slider', label: 'Budget', group: 'Basics', min: 0, max: 500, step: 10, default: 100, unit: 'USD' },

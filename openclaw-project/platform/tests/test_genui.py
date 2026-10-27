@@ -234,6 +234,10 @@ class FlowChecks(unittest.TestCase):
         self.chat.runner.act(self.a, block['id'], 'b', 'approve')
         self.drive(['b done', 'c done'])
         self.assertEqual(self.phases(block['id']), {'a': 'completed', 'b': 'completed', 'c': 'completed'})
+        with self.store.connect() as con:                                                                         # every attempt, allowed or refused, is in the platform's audit trail
+            audit = [(r['actor_id'], r['object_id'], r['action'], r['outcome']) for r in con.execute("SELECT * FROM audit_events WHERE action LIKE 'block.phase.%' ORDER BY rowid")]
+        self.assertEqual([x[2:] for x in audit], [('block.phase.approve', 'denied'), ('block.phase.approve', 'denied'), ('block.phase.approve', 'completed')])
+        self.assertEqual(audit[2][1], block['id'] + '/b')
 
     def test_future_phases_can_be_edited_while_running_but_finished_ones_cannot(self):
         block = self.make_plan_block(plan(phase('a'), phase('b', deps=['a'], requiresApproval=True), phase('c', deps=['b'])))

@@ -6,6 +6,7 @@ like a customer message, and reads their outcome. All entry points are idempoten
 """
 from __future__ import annotations
 import json
+import uuid
 import time
 
 from agentai_platform.lifecycle.types import Conflict
@@ -147,7 +148,29 @@ class PlanRunner:
             raise Conflict('this plan is not running')
         return row
 
+    def _audit(self, principal, object_id, action, outcome):
+        """Every approve / skip / retry / stop attempt, allowed or refused, lands in audit_events (the platform's existing trail). Never fails the action."""
+        try:
+            with self.blocks.coordinator.transaction() as con:
+                con.execute('INSERT INTO audit_events(account_id,id,actor_id,object_id,action,outcome,request_id) VALUES (?,?,?,?,?,?,?)',
+                            (principal.account_id, uuid.uuid4().hex, principal.actor_id, object_id[:200], action, outcome, uuid.uuid4().hex))
+        except Exception:
+            pass
+
     def act(self, principal: Principal, block_id: str, phase_id: str, action: str):
+        label = f'block.phase.{action}'[:60]
+        try:
+            out = self._act(principal, block_id, phase_id, action)
+        except (Conflict, NotFound, ValueError):
+            self._audit(principal, f'{block_id}/{phase_id}', label, 'denied')
+            raise
+        except Exception:
+            self._audit(principal, f'{block_id}/{phase_id}', label, 'failed')
+            raise
+        self._audit(principal, f'{block_id}/{phase_id}', label, 'completed')
+        return out
+
+    def _act(self, principal: Principal, block_id: str, phase_id: str, action: str):
         row = self._own(principal, block_id)
         if action not in ('approve', 'skip', 'retry'):
             raise ValueError('unknown action')
@@ -182,6 +205,15 @@ class PlanRunner:
         con.execute('INSERT OR REPLACE INTO plan_revisions VALUES (?,?,?,?,?,?)', (account, row['id'], state['revision'], 'user', json.dumps(plan), int(self.clock())))
 
     def stop(self, principal: Principal, block_id: str):
+        try:
+            out = self._stop(principal, block_id)
+        except (Conflict, NotFound, ValueError):
+            self._audit(principal, block_id, 'block.plan.stop', 'denied')
+            raise
+        self._audit(principal, block_id, 'block.plan.stop', 'completed')
+        return out
+
+    def _stop(self, principal: Principal, block_id: str):
         self._own(principal, block_id)
         with self.blocks.coordinator.transaction() as con:
             running = [r['request_id'] for r in self._rows(con, principal.account_id, block_id).values() if r['state'] == 'running' and r['request_id']]

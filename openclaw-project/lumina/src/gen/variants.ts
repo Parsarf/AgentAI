@@ -58,6 +58,8 @@ export const COMPONENT_VARIANTS = {
   bar_chart: ['minimal', 'annotated', 'comparative', 'stacked'],
   pie_chart: ['minimal', 'annotated'],
   scatter_chart: ['minimal', 'annotated'],
+  histogram_chart: ['minimal', 'annotated'],
+  gauge: ['minimal', 'annotated'],
   form: ['inline', 'grouped', 'conditional'],
   button_group: ['primary', 'secondary', 'outline', 'ghost', 'destructive'],
   follow_up: [],

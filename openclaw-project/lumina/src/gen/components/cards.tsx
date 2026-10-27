@@ -76,3 +76,19 @@ export function ButtonGroup({ block }: P<'button_group'>) {
 export function FollowUp({ block }: P<'follow_up'>) {
   return <div className="gen-row gen-follow" role="group" aria-label="Suggested next requests">{block.props.suggestions.map((s, n) => <ActionButton key={n} label={s} action={{ kind: 'agent.request', message: s }} style="ghost" />)}</div>;
 }
+
+/** Status of a gauge value from its zones (ascending `upTo`); no zones means neutral. */
+export function zoneStatus(value: number, zones?: Array<{ upTo: number; status: 'idle' | 'active' | 'success' | 'warning' | 'error' }>) {
+  if (!zones?.length) return 'idle' as const;
+  return ([...zones].sort((a, b) => a.upTo - b.upTo).find(z => value <= z.upTo) ?? zones[zones.length - 1]).status;
+}
+export function Gauge({ block }: P<'gauge'>) {
+  const p = block.props; const span = p.max - p.min || 1; const frac = Math.max(0, Math.min(1, (p.value - p.min) / span)); const st = zoneStatus(p.value, p.zones);
+  const a = Math.PI * (1 - frac); const pt = (r: number, ang: number) => `${100 + r * Math.cos(ang)},${100 - r * Math.sin(ang)}`;
+  const shown = `${p.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${p.unit ? ' ' + p.unit : ''}`;
+  return <div className={cx('gen-gauge', st)} role="meter" aria-valuemin={p.min} aria-valuemax={p.max} aria-valuenow={Math.max(p.min, Math.min(p.max, p.value))} aria-label={`${p.label ?? p.title ?? 'Value'}: ${shown}`}>
+    <svg viewBox="0 0 200 116" aria-hidden focusable="false"><path d={`M${pt(80, Math.PI)} A80,80 0 0 1 ${pt(80, 0)}`} className="track" fill="none" strokeWidth="14" strokeLinecap="round" />
+      {frac > 0 && <path d={`M${pt(80, Math.PI)} A80,80 0 0 1 ${pt(80, a)}`} className="fill" fill="none" strokeWidth="14" strokeLinecap="round" />}</svg>
+    <strong>{shown}</strong>{p.label && <span className="gen-metric-l">{p.label}</span>}
+    <span className="faint gen-src">{p.min} to {p.max}{p.zones ? ` · ${STATUS_LABEL[st]}` : ''}{p.source ? ` · Source: ${p.source}` : ''}</span></div>;
+}

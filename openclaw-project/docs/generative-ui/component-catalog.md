@@ -2,7 +2,7 @@
 
 _Generated from `lumina/src/gen/manifest.ts` by `GEN_WRITE=1 npx vitest run src/gen/export.test.ts`. Do not edit by hand; a test fails when this file drifts._
 
-**187 entries: 84 implemented, 5 adapter, 91 planned, 7 unsupported.**
+**187 entries: 86 implemented, 5 adapter, 89 planned, 7 unsupported.**
 
 - **implemented**: a renderer exists, either directly or *via* another implemented component with specific props or a variant. Only these are ever shown to the model.
 - **adapter**: code exists (a renderer or a bridge) but a host capability or provider is missing, so it is not offered. The reason is in the Purpose column.
@@ -82,14 +82,14 @@ Kind: primitive (one control or text element), composite (built from primitives)
 | `donut_chart` | Donut chart | widget | implemented | `pie_chart` (donut) | Shares with a centre total. | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `scatter_chart` | Scatter plot | widget | implemented | `scatter_chart` | The relationship between two measures. | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `bubble_chart` | Bubble chart | widget | planned | — | Bubble chart | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
-| `histogram` | Histogram | widget | planned | — | Histogram | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
+| `histogram` | Histogram | widget | implemented | `histogram_chart` | Distribution of one numeric measure in equal-width bins. | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `heatmap` | Heatmap | widget | planned | — | Heatmap | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `radar_chart` | Radar chart | widget | planned | — | Radar chart | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `funnel_chart` | Funnel | widget | planned | — | Funnel | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `waterfall_chart` | Waterfall | widget | planned | — | Waterfall | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `candlestick_chart` | Candlestick | widget | planned | — | Candlestick | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `box_plot` | Box plot | widget | planned | — | Box plot | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
-| `gauge` | Gauge | widget | planned | — | Gauge | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
+| `gauge` | Gauge | widget | implemented | `gauge` | One value on a scale, with optional status zones. | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `progress_chart` | Progress chart | widget | implemented | `progress` | A bar showing a value out of a maximum. | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `treemap` | Treemap | widget | planned | — | Treemap | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |
 | `sankey` | Sankey | widget | unsupported | — | Needs a layout library and rarely beats a table; not offered. | dataset with a category key and numeric series | legend toggle, data-table alternative | data table | no |

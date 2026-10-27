@@ -7,8 +7,8 @@ import { cx } from './types';
 import { GenProvider, type ExecutionProvider, type Host } from './context';
 import { Accordion, Divider, Gallery, ImageBlock, Section, Tabs, Timeline } from './layout';
 import { CalloutBlock, CitationList, CodeBlock, DiffViewer, HeadingBlock, JsonViewer, ListBlock, QuoteBlock, TerminalOutput, TextBlock } from './text';
-import { ButtonGroup, CardGrid, FollowUp, InfoCard, MetricCard, ProgressBlock, StatusCard } from './cards';
-import { AreaChart, BarChart, LineChart, PieChart, ScatterChart, TableBlock } from './data';
+import { ButtonGroup, CardGrid, FollowUp, Gauge, InfoCard, MetricCard, ProgressBlock, StatusCard } from './cards';
+import { AreaChart, BarChart, HistogramChart, LineChart, PieChart, ScatterChart, TableBlock } from './data';
 import { FormBlock } from './forms';
 import { AgentStatus, ApprovalRequest, CompletionSummary, ErrorRetry, ExecutionTimeline, PlanViewer, ToolCallInspector } from './agent';
 
@@ -21,7 +21,7 @@ export const RENDERERS: Record<string, Draw> = {
   text: b => <TextBlock block={b} />, heading: b => <HeadingBlock block={b} />, list: b => <ListBlock block={b} />, callout: b => <CalloutBlock block={b} />, quote: b => <QuoteBlock block={b} />,
   citation_list: b => <CitationList block={b} />, code_block: b => <CodeBlock block={b} />, terminal_output: b => <TerminalOutput block={b} />, json_viewer: b => <JsonViewer block={b} />, diff_viewer: b => <DiffViewer block={b} />,
   info_card: b => <InfoCard block={b} />, metric_card: b => <MetricCard block={b} />, status_card: b => <StatusCard block={b} />, progress: b => <ProgressBlock block={b} />, card_grid: b => <CardGrid block={b} />,
-  table: b => <TableBlock block={b} />, line_chart: b => <LineChart block={b} />, area_chart: b => <AreaChart block={b} />, bar_chart: b => <BarChart block={b} />, pie_chart: b => <PieChart block={b} />, scatter_chart: b => <ScatterChart block={b} />,
+  table: b => <TableBlock block={b} />, line_chart: b => <LineChart block={b} />, area_chart: b => <AreaChart block={b} />, bar_chart: b => <BarChart block={b} />, pie_chart: b => <PieChart block={b} />, scatter_chart: b => <ScatterChart block={b} />, histogram_chart: b => <HistogramChart block={b} />, gauge: b => <Gauge block={b} />,
   form: b => <FormBlock block={b} />, button_group: b => <ButtonGroup block={b} />, follow_up: b => <FollowUp block={b} />,
   tabs: (b, n) => <Tabs block={b} panels={b.props.tabs.map((t: any) => <>{n(t.blocks)}</>)} />,
   accordion: (b, n) => <Accordion block={b} panels={b.props.items.map((t: any) => <>{n(t.blocks)}</>)} />,

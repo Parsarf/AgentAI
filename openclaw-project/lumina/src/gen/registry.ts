@@ -31,6 +31,8 @@ const SPEC: Record<BlockType, Spec> = {
   bar_chart: ['Compare categories', 'values per category', 'trends over time (use a line)', 'xKey, series and data', ['local.select']],
   pie_chart: ['Shares of one whole', '2 to 6 parts that sum to a whole', 'more than 6 parts or negative values', 'labelKey, valueKey and data'],
   scatter_chart: ['Relationship between two measures', 'looking for correlation across 8 or more items', 'few points', 'xKey, yKey and data'],
+  histogram_chart: ['Distribution of one numeric measure', 'how values are spread across 20 or more items', 'few values or categories (use a bar)', 'valueKey and data'],
+  gauge: ['One value against a range, with optional zones', 'a measured value with a meaningful scale (score, utilisation)', 'a count or an unbounded number (use metric_card)', 'value, min, max'],
   form: ['Fields the reader changes, then sends', 'you need several choices before you can continue', 'a single question (ask in text)', 'fields and a submit label', ['agent.request', ...LOCAL]],
   button_group: ['2 to 6 actions', 'clear next steps that map to real capabilities', 'decoration or actions you cannot perform', 'buttons with actions', ['agent.request', 'navigate.internal', 'agent.retry']],
   follow_up: ['Suggested next requests', 'the reader is likely to ask these next', 'filler suggestions', 'suggestions', ['agent.request']],

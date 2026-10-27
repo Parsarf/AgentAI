@@ -547,6 +547,70 @@
      }
     },
     {
+     "id": "a_hist",
+     "type": "histogram_chart",
+     "props": {
+      "title": "Histogram",
+      "valueKey": "v",
+      "bins": 5,
+      "data": [
+       {
+        "v": 1
+       },
+       {
+        "v": 2
+       },
+       {
+        "v": 2
+       },
+       {
+        "v": 3
+       },
+       {
+        "v": 3
+       },
+       {
+        "v": 3
+       },
+       {
+        "v": 4
+       },
+       {
+        "v": 4
+       },
+       {
+        "v": 5
+       },
+       {
+        "v": 9
+       }
+      ]
+     }
+    },
+    {
+     "id": "a_gauge",
+     "type": "gauge",
+     "props": {
+      "label": "Utilisation",
+      "value": 72,
+      "unit": "%",
+      "zones": [
+       {
+        "upTo": 60,
+        "status": "success"
+       },
+       {
+        "upTo": 85,
+        "status": "warning"
+       },
+       {
+        "upTo": 100,
+        "status": "error"
+       }
+      ]
+     }
+    },
+    {
      "id": "a_form",
      "type": "form",
      "variant": "grouped",

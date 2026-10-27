@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach } from 'vitest';
 import { GenDocumentView, RENDERERS, allBlockIds } from './components/Renderer';
 import { approvalView } from './components/agent';
-import { chartSummary } from './components/data';
+import { bin, chartSummary } from './components/data';
+import { zoneStatus } from './components/cards';
 import { visibleFields } from './components/forms';
 import type { ExecutionProvider, Host, PlanInfo } from './components/context';
 import { parseDocument, type GenDocument } from './protocol';
@@ -105,6 +106,22 @@ describe('local interactions (no network, no model)', () => {
   it('long and unicode/RTL content renders as text', () => {
     setup({ version: '1.0', responseId: 'r', blocks: [{ id: 'x', type: 'callout', props: { content: 'مرحبا بالعالم ' + 'ا'.repeat(300) + ' 🙂 日本語' } }] });
     expect(screen.getByRole('note').textContent).toContain('日本語');
+  });
+});
+
+describe('histogram and gauge', () => {
+  it('bins values into equal-width buckets that add up', () => {
+    const b = bin([1, 2, 2, 3, 9], 4); expect(b.map(x => x.count)).toEqual([3, 1, 0, 1]); expect(b.reduce((a, x) => a + x.count, 0)).toBe(5); expect(bin([], 4)).toEqual([]); expect(bin([5, 5, 5], 3).reduce((a, x) => a + x.count, 0)).toBe(3);
+  });
+  it('histogram has a computed summary and a table alternative; too few values degrade', () => {
+    const { container } = setup({ version: '1.0', responseId: 'r', blocks: [{ id: 'h', type: 'histogram_chart', props: { title: 'H', valueKey: 'v', bins: 3, data: [1, 2, 2, 3, 9].map(v => ({ v })) } }, { id: 'h2', type: 'histogram_chart', props: { valueKey: 'v', data: [{ v: 1 }] } }] });
+    expect(container.querySelector('[role="img"]')!.getAttribute('aria-label')).toMatch(/5 values from 1 to 9/); expect(screen.getByText('View as table')).toBeTruthy(); expect(screen.getByText('Not enough values for a distribution.')).toBeTruthy();
+  });
+  it('gauge exposes a meter, clamps, and takes its status from the zones', () => {
+    const zones = [{ upTo: 60, status: 'success' as const }, { upTo: 100, status: 'error' as const }];
+    expect(zoneStatus(30, zones)).toBe('success'); expect(zoneStatus(90, zones)).toBe('error'); expect(zoneStatus(500, zones)).toBe('error'); expect(zoneStatus(5)).toBe('idle');
+    const { container } = setup({ version: '1.0', responseId: 'r', blocks: [{ id: 'g', type: 'gauge', props: { label: 'Load', value: 140, max: 100, unit: '%', zones } }] });
+    const m = container.querySelector('[role="meter"]')!; expect(m.getAttribute('aria-valuenow')).toBe('100'); expect(m.getAttribute('aria-label')).toBe('Load: 140 %'); expect(m.className).toContain('error');
   });
 });
 

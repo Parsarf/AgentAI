@@ -124,6 +124,11 @@ export const blockSchema = z.discriminatedUnion('type', [
   def('pie_chart', { columns: chartCommon.columns, data: chartCommon.data, labelKey: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/), valueKey: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/), donut: z.boolean().optional(), unit: chartCommon.unit, caption: chartCommon.caption, summary: chartCommon.summary }),
   def('scatter_chart', { columns: chartCommon.columns, data: chartCommon.data, xKey: chartCommon.xKey, yKey: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/), labelKey: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/).optional(), unit: chartCommon.unit, caption: chartCommon.caption, summary: chartCommon.summary }),
 
+  def('histogram_chart', { columns: chartCommon.columns, data: chartCommon.data, valueKey: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/), bins: z.number().int().min(3).max(30).default(10), unit: chartCommon.unit, caption: chartCommon.caption, summary: chartCommon.summary }),
+  def('gauge', {
+    value: num, min: num.default(0), max: num.default(100), label: text(80).optional(), unit: text(12).optional(),
+    zones: z.array(z.strictObject({ upTo: num, status })).min(1).max(4).optional(), source: text(120).optional(),
+  }),
   def('form', {
     fields: z.array(formField).min(1).max(30), submit: z.strictObject({ label: text(40), action: actionSchema }),
   }),

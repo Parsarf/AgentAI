@@ -25,7 +25,7 @@ Model output is untrusted. The model writes data and props only.
 3. **Confirmation** for approve, skip and retry (and any `destructive` button): the person sees what will happen; Escape or Cancel does nothing.
 4. **Idempotency**: a deterministic key per (scope, action); a repeat is `duplicate`; the key is claimed before the call and released on failure so a retry is possible. `send` passes the key to the existing send endpoint.
 5. **Rate limit**: 8 consequential actions per minute per dispatcher (client side; the server's limits are the real ones).
-6. **Audit**: every attempt (done, refused, declined, failed, duplicate, rate-limited) is reported to `host.audit`. In Chat this is a debug log only. The durable record of approvals is the server's own (`plan_phase_runs.approved_epoch`, request history); there is **no new server-side audit table**.
+6. **Audit**: every attempt is reported to `host.audit` (a debug log in Chat) **and** every approve / skip / retry / stop attempt, allowed or refused, is written server side to the platform's existing `audit_events` table (`runner.py`: actor, `blockId/phaseId`, `block.phase.*`, outcome completed / denied / failed). Attempts the browser refuses before sending (for example a stale button) are not seen by the server.
 - CSRF and session authentication come from the existing `api()` client and endpoint decorators; the new code adds no endpoint.
 - `file.download` exists in the schema and dispatcher but the chat host throws "not wired", the registry does not offer it and the server rejects it.
 
@@ -36,6 +36,6 @@ Model output is untrusted. The model writes data and props only.
 ## Known gaps
 
 - The server's rules that JSON Schema cannot express are written twice (TS and Python) and kept in step by shared fixtures, not by construction.
-- No server-side audit trail for rejected action attempts.
+- Plain `agent.request` messages are audited only as ordinary chat messages, not as actions.
 - Client-side action rate limit and idempotency reset on page reload; the server's behaviour (409 on a wrong state, per-hour limit) is what protects against replays.
 - A `text` block's Markdown can contain a link whose visible label differs from its address; the address is always shown by the browser on hover and the link opens in a new tab, but the label is not checked.

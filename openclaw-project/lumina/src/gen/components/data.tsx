@@ -172,3 +172,28 @@ function pearson(a: number[], b: number[]): number | null {
   return da && db ? num2 / Math.sqrt(da * db) : null;
 }
 export type { Block };
+
+/** Equal-width bins over the numeric values of one column. Exported for tests. */
+export function bin(values: number[], bins: number): Array<{ from: number; to: number; count: number }> {
+  if (!values.length) return [];
+  const lo = Math.min(...values), hi = Math.max(...values), width = (hi - lo) / bins || 1;
+  const out = Array.from({ length: bins }, (_, i) => ({ from: lo + i * width, to: lo + (i + 1) * width, count: 0 }));
+  for (const v of values) out[Math.min(bins - 1, Math.floor((v - lo) / width))].count++;
+  return out;
+}
+export function HistogramChart({ block }: P<'histogram_chart'>) {
+  const p = block.props; const data = useData(block);
+  if (!data) return <Missing what="The data for this chart is not available." />;
+  const vals = data.rows.map(r => num(r[p.valueKey])).filter((v): v is number => v !== null);
+  if (vals.length < 5) return <Missing what="Not enough values for a distribution." />;
+  const bins = bin(vals, p.bins); const top = niceMax(Math.max(...bins.map(b => b.count)));
+  const pw = W - L - R, ph = H - T - Bm, band = pw / bins.length; const y = (v: number) => T + ph - (v / top) * ph;
+  const peak = bins.reduce((a, b) => (b.count > a.count ? b : a));
+  const summary = p.summary ?? `Histogram${p.title ? `: ${p.title}` : ''}. ${vals.length} values from ${fmt(Math.min(...vals), p.unit)} to ${fmt(Math.max(...vals), p.unit)}; most fall between ${fmt(peak.from, p.unit)} and ${fmt(peak.to, p.unit)} (${peak.count}).`;
+  return <figure className="gen-chart"><div role="img" aria-label={summary}><svg viewBox={`0 0 ${W} ${H}`} className="gen-svg" focusable="false">
+    <g aria-hidden className="gen-axes">{[0, 1, 2, 3, 4].map(i => { const t = (top * i) / 4; return <g key={i}><line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="var(--chart-grid)" /><text x={L - 8} y={y(t) + 4} textAnchor="end">{t}</text></g>; })}
+      {bins.map((b, i) => i % Math.ceil(bins.length / 6) === 0 && <text key={i} x={L + band * i} y={H - 10} textAnchor="middle">{fmt(b.from, p.unit)}</text>)}</g>
+    {bins.map((b, i) => <rect key={i} x={L + band * i + 1} width={Math.max(1, band - 2)} y={y(b.count)} height={Math.max(0, y(0) - y(b.count))} rx="2" fill="var(--chart-1)"><title>{`${fmt(b.from, p.unit)} to ${fmt(b.to, p.unit)}: ${b.count}`}</title></rect>)}</svg></div>
+    {p.caption && <figcaption className="faint">{p.caption}</figcaption>}
+    <DataTable columns={[{ id: 'r', label: 'Range' }, { id: 'c', label: 'Count', type: 'number' }]} rows={bins.map(b => ({ r: `${fmt(b.from, p.unit)} to ${fmt(b.to, p.unit)}`, c: b.count }))} label={p.title ?? 'Chart'} /></figure>;
+}

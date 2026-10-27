@@ -8,8 +8,8 @@ Run on 2026-10-27 on the local checkout (branch `product-phases-6-11`, uncommitt
 |---|---|
 | `npx tsc --noEmit` (lumina) | clean |
 | `node scripts/check-design.mjs` (lumina) | no hard-coded colours |
-| `npx vitest run` (lumina), whole suite | **303 passed**, 36 files |
-| `npx vitest run src/gen` (lumina), the new tests | **86 passed**, 3 files (`gen.test.ts` 56, `gen.components.test.tsx` 28, `export.test.ts` 2) |
+| `npx vitest run` (lumina), whole suite | **306 passed**, 36 files |
+| `npx vitest run src/gen` (lumina), the new tests | **89 passed**, 3 files (`gen.test.ts` 56, `gen.components.test.tsx` 31, `export.test.ts` 2) |
 | `npm run build` (lumina) | built; generative UI is in lazy chunks |
 | `python3 -m unittest tests.test_gen_document tests.test_display tests.test_genui tests.test_cell_config tests.test_card_images tests.test_chat` (platform) | **169 passed** |
 | `python3 -m unittest discover -s tests -t .` (platform), whole suite | 996 run, 2 skipped, **1 error**: `tests.test_vault` cannot import `cryptography` (not installed in this Python; unrelated to this work, not investigated further) |
