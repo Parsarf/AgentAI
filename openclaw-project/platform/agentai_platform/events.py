@@ -30,6 +30,7 @@ EVENT_KINDS = {
     'task_queued': {'summary'},
     'task_started': {'summary'},
     'plan': {'summary', 'steps'},
+    'task_steps': {'revision', 'update_id', 'mode', 'steps'},
     'progress': {'summary', 'step', 'detail'},
     'search': {'query', 'sources'},
     'file_change': {'path', 'change'},
@@ -99,26 +100,22 @@ class EventService:
         identifier(account_id)
         identifier(task_id)
         identifier(source)
-        with self.store.connect() as con:
-            redact_on = safety.is_on(con, account_id, 'secret_redaction')      # the account's `secret_redaction` switch: stored event records only
-        public = normalize(kind, payload, redact_on)
-        now = int(self.clock())
         with self.coordinator.transaction() as con:
-            if not con.execute('SELECT 1 FROM tasks WHERE account_id=? AND id=?',
-                               (account_id, task_id)).fetchone():
-                raise NotFound('unavailable')
-            count = con.execute('SELECT count(*) FROM events WHERE account_id=? AND task_id=?',
-                                (account_id, task_id)).fetchone()[0]
-            if count >= MAX_EVENTS_PER_TASK:
-                raise Conflict('event limit reached for this task')
-            sequence = con.execute('''SELECT coalesce(max(sequence),0)+1 FROM events
-                WHERE account_id=? AND task_id=?''', (account_id, task_id)).fetchone()[0]
-            event_id = uuid.uuid4().hex
-            con.execute('''INSERT INTO events(account_id,task_id,id,sequence,kind,public_payload)
-                VALUES (?,?,?,?,?,?)''',
-                        (account_id, task_id, event_id, sequence, kind,
-                         json.dumps({'source': source, **public}, sort_keys=True)))
-            return {'id': event_id, 'sequence': sequence, 'kind': kind, 'payload': public}
+            return self.append_in(con, account_id, task_id, kind, payload, source)
+
+    def append_in(self, con, account_id, task_id, kind, payload=None, source='system'):
+        """Append inside an existing transaction, allowing progress compare-and-swap to be atomic."""
+        public = normalize(kind, payload, safety.is_on(con, account_id, 'secret_redaction'))
+        if not con.execute('SELECT 1 FROM tasks WHERE account_id=? AND id=?', (account_id, task_id)).fetchone():
+            raise NotFound('unavailable')
+        count = con.execute('SELECT count(*) FROM events WHERE account_id=? AND task_id=?', (account_id, task_id)).fetchone()[0]
+        if count >= MAX_EVENTS_PER_TASK:
+            raise Conflict('event limit reached for this task')
+        sequence = con.execute('SELECT coalesce(max(sequence),0)+1 FROM events WHERE account_id=? AND task_id=?', (account_id, task_id)).fetchone()[0]
+        event_id = uuid.uuid4().hex
+        con.execute('INSERT INTO events(account_id,task_id,id,sequence,kind,public_payload) VALUES (?,?,?,?,?,?)',
+                    (account_id, task_id, event_id, sequence, kind, json.dumps({'source': source, **public}, sort_keys=True)))
+        return {'id': event_id, 'sequence': sequence, 'kind': kind, 'payload': public}
 
     # ---------- reads (customer path) ----------
 

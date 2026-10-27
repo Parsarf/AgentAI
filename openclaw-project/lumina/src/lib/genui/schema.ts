@@ -19,7 +19,7 @@ export const formSpec = z.object({
 }).strict();
 
 export const phase = z.object({
-  id, title: text(80), description: z.string().max(1000), enabled: z.boolean(), optional: z.boolean(), requiresApproval: z.boolean(), dependsOn: z.array(z.string()).max(25),
+  id, title: text(80), description: z.string().max(1000), checkpoint: text(240).optional(), enabled: z.boolean(), optional: z.boolean(), requiresApproval: z.boolean(), dependsOn: z.array(z.string()).max(25),
 }).strict();
 export const planSpec = z.object({
   schemaVersion: z.literal('1.0'), type: z.literal('task_plan'), title: text(120), summary: text(600).optional(), phases: z.array(phase).min(1).max(25),

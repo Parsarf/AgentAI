@@ -9,6 +9,7 @@ export function useActivity(taskId: string, active: boolean): { rows: ActivityIt
   const [events, setEvents] = useState<Ev[]>([]); const [err, setErr] = useState(''); const cursor = useRef(0);
   useEffect(() => { cursor.current = 0; setEvents([]); setErr(''); }, [taskId]);
   useEffect(() => {
+    if (!taskId) return;
     let stop = false; let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
       let reresync = false;

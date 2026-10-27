@@ -23,7 +23,7 @@ from .browse.untrusted import neutralize
 from .budget import BudgetLedger
 from .events import EventService
 from .gateway import SyntheticGateway
-from .genui import document as gen_document
+from .genui import document as gen_document, prompts as gen_prompts
 from .lifecycle.coordinator import Coordinator
 from .lifecycle.types import Conflict
 from .request_queue import Defer, Parked, Recover, RequestClaim, RequestQueue, RequestReceipt
@@ -223,6 +223,8 @@ class ChatDriver:
     def _outgoing(self, claim, info, notes=True):
         intent, context = info['intent'], info['context']
         text = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
+        if notes:
+            text = gen_prompts.progress_prompt(claim.request_id) + ('\nThis request only drafts a plan. Do not execute its phases; the customer launches the editable plan separately.\n' if intent == 'plan' else '\n') + text
         if intent not in ('chat', 'browse') or not notes:
             return text                                    # plan, execute and phase prompts are complete as they are
         notes = []

@@ -84,7 +84,13 @@ and the `accounts.test_chat` HTTP flow inside `manage.py test accounts`.
 
 Nothing guesses what a message means. `ChatService.send` makes a message plain chat unless the customer picked Plan or Browse mode. The assistant gets the message (plus a short
 context block with what the customer asked Lumina to remember: names only, never a secret) and decides for itself, with the runtime's own tools: web search and fetch, files,
-commands, and `lumina_browser`. There is no step block, no JEV tool choice and no follow-up message carrying a tool result; the runtime does tool-result continuation.
+commands, `lumina_browser`, and `lumina_task_update`. Straightforward requests execute directly. The assistant decides when dependencies, uncertainty or verification warrant a concise 2-6 phase plan, with a concrete checkpoint per phase, and proceeds through it without stopping to offer Plan mode. Explicit Plan mode still drafts an editable plan for the customer to launch.
+
+`lumina_task_update` is served over the same authenticated MCP relay, independently of the browser switch. It writes display-only `task_steps` snapshots to the current request's durable event stream: direct work is appended as it happens; planned work preserves a compact ordered phase list. Each update names a task belonging to the authenticated active cell, a revision and an idempotency key. Completion of a planned phase requires a checkpoint result. Unknown, stale, cancelled and foreign-request writes are refused. Calling the tool with `{}` reads the current task/revision, including for native goals whose objective remains the customer's raw message. These reports never launch work, settle a request, or grant approval.
+
+The Active Task widget follows the stream by cursor and shows actual running work ahead of queued requests. It uses reported statuses, keeps failed/blocked work visible, and retains the latest finished checklist. Without explicit reports it folds tool calls by reference and uses their real completion events. It never marks every earlier event done just because a new event appeared. On a finished run, missing checkpoint completion remains labeled as unreported.
+
+There is no JEV tool choice or follow-up message carrying a tool result; the runtime does tool-result continuation.
 
 ## The browser as a native tool
 

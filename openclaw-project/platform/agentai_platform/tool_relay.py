@@ -1,11 +1,11 @@
-"""The door from a customer cell to the tools Lumina serves natively (today: the sandboxed browser). Runs as the app user, bound to the cells' bridge address.
+"""The door from a customer cell to the tools Lumina serves natively (sandboxed browser and task progress). Runs as the app user, bound to the cells' bridge address.
 
 The cell's OpenClaw connects to this as an MCP server (streamable HTTP, JSON replies) and lists and calls its tools like any native tool. Three rules keep it a door and
 not a hole:
 
 * The caller proves which cell it is with the credential the cell was provisioned with (its own model key). The root bridge checks it (``cell.identify``); this process
   never holds a secret of its own, and a credential that matches no running cell gets nothing.
-* Only the tools in TOOLS exist, and a call is only served for the calling account's own running request (browse/adapter.py): nothing a cell sends can name another account.
+* Only the registered browser and progress tools exist, and a call is only served for the calling account's own running request (browse/adapter.py): nothing a cell sends can name another account.
 * One tool call at a time per account, bounded request size, and a call whose connection drops is stopped: Stop and a stopped run reach the browser job.
 
 Nothing about content is logged; counts and states only.
@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .adapters import CapabilityUnavailable
 from .browse.adapter import STEP, STEP_NAME, TOOL, TOOL_NAME, BrowserTool
+from .task_progress import TOOL as PROGRESS_TOOL, TOOL_NAME as PROGRESS_NAME
 
 PROTOCOL_VERSIONS = ('2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05')
 MAX_BODY = 64 * 1024
@@ -60,8 +61,9 @@ class Identity:
 class Relay:
     """The MCP protocol and the tools; no sockets (the handler below owns those)."""
 
-    def __init__(self, tool: BrowserTool):
-        self.tool = tool
+    def __init__(self, tool: BrowserTool, progress=None):
+        self.tool, self.progress = tool, progress
+        self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
         self._busy, self._guard = set(), threading.Lock()
 
     def handle(self, account, message, closed=lambda: False):
@@ -75,18 +77,19 @@ class Relay:
         if method == 'ping':
             return self._ok(rid, {})
         if method == 'tools/list':
-            return self._ok(rid, {'tools': list(TOOLS.values())})
+            return self._ok(rid, {'tools': list(self.tools.values())})
         if method == 'tools/call':
             params = message.get('params') or {}
             name = params.get('name')
-            if name not in TOOLS:
+            if name not in self.tools:
                 return self._error(rid, -32602, 'unknown tool')
             with self._guard:
                 if account in self._busy:
-                    return self._ok(rid, self._result('Another browser call is still running for this task. Wait for it to finish.', True))
+                    return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
                 self._busy.add(account)
             try:
-                result = self.tool.call(account, params.get('arguments') or {}, closed, name=name)
+                handler = self.progress if name == PROGRESS_NAME else self.tool
+                result = handler.call(account, params.get('arguments') or {}, closed, name=name)
             finally:
                 with self._guard:
                     self._busy.discard(account)

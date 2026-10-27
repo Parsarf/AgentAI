@@ -31,7 +31,7 @@ LABELS = {
     'file': 'Worked with a file', 'other': 'Used a tool',
 }
 WORKSPACE = '/home/node/.openclaw/workspace/'
-HIDDEN = {'tool_search', 'tool_describe'}                  # runtime housekeeping, not customer-relevant work
+HIDDEN = {'tool_search', 'tool_describe', 'lumina_task_update', 'lumina__lumina_task_update'}                  # runtime housekeeping, not customer-relevant work
 FILE_VERBS = {'write': 'Wrote', 'edit': 'Edited', 'apply_patch': 'Edited', 'read': 'Read'}
 
 
@@ -123,6 +123,8 @@ def extract(raw_messages):
                     inner = args.get('id')
                     name = inner.rsplit(':', 1)[-1] if isinstance(inner, str) else 'tool'
                     args = args.get('args') if isinstance(args.get('args'), dict) else {}
+                if name in HIDDEN:
+                    continue
                 category, label, detail = describe(name, args)
                 calls[ref] = {'ref': ref, 'tool': clean(name, 40), 'category': category, 'label': label,
                               'detail': detail, 'output': '', 'status': 'running', 'run_id': (message.get('__openclaw') or {}).get('runId'), 'after': message.get('__after')}

@@ -187,10 +187,12 @@ def validate_plan(plan, *, launch=False) -> dict:
         raise SpecError(f'a plan needs 1-{MAX_PHASES} phases')
     ids, norm = set(), []
     for raw in phases:
-        if not isinstance(raw, dict) or set(raw) - {'id', 'title', 'description', 'enabled', 'optional', 'requiresApproval', 'dependsOn'}:
+        if not isinstance(raw, dict) or set(raw) - {'id', 'title', 'description', 'checkpoint', 'enabled', 'optional', 'requiresApproval', 'dependsOn'}:
             raise SpecError('invalid phase')
         p = {'id': _ident(raw.get('id'), 'phase id'), 'title': _str(raw.get('title'), 'phase title', 1, 80),
              'description': _str(raw.get('description', ''), 'phase description', 0, 1000) if raw.get('description', '') != '' else ''}
+        if raw.get('checkpoint') is not None:
+            p['checkpoint'] = _str(raw['checkpoint'], 'phase checkpoint', 1, 240)
         if p['id'] in ids:
             raise SpecError('duplicate phase id ' + p['id'])
         ids.add(p['id'])

@@ -49,6 +49,7 @@ function Card(props: {
           {props.run?.summary && props.run.state !== 'failed' && <div className="result" style={{ marginTop: 0 }}><small className="faint">Result</small><br />{props.run.summary}</div>}
           <label>Name<input value={p.title} maxLength={80} disabled={locked} onChange={e => set({ title: e.target.value || ' ' })} /></label>
           <label>Instructions<textarea rows={3} maxLength={1000} disabled={locked} value={p.description} onChange={e => set({ description: e.target.value })} /></label>
+          <label>Checkpoint<input maxLength={240} disabled={locked} value={p.checkpoint ?? ''} onChange={e => set({ checkpoint: e.target.value || undefined })} placeholder="How will this phase be verified?" /></label>
           <fieldset disabled={locked}><legend>Runs after</legend>
             {plan.phases.filter(o => o.id !== p.id).length === 0 && <span className="faint">No other phases.</span>}
             {plan.phases.filter(o => o.id !== p.id).map(o => {

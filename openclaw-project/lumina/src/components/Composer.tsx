@@ -15,7 +15,7 @@ const TOOLS: Record<string, { label: string; icon: ReactNode }> = {
   Data: { label: 'Analyze data', icon: <I.Chart width={18} height={18} /> }, Automate: { label: 'Automate', icon: <I.Bolt width={18} height={18} /> },
 };
 const RESPONSES: { id: 'auto' | 'text' | 'plan' | 'browse'; label: string; hint: string }[] = [
-  { id: 'auto', label: 'Auto', hint: 'Lumina chooses: text, a short form, or an editable plan' }, { id: 'text', label: 'Text', hint: 'Answer in plain text only' },
+  { id: 'auto', label: 'Auto', hint: 'Executes directly, with a short checkpoint plan when useful' }, { id: 'text', label: 'Text', hint: 'Answer in plain text only' },
   { id: 'plan', label: 'Plan', hint: 'Always draft an editable plan first' }, { id: 'browse', label: 'Browse', hint: 'Use a browser on websites; stops before any payment' },
 ];
 const ERRORS: Record<string, string> = {

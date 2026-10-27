@@ -467,9 +467,11 @@ class OutgoingChecks(Base):
         info = self.driver._admit(claim)
         return self.driver._outgoing(claim, info), claim
 
-    def test_a_plain_message_goes_out_as_it_is(self):
+    def test_a_plain_message_gets_direct_execution_guidance_without_a_forced_plan(self):
         text, _ = self.outgoing(message='what is 2+2')
-        self.assertEqual(text, 'what is 2+2')
+        self.assertTrue(text.endswith('what is 2+2'))
+        self.assertIn('execute directly', text)
+        self.assertIn('do not stop to offer Plan mode', text)
 
     def test_browse_and_text_modes_become_a_short_note_not_a_protocol(self):
         text, _ = self.outgoing(message='order wings', mode='browse')
