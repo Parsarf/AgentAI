@@ -1,0 +1,15 @@
+{"source_files_verified": 302, "source_mismatches": []}
+{"registered_capabilities": 205, "progress_tool": "lumina_task_update"}
+{"database_quick_check": "ok", "artifact_tables": [["gen_artifact_events"], ["gen_artifact_state"]], "latest_migrations": [["0030_gen_artifact_events.sql"], ["0029_document_blocks.sql"]]}
+{"app_probes": {"/healthz": {"status": 200, "expected": 200}, "/readyz": {"status": 200, "expected": 200}, "/account/login/": {"status": 200, "expected": 200}, "/v1/genui/registry": {"status": 401, "expected": 401}}}
+active
+active
+active
+active
+active
+active
+host_probe_available True
+affected_request ('cancelled', 'cancelled')
+active_request_count 0
+browser_default runner
+native_overrides 0
