@@ -20,6 +20,7 @@ EXTRA_SECRETS = [
 ]
 
 CATEGORY = {
+    'spawn_agent': 'subagent', 'sessions_spawn': 'subagent', 'subagents': 'subagent',
     'web_search': 'search', 'search': 'search', 'brave_search': 'search',
     'web_fetch': 'read', 'fetch': 'read', 'browser': 'browse', 'lumina_browser': 'browse', 'lumina__lumina_browser': 'browse',
     'exec': 'command', 'bash': 'command', 'shell': 'command', 'process': 'command',
@@ -91,6 +92,8 @@ def describe(name, args):
         return category, f'{FILE_VERBS.get(tool, "Worked with")} a file', clean(path, MAX_DETAIL)
     if category == 'browse':
         return category, 'Used the browser', clean(_first(args, 'site', 'action', 'url', 'task'), MAX_DETAIL)
+    if category == 'subagent':
+        return category, 'Delegated to an agent', clean(_first(args, 'label', 'task', 'message'), MAX_DETAIL)
     label = clean(re.sub(r'[_-]+', ' ', tool), 40) or 'tool'
     return 'other', f'Used {label}', ''
 

@@ -18,12 +18,12 @@ from .crypto import AgeCrypto
 
 # Backup wins on conflict; rows created after the backup are kept.
 RESTORE = ['projects', 'conversations', 'project_files', 'artifacts', 'memory_entries', 'memory_terms', 'skills', 'skill_versions',
-           'ui_blocks', 'data_blocks', 'card_images', 'signups', 'plan_revisions', 'plan_phase_runs', 'watchers', 'schedules', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts', 'saved_choices']
+           'ui_blocks', 'data_blocks', 'gen_artifact_state', 'card_images', 'signups', 'plan_revisions', 'plan_phase_runs', 'watchers', 'schedules', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts', 'saved_choices']
 # Live wins; only rows missing live are added (then neutralized).
 MERGE = ['browse_runs', 'browse_steps', 'browse_sessions', 'tasks', 'customer_requests', 'chat_messages', 'chat_deliveries', 'events', 'browser_profiles']
 # Append-only history: add what is missing, never change or remove anything.
 LEDGER = ['usage_entries', 'provider_receipts', 'task_reservations', 'audit_events', 'optimization_calls', 'optimization_activations', 'route_decisions', 'plan_launches',
-          'accounts_audit', 'accounts_tombstone']
+          'accounts_audit', 'accounts_tombstone', 'gen_artifact_events']
 # Never restored: identity, billing and entitlements (current provider state wins), host-bound lifecycle, channels,
 # tickets, streams, connector grants and every global (non-account) table.
 LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships', 'entitlements', 'deployments', 'operations',

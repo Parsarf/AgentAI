@@ -6,9 +6,9 @@ import { StatusPill } from './cards';
 
 export function Divider() { return <hr className="gen-hr" />; }
 export function Section({ block, children }: P<'section'> & { children: ReactNode }) {
-  const cols = block.layout?.columns;
+  const l = block.layout; const cols = l?.columns;
   return <section className="gen-section" aria-label={block.props.title}>{block.props.title && <h4>{block.props.title}</h4>}{block.props.description && <p className="faint">{block.props.description}</p>}
-    <div className="gen-grid" style={cols ? { ['--cols' as string]: cols } : undefined}>{children}</div></section>;
+    <div className={cx("gen-grid", !!cols && "has-cols", l?.direction === 'column' && 'one')} style={{ ['--cols' as string]: cols, gap: l?.gap ? `var(--gen-gap-${l.gap})` : undefined, alignItems: l?.alignment, justifyContent: l?.justify === 'between' ? 'space-between' : l?.justify }}>{children}</div></section>;
 }
 export function Tabs({ block, panels }: P<'tabs'> & { panels: ReactNode[] }) {
   const tabs = block.props.tabs; const uid = useId(); const [l, set] = useLocal(block.id, { selected: block.props.initial ?? tabs[0].id });

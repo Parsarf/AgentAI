@@ -4205,6 +4205,321 @@
      }
     }
    }
+  },
+  "/v1/genui/registry": {
+   "get": {
+    "summary": "Discover the registry; ?component=id returns its schema, requirements and examples",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/state": {
+   "post": {
+    "summary": "Save local artifact state using independent document and state revisions",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "state_revision": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "state": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "state_revision",
+         "state"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/events": {
+   "post": {
+    "summary": "Submit a stored node action; persist account, actor, conversation and task association; replay identical ids idempotently",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "node_id": {
+          "type": "string"
+         },
+         "action_id": {
+          "type": "string"
+         },
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "values": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "id",
+         "node_id",
+         "action_id",
+         "version",
+         "values"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/update": {
+   "post": {
+    "summary": "Validate and replace a document atomically, preserving compatible node state",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "document": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "document"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/asset": {
+   "get": {
+    "summary": "Resolve only file references present in this stored document, within the authorized conversation project",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "path",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "download",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "1"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "/v1/assistant/presence": {
+   "get": {
+    "summary": "Read observable assistant presence",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
   }
  },
  "components": {

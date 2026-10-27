@@ -894,6 +894,5042 @@
      "props": {
       "requestId": "fixture_run"
      }
+    },
+    {
+     "id": "fixture_image",
+     "type": "image",
+     "props": {
+      "assetRef": "file:sample.png",
+      "alt": "Sample image"
+     }
+    },
+    {
+     "id": "fixture_gallery",
+     "type": "gallery",
+     "props": {
+      "images": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample image"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_2",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_markdown",
+     "type": "markdown",
+     "props": {
+      "title": "Text",
+      "content": "Plain prose with **markdown**, a list and a [link](https://example.com/).\n\n- one\n- two"
+     }
+    },
+    {
+     "id": "fixture_rich_text",
+     "type": "rich_text",
+     "props": {
+      "title": "Text",
+      "content": "Plain prose with **markdown**, a list and a [link](https://example.com/).\n\n- one\n- two"
+     }
+    },
+    {
+     "id": "fixture_copyable_snippet",
+     "type": "copyable_snippet",
+     "props": {
+      "language": "python",
+      "filename": "sum.py",
+      "code": "def total(xs):\n    return sum(xs)\n"
+     }
+    },
+    {
+     "id": "fixture_comparison_card",
+     "type": "comparison_card",
+     "props": {
+      "title": "Card grid",
+      "cards": [
+       {
+        "title": "Alpha",
+        "subtitle": "$120",
+        "facts": [
+         {
+          "label": "Rating",
+          "value": "4.6"
+         }
+        ]
+       },
+       {
+        "title": "Beta",
+        "subtitle": "$95"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_profile_card",
+     "type": "profile_card",
+     "props": {
+      "title": "Information card",
+      "subtitle": "One entity",
+      "badge": "New",
+      "body": "Details open on demand.",
+      "facts": [
+       {
+        "label": "Price",
+        "value": "$95"
+       },
+       {
+        "label": "Rating",
+        "value": "4.1"
+       }
+      ],
+      "link": {
+       "label": "Open page",
+       "url": "https://example.com/"
+      },
+      "actions": [
+       {
+        "label": "Tell me more",
+        "action": {
+         "kind": "agent.request",
+         "message": "Tell me more about this option"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_product_card",
+     "type": "product_card",
+     "props": {
+      "title": "Information card",
+      "subtitle": "One entity",
+      "badge": "New",
+      "body": "Details open on demand.",
+      "facts": [
+       {
+        "label": "Price",
+        "value": "$95"
+       },
+       {
+        "label": "Rating",
+        "value": "4.1"
+       }
+      ],
+      "link": {
+       "label": "Open page",
+       "url": "https://example.com/"
+      },
+      "actions": [
+       {
+        "label": "Tell me more",
+        "action": {
+         "kind": "agent.request",
+         "message": "Tell me more about this option"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_business_card",
+     "type": "business_card",
+     "props": {
+      "title": "Information card",
+      "subtitle": "One entity",
+      "badge": "New",
+      "body": "Details open on demand.",
+      "facts": [
+       {
+        "label": "Price",
+        "value": "$95"
+       },
+       {
+        "label": "Rating",
+        "value": "4.1"
+       }
+      ],
+      "link": {
+       "label": "Open page",
+       "url": "https://example.com/"
+      },
+      "actions": [
+       {
+        "label": "Tell me more",
+        "action": {
+         "kind": "agent.request",
+         "message": "Tell me more about this option"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_summary_card",
+     "type": "summary_card",
+     "props": {
+      "title": "Information card",
+      "subtitle": "One entity",
+      "badge": "New",
+      "body": "Details open on demand.",
+      "facts": [
+       {
+        "label": "Price",
+        "value": "$95"
+       },
+       {
+        "label": "Rating",
+        "value": "4.1"
+       }
+      ],
+      "link": {
+       "label": "Open page",
+       "url": "https://example.com/"
+      },
+      "actions": [
+       {
+        "label": "Tell me more",
+        "action": {
+         "kind": "agent.request",
+         "message": "Tell me more about this option"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_action_card",
+     "type": "action_card",
+     "props": {
+      "title": "Information card",
+      "subtitle": "One entity",
+      "badge": "New",
+      "body": "Details open on demand.",
+      "facts": [
+       {
+        "label": "Price",
+        "value": "$95"
+       },
+       {
+        "label": "Rating",
+        "value": "4.1"
+       }
+      ],
+      "link": {
+       "label": "Open page",
+       "url": "https://example.com/"
+      },
+      "actions": [
+       {
+        "label": "Tell me more",
+        "action": {
+         "kind": "agent.request",
+         "message": "Tell me more about this option"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_progress_card",
+     "type": "progress_card",
+     "props": {
+      "label": "Migration",
+      "value": 6,
+      "max": 10,
+      "steps": [
+       {
+        "label": "Export",
+        "done": true
+       },
+       {
+        "label": "Import",
+        "done": false
+       }
+      ]
+     }
+    },
+    {
+     "props": {
+      "assetRef": "file:sample.png",
+      "alt": "Sample"
+     },
+     "id": "fixture_media_card",
+     "type": "media_card"
+    },
+    {
+     "id": "fixture_recommendation_card",
+     "type": "recommendation_card",
+     "props": {
+      "title": "Information card",
+      "subtitle": "One entity",
+      "badge": "New",
+      "body": "Details open on demand.",
+      "facts": [
+       {
+        "label": "Price",
+        "value": "$95"
+       },
+       {
+        "label": "Rating",
+        "value": "4.1"
+       }
+      ],
+      "link": {
+       "label": "Open page",
+       "url": "https://example.com/"
+      },
+      "actions": [
+       {
+        "label": "Tell me more",
+        "action": {
+         "kind": "agent.request",
+         "message": "Tell me more about this option"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_result_collection",
+     "type": "result_collection",
+     "props": {
+      "title": "Card grid",
+      "cards": [
+       {
+        "title": "Alpha",
+        "subtitle": "$120",
+        "facts": [
+         {
+          "label": "Rating",
+          "value": "4.6"
+         }
+        ]
+       },
+       {
+        "title": "Beta",
+        "subtitle": "$95"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_sortable_table",
+     "type": "sortable_table",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "fixture_filterable_table",
+     "type": "filterable_table",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "fixture_searchable_table",
+     "type": "searchable_table",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "fixture_paginated_table",
+     "type": "paginated_table",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "fixture_comparison_matrix",
+     "type": "comparison_matrix",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "fixture_leaderboard",
+     "type": "leaderboard",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "fixture_spreadsheet_preview",
+     "type": "spreadsheet_preview",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_3",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_database_result",
+     "type": "database_result",
+     "dataRef": "options",
+     "props": {
+      "title": "Table",
+      "searchable": true,
+      "rowHeader": "name",
+      "defaultSort": {
+       "column": "price",
+       "dir": "asc"
+      }
+     }
+    },
+    {
+     "id": "fixture_stacked_bar_chart",
+     "type": "stacked_bar_chart",
+     "dataRef": "revenue",
+     "props": {
+      "title": "Bar chart",
+      "xKey": "month",
+      "series": [
+       {
+        "key": "revenue"
+       },
+       {
+        "key": "costs"
+       }
+      ],
+      "unit": "$"
+     }
+    },
+    {
+     "id": "fixture_donut_chart",
+     "type": "donut_chart",
+     "props": {
+      "title": "Donut chart",
+      "donut": true,
+      "labelKey": "part",
+      "valueKey": "share",
+      "data": [
+       {
+        "part": "Search",
+        "share": 45
+       },
+       {
+        "part": "Direct",
+        "share": 30
+       },
+       {
+        "part": "Social",
+        "share": 25
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_histogram",
+     "type": "histogram",
+     "props": {
+      "title": "Histogram",
+      "valueKey": "v",
+      "bins": 5,
+      "data": [
+       {
+        "v": 1
+       },
+       {
+        "v": 2
+       },
+       {
+        "v": 2
+       },
+       {
+        "v": 3
+       },
+       {
+        "v": 3
+       },
+       {
+        "v": 3
+       },
+       {
+        "v": 4
+       },
+       {
+        "v": 4
+       },
+       {
+        "v": 5
+       },
+       {
+        "v": 9
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_progress_chart",
+     "type": "progress_chart",
+     "props": {
+      "label": "Migration",
+      "value": 6,
+      "max": 10,
+      "steps": [
+       {
+        "label": "Export",
+        "done": true
+       },
+       {
+        "label": "Import",
+        "done": false
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_button",
+     "type": "button",
+     "props": {
+      "title": "Next steps",
+      "buttons": [
+       {
+        "id": "go",
+        "label": "Show details",
+        "style": "primary",
+        "action": {
+         "kind": "agent.request",
+         "message": "Show the details"
+        }
+       },
+       {
+        "id": "open",
+        "label": "Open files",
+        "style": "ghost",
+        "action": {
+         "kind": "navigate.internal",
+         "path": "/files"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_icon_button",
+     "type": "icon_button",
+     "props": {
+      "title": "Next steps",
+      "buttons": [
+       {
+        "id": "go",
+        "label": "Show details",
+        "style": "primary",
+        "action": {
+         "kind": "agent.request",
+         "message": "Show the details"
+        }
+       },
+       {
+        "id": "open",
+        "label": "Open files",
+        "style": "ghost",
+        "action": {
+         "kind": "navigate.internal",
+         "path": "/files"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_text_input",
+     "type": "text_input",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "text input",
+        "type": "text"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_textarea",
+     "type": "textarea",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "textarea",
+        "type": "textarea"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_checkbox",
+     "type": "checkbox",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "checkbox",
+        "type": "checkbox"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_radio",
+     "type": "radio",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "radio",
+        "type": "radio",
+        "options": [
+         {
+          "label": "Alpha",
+          "value": "alpha"
+         },
+         {
+          "label": "Beta",
+          "value": "beta"
+         }
+        ]
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_select",
+     "type": "select",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "select",
+        "type": "select",
+        "options": [
+         {
+          "label": "Alpha",
+          "value": "alpha"
+         },
+         {
+          "label": "Beta",
+          "value": "beta"
+         }
+        ]
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_segmented_control",
+     "type": "segmented_control",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "segmented control",
+        "type": "segmented",
+        "options": [
+         {
+          "label": "Alpha",
+          "value": "alpha"
+         },
+         {
+          "label": "Beta",
+          "value": "beta"
+         }
+        ]
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_slider",
+     "type": "slider",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "slider",
+        "type": "slider"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_switch",
+     "type": "switch",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "switch",
+        "type": "toggle"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_date_picker",
+     "type": "date_picker",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "date picker",
+        "type": "date"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_time_picker",
+     "type": "time_picker",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "time picker",
+        "type": "time"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_number_stepper",
+     "type": "number_stepper",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "number stepper",
+        "type": "number"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_grouped_form",
+     "type": "grouped_form",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "kind",
+        "type": "segmented",
+        "label": "Kind",
+        "group": "Basics",
+        "required": true,
+        "default": "a",
+        "options": [
+         {
+          "label": "A",
+          "value": "a"
+         },
+         {
+          "label": "B",
+          "value": "b"
+         }
+        ]
+       },
+       {
+        "id": "budget",
+        "type": "slider",
+        "label": "Budget",
+        "group": "Basics",
+        "min": 0,
+        "max": 500,
+        "step": 10,
+        "default": 100,
+        "unit": "USD"
+       },
+       {
+        "id": "extras",
+        "type": "toggle",
+        "label": "Include extras",
+        "group": "Options",
+        "default": false
+       },
+       {
+        "id": "when",
+        "type": "date",
+        "label": "Date",
+        "group": "Options",
+        "showIf": {
+         "field": "extras",
+         "equals": true
+        }
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_conditional_form",
+     "type": "conditional_form",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "kind",
+        "type": "segmented",
+        "label": "Kind",
+        "group": "Basics",
+        "required": true,
+        "default": "a",
+        "options": [
+         {
+          "label": "A",
+          "value": "a"
+         },
+         {
+          "label": "B",
+          "value": "b"
+         }
+        ]
+       },
+       {
+        "id": "budget",
+        "type": "slider",
+        "label": "Budget",
+        "group": "Basics",
+        "min": 0,
+        "max": 500,
+        "step": 10,
+        "default": 100,
+        "unit": "USD"
+       },
+       {
+        "id": "extras",
+        "type": "toggle",
+        "label": "Include extras",
+        "group": "Options",
+        "default": false
+       },
+       {
+        "id": "when",
+        "type": "date",
+        "label": "Date",
+        "group": "Options",
+        "showIf": {
+         "field": "extras",
+         "equals": true
+        }
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_4",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_questionnaire",
+     "type": "questionnaire",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "kind",
+        "type": "segmented",
+        "label": "Kind",
+        "group": "Basics",
+        "required": true,
+        "default": "a",
+        "options": [
+         {
+          "label": "A",
+          "value": "a"
+         },
+         {
+          "label": "B",
+          "value": "b"
+         }
+        ]
+       },
+       {
+        "id": "budget",
+        "type": "slider",
+        "label": "Budget",
+        "group": "Basics",
+        "min": 0,
+        "max": 500,
+        "step": 10,
+        "default": 100,
+        "unit": "USD"
+       },
+       {
+        "id": "extras",
+        "type": "toggle",
+        "label": "Include extras",
+        "group": "Options",
+        "default": false
+       },
+       {
+        "id": "when",
+        "type": "date",
+        "label": "Date",
+        "group": "Options",
+        "showIf": {
+         "field": "extras",
+         "equals": true
+        }
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_parameter_configurator",
+     "type": "parameter_configurator",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "kind",
+        "type": "segmented",
+        "label": "Kind",
+        "group": "Basics",
+        "required": true,
+        "default": "a",
+        "options": [
+         {
+          "label": "A",
+          "value": "a"
+         },
+         {
+          "label": "B",
+          "value": "b"
+         }
+        ]
+       },
+       {
+        "id": "budget",
+        "type": "slider",
+        "label": "Budget",
+        "group": "Basics",
+        "min": 0,
+        "max": 500,
+        "step": 10,
+        "default": 100,
+        "unit": "USD"
+       },
+       {
+        "id": "extras",
+        "type": "toggle",
+        "label": "Include extras",
+        "group": "Options",
+        "default": false
+       },
+       {
+        "id": "when",
+        "type": "date",
+        "label": "Date",
+        "group": "Options",
+        "showIf": {
+         "field": "extras",
+         "equals": true
+        }
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_timeline_chart",
+     "type": "timeline_chart",
+     "props": {
+      "title": "Timeline",
+      "events": [
+       {
+        "title": "Kick-off",
+        "time": "Mon",
+        "state": "done"
+       },
+       {
+        "title": "Review",
+        "time": "Wed",
+        "state": "active",
+        "detail": "In progress"
+       },
+       {
+        "title": "Launch",
+        "time": "Fri",
+        "state": "pending"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_stepper",
+     "type": "stepper",
+     "props": {
+      "title": "Timeline",
+      "events": [
+       {
+        "title": "Kick-off",
+        "time": "Mon",
+        "state": "done"
+       },
+       {
+        "title": "Review",
+        "time": "Wed",
+        "state": "active",
+        "detail": "In progress"
+       },
+       {
+        "title": "Launch",
+        "time": "Fri",
+        "state": "pending"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_project_timeline",
+     "type": "project_timeline",
+     "props": {
+      "title": "Timeline",
+      "events": [
+       {
+        "title": "Kick-off",
+        "time": "Mon",
+        "state": "done"
+       },
+       {
+        "title": "Review",
+        "time": "Wed",
+        "state": "active",
+        "detail": "In progress"
+       },
+       {
+        "title": "Launch",
+        "time": "Fri",
+        "state": "pending"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_milestones",
+     "type": "milestones",
+     "props": {
+      "title": "Timeline",
+      "events": [
+       {
+        "title": "Kick-off",
+        "time": "Mon",
+        "state": "done"
+       },
+       {
+        "title": "Review",
+        "time": "Wed",
+        "state": "active",
+        "detail": "In progress"
+       },
+       {
+        "title": "Launch",
+        "time": "Fri",
+        "state": "pending"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_task_progress",
+     "type": "task_progress",
+     "props": {
+      "title": "Execution timeline",
+      "requestId": "fixture_run"
+     }
+    },
+    {
+     "id": "fixture_live_activity",
+     "type": "live_activity",
+     "props": {
+      "title": "Execution timeline",
+      "requestId": "fixture_run"
+     }
+    },
+    {
+     "id": "fixture_evidence_viewer",
+     "type": "evidence_viewer",
+     "props": {
+      "title": "Sources",
+      "sources": [
+       {
+        "label": "Example page",
+        "url": "https://example.com/a",
+        "snippet": "A supporting snippet.",
+        "publisher": "example.com"
+       },
+       {
+        "label": "Second source"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_logs",
+     "type": "logs",
+     "props": {
+      "title": "Execution timeline",
+      "requestId": "fixture_run"
+     }
+    },
+    {
+     "id": "fixture_recommendation_selector",
+     "type": "recommendation_selector",
+     "props": {
+      "suggestions": [
+       "What changed since last month?"
+      ]
+     }
+    },
+    {
+     "id": "fixture_pull_request_diff",
+     "type": "pull_request_diff",
+     "props": {
+      "filename": "a.txt",
+      "diff": "@@ -1,2 +1,2 @@\n-old line\n+new line\n unchanged"
+     }
+    },
+    {
+     "id": "fixture_expandable_text",
+     "type": "expandable_text",
+     "props": {
+      "title": "expandable text (sample)",
+      "content": "Sample content with **emphasis** and supporting detail."
+     }
+    },
+    {
+     "id": "fixture_syntax_highlighting",
+     "type": "syntax_highlighting",
+     "props": {
+      "title": "syntax highlighting (sample)",
+      "code": "const total = 12 + 8;\nreturn total;",
+      "language": "javascript"
+     }
+    },
+    {
+     "id": "fixture_source_preview",
+     "type": "source_preview",
+     "props": {
+      "title": "source preview (sample)",
+      "content": "Sample content with **emphasis** and supporting detail."
+     }
+    },
+    {
+     "id": "fixture_math",
+     "type": "math",
+     "props": {
+      "title": "math (sample)",
+      "content": "E = mc^2"
+     }
+    },
+    {
+     "id": "fixture_file_attachment",
+     "type": "file_attachment",
+     "props": {
+      "title": "file attachment (sample)",
+      "assetRef": "file:sample.png",
+      "label": "Sample image",
+      "alt": "Developer fixture; no live file attached"
+     }
+    },
+    {
+     "id": "fixture_file_preview",
+     "type": "file_preview",
+     "props": {
+      "title": "file preview (sample)",
+      "assetRef": "file:sample.png",
+      "label": "Sample image",
+      "alt": "Developer fixture; no live file attached"
+     }
+    },
+    {
+     "id": "fixture_file_card",
+     "type": "file_card",
+     "props": {
+      "title": "file card (sample)",
+      "assetRef": "file:sample.png",
+      "label": "Sample image",
+      "alt": "Developer fixture; no live file attached"
+     }
+    },
+    {
+     "id": "fixture_image_card",
+     "type": "image_card",
+     "props": {
+      "title": "image card (sample)",
+      "assetRef": "file:sample.png",
+      "label": "Sample image",
+      "alt": "Developer fixture; no live file attached"
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_5",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_expandable_card",
+     "type": "expandable_card",
+     "props": {
+      "title": "expandable card (sample)",
+      "blocks": [
+       {
+        "id": "expandable_card_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "expandable_card_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_tabbed_card",
+     "type": "tabbed_card",
+     "props": {
+      "title": "tabbed card (sample)",
+      "blocks": [
+       {
+        "id": "tabbed_card_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "tabbed_card_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_flip_card",
+     "type": "flip_card",
+     "props": {
+      "title": "flip card (sample)",
+      "blocks": [
+       {
+        "id": "flip_card_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "flip_card_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_editable_table",
+     "type": "editable_table",
+     "props": {
+      "title": "editable table (sample)",
+      "columns": [
+       {
+        "id": "name",
+        "label": "Name"
+       },
+       {
+        "id": "value",
+        "label": "Value",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "name": "Discovery",
+        "value": 12
+       },
+       {
+        "name": "Evaluation",
+        "value": 8
+       },
+       {
+        "name": "Selection",
+        "value": 5
+       }
+      ],
+      "groupBy": "name",
+      "valueKey": "value"
+     }
+    },
+    {
+     "id": "fixture_pivot_table",
+     "type": "pivot_table",
+     "props": {
+      "title": "pivot table (sample)",
+      "columns": [
+       {
+        "id": "name",
+        "label": "Name"
+       },
+       {
+        "id": "value",
+        "label": "Value",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "name": "Discovery",
+        "value": 12
+       },
+       {
+        "name": "Evaluation",
+        "value": 8
+       },
+       {
+        "name": "Selection",
+        "value": 5
+       }
+      ],
+      "groupBy": "name",
+      "valueKey": "value"
+     }
+    },
+    {
+     "id": "fixture_data_grid",
+     "type": "data_grid",
+     "props": {
+      "title": "data grid (sample)",
+      "columns": [
+       {
+        "id": "name",
+        "label": "Name"
+       },
+       {
+        "id": "value",
+        "label": "Value",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "name": "Discovery",
+        "value": 12
+       },
+       {
+        "name": "Evaluation",
+        "value": 8
+       },
+       {
+        "name": "Selection",
+        "value": 5
+       }
+      ],
+      "groupBy": "name",
+      "valueKey": "value"
+     }
+    },
+    {
+     "id": "fixture_tree_table",
+     "type": "tree_table",
+     "props": {
+      "title": "tree table (sample)",
+      "columns": [
+       {
+        "id": "name",
+        "label": "File"
+       },
+       {
+        "id": "size",
+        "label": "Bytes",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "id": "src",
+        "name": "src",
+        "size": 0,
+        "parent": null
+       },
+       {
+        "id": "app",
+        "name": "App.tsx",
+        "size": 2048,
+        "parent": "src"
+       }
+      ],
+      "groupBy": "name",
+      "valueKey": "value",
+      "parentKey": "parent"
+     }
+    },
+    {
+     "id": "fixture_bubble_chart",
+     "type": "bubble_chart",
+     "props": {
+      "title": "bubble chart (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_heatmap",
+     "type": "heatmap",
+     "props": {
+      "title": "heatmap (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_radar_chart",
+     "type": "radar_chart",
+     "props": {
+      "title": "radar chart (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_funnel_chart",
+     "type": "funnel_chart",
+     "props": {
+      "title": "funnel chart (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_waterfall_chart",
+     "type": "waterfall_chart",
+     "props": {
+      "title": "waterfall chart (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_candlestick_chart",
+     "type": "candlestick_chart",
+     "props": {
+      "title": "candlestick chart (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_box_plot",
+     "type": "box_plot",
+     "props": {
+      "title": "box plot (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_treemap",
+     "type": "treemap",
+     "props": {
+      "title": "treemap (sample)",
+      "data": [
+       {
+        "name": "Discovery",
+        "value": 12,
+        "low": 5,
+        "open": 8,
+        "close": 12,
+        "high": 15,
+        "min": 2,
+        "q1": 6,
+        "median": 9,
+        "q3": 12,
+        "max": 16
+       },
+       {
+        "name": "Evaluation",
+        "value": 8,
+        "low": 3,
+        "open": 6,
+        "close": 8,
+        "high": 12,
+        "min": 1,
+        "q1": 3,
+        "median": 6,
+        "q3": 9,
+        "max": 13
+       },
+       {
+        "name": "Selection",
+        "value": 5,
+        "low": 2,
+        "open": 3,
+        "close": 5,
+        "high": 9,
+        "min": 0,
+        "q1": 2,
+        "median": 4,
+        "q3": 6,
+        "max": 10
+       }
+      ],
+      "labelKey": "name",
+      "valueKey": "value",
+      "summary": "Illustrative funnel values: 12, 8 and 5."
+     }
+    },
+    {
+     "id": "fixture_sankey",
+     "type": "sankey",
+     "props": {
+      "title": "sankey (sample)",
+      "nodes": [
+       {
+        "id": "a",
+        "label": "Discover"
+       },
+       {
+        "id": "b",
+        "label": "Evaluate"
+       },
+       {
+        "id": "c",
+        "label": "Select"
+       }
+      ],
+      "edges": [
+       {
+        "source": "a",
+        "target": "b",
+        "value": 8
+       },
+       {
+        "source": "b",
+        "target": "c",
+        "value": 5
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_network_graph",
+     "type": "network_graph",
+     "props": {
+      "title": "network graph (sample)",
+      "nodes": [
+       {
+        "id": "a",
+        "label": "Discover"
+       },
+       {
+        "id": "b",
+        "label": "Evaluate"
+       },
+       {
+        "id": "c",
+        "label": "Select"
+       }
+      ],
+      "edges": [
+       {
+        "source": "a",
+        "target": "b",
+        "value": 8
+       },
+       {
+        "source": "b",
+        "target": "c",
+        "value": 5
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_gantt",
+     "type": "gantt",
+     "props": {
+      "title": "gantt (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_multiselect",
+     "type": "multiselect",
+     "props": {
+      "title": "multiselect (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
+    {
+     "id": "fixture_range_slider",
+     "type": "range_slider",
+     "props": {
+      "title": "range slider (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_6",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_date_range",
+     "type": "date_range",
+     "props": {
+      "title": "date range (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
+    {
+     "id": "fixture_search_input",
+     "type": "search_input",
+     "props": {
+      "title": "search input (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
+    {
+     "id": "fixture_color_picker",
+     "type": "color_picker",
+     "props": {
+      "title": "color picker (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
+    {
+     "id": "fixture_rating",
+     "type": "rating",
+     "props": {
+      "title": "rating (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
+    {
+     "id": "fixture_tags",
+     "type": "tags",
+     "props": {
+      "title": "tags (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
+    {
+     "id": "fixture_autocomplete",
+     "type": "autocomplete",
+     "props": {
+      "title": "autocomplete (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
+    {
+     "id": "fixture_upload",
+     "type": "upload",
+     "props": {
+      "title": "upload (sample)",
+      "label": "Attach a file using the account files flow"
+     }
+    },
+    {
+     "id": "fixture_confirmation",
+     "type": "confirmation",
+     "props": {
+      "title": "confirmation (sample)",
+      "message": "Continue with these sample settings?",
+      "label": "Continue",
+      "action": {
+       "kind": "agent.request",
+       "message": "Use my selected settings"
+      }
+     }
+    },
+    {
+     "id": "fixture_collapsible",
+     "type": "collapsible",
+     "props": {
+      "title": "collapsible (sample)",
+      "blocks": [
+       {
+        "id": "collapsible_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "collapsible_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_popover",
+     "type": "popover",
+     "props": {
+      "title": "popover (sample)",
+      "blocks": [
+       {
+        "id": "popover_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "popover_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_tooltip",
+     "type": "tooltip",
+     "props": {
+      "title": "tooltip (sample)",
+      "content": "Sample content with **emphasis** and supporting detail."
+     }
+    },
+    {
+     "id": "fixture_modal",
+     "type": "modal",
+     "props": {
+      "title": "modal (sample)",
+      "blocks": [
+       {
+        "id": "modal_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "modal_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_drawer",
+     "type": "drawer",
+     "props": {
+      "title": "drawer (sample)",
+      "blocks": [
+       {
+        "id": "drawer_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "drawer_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_carousel",
+     "type": "carousel",
+     "props": {
+      "title": "carousel (sample)",
+      "blocks": [
+       {
+        "id": "carousel_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "carousel_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_split_view",
+     "type": "split_view",
+     "props": {
+      "title": "split view (sample)",
+      "blocks": [
+       {
+        "id": "split_view_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "split_view_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_resizable_panels",
+     "type": "resizable_panels",
+     "props": {
+      "title": "resizable panels (sample)",
+      "blocks": [
+       {
+        "id": "resizable_panels_details",
+        "type": "text",
+        "props": {
+         "content": "Sample summary"
+        }
+       },
+       {
+        "id": "resizable_panels_more",
+        "type": "text",
+        "props": {
+         "content": "Sample detail"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_pagination",
+     "type": "pagination",
+     "props": {
+      "title": "pagination (sample)",
+      "total": 60,
+      "pageSize": 10
+     }
+    },
+    {
+     "id": "fixture_breadcrumb",
+     "type": "breadcrumb",
+     "props": {
+      "title": "breadcrumb (sample)",
+      "links": [
+       {
+        "label": "Chat",
+        "path": "/chat"
+       },
+       {
+        "label": "Files",
+        "path": "/files"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_tree_navigation",
+     "type": "tree_navigation",
+     "props": {
+      "title": "tree navigation (sample)",
+      "nodes": [
+       {
+        "id": "src",
+        "label": "src"
+       },
+       {
+        "id": "app",
+        "label": "App.tsx",
+        "parent": "src",
+        "detail": "Application entry"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_command_palette",
+     "type": "command_palette",
+     "props": {
+      "title": "command palette (sample)",
+      "items": [
+       {
+        "id": "explain",
+        "label": "Explain the selected option",
+        "action": {
+         "kind": "agent.request",
+         "message": "Use my selected settings"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_7",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_context_menu",
+     "type": "context_menu",
+     "props": {
+      "title": "context menu (sample)",
+      "items": [
+       {
+        "id": "explain",
+        "label": "Explain the selected option",
+        "action": {
+         "kind": "agent.request",
+         "message": "Use my selected settings"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_dropdown_menu",
+     "type": "dropdown_menu",
+     "props": {
+      "title": "dropdown menu (sample)",
+      "items": [
+       {
+        "id": "explain",
+        "label": "Explain the selected option",
+        "action": {
+         "kind": "agent.request",
+         "message": "Use my selected settings"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_image_carousel",
+     "type": "image_carousel",
+     "props": {
+      "title": "image carousel (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_image_comparison",
+     "type": "image_comparison",
+     "props": {
+      "title": "image comparison (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_video",
+     "type": "video",
+     "props": {
+      "title": "video (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_audio",
+     "type": "audio",
+     "props": {
+      "title": "audio (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_waveform",
+     "type": "waveform",
+     "props": {
+      "title": "waveform (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_pdf_viewer",
+     "type": "pdf_viewer",
+     "props": {
+      "title": "pdf viewer (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_document_preview",
+     "type": "document_preview",
+     "props": {
+      "title": "document preview (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_annotation",
+     "type": "annotation",
+     "props": {
+      "title": "annotation (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_zoom",
+     "type": "zoom",
+     "props": {
+      "title": "zoom (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_threed_model",
+     "type": "3d_model",
+     "props": {
+      "title": "3d model (sample)",
+      "assets": [
+       {
+        "assetRef": "file:sample.png",
+        "alt": "Sample media; file not attached"
+       },
+       {
+        "assetRef": "file:sample-after.png",
+        "alt": "Sample comparison"
+       }
+      ],
+      "peaks": [
+       0.1,
+       0.3,
+       0.8,
+       0.9,
+       0.4,
+       0.2
+      ]
+     }
+    },
+    {
+     "id": "fixture_interactive_diagram",
+     "type": "interactive_diagram",
+     "props": {
+      "title": "interactive diagram (sample)",
+      "nodes": [
+       {
+        "id": "a",
+        "label": "Discover"
+       },
+       {
+        "id": "b",
+        "label": "Evaluate"
+       },
+       {
+        "id": "c",
+        "label": "Select"
+       }
+      ],
+      "edges": [
+       {
+        "source": "a",
+        "target": "b",
+        "value": 8
+       },
+       {
+        "source": "b",
+        "target": "c",
+        "value": 5
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_mermaid",
+     "type": "mermaid",
+     "props": {
+      "title": "mermaid (sample)",
+      "nodes": [
+       {
+        "id": "a",
+        "label": "Discover"
+       },
+       {
+        "id": "b",
+        "label": "Evaluate"
+       },
+       {
+        "id": "c",
+        "label": "Select"
+       }
+      ],
+      "edges": [
+       {
+        "source": "a",
+        "target": "b",
+        "value": 8
+       },
+       {
+        "source": "b",
+        "target": "c",
+        "value": 5
+       }
+      ],
+      "source": "flowchart LR\n a[Discover] --> b[Evaluate]\n b --> c[Select]"
+     }
+    },
+    {
+     "id": "fixture_flowchart",
+     "type": "flowchart",
+     "props": {
+      "title": "flowchart (sample)",
+      "nodes": [
+       {
+        "id": "a",
+        "label": "Discover"
+       },
+       {
+        "id": "b",
+        "label": "Evaluate"
+       },
+       {
+        "id": "c",
+        "label": "Select"
+       }
+      ],
+      "edges": [
+       {
+        "source": "a",
+        "target": "b",
+        "value": 8
+       },
+       {
+        "source": "b",
+        "target": "c",
+        "value": 5
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_mind_map",
+     "type": "mind_map",
+     "props": {
+      "title": "mind map (sample)",
+      "nodes": [
+       {
+        "id": "a",
+        "label": "Discover"
+       },
+       {
+        "id": "b",
+        "label": "Evaluate"
+       },
+       {
+        "id": "c",
+        "label": "Select"
+       }
+      ],
+      "edges": [
+       {
+        "source": "a",
+        "target": "b",
+        "value": 8
+       },
+       {
+        "source": "b",
+        "target": "c",
+        "value": 5
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_map",
+     "type": "map",
+     "props": {
+      "title": "map (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_pins",
+     "type": "pins",
+     "props": {
+      "title": "pins (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_clustering",
+     "type": "clustering",
+     "props": {
+      "title": "clustering (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_route",
+     "type": "route",
+     "props": {
+      "title": "route (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_8",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_itinerary",
+     "type": "itinerary",
+     "props": {
+      "title": "itinerary (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_geo_heatmap",
+     "type": "geo_heatmap",
+     "props": {
+      "title": "geo heatmap (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_region_comparison",
+     "type": "region_comparison",
+     "props": {
+      "title": "region comparison (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_distance",
+     "type": "distance",
+     "props": {
+      "title": "distance (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_map_layers",
+     "type": "map_layers",
+     "props": {
+      "title": "map layers (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_location_search",
+     "type": "location_search",
+     "props": {
+      "title": "location search (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_street_imagery",
+     "type": "street_imagery",
+     "props": {
+      "title": "street imagery (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_plan_editor",
+     "type": "plan_editor",
+     "props": {
+      "title": "plan editor (sample)",
+      "requestId": "fixture_run",
+      "planBlockId": "plan_demo"
+     }
+    },
+    {
+     "id": "fixture_execution_tree",
+     "type": "execution_tree",
+     "props": {
+      "title": "execution tree (sample)",
+      "requestId": "fixture_run",
+      "planBlockId": "plan_demo"
+     }
+    },
+    {
+     "id": "fixture_subagent_panel",
+     "type": "subagent_panel",
+     "props": {
+      "title": "subagent panel (sample)",
+      "requestId": "fixture_run",
+      "planBlockId": "plan_demo"
+     }
+    },
+    {
+     "id": "fixture_dependency_graph",
+     "type": "dependency_graph",
+     "props": {
+      "title": "dependency graph (sample)",
+      "requestId": "fixture_run",
+      "planBlockId": "plan_demo"
+     }
+    },
+    {
+     "id": "fixture_checkpoints",
+     "type": "checkpoints",
+     "props": {
+      "title": "checkpoints (sample)",
+      "requestId": "fixture_run",
+      "planBlockId": "plan_demo"
+     }
+    },
+    {
+     "id": "fixture_token_cost_monitor",
+     "type": "token_cost_monitor",
+     "props": {
+      "title": "token cost monitor (sample)",
+      "requestId": "fixture_run",
+      "planBlockId": "plan_demo"
+     }
+    },
+    {
+     "id": "fixture_human_prompt",
+     "type": "human_prompt",
+     "props": {
+      "title": "human prompt (sample)",
+      "message": "What should happen next?",
+      "submit": {
+       "label": "Send",
+       "action": {
+        "kind": "agent.request",
+        "message": "Use my selected settings"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_calculator",
+     "type": "calculator",
+     "props": {
+      "title": "calculator (sample)",
+      "inputs": [
+       {
+        "id": "price",
+        "label": "Price",
+        "value": 100,
+        "min": 0,
+        "max": 1000
+       },
+       {
+        "id": "count",
+        "label": "Quantity",
+        "value": 3,
+        "min": 0,
+        "max": 100
+       }
+      ],
+      "operation": "multiply",
+      "scenarios": [
+       {
+        "label": "One extra",
+        "values": {
+         "count": 4
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_scenario_simulator",
+     "type": "scenario_simulator",
+     "props": {
+      "title": "scenario simulator (sample)",
+      "inputs": [
+       {
+        "id": "price",
+        "label": "Price",
+        "value": 100,
+        "min": 0,
+        "max": 1000
+       },
+       {
+        "id": "count",
+        "label": "Quantity",
+        "value": 3,
+        "min": 0,
+        "max": 100
+       }
+      ],
+      "operation": "multiply",
+      "scenarios": [
+       {
+        "label": "One extra",
+        "values": {
+         "count": 4
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_scenario_comparison",
+     "type": "scenario_comparison",
+     "props": {
+      "title": "scenario comparison (sample)",
+      "inputs": [
+       {
+        "id": "price",
+        "label": "Price",
+        "value": 100,
+        "min": 0,
+        "max": 1000
+       },
+       {
+        "id": "count",
+        "label": "Quantity",
+        "value": 3,
+        "min": 0,
+        "max": 100
+       }
+      ],
+      "operation": "multiply",
+      "scenarios": [
+       {
+        "label": "One extra",
+        "values": {
+         "count": 4
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_decision_matrix",
+     "type": "decision_matrix",
+     "props": {
+      "title": "decision matrix (sample)",
+      "inputs": [
+       {
+        "id": "quality",
+        "label": "Quality",
+        "value": 1,
+        "weight": 2
+       },
+       {
+        "id": "speed",
+        "label": "Speed",
+        "value": 1,
+        "weight": 1
+       }
+      ],
+      "operation": "weighted_average",
+      "scenarios": [
+       {
+        "label": "Option A (sample)",
+        "values": {
+         "quality": 8,
+         "speed": 6
+        }
+       },
+       {
+        "label": "Option B (sample)",
+        "values": {
+         "quality": 6,
+         "speed": 9
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_weighted_scoring",
+     "type": "weighted_scoring",
+     "props": {
+      "title": "weighted scoring (sample)",
+      "inputs": [
+       {
+        "id": "quality",
+        "label": "Quality",
+        "value": 1,
+        "weight": 2
+       },
+       {
+        "id": "speed",
+        "label": "Speed",
+        "value": 1,
+        "weight": 1
+       }
+      ],
+      "operation": "weighted_average",
+      "scenarios": [
+       {
+        "label": "Option A (sample)",
+        "values": {
+         "quality": 8,
+         "speed": 6
+        }
+       },
+       {
+        "label": "Option B (sample)",
+        "values": {
+         "quality": 6,
+         "speed": 9
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_budget_allocator",
+     "type": "budget_allocator",
+     "props": {
+      "title": "budget allocator (sample)",
+      "inputs": [
+       {
+        "id": "price",
+        "label": "Price",
+        "value": 100,
+        "min": 0,
+        "max": 1000
+       },
+       {
+        "id": "count",
+        "label": "Quantity",
+        "value": 3,
+        "min": 0,
+        "max": 100
+       }
+      ],
+      "operation": "budget",
+      "scenarios": [
+       {
+        "label": "One extra",
+        "values": {
+         "count": 4
+        }
+       }
+      ],
+      "budget": 500
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_9",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_filter_builder",
+     "type": "filter_builder",
+     "props": {
+      "title": "filter builder (sample)",
+      "inputs": [
+       {
+        "id": "price",
+        "label": "Price",
+        "value": 100,
+        "min": 0,
+        "max": 1000
+       },
+       {
+        "id": "count",
+        "label": "Quantity",
+        "value": 3,
+        "min": 0,
+        "max": 100
+       }
+      ],
+      "operation": "multiply",
+      "scenarios": [
+       {
+        "label": "One extra",
+        "values": {
+         "count": 4
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_rule_builder",
+     "type": "rule_builder",
+     "props": {
+      "title": "rule builder (sample)",
+      "inputs": [
+       {
+        "id": "price",
+        "label": "Price",
+        "value": 100,
+        "min": 0,
+        "max": 1000
+       },
+       {
+        "id": "count",
+        "label": "Quantity",
+        "value": 3,
+        "min": 0,
+        "max": 100
+       }
+      ],
+      "operation": "multiply",
+      "scenarios": [
+       {
+        "label": "One extra",
+        "values": {
+         "count": 4
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_wizard",
+     "type": "wizard",
+     "props": {
+      "title": "wizard (sample)",
+      "steps": [
+       {
+        "id": "topic",
+        "label": "Choose topic",
+        "fields": [
+         {
+          "id": "topic",
+          "label": "Topic",
+          "required": true
+         }
+        ]
+       },
+       {
+        "id": "details",
+        "label": "Add details",
+        "fields": [
+         {
+          "id": "detail",
+          "label": "Detail"
+         }
+        ]
+       }
+      ],
+      "submit": {
+       "label": "Send",
+       "action": {
+        "kind": "agent.request",
+        "message": "Use my selected settings"
+       }
+      }
+     }
+    },
+    {
+     "id": "fixture_checklist",
+     "type": "checklist",
+     "props": {
+      "title": "checklist (sample)",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research options",
+        "checked": true
+       },
+       {
+        "id": "review",
+        "label": "Review findings"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_calendar",
+     "type": "calendar",
+     "props": {
+      "title": "calendar (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_agenda",
+     "type": "agenda",
+     "props": {
+      "title": "agenda (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_event",
+     "type": "event",
+     "props": {
+      "title": "event (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_availability_grid",
+     "type": "availability_grid",
+     "props": {
+      "title": "availability grid (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_kanban",
+     "type": "kanban",
+     "props": {
+      "title": "kanban (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_reminder",
+     "type": "reminder",
+     "props": {
+      "title": "reminder (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_recurring_schedule",
+     "type": "recurring_schedule",
+     "props": {
+      "title": "recurring schedule (sample)",
+      "frequency": "weekly",
+      "interval": 1,
+      "start": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_time_tracker",
+     "type": "time_tracker",
+     "props": {
+      "title": "time tracker (sample)",
+      "elapsedSeconds": 0
+     }
+    },
+    {
+     "id": "fixture_weather",
+     "type": "weather",
+     "props": {
+      "title": "weather (sample)",
+      "columns": [
+       {
+        "id": "day",
+        "label": "day",
+        "type": "text"
+       },
+       {
+        "id": "high_c",
+        "label": "high c",
+        "type": "number"
+       },
+       {
+        "id": "low_c",
+        "label": "low c",
+        "type": "number"
+       },
+       {
+        "id": "condition",
+        "label": "condition",
+        "type": "text"
+       }
+      ],
+      "rows": [
+       {
+        "day": "2026-10-27",
+        "high_c": 22,
+        "low_c": 14,
+        "condition": "Clear"
+       },
+       {
+        "day": "2026-10-28",
+        "high_c": 20,
+        "low_c": 13,
+        "condition": "Cloudy"
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_sports",
+     "type": "sports",
+     "props": {
+      "title": "sports (sample)",
+      "columns": [
+       {
+        "id": "team",
+        "label": "team",
+        "type": "text"
+       },
+       {
+        "id": "score",
+        "label": "score",
+        "type": "number"
+       },
+       {
+        "id": "status",
+        "label": "status",
+        "type": "text"
+       }
+      ],
+      "rows": [
+       {
+        "team": "Home (sample)",
+        "score": 2,
+        "status": "Final"
+       },
+       {
+        "team": "Away (sample)",
+        "score": 1,
+        "status": "Final"
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_stocks",
+     "type": "stocks",
+     "props": {
+      "title": "stocks (sample)",
+      "columns": [
+       {
+        "id": "date",
+        "label": "date",
+        "type": "text"
+       },
+       {
+        "id": "close",
+        "label": "close",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "date": "2026-10-20",
+        "close": 10
+       },
+       {
+        "date": "2026-10-21",
+        "close": 12
+       },
+       {
+        "date": "2026-10-22",
+        "close": 11
+       },
+       {
+        "date": "2026-10-23",
+        "close": 13
+       },
+       {
+        "date": "2026-10-24",
+        "close": 15
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_financial_statement",
+     "type": "financial_statement",
+     "props": {
+      "title": "financial statement (sample)",
+      "columns": [
+       {
+        "id": "item",
+        "label": "item",
+        "type": "text"
+       },
+       {
+        "id": "usd",
+        "label": "usd",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "item": "Revenue (sample)",
+        "usd": 12000
+       },
+       {
+        "item": "Operating expenses (sample)",
+        "usd": 8000
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_currency_conversion",
+     "type": "currency_conversion",
+     "props": {
+      "title": "currency conversion (sample)",
+      "value": 10,
+      "from": "m",
+      "to": "cm",
+      "rate": 100,
+      "source": "SI scale"
+     }
+    },
+    {
+     "id": "fixture_unit_conversion",
+     "type": "unit_conversion",
+     "props": {
+      "title": "unit conversion (sample)",
+      "value": 10,
+      "from": "m",
+      "to": "cm",
+      "rate": 100,
+      "source": "SI scale"
+     }
+    },
+    {
+     "id": "fixture_shopping_comparison",
+     "type": "shopping_comparison",
+     "props": {
+      "title": "shopping comparison (sample)",
+      "columns": [
+       {
+        "id": "product",
+        "label": "product",
+        "type": "text"
+       },
+       {
+        "id": "price_usd",
+        "label": "price usd",
+        "type": "number"
+       },
+       {
+        "id": "feature",
+        "label": "feature",
+        "type": "text"
+       }
+      ],
+      "rows": [
+       {
+        "product": "Option A (sample)",
+        "price_usd": 100,
+        "feature": "Long battery life"
+       },
+       {
+        "product": "Option B (sample)",
+        "price_usd": 80,
+        "feature": "Compact"
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_restaurants",
+     "type": "restaurants",
+     "props": {
+      "title": "restaurants (sample)",
+      "columns": [
+       {
+        "id": "name",
+        "label": "name",
+        "type": "text"
+       },
+       {
+        "id": "cuisine",
+        "label": "cuisine",
+        "type": "text"
+       },
+       {
+        "id": "rating",
+        "label": "rating",
+        "type": "number"
+       },
+       {
+        "id": "price",
+        "label": "price",
+        "type": "text"
+       }
+      ],
+      "rows": [
+       {
+        "name": "Example cafe (sample)",
+        "cuisine": "Cafe",
+        "rating": 4.2,
+        "price": "$$"
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    }
+   ]
+  },
+  {
+   "version": "1.0",
+   "responseId": "resp_all_10",
+   "datasets": {
+    "revenue": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "month",
+       "label": "Month"
+      },
+      {
+       "id": "revenue",
+       "label": "Revenue",
+       "type": "currency"
+      },
+      {
+       "id": "costs",
+       "label": "Costs",
+       "type": "currency"
+      }
+     ],
+     "rows": [
+      {
+       "month": "Jan",
+       "revenue": 18200,
+       "costs": 12100
+      },
+      {
+       "month": "Feb",
+       "revenue": 19900,
+       "costs": 12600
+      },
+      {
+       "month": "Mar",
+       "revenue": 21400,
+       "costs": 13300
+      },
+      {
+       "month": "Apr",
+       "revenue": 20800,
+       "costs": 13100
+      },
+      {
+       "month": "May",
+       "revenue": 23100,
+       "costs": 13900
+      },
+      {
+       "month": "Jun",
+       "revenue": 24500,
+       "costs": 14200
+      }
+     ]
+    },
+    "options": {
+     "source": "Sample data for the component gallery. Not a real result.",
+     "columns": [
+      {
+       "id": "name",
+       "label": "Option"
+      },
+      {
+       "id": "price",
+       "label": "Price",
+       "type": "currency"
+      },
+      {
+       "id": "rating",
+       "label": "Rating",
+       "type": "rating"
+      },
+      {
+       "id": "status",
+       "label": "Status",
+       "type": "status"
+      }
+     ],
+     "rows": [
+      {
+       "name": "Alpha",
+       "price": 120,
+       "rating": 4.6,
+       "status": "success"
+      },
+      {
+       "name": "Beta",
+       "price": 95,
+       "rating": 4.1,
+       "status": "warning"
+      },
+      {
+       "name": "Gamma",
+       "price": 150,
+       "rating": 4.8,
+       "status": "success"
+      },
+      {
+       "name": "Delta",
+       "price": 80,
+       "rating": 3.7,
+       "status": "error"
+      }
+     ]
+    }
+   },
+   "blocks": [
+    {
+     "id": "fixture_reservations",
+     "type": "reservations",
+     "props": {
+      "title": "reservations (sample)",
+      "columns": [
+       {
+        "id": "venue",
+        "label": "venue",
+        "type": "text"
+       },
+       {
+        "id": "date",
+        "label": "date",
+        "type": "text"
+       },
+       {
+        "id": "time",
+        "label": "time",
+        "type": "text"
+       },
+       {
+        "id": "party_size",
+        "label": "party size",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "venue": "Example cafe (sample)",
+        "date": "2026-10-27",
+        "time": "18:30",
+        "party_size": 2
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_travel_itinerary",
+     "type": "travel_itinerary",
+     "props": {
+      "title": "travel itinerary (sample)",
+      "month": "2026-10",
+      "items": [
+       {
+        "id": "research",
+        "label": "Research",
+        "start": "2026-10-27",
+        "end": "2026-10-28",
+        "detail": "Illustrative item"
+       },
+       {
+        "id": "review",
+        "label": "Review",
+        "start": "2026-10-29"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_health_trends",
+     "type": "health_trends",
+     "props": {
+      "title": "health trends (sample)",
+      "columns": [
+       {
+        "id": "date",
+        "label": "date",
+        "type": "text"
+       },
+       {
+        "id": "value",
+        "label": "value",
+        "type": "number"
+       }
+      ],
+      "rows": [
+       {
+        "date": "2026-10-20",
+        "value": 55
+       },
+       {
+        "date": "2026-10-21",
+        "value": 56
+       },
+       {
+        "date": "2026-10-22",
+        "value": 54
+       },
+       {
+        "date": "2026-10-23",
+        "value": 58
+       },
+       {
+        "date": "2026-10-24",
+        "value": 57
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
+    {
+     "id": "fixture_repository_tree",
+     "type": "repository_tree",
+     "props": {
+      "title": "repository tree (sample)",
+      "nodes": [
+       {
+        "id": "src",
+        "label": "src"
+       },
+       {
+        "id": "app",
+        "label": "App.tsx",
+        "parent": "src",
+        "detail": "Application entry"
+       }
+      ]
+     }
+    },
+    {
+     "id": "fixture_api_inspector",
+     "type": "api_inspector",
+     "props": {
+      "title": "api inspector (sample)",
+      "status": 200,
+      "headers": {
+       "content_type": "application/json"
+      },
+      "body": "{\"sample\":true}"
+     }
     }
    ]
   },
@@ -1090,6 +6126,100 @@
   }
  ],
  "invalid": [
+  {
+   "name": "invalid calendar date",
+   "block": {
+    "id": "x",
+    "type": "calendar",
+    "props": {
+     "items": [
+      {
+       "id": "e",
+       "label": "Event",
+       "start": "2026-02-30"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "reversed schedule",
+   "block": {
+    "id": "x",
+    "type": "gantt",
+    "props": {
+     "items": [
+      {
+       "id": "e",
+       "label": "Event",
+       "start": "2026-10-28",
+       "end": "2026-10-27"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "unknown graph edge",
+   "block": {
+    "id": "x",
+    "type": "network_graph",
+    "props": {
+     "nodes": [
+      {
+       "id": "a",
+       "label": "A"
+      }
+     ],
+     "edges": [
+      {
+       "source": "a",
+       "target": "missing"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "missing candle measures",
+   "block": {
+    "id": "x",
+    "type": "candlestick_chart",
+    "props": {
+     "labelKey": "name",
+     "valueKey": "close",
+     "data": [
+      {
+       "name": "A",
+       "close": 2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "choice without options",
+   "block": {
+    "id": "x",
+    "type": "form",
+    "props": {
+     "fields": [
+      {
+       "id": "choice",
+       "type": "select",
+       "label": "Choose"
+      }
+     ],
+     "submit": {
+      "label": "Send",
+      "action": {
+       "kind": "agent.request",
+       "message": "Continue the task"
+      }
+     }
+    }
+   }
+  },
   {
    "name": "html in text",
    "block": {

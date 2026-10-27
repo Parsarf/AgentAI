@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { blockSchema, parseBlock, presentationPlanSchema, actionSchema, IMPLEMENTED_TYPES, treeShape } from './schemas';
 import { COMPONENT_VARIANTS, checkCombination, FAMILY_VARIANTS } from './variants';
 import { MANIFEST, byId, offerable, search } from './manifest';
-import { ADAPTER_ONLY, OFFERED, REGISTRY, modelCatalog, schemaSummary, unsupportedReason } from './registry';
+import { ADAPTER_ONLY, OFFERED, REGISTRY, compactCatalog, modelCatalog, schemaSummary, unsupportedReason } from './registry';
 import { EnvelopeStream, fromPlainText, initialStream, migrate, parseDocument, parseFence, reduce, splitReply, type StreamEvent, type StreamState } from './protocol';
 import { Dispatcher, formMessage, type ActionEnv, type AuditEntry } from './actions';
 import { safeFilePath, safeHttpUrl, safeInternalPath } from './safety';
@@ -77,14 +77,14 @@ describe('manifest and registry', () => {
   it('the model catalog lists only offered components', () => {
     const cat = modelCatalog(); for (const t of OFFERED) expect(cat).toContain(`${t}:`);
     for (const t of ADAPTER_ONLY) expect(cat).not.toContain(`${t}:`);
-    expect(cat).not.toMatch(/\b(map|kanban|gantt|sankey)\b:/);
-    expect(cat.length / 4).toBeLessThan(2600);                     // rough token budget for the always-on catalog (chars/4)
+    expect(cat).toMatch(/\bmap:/); expect(cat).toMatch(/\bkanban:/);
+    expect(compactCatalog().length / 4).toBeLessThan(2200);                     // rough token budget for the always-on catalog (chars/4)
   });
   it('registry entries carry the contract fields', () => {
-    for (const t of OFFERED) { const r = REGISTRY[t]; expect(r.useWhen && r.avoidWhen && r.schemaRef && r.rendererKey).toBeTruthy(); expect(r.supportedActions).not.toContain('file.download'); }
-    expect(schemaSummary('metric_card')).toMatch(/label, value/); expect(schemaSummary('nope')).toBeNull(); expect(unsupportedReason('gantt')).toMatch(/planned/);
+    for (const t of OFFERED) { const r = REGISTRY[t]; expect(r.useWhen && r.avoidWhen && r.schemaRef && r.rendererKey).toBeTruthy(); expect(r.supportedActions.every(a => ['local.sort', 'local.filter', 'local.expand', 'local.select', 'local.update', 'file.download', 'agent.request', 'navigate.internal', 'agent.retry', 'agent.approve', 'agent.deny'].includes(a))).toBe(true); }
+    expect(schemaSummary('metric_card')).toMatch(/label, value/); expect(schemaSummary('nope')).toBeNull(); expect(unsupportedReason('gantt')).toMatch(/implemented/);
   });
-  it('is searchable', () => { expect(search('kanban')[0].status).toBe('planned'); expect(search('', { status: 'unsupported' }).every(e => e.status === 'unsupported')).toBe(true); });
+  it('is searchable', () => { expect(search('kanban')[0].status).toBe('implemented'); expect(search('', { status: 'unsupported' }).every(e => e.status === 'unsupported')).toBe(true); });
 });
 
 describe('documents and migration', () => {

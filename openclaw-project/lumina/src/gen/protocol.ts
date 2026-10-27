@@ -3,7 +3,8 @@
 // Wire format inside a reply: prose first (streams at once), then optionally one ```lumina-doc fence. The fence body is either a single JSON document
 // or JSON Lines: an optional header {"version":"1.0","responseId":"..."}, {"dataset":"id",...} lines, and one block per line. A line is parsed only when it is
 // complete, so no incomplete JSON is ever parsed and every finished block can mount while later ones are still arriving.
-import { documentSchema, parseBlock, datasetSchema, LIMITS, SCHEMA_VERSION, presentationPlanSchema, type Block, type Dataset, type PresentationPlan, type BlockIssue } from './schemas';
+import { REGISTRY } from './registry';
+import { documentSchema, treeShape, children, parseBlock, datasetSchema, LIMITS, SCHEMA_VERSION, presentationPlanSchema, type Block, type Dataset, type PresentationPlan, type BlockIssue } from './schemas';
 
 export type Slot =
   | { status: 'ready'; id: string; block: Block; fallback: string }
@@ -23,14 +24,24 @@ export function fallbackText(raw: unknown): string {
 
 export const slotFor = (raw: unknown): Slot => {
   const r = parseBlock(raw);
-  if (r.ok) return { status: 'ready', id: r.block.id, block: r.block, fallback: fallbackText(r.block) };
+  if (r.ok) { const problem = actionIssue(r.block.props, REGISTRY[r.block.type].supportedActions); if (problem) return { status: 'invalid', id: r.block.id, type: r.block.type, reason: problem, fallback: fallbackText(raw) }; return { status: 'ready', id: r.block.id, block: r.block, fallback: fallbackText(r.block) }; }
   return { status: 'invalid', id: r.issue.id, type: r.issue.type, reason: r.issue.reason, fallback: fallbackText(raw) };
 };
+
+function actionIssue(value: unknown, allowed: readonly string[]): string | null {
+  if (!value || typeof value !== 'object') return null;
+  if (Array.isArray(value)) { for (const v of value) { const issue = actionIssue(v, allowed); if (issue) return issue; } return null; }
+  const v = value as Record<string, unknown>;
+  if ('type' in v && 'props' in v) return null; // child nodes have their own capabilities
+  if (typeof v.kind === 'string' && !allowed.includes(v.kind)) return `action ${v.kind} is not supported by this component`;
+  for (const item of Object.values(v)) { const issue = actionIssue(item, allowed); if (issue) return issue; }
+  return null;
+}
 
 /** Document-wide checks the per-block schema cannot see: every dataRef must resolve to a dataset in this document. */
 function resolveRefs(slots: Slot[], datasets: Record<string, Dataset>): Slot[] {
   return slots.map(s => {
-    if (s.status !== 'ready' || !s.block.dataRef || s.block.dataRef in datasets) return s;
+    if (s.status !== 'ready' || !s.block.dataRef || Object.hasOwn(datasets, s.block.dataRef)) return s;
     return { status: 'invalid', id: s.id, type: s.block.type, reason: `dataRef "${s.block.dataRef}" does not exist in this response`, fallback: s.fallback };
   });
 }
@@ -48,6 +59,7 @@ export function fromPlainText(content: string, responseId = 'legacy'): GenDocume
 export function migrate(raw: unknown): { ok: true; value: unknown } | { ok: false; reason: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, reason: 'not an object' };
   const rec = { ...(raw as Record<string, unknown>) };
+  if (rec.type === 'document') delete rec.type; // persisted envelope, not a second document field
   if (rec.version === undefined && Array.isArray(rec.blocks)) rec.version = SCHEMA_VERSION;       // 0.x: documents written before the version field
   if (typeof rec.version !== 'string' || rec.version.split('.')[0] !== SCHEMA_VERSION.split('.')[0]) return { ok: false, reason: `unsupported version ${String(rec.version)}` };
   rec.version = SCHEMA_VERSION;                                                                     // 1.x minor differences are ignored fields-wise by the strict schema, so only 1.0 is accepted below
@@ -60,11 +72,26 @@ export function parseDocument(raw: unknown): GenDocument | { error: string } {
   if (!m.ok) return { error: m.reason };
   const env = documentSchema.safeParse(m.value);
   if (!env.success) return { error: env.error.issues[0]?.message ?? 'invalid document' };
+  const shape = treeShape(env.data.blocks);
+  if (shape.count > LIMITS.nested || shape.depth > LIMITS.depth) return { error: 'document nesting limit exceeded' };
   const datasets: Record<string, Dataset> = {};
   for (const [k, v] of Object.entries(env.data.datasets ?? {})) { const d = datasetSchema.safeParse(v); if (d.success) datasets[k] = d.data; }
   const seen = new Set<string>();
   const slots = resolveRefs(env.data.blocks.map(slotFor).filter(s => (seen.has(s.id) ? false : (seen.add(s.id), true))), datasets);
-  return { version: SCHEMA_VERSION, responseId: env.data.responseId, slots, datasets, presentationPlan: env.data.presentationPlan, issues: slots.filter(s => s.status === 'invalid').map(s => ({ id: s.id, type: (s as any).type, reason: (s as any).reason })) };
+  const nodeIds = new Set<string>();
+  const checked = slots.map(s => {
+    if (s.status !== 'ready') return s;
+    const stack: any[] = [s.block]; let duplicate = false;
+    while (stack.length) { const node = stack.pop(); if (nodeIds.has(node.id)) duplicate = true; nodeIds.add(node.id); stack.push(...children(node)); }
+    if (duplicate) return { status: 'invalid' as const, id: s.id, type: s.block.type, reason: 'duplicate node id', fallback: s.fallback };
+    const hint = env.data.presentationPlan?.blocks.find(h => h.blockId === s.id);
+    if (hint?.layout && !s.block.layout) {
+      const layout = hint.layout === 'grid' ? { columns: 2 } : hint.layout === 'horizontal' ? { direction: 'row' as const } : { direction: 'column' as const };
+      return { ...s, block: { ...s.block, layout } };
+    }
+    return s;
+  });
+  return { version: SCHEMA_VERSION, responseId: env.data.responseId, slots: checked, datasets, presentationPlan: env.data.presentationPlan, issues: checked.filter(s => s.status === 'invalid').map(s => ({ id: s.id, type: (s as any).type, reason: (s as any).reason })) };
 }
 
 // ---- reply splitting -------------------------------------------------------------------------------------------------------------------------

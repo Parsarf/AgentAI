@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ICON, type ActivityItem } from '../../lib/activity';
 import { cx, type P } from './types';
 import { useGen } from './context';
@@ -52,10 +53,12 @@ export function approvalView(state: string | undefined, runStatus?: string): { l
   return { label: 'Not reached yet', tone: 'idle', can: false };
 }
 export function ApprovalRequest({ block }: P<'approval_request'>) {
-  const g = useGen(); const { planBlockId, phaseId, reason } = block.props; const plan = g.exec.plan(planBlockId);
+  const g = useGen(); const { planBlockId, phaseId, reason, expiresEpoch } = block.props; const plan = g.exec.plan(planBlockId);
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => { if (!expiresEpoch) return; const id = window.setTimeout(() => setNow(Date.now() / 1000), Math.max(0, Math.min(2147483647, (expiresEpoch - Date.now() / 1000) * 1000))); return () => clearTimeout(id); }, [expiresEpoch]);
   const phase = plan?.phases.find(p => p.id === phaseId);
   if (!plan || !phase) return <Missing what="That step is not part of this chat." />;
-  const v = approvalView(plan.run[phaseId]?.state, plan.run_status);
+  const v = expiresEpoch && now >= expiresEpoch ? { label: 'Expired', tone: 'idle' as const, can: false } : approvalView(plan.run[phaseId]?.state, plan.run_status);
   return <div className="gen-approval" role="group" aria-label={`Approval: ${phase.title}`}>
     <div className="gen-agent-h"><strong>{phase.title}</strong><StatusPill status={v.tone} label={v.label} /></div>
     {phase.description && <p>{phase.description}</p>}{reason && <p className="faint">Why: {reason}</p>}

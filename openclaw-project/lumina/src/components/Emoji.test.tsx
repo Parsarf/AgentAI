@@ -43,9 +43,9 @@ describe('emoji in agent replies', () => {
     expect(screen.getByRole('link', { name: /View image/ }).getAttribute('href')).toBe('https://example.com/chart.png');
   });
 
-  it('still turns the reported JSON into a table card when it contains emoji, with pictures in its cells', () => {
+  it('still turns the reported JSON into a registry table when it contains emoji, with pictures in its cells', async () => {
     const { container } = render(<AgentResponse content={'Here is the guide:\n\n' + spicy + '\n\nWant more?'} />);
-    expect(screen.getByRole('table')).toBeTruthy();
+    expect(await screen.findByRole('table')).toBeTruthy();
     expect(container.textContent).not.toContain('schemaVersion');           // no raw JSON
     const cells = [...container.querySelectorAll('td')];
     expect(imgs(cells[1]).length).toBe(4);                                 // 🌶️ x4 in the first row's heat cell

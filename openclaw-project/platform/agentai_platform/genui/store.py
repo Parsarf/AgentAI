@@ -8,7 +8,7 @@ from agentai_platform.lifecycle.coordinator import Coordinator, identifier
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import NotFound, Principal
 
-from . import data as datacards, document, schema
+from . import document, schema
 
 
 def _public(row, con=None) -> dict:
@@ -45,17 +45,18 @@ def _public_base(row) -> dict:
             'created_epoch': row['created_epoch'], 'updated_epoch': row['updated_epoch']}
 
 
-def _card(row) -> dict:
+def _card(row, con=None) -> dict:
+    meta = con.execute('SELECT * FROM gen_artifact_state WHERE account_id=? AND artifact_id=?', (row['account_id'], row['id'])).fetchone() if con is not None and row['kind'] == 'document' else None
     return {'id': row['id'], 'conversation_id': row['conversation_id'], 'anchor_message_id': row['anchor_message_id'], 'kind': row['kind'],
-            'schema_version': '1.0', 'spec': json.loads(row['spec_json']), 'state': {}, 'version': 1, 'status': 'final', 'launched_request_id': None,
+            'state_revision': meta['state_revision'] if meta else 1,
+            'schema_version': '1.0', 'spec': json.loads(row['spec_json']), 'state': json.loads(meta['state_json']) if meta else {}, 'version': meta['version'] if meta else 1, 'status': 'final', 'launched_request_id': None,
             'created_epoch': row['created_epoch'], 'updated_epoch': row['created_epoch']}
 
 
 class BlockStore:
-    def __init__(self, store, *, clock=time.time, images=None):
+    def __init__(self, store, *, clock=time.time):
         self.store, self.clock = store, clock
         self.coordinator = Coordinator(store, clock=clock)
-        self.images = images             # genui.images.CardImages, or None: comparison cards then carry no pictures
 
     # -- creation: server code only, never reachable from a client request body -------------------------------------
     def create_form(self, account_id, conversation_id, spec, *, key, anchor_message_id=None, source_request_id=None, con=None) -> dict:
@@ -99,7 +100,7 @@ class BlockStore:
             out = [_public(r, con) for r in rows]
             cards = con.execute('SELECT * FROM data_blocks WHERE account_id=? AND conversation_id=? ORDER BY created_epoch,position LIMIT 100',
                                 (principal.account_id, conversation_id)).fetchall()
-            return out + [_card(c) for c in cards]
+            return out + [_card(c, con) for c in cards]
 
     def get(self, principal: Principal, block_id: str, con=None) -> dict:
         identifier(block_id)
@@ -159,19 +160,22 @@ class BlockStore:
         return True
 
     def attach_cards(self, account_id, conversation_id, request_id) -> int:
-        """Move ```lumina fences out of this request's agent messages into validated cards. Returns how many cards were stored.
-        Pictures for comparison cards are found first, with no database transaction open (fetching can take seconds); the write then re-checks that nobody got there first."""
+        """Attach registry documents or apply a versioned continuation update; historical messages stay intact."""
         with self.store.connect() as con:
             rows = [dict(r) for r in con.execute("SELECT id,content FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance='agent' "
-                                                 "AND content LIKE '%```lumina%' ORDER BY id", (account_id, conversation_id, request_id)).fetchall()]
+                                                 "AND content LIKE '%```lumina-doc%' ORDER BY id", (account_id, conversation_id, request_id)).fetchall()]
+        with self.store.connect() as con:
+            ctx = con.execute('SELECT context_json FROM customer_requests WHERE account_id=? AND id=?', (account_id, request_id)).fetchone()
+        request_context = json.loads(ctx['context_json'] or '{}') if ctx else {}
+        try:
+            tier = request_context.get('ui', document.DEFAULT_TIER)
+        except ValueError:
+            tier = document.DEFAULT_TIER
+        if tier not in document.TIERS:
+            tier = document.DEFAULT_TIER
         prepared = []
         for row in rows:
-            clean, specs = datacards.extract(row['content'])
-            clean = datacards.trim_repeats(clean, specs)                 # the same places or products listed again above their card are shown once, in the card
-            if self.images is not None:
-                specs = [self.images.enrich(account_id, spec) if spec['type'] in datacards.WITH_PICTURES else spec for spec in specs]
-            clean, docs = document.extract_documents(clean)              # a composed answer (```lumina-doc): validated here, stored once, shown from the stored copy
-            specs = specs[:3] + docs
+            clean, specs = document.extract_documents(row['content'], tier)
             prepared.append((row, clean, specs))
         made = 0
         with self.coordinator.transaction() as con:
@@ -180,6 +184,17 @@ class BlockStore:
                 if now is None or now['content'] != row['content']:
                     continue                                   # already handled (or edited) while pictures were being fetched
                 for spec in specs:
+                    target = spec.get('artifactId')
+                    if target:
+                        from .artifacts import ArtifactStore, strict_document
+                        interaction = request_context.get('ui_artifact') or {}
+                        prior = con.execute("SELECT * FROM data_blocks WHERE account_id=? AND id=? AND conversation_id=? AND kind='document'", (account_id, target, conversation_id)).fetchone()
+                        meta = con.execute('SELECT * FROM gen_artifact_state WHERE account_id=? AND artifact_id=?', (account_id, target)).fetchone()
+                        if prior and meta and interaction.get('artifact_id') == target and spec.get('baseVersion') == meta['version']:
+                            value = strict_document({k: v for k, v in spec.items() if k != 'type'})
+                            ArtifactStore(self.store, self.clock).replace(con, account_id, target, prior, meta, value)
+                            made += 1
+                        continue
                     cur = con.execute('SELECT coalesce(max(position),-1)+1 FROM data_blocks WHERE account_id=? AND source_request_id=?', (account_id, request_id)).fetchone()[0]
                     con.execute('INSERT OR IGNORE INTO data_blocks(account_id,id,conversation_id,anchor_message_id,kind,spec_json,source_request_id,position,created_epoch) '
                                 'VALUES (?,?,?,?,?,?,?,?,?)', (account_id, uuid.uuid4().hex, conversation_id, row['id'], spec['type'], json.dumps(spec), request_id, cur, int(self.clock())))

@@ -193,15 +193,11 @@ Customers can keep a login or a card (Settings, Saved info). Each item is sealed
 - Backups hold only the sealed rows. `vault_items` is never restored from a backup, so an item a customer deleted cannot come back.
 - Install `cryptography` with the rest of `requirements.lock` (`pip install --require-hashes --no-deps -r requirements.lock`); the lock lists hashes for CPython 3.12-3.14 on Linux x86_64 and aarch64.
 
-## Pictures on comparison cards (off by default)
+## Generative UI files and migration
 
-When the assistant answers with a comparison card, the request worker can attach a picture to each option. The platform fetches the option's own `link` page (its `og:image`, the product's JSON-LD image or the Twitter card image), checks the file, keeps it in the `card_images` table (per account, included in backup/restore) and puts only its id on the card. The browser loads it from `GET /v1/media/<id>` on our own origin, so it never contacts the store or any other third-party site.
+The registry protocol is `lumina-doc`; automatic page/image fetching and its `AGENTAI_CARD_IMAGES` / `AGENTAI_BRAVE_IMAGE_KEY_FILE` switches have been retired. Existing `card_images` rows remain account-scoped and readable through `/v1/media/{id}`. Do not delete historical conversations or artifacts.
 
-- Enable with `AGENTAI_CARD_IMAGES=1` in the request worker's environment (`/etc/agentai-platform/accounts.env`). Without it cards are exactly as before.
-- Optional fallback when a page has no usable picture: `AGENTAI_BRAVE_IMAGE_KEY_FILE=<file holding a Brave key on a plan that includes Image Search>`. The platform does not otherwise hold the Brave key (the assistant's search plugin does), so this is a separate, deliberate grant. Results are used only when their title matches the option's name.
-- Safety: only public addresses (private, loopback, link-local and cloud-metadata ranges are refused, every redirect is re-checked, the connection is pinned to the checked address), ports 80/443 only, page ≤ 300 KB, picture ≤ 700 KB, still JPEG/PNG/WebP only (identified from the bytes; no SVG, GIF or animation), 150–6000 px per side, not a thin banner. There is no resizing (no image library on the platform): a picture is kept as it is or not at all.
-- Cost: at most about 7 seconds is added to finishing an answer that has a comparison card; every failure just leaves that option without a picture. The model cannot supply `image` itself; only this step can.
-- Pictures are not deleted automatically yet; each is at most 700 KB.
+New images, media and downloads resolve only references present in a stored document, inside its conversation project. The asset endpoint rechecks ownership, MIME type and size; project uploads use the existing scanned-files pipeline and generated files use single-use artifact tickets internally. Documents never auto-fetch arbitrary external URLs. See `docs/generative-ui/protocol.md` for artifact events, versions and state recovery.
 
 ## Native execution: running it, watching it, rolling it back
 

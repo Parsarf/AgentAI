@@ -27,6 +27,8 @@ def _guard(request, name):
 def _run(fn):
     try:
         return fn()
+    except ValueError as error:
+        return JsonResponse({'error': 'invalid_ui_document', 'detail': str(error)[:300]}, status=400)
     except NotFound:
         raise Denied()
     except Conflict:
@@ -92,3 +94,48 @@ def block_stop(request, block_id):
     if denied:
         return denied
     return _run(lambda: JsonResponse({'block': service().runner.stop(principal(request), block_id)}))
+
+
+@endpoint(['GET'])
+def component_registry(request):
+    denied = customer(request)
+    if denied:
+        return denied
+    from agentai_platform.genui.document import registry
+    reg = registry()
+    if request.GET.get('root') == '1':
+        return JsonResponse(reg['blockSchema'])
+    component = request.GET.get('component')
+    if component:
+        option = next((o for o in reg['blockSchema'].get('oneOf', []) if o.get('properties', {}).get('type', {}).get('const') == component), None)
+        if not option:
+            return JsonResponse({'error': 'unknown_component'}, status=404)
+        return JsonResponse({'component': component, 'schema': option, 'recursiveSchemaUrl': '/v1/genui/registry?root=1', **reg['entries'].get(component, {})})
+    return JsonResponse({'version': reg['schemaVersion'], 'components': reg['catalogCompact'], 'limits': reg['limits']})
+
+
+@endpoint(['POST'], ['version', 'state_revision', 'state'], structured=True)
+def artifact_state(request, artifact_id):
+    denied = _guard(request, 'block.write')
+    if denied:
+        return denied
+    from agentai_platform.genui.artifacts import ArtifactStore
+    return _run(lambda: JsonResponse(ArtifactStore(service().store).state(principal(request), artifact_id, _version(request), request.input.get('state_revision'), request.input.get('state'))))
+
+
+@endpoint(['POST'], ['id', 'node_id', 'action_id', 'version', 'values'], structured=True)
+def artifact_event(request, artifact_id):
+    denied = _guard(request, 'block.action')
+    if denied:
+        return denied
+    from agentai_platform.genui.artifacts import ArtifactStore
+    return _run(lambda: JsonResponse(ArtifactStore(service().store).event(principal(request), artifact_id, request.input, service()), status=202))
+
+
+@endpoint(['POST'], ['version', 'document'], structured=True)
+def artifact_update(request, artifact_id):
+    denied = _guard(request, 'block.write')
+    if denied:
+        return denied
+    from agentai_platform.genui.artifacts import ArtifactStore
+    return _run(lambda: JsonResponse(ArtifactStore(service().store).update(principal(request), artifact_id, _version(request), request.input.get('document'))))

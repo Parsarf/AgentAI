@@ -226,3 +226,61 @@ def bundle(request, project_id):
             return HttpResponseRedirect(request.form_redirect)
         return JsonResponse({'bundle': result}, status=201)
     return _mapped(run)
+
+
+def gen_asset(request, artifact_id):
+    """Resolve a stored document's file reference within its own authorized project."""
+    denial = _guard(request)
+    if denial:
+        return denial
+    if request.method != 'GET':
+        return JsonResponse({'error': 'method_not_allowed'}, status=405)
+    from agentai_platform.genui.document import _safe_file
+    import json
+    path = request.GET.get('path', '')
+    if not _safe_file(path):
+        return JsonResponse({'error': 'invalid_file_reference'}, status=400)
+
+    def run():
+        store, chat, files, artifacts = _services()
+        actor = _principal(request)
+        with store.connect() as con:
+            store._authorize(con, actor)
+            row = con.execute("SELECT d.spec_json,c.project_id FROM data_blocks d JOIN conversations c ON c.account_id=d.account_id AND c.id=d.conversation_id WHERE d.account_id=? AND d.id=? AND d.kind='document'", (actor.account_id, artifact_id)).fetchone()
+        if row is None:
+            raise NotFound('unavailable')
+        # The file must be explicitly referenced by this document, not an arbitrary query parameter.
+        def references(value):
+            if isinstance(value, dict):
+                return any((k == 'assetRef' and v == 'file:' + path) or (value.get('kind') == 'file.download' and k == 'path' and v == path) or references(v) for k, v in value.items())
+            return isinstance(value, list) and any(references(v) for v in value)
+        if not references(json.loads(row['spec_json'])):
+            raise NotFound('unavailable')
+        candidates = [r for r in artifacts.list_artifacts(actor, row['project_id']) if r['display_name'] == path]
+        if candidates:
+            latest = max(candidates, key=lambda r: r['version'])
+            minted = artifacts.mint_ticket(actor, latest['id'], latest['version'])
+            from urllib.parse import parse_qs, urlparse
+            ticket_value = parse_qs(urlparse(minted['path']).query)['ticket'][0]
+            parts, name, media = artifacts.consume_ticket(latest['id'], latest['version'], ticket_value)
+            data = artifacts.storage.read_private(parts, max_bytes=MAX_PREVIEW_BYTES)
+        else:
+            matched = next((r for r in files.list_files(actor, row['project_id']) if r['display_name'] == path and r['state'] == 'scanned'), None)
+            if matched is None:
+                raise NotFound('unavailable')
+            parts, media = files.open_parts(actor, row['project_id'], matched['id'])
+            data = files.storage.read_private(parts, max_bytes=MAX_PREVIEW_BYTES)
+            name = path
+        allowed = {'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'video/mp4', 'video/webm', 'model/gltf-binary'}
+        if request.GET.get('download') != '1' and media not in allowed:
+            raise NotFound('unsupported preview type')
+        response = FileResponse(_Bytes(data), content_type=media if media in allowed else 'application/octet-stream')
+        response['X-Frame-Options'] = 'SAMEORIGIN'
+        response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+        response['X-Content-Type-Options'] = 'nosniff'
+        response['Cache-Control'] = 'no-store'
+        if request.GET.get('download') == '1':
+            from django.utils.http import content_disposition_header
+            response['Content-Disposition'] = content_disposition_header(True, name)
+        return response
+    return _mapped(run)

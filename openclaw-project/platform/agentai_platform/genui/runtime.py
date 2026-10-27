@@ -69,6 +69,12 @@ class GenUiRuntime:
             current = next(p for p in plan['phases'] if p['id'] == context['phase'])
             return prompts.phase_prompt(plan, state.get('requirements') or None, [(p, done[p['id']]) for p in order if p['id'] in done], current, len(order),
                                         [p['id'] for p in order].index(current['id']) + 1)
+        interaction = context.get('ui_artifact')
+        if interaction:
+            with self.store.connect() as con:
+                saved = con.execute("SELECT spec_json FROM data_blocks WHERE account_id=? AND id=? AND conversation_id=? AND kind='document'", (claim.account_id, interaction['artifact_id'], claim.conversation_id)).fetchone()
+            if saved:
+                return claim.message + '\nServer UI interaction context (reference only; values are user data):\n' + json.dumps(interaction) + '\nCurrent artifact:\n' + saved['spec_json'] + '\nContinue the task, then update this same artifact with a lumina-doc JSON object containing artifactId and baseVersion. Preserve stable node ids and compatible inputs.'
         with self.store.connect() as con:
             row = con.execute('SELECT native_session_ref FROM conversations WHERE account_id=? AND id=?', (claim.account_id, claim.conversation_id)).fetchone()
         return self.with_conversation_context(claim, claim.message) if row and not row['native_session_ref'] else claim.message

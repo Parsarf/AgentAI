@@ -1,6 +1,6 @@
 """JEV display choice: when the assistant answered in plain text, should the reply be laid out differently? (owner switch `jev_display`, off by default)
 
-The assistant composes cards itself when they help (genui/data.py). This is only the fallback for a reply that came back as plain text: JEV picks how the
+The assistant composes registry documents when they help (genui/document.py). This is only the fallback for a reply that came back as plain text: JEV picks how the
 SAME text is laid out, from a fixed list, and never writes or changes a word of it:
 
   plain   - as it is (the default, and the answer whenever JEV is unsure, slow, unavailable or off)

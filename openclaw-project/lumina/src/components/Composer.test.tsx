@@ -33,7 +33,7 @@ describe('Composer', () => {
     fireEvent.click(screen.getByRole('button', { name: /send message/i }));
     await waitFor(() => expect(calls.some(c => c.url === '/v1/conversations/c1/send')).toBe(true));
     const send = calls.find(c => c.url.endsWith('/send'))!;
-    expect(send.method).toBe('POST'); expect(send.csrf).toBe('tok'); expect(send.body.message).toBe('What is 17 times 3?'); expect(send.body.key).toMatch(/^[0-9a-f]{32}$/);
+    expect(send.method).toBe('POST'); expect(send.csrf).toBe('tok'); expect(send.body.message).toBe('What is 17 times 3?'); expect(send.body.key).toMatch(/^[0-9a-f]{32}$/); expect(send.body.ui).toBe('medium');
     await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(''));
     expect(calls.findIndex(c => c.url === '/v1/conversations' && c.body !== undefined)).toBeLessThan(calls.findIndex(c => c.url.endsWith('/send')));   // chat created first
     expect(sent.mock.calls[0][0].conversation_id).toBe('c1');

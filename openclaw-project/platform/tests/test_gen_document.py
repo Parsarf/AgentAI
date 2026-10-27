@@ -30,11 +30,11 @@ class Parity(unittest.TestCase):
 
     def test_registry_file_matches_what_the_assistant_is_told(self):
         reg = doc.registry()
-        self.assertNotIn('image', reg['offered']); self.assertNotIn('gallery', reg['offered']); self.assertNotIn('file.download', reg['actions'])
+        self.assertIn('image', reg['offered']); self.assertIn('gallery', reg['offered'])
         for name in reg['offered']:
-            self.assertIn(name + ':', reg['catalogCompact'])
+            self.assertIn(name, reg['catalogCompact'])
         for forbidden in ('map', 'kanban', 'gantt', 'sankey', 'weather'):
-            self.assertNotIn(forbidden + ':', reg['catalogCompact'])
+            self.assertIn(forbidden, reg['catalogCompact'])
 
 
 class Validation(unittest.TestCase):
@@ -51,7 +51,7 @@ class Validation(unittest.TestCase):
                     {'id': 'a', 'type': 'citation_list', 'props': {'sources': [{'label': 'x', 'url': 'javascript:alert(1)'}]}},
                     {'id': 'a', 'type': 'citation_list', 'props': {'sources': [{'label': 'x', 'url': 'https://u:p@h.example/'}]}},
                     {'id': 'a', 'type': 'button_group', 'props': {'buttons': [{'id': 'b', 'label': 'Go', 'action': {'kind': 'navigate.internal', 'path': '/admin'}}]}},
-                    {'id': 'a', 'type': 'button_group', 'props': {'buttons': [{'id': 'b', 'label': 'Go', 'action': {'kind': 'file.download', 'path': 'a.csv'}}]}},
+                    {'id': 'a', 'type': 'button_group', 'props': {'buttons': [{'id': 'b', 'label': 'Go', 'action': {'kind': 'file.download', 'path': '../a.csv'}}]}},
                     {'id': 'a', 'type': 'button_group', 'props': {'buttons': [{'id': 'b', 'label': 'Go', 'action': {'kind': 'shell.run'}}]}},
                     {'id': 'a', 'type': 'text', 'style': 'position:fixed', 'props': {'content': 'x'}}):
             with self.assertRaises(SpecError, msg=json.dumps(bad)[:70]):
@@ -63,7 +63,7 @@ class Validation(unittest.TestCase):
             doc.validate_block({'id': 'c', 'type': 'callout', 'props': {'content': 'use <b>this</b>'}})
 
     def test_only_offered_components_exist(self):
-        for t in ('image', 'gallery', 'map', 'kanban', 'iframe', 'script'):
+        for t in ('iframe', 'script', 'unregistered'):
             with self.assertRaises(SpecError, msg=t):
                 doc.validate_block({'id': 'x', 'type': t, 'props': {}})
 
@@ -133,7 +133,7 @@ class PresentationPlan(unittest.TestCase):
     def test_valid_plan_passes_and_everything_else_is_refused(self):
         self.assertEqual(doc.validate_presentation_plan(self.PLAN), self.PLAN)
         for bad in (dict(self.PLAN, advisory=False), dict(self.PLAN, blocks=[]), {**self.PLAN, 'props': {}},
-                    {'advisory': True, 'blocks': [{'blockId': 'h', 'componentId': 'kanban', 'purpose': 'x'}]},
+                    {'advisory': True, 'blocks': [{'blockId': 'h', 'componentId': 'unregistered', 'purpose': 'x'}]},
                     {'advisory': True, 'blocks': [{'blockId': 'h', 'componentId': 'table', 'variant': 'stacked', 'purpose': 'x'}]},
                     {'advisory': True, 'blocks': [{'blockId': 'h', 'componentId': 'table', 'purpose': '<b>x</b>'}]}):
             with self.assertRaises(SpecError):
@@ -152,7 +152,7 @@ class Stored(Base):
 
     def test_reply_with_a_document_is_stored_and_listed_and_the_words_remain(self):
         reply = 'Revenue grew 6%.\n```lumina-doc\n' + json.dumps(one({'id': 'm', 'type': 'metric_card', 'props': {'label': 'Revenue', 'value': 24500, 'format': 'currency'}})) + '\n```'
-        self.run_message('how is revenue', replies=[reply])
+        self.run_message('how is revenue', replies=[reply], ui='interactive')
         b = self.blocks(); self.assertEqual([x['kind'] for x in b], ['document'])
         spec = json.loads(b[0]['spec_json']); self.assertEqual(spec['blocks'][0]['id'], 'm')
         row = self.rows("SELECT content FROM chat_messages WHERE provenance='agent' ORDER BY id DESC LIMIT 1")[0]
@@ -161,7 +161,7 @@ class Stored(Base):
 
     def test_an_unsafe_document_stores_nothing_and_the_text_still_shows(self):
         reply = 'Look.\n```lumina-doc\n' + json.dumps(one({'id': 'x', 'type': 'iframe', 'props': {'src': 'https://evil.example'}})) + '\n```'
-        self.run_message('hi', replies=[reply])
+        self.run_message('hi', replies=[reply], ui='interactive')
         self.assertEqual(self.blocks(), [])
         self.assertEqual(self.rows("SELECT content FROM chat_messages WHERE provenance='agent' ORDER BY id DESC LIMIT 1")[0]['content'], 'Look.')
 
@@ -171,22 +171,88 @@ class Stored(Base):
 
     def test_other_accounts_never_see_the_document(self):
         reply = 'Ok.\n```lumina-doc\n' + json.dumps(one({'id': 'd', 'type': 'divider', 'props': {}})) + '\n```'
-        self.run_message('hi', replies=[reply])
+        self.run_message('hi', replies=[reply], ui='medium')
         from agentai_platform.security import NotFound, Principal
         with self.assertRaises(NotFound):
             self.chat.blocks.list(Principal('b', 'actor-b', 'customer'), 'c-a')
 
 
-class Rules(unittest.TestCase):
-    def test_the_assistant_is_taught_only_what_exists_and_plain_text_stays_default(self):
+class AnswerStyles(unittest.TestCase):
+    FORM = {'id': 'f', 'type': 'form', 'props': {'fields': [{'id': 'a', 'type': 'text', 'label': 'A'}], 'submit': {'label': 'Send', 'action': {'kind': 'agent.request', 'message': 'My answers:'}}}}
+    TABLE = {'id': 't', 'type': 'table', 'props': {'columns': [{'id': 'k', 'label': 'K'}], 'rows': [{'k': 'a'}]}}
+    CARD_WITH_ACTION = {'id': 'c', 'type': 'info_card', 'props': {'title': 'T', 'actions': [{'label': 'More', 'action': {'kind': 'agent.request', 'message': 'Tell me more'}}]}}
+
+    def test_medium_allows_static_blocks_and_refuses_anything_that_acts(self):
+        doc.validate_block(self.TABLE, tier='medium'); doc.validate_block({'id': 'c', 'type': 'info_card', 'props': {'title': 'T'}}, tier='medium')
+        for block in (self.FORM, self.CARD_WITH_ACTION, {'id': 'b', 'type': 'button_group', 'props': {'buttons': [{'id': 'x', 'label': 'Go', 'action': {'kind': 'agent.request', 'message': 'Go on'}}]}},
+                      {'id': 'n', 'type': 'follow_up', 'props': {'suggestions': ['More please']}}, {'id': 'a', 'type': 'agent_status', 'props': {'requestId': 'abc123456'}},
+                      {'id': 'p', 'type': 'approval_request', 'props': {'planBlockId': 'p1', 'phaseId': 'x'}}):
+            with self.assertRaises(SpecError, msg=block['type']):
+                doc.validate_block(block, tier='medium')
+        doc.validate_block(self.FORM, tier='interactive'); doc.validate_block(self.CARD_WITH_ACTION, tier='interactive')
+
+    def test_medium_nested_actions_are_found_too(self):
+        tabs = {'id': 'tb', 'type': 'tabs', 'props': {'tabs': [{'id': 'one', 'label': 'One', 'blocks': [self.CARD_WITH_ACTION]}, {'id': 'two', 'label': 'Two', 'blocks': [self.TABLE]}]}}
+        with self.assertRaises(SpecError):
+            doc.validate_block(tabs, tier='medium')
+        doc.validate_block(tabs, tier='interactive')
+
+    def test_in_medium_a_block_that_acts_degrades_to_its_text_and_the_rest_stays(self):
+        out = doc.validate_document({'version': '1.0', 'responseId': 'r', 'blocks': [dict(self.TABLE), dict(self.FORM, fallback='Tell me your answers in chat.')]}, tier='medium')
+        self.assertEqual([(b['id'], b['type']) for b in out['blocks']], [('t', 'table'), ('f', 'text')])
+
+    def test_basic_keeps_nothing_but_still_hides_the_fence(self):
+        text = 'Hi.\n```lumina-doc\n' + json.dumps(one(self.TABLE)) + '\n```'
+        self.assertEqual(doc.extract_documents(text, 'basic'), ('Hi.', []))
+        self.assertEqual(len(doc.extract_documents(text, 'medium')[1]), 1)
+        with self.assertRaises(SpecError):
+            doc.validate_block(self.TABLE, tier='basic')
+
+    def test_instructions_are_per_style_and_basic_sends_none(self):
+        self.assertEqual(doc.tier_section('basic'), ''); self.assertEqual(doc.tier_section('nope'), '')
+        medium, full = doc.tier_section('medium'), doc.tier_section('interactive')
+        for must in ('JSON Lines', 'never invent', 'nothing else exists'):
+            self.assertIn(must, medium); self.assertIn(must, full)
+        reg = doc.registry()
+        for name in ('form', 'button_group', 'follow_up', 'approval_request', 'agent_status'):
+            self.assertNotIn(name, reg['tiers']['medium'])
+            self.assertIn(name, reg['tiers']['interactive'])
+        self.assertNotIn('agent.request', medium)
+        self.assertIn('agent.approve', full)
+        for name in ('map', 'kanban', 'gantt', 'image', 'gallery'):
+            self.assertIn(name, reg['offered'])
+        self.assertLess(len(medium), len(full)); self.assertLess(len(full) // 4, 3000)
+
+
+    def test_the_always_on_rules_no_longer_carry_the_section(self):
         from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
-        section = rules[rules.index('## Composed answers (lumina-doc)'):]
-        for must in ('JSON Lines', 'never invent', 'nothing else exists', 'metric_card', 'approval_request', 'Most answers are plain text'):
-            self.assertIn(must, rules, must)
-        for absent in ('map:', 'kanban:', 'gantt:', 'image:', 'gallery:', 'file.download'):
-            self.assertNotIn(absent, section, absent)
-        self.assertEqual(rules.count('## Composed answers (lumina-doc)'), 1)
-        self.assertLess(len(section) // 4, 1400)          # the always-on cost, measured in characters / 4
+        self.assertNotIn('```lumina\n', rules); self.assertIn('Use plain text', rules); self.assertIn('lumina-ui/components/', rules)
+
+
+class StyleFlow(Base):
+    def outgoing(self, **send):
+        self.say(key='k1', **send)
+        claim = self.queue.claim(owner='w', capacity=__import__('tests.test_native_run', fromlist=['OK']).OK)
+        return self.driver._outgoing(claim, self.driver._admit(claim))
+
+    def test_the_style_travels_with_the_message_and_basic_and_text_mode_add_nothing(self):
+        self.assertEqual(self.outgoing(message='what is 2+2'), 'what is 2+2')
+
+    def test_medium_and_interactive_add_their_instructions_to_that_message_only(self):
+        text = self.outgoing(message='compare plans', ui='medium')
+        self.assertTrue(text.startswith('[Lumina context')); self.assertIn('Answer style: medium', text); self.assertIn('Customer message:\ncompare plans', text); self.assertNotIn('agent.request', text)
+
+    def test_interactive_adds_the_full_set_and_text_mode_overrides_it(self):
+        self.assertIn('approval_request', self.outgoing(message='x y z', ui='interactive'))
+
+    def test_an_unknown_style_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.say(message='hi', ui='ultra')
+
+    def test_text_mode_never_gets_a_style(self):
+        r = self.say(message='plain please', mode='text', ui='interactive')
+        row = self.rows('SELECT context_json FROM customer_requests WHERE id=?', (r['id'],))[0]
+        self.assertNotIn('ui', json.loads(row['context_json'] or '{}'))
 
 
 if __name__ == '__main__':

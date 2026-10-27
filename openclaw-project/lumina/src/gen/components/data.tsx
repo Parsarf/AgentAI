@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { filterRows, formatCell, niceMax, shares, sortRows } from '../../lib/genui/data';
+import { Emojified } from '../../components/Emoji';
 import { safeHttpUrl } from '../safety';
 import type { Block, Dataset } from '../schemas';
 import { cx, type B, type P } from './types';
@@ -53,7 +54,7 @@ export function TableBlock({ block }: P<'table'>) {
       <tbody>{shown.map((r, n) => <tr key={n} className={cx(data.rows[0] && best && data.rows.indexOf(best) >= 0 && JSON.stringify(normRow(best)) === JSON.stringify(r) && 'best')}>{data.columns.map(c => {
         const v = r[c.id]; const num = ['number', 'currency', 'percent', 'rating'].includes(c.type ?? 'text'); const header = p.rowHeader === c.id;
         const cell = c.type === 'link' && typeof v === 'string' ? (safeHttpUrl(v) ? <a href={safeHttpUrl(v)!} target="_blank" rel="noopener noreferrer nofollow">Open<span className="sr"> (opens in a new tab)</span></a> : '—')
-          : c.type === 'status' && typeof v === 'string' && STATUS.has(v) ? <StatusPill status={v as any} /> : formatCell(v, c.type ?? 'text', c.unit);
+          : c.type === 'status' && typeof v === 'string' && STATUS.has(v) ? <StatusPill status={v as any} /> : <Emojified text={formatCell(v, c.type ?? 'text', c.unit)} />;
         return header ? <th key={c.id} scope="row">{cell}</th> : <td key={c.id} className={cx((num || c.align === 'end') && 'num')}>{cell}</td>; })}</tr>)}
         {!shown.length && <tr><td colSpan={data.columns.length} className="faint">No rows match.</td></tr>}</tbody></table></div>
     {pages > 1 && <nav className="gen-pager" aria-label="Table pages"><button className="btn tertiary small" disabled={page === 0} onClick={() => set({ page: page - 1 })}>Previous</button>
@@ -72,8 +73,9 @@ function Legend({ items, hidden, toggle }: { items: Array<{ key: string; label: 
   return <div className="gen-legend" role="group" aria-label="Series">{items.map((s, i) => <button key={s.key} aria-pressed={!hidden.includes(s.key)} onClick={() => toggle(s.key)}><i style={{ background: color(i) }} />{s.label}</button>)}</div>;
 }
 function DataTable({ columns, rows, label }: { columns: Col[]; rows: Row[]; label: string }) {
+  const [page, setPage] = useState(0); const current = Math.min(page, Math.max(0, Math.ceil(rows.length / 60) - 1));
   return <details className="gen-alt"><summary>View as table</summary><div className="gen-scroll" tabIndex={0} role="region" aria-label={`${label} data`}><table className="gen-table"><thead><tr>{columns.map(c => <th key={c.id} scope="col">{c.label}</th>)}</tr></thead>
-    <tbody>{rows.slice(0, 60).map((r, n) => <tr key={n}>{columns.map(c => <td key={c.id} className={typeof r[c.id] === 'number' ? 'num' : ''}>{formatCell(norm(r[c.id]), c.type ?? 'text', c.unit)}</td>)}</tr>)}</tbody></table></div></details>;
+    <tbody>{rows.slice(current * 60, (current + 1) * 60).map((r, n) => <tr key={n}>{columns.map(c => <td key={c.id} className={typeof r[c.id] === 'number' ? 'num' : ''}>{formatCell(norm(r[c.id]), c.type ?? 'text', c.unit)}</td>)}</tr>)}</tbody></table></div>{rows.length > 60 && <nav className="gen-row" aria-label="Chart data pages"><button className="btn small" disabled={!current} onClick={() => setPage(current - 1)}>Previous data page</button><span>Page {current + 1} of {Math.ceil(rows.length / 60)}</span><button className="btn small" disabled={(current + 1) * 60 >= rows.length} onClick={() => setPage(current + 1)}>Next data page</button></nav>}</details>;
 }
 const fmt = (v: number, unit?: string) => formatCell(v, 'number', unit && unit.length > 1 ? unit : undefined).replace(/^/, unit && unit.length === 1 ? unit : '');
 const kindName: Record<string, string> = { line_chart: 'Line chart', area_chart: 'Area chart', bar_chart: 'Bar chart', pie_chart: 'Pie chart', scatter_chart: 'Scatter plot' };

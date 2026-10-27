@@ -11,6 +11,7 @@ lines, then one block per line); the second form lets a streaming client mount e
 from __future__ import annotations
 import json
 import re
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -21,9 +22,11 @@ UNFINISHED = re.compile(r'```lumina-doc[ \t]*\n.*\Z', re.S)
 _CONTROL = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 _HTMLISH = re.compile(r'<\s*/?\s*[a-zA-Z!][^>]*>')
 _BIDI = re.compile('[‪-‮⁦-⁩]')
-RAW_FIELDS = {('code_block', 'code'), ('terminal_output', 'lines'), ('json_viewer', 'json'), ('diff_viewer', 'diff')}   # code and output may contain < and >
+RAW_FIELDS = {('syntax_highlighting', 'code'), ('api_inspector', 'body'), ('code_block', 'code'), ('terminal_output', 'lines'), ('json_viewer', 'json'), ('diff_viewer', 'diff')}   # code and output may contain < and >
 URL_KEYS = {'url', 'externalUrl'}
 INTERNAL_ROUTES = ('/chat', '/tasks', '/files', '/live', '/history', '/calendar', '/settings')
+TIERS = ('basic', 'medium', 'interactive')
+DEFAULT_TIER = 'basic'
 CONTAINER_KEYS = {'tabs': ('tabs', 'blocks'), 'accordion': ('items', 'blocks'), 'section': (None, 'blocks')}
 
 
@@ -85,6 +88,13 @@ def _check(schema: dict, value, root: dict, path: str = '') -> None:
     if isinstance(value, str):
         if len(value) < schema.get('minLength', 0) or len(value) > schema.get('maxLength', 10 ** 9):
             _fail(path, 'wrong length')
+        if schema.get('format') == 'date':
+            try:
+                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                    raise ValueError()
+                date.fromisoformat(value)
+            except ValueError:
+                _fail(path, 'invalid calendar date')
         if 'pattern' in schema and not re.search(schema['pattern'], value):
             _fail(path, 'wrong format')
     if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -154,14 +164,18 @@ def _scan(value, block_type: str, key: str = '', path: str = '') -> None:
     elif isinstance(value, dict):
         if value.get('kind') == 'navigate.internal' and not _safe_internal(value.get('path')):
             _fail(path, 'that page is not allowed')
-        if value.get('kind') == 'file.download':
-            _fail(path, 'downloads are not offered yet')
+        if value.get('kind') == 'file.download' and not _safe_file(value.get('path')):
+            _fail(path, 'invalid file path')
+        if 'props' in value and isinstance(value.get('type'), str):
+            block_type = value['type']
         for k, item in value.items():
             _scan(item, block_type, k, f'{path}.{k}'.lstrip('.'))
 
 
 def _children(block: dict) -> list:
-    spec = CONTAINER_KEYS.get(block.get('type'))
+    kind = block.get('type')
+    kind = registry().get('aliases', {}).get(kind, [kind])[0]
+    spec = (None, 'blocks') if registry().get('families', {}).get(kind) == 'container' else CONTAINER_KEYS.get(kind)
     props = block.get('props') or {}
     if not spec:
         return []
@@ -172,21 +186,84 @@ def _children(block: dict) -> list:
 
 
 def _shape(blocks: list, depth: int = 1) -> tuple[int, int]:
-    count, deepest = 0, depth if blocks else 0
-    for b in blocks:
-        count += 1
-        c, d = _shape(_children(b) if isinstance(b, dict) else [], depth + 1)
-        count, deepest = count + c, max(deepest, d if c else depth)
+    count, deepest = 0, 0
+    stack = [(b, depth) for b in blocks]
+    while stack:
+        b, d = stack.pop(); count += 1; deepest = max(deepest, d)
+        if count > registry()['limits']['nested'] or deepest > registry()['limits']['depth']:
+            break
+        stack.extend((child, d + 1) for child in (_children(b) if isinstance(b, dict) else []))
     return count, deepest
 
 
-def validate_block(block, datasets: dict | None = None) -> dict:
+def _no_actions(value, path='') -> None:
+    """Medium tier: nothing may carry an action (card buttons, form submit, action descriptors)."""
+    if isinstance(value, list):
+        for n, item in enumerate(value):
+            _no_actions(item, f'{path}[{n}]')
+    elif isinstance(value, dict):
+        if 'kind' in value and isinstance(value['kind'], str) and ('.' in value['kind']):
+            _fail(path, 'actions are not allowed in this answer style')
+        for k, item in value.items():
+            if k in ('actions', 'action', 'submit'):
+                _fail(f'{path}.{k}'.lstrip('.'), 'actions are not allowed in this answer style')
+            _no_actions(item, f'{path}.{k}'.lstrip('.'))
+
+
+def _check_actions(value, allowed):
+    if isinstance(value, list):
+        for item in value:
+            _check_actions(item, allowed)
+    elif isinstance(value, dict):
+        if 'type' in value and 'props' in value:
+            return
+        if isinstance(value.get('kind'), str) and value['kind'] not in allowed:
+            raise SpecError('action ' + value['kind'] + ' is not supported by this component')
+        for item in value.values():
+            _check_actions(item, allowed)
+
+
+def validate_block(block, datasets: dict | None = None, tier: str = 'interactive') -> dict:
     reg = registry()
-    if not isinstance(block, dict) or block.get('type') not in reg['offered']:
+    if tier not in ('medium', 'interactive'):
+        raise SpecError('this answer style has no composed blocks')
+    if not isinstance(block, dict) or block.get('type') not in reg['tiers'][tier]:
         raise SpecError('this component is not available')
+    if tier == 'medium':
+        _no_actions(block.get('props'))
+    count, depth = _shape([block])
+    if count > reg['limits']['nested'] or depth > reg['limits']['depth']:
+        raise SpecError('nested blocks are too deep or too many')
     _check(reg['blockSchema'], block, reg['blockSchema'])
     _scan(block, block['type'])
     props = block.get('props') or {}
+    _check_actions(props, reg['supportedActions'][block['type']])
+    for key in ('buttons', 'tabs'):
+        if key in props and len({i['id'] for i in props[key]}) != len(props[key]):
+            raise SpecError(key + ' ids must be unique')
+    fields = props.get('fields') or []
+    if len({f['id'] for f in fields}) != len(fields):
+        raise SpecError('field ids must be unique')
+    for f in fields:
+        if f['type'] in ('select', 'radio', 'segmented') and not f.get('options'):
+            raise SpecError(f'{f["id"]}: choice fields require options')
+        if f.get('min') is not None and f.get('max') is not None and f['min'] > f['max']:
+            raise SpecError(f'{f["id"]}: min exceeds max')
+    if block['type'] == 'pivot_table' and any(type(r.get(props['valueKey'])) not in (int, float) for r in props['rows']):
+        raise SpecError('pivot valueKey requires numeric values in every row')
+    if 'nodes' in props and 'edges' in props:
+        ids = {n['id'] for n in props['nodes']}
+        if len(ids) != len(props['nodes']) or any(e['source'] not in ids or e['target'] not in ids for e in props['edges']):
+            raise SpecError('graph needs unique node ids and edges between known nodes')
+    ordered = reg.get('orderedFields', {}).get(block['type'])
+    if ordered:
+        for row in props['data']:
+            if any(type(row.get(k)) not in (int, float) for k in ordered) or any(row[a] > row[b] for a, b in zip(ordered, ordered[1:])):
+                raise SpecError('data requires ordered numeric fields: ' + ', '.join(ordered))
+            if block['type'] == 'candlestick_chart' and (type(row.get('close')) not in (int, float) or not row['low'] <= row['close'] <= row['high']):
+                raise SpecError('close must be between low and high')
+    if reg.get('families', {}).get(block['type']) == 'schedule' and any(i.get('end') and i['end'] < i['start'] for i in props['items']):
+        raise SpecError('schedule end precedes start')
     if block.get('variant') in ('stacked', 'comparative') and len(props.get('series') or []) < 2:
         raise SpecError('that chart variant needs at least two series')
     if block.get('visible') is False:
@@ -197,7 +274,7 @@ def validate_block(block, datasets: dict | None = None) -> dict:
     if block.get('dataRef') is not None and block['dataRef'] not in (datasets or {}):
         raise SpecError(f'dataRef "{block["dataRef"]}" does not exist in this response')
     for child in _children(block):                       # nested blocks must be offered and safe too (the schema already checked their shape)
-        validate_block(child, datasets)
+        validate_block(child, datasets, tier)
     return block
 
 
@@ -218,7 +295,7 @@ def _clean_text(text: str) -> str | None:
     return text
 
 
-def validate_document(raw) -> dict:
+def validate_document(raw, tier: str = 'interactive') -> dict:
     """-> the normalised document to store. Raises SpecError only when nothing usable is left."""
     reg = registry()
     if not isinstance(raw, dict):
@@ -248,7 +325,7 @@ def validate_document(raw) -> dict:
         if bid in seen:
             continue
         try:
-            out.append(validate_block(block, datasets))
+            out.append(validate_block(block, datasets, tier))
             seen.add(bid)
         except SpecError:
             text = _clean_text(_fallback_text(block))
@@ -258,6 +335,10 @@ def validate_document(raw) -> dict:
     if not out:
         raise SpecError('no usable block')
     doc = {'version': reg['schemaVersion'], 'responseId': rid, 'blocks': out}
+    if raw.get('artifactId') is not None:
+        if not isinstance(raw['artifactId'], str) or not re.fullmatch(r'[A-Za-z0-9_-]{6,64}', raw['artifactId']) or type(raw.get('baseVersion')) is not int or raw['baseVersion'] < 1:
+            raise SpecError('updates require a valid artifactId and baseVersion')
+        doc.update(artifactId=raw['artifactId'], baseVersion=raw['baseVersion'])
     used = {b.get('dataRef') for b in out if isinstance(b, dict)} | {r for b in out for r in _nested_refs(b)}
     if datasets:
         doc['datasets'] = {k: v for k, v in datasets.items() if k in used}
@@ -318,8 +399,8 @@ def _from_lines(body: str) -> dict:
     return out
 
 
-def extract_documents(text: str):
-    """(clean_text, [documents]). The fence is always removed from the text; an invalid or oversized one is dropped; at most one document is kept."""
+def extract_documents(text: str, tier: str = 'interactive'):
+    """(clean_text, [documents]). The fence is always removed from the text (whatever the answer style); basic keeps no document; an invalid or oversized one is dropped; at most one document is kept."""
     docs = []
 
     def take(match):
@@ -333,7 +414,8 @@ def extract_documents(text: str):
                     raw = _from_lines(body)
             except ValueError:
                 raw = _from_lines(body)
-            docs.append(validate_document(raw))
+            if tier in ('medium', 'interactive'):
+                docs.append(validate_document(raw, tier))
         except (SpecError, ValueError, KeyError, TypeError):
             pass
         return ''
@@ -342,19 +424,22 @@ def extract_documents(text: str):
     return re.sub(r'\n{3,}', '\n\n', clean).strip(), [dict(d, type='document') for d in docs[:1]]
 
 
-def rules_section() -> str:
-    """The text added to the assistant's rules file: the compact catalog (offered components only) and the envelope. Built from the registry, so it cannot promise more than exists."""
+def tier_section(tier: str) -> str:
+    """What the assistant is told for ONE message, by answer style: nothing for basic, the static components for medium, everything offered for interactive.
+    Sent with the message (not kept in the always-on rules), so a plain-text chat pays nothing and the instructions always match the current setting."""
     reg = registry()
+    if tier not in ('medium', 'interactive'):
+        return ''
+    interactive = tier == 'interactive'
     return (
-        '## Composed answers (lumina-doc)\n'
-        'Most answers are plain text. When one answer is clearest as prose plus a table, a chart, cards or a form, write the prose first (it is shown at once), then ONE fenced block whose '
-        'language is `lumina-doc`. Inside it write JSON Lines: an optional first line {"responseId":"r1"}, then {"dataset":"id","columns":[{"id":"month","label":"Month"},...],"rows":[...]} '
-        'lines for data shared by several blocks, then one block per line: {"id":"trend","type":"line_chart","dataRef":"id","props":{...}}. A block is {id, type, variant?, dataRef?, props:{...}}; '
-        'ids are lowercase letters, digits, - or _. Plain text only in props (no HTML, no markdown except in `text`, `list`, `callout`, `quote`, `info_card.body`). '
-        'Use real values from your work or from pages you read; never invent numbers, prices, places or sources, and leave a block out when you do not have its data. '
-        'A fallback sentence (`fallback`) lets a block degrade to text. For tables or charts with more than 60 rows put the rows in a dataset (up to 500) and refer to it with dataRef. '
-        'Agent widgets (execution_timeline, agent_status, plan_viewer, approval_request, error_retry, completion_summary) take only ids of tasks or plans that exist in this chat; '
-        'their contents come from Lumina, never from you. Actions are limited to: ' + ', '.join(reg['actions']) + '. Buttons and form submissions send exactly their words as the person\'s next message. '
-        'Pick by what the answer is: prose for explanations; info_card for one entity; table for several attributes; line_chart/area_chart for trends over time; bar_chart for categories; scatter_chart for a relationship; '
-        'timeline for steps in order; form only when the reader should change inputs; agent widgets only for tasks that exist. Never chart fewer than 4 points. Components (nothing else exists):\n' + reg['catalogCompact'] + '\n'
-    )
+        'Answer style: ' + tier + '. Most answers are plain text. When one answer is clearest as prose plus a table, a chart or cards' + (', a form or buttons' if interactive else '') +
+        ', write the prose first (it is shown at once), then ONE fenced block whose language is `lumina-doc`. Inside it write JSON Lines: an optional first line {"responseId":"r1"}, then '
+        '{"dataset":"id","columns":[{"id":"month","label":"Month"},...],"rows":[...]} lines for data shared by several blocks, then one block per line: '
+        '{"id":"trend","type":"line_chart","dataRef":"id","props":{...}}. A block is {id, type, variant?, dataRef?, props:{...}}; ids are lowercase letters, digits, - or _. '
+        'Plain text only in props (no HTML; markdown only in `text`, `list`, `callout`, `quote`, `info_card.body`). Use real values from your work or from pages you read; never invent numbers, '
+        'prices, places or sources, and leave a block out when you do not have its data. `fallback` is a sentence a block degrades to. More than 60 rows go in a dataset (up to 500) referred to by dataRef. '
+        + ('Agent widgets (execution_timeline, agent_status, plan_viewer, approval_request, error_retry, completion_summary) take only ids of tasks or plans that exist in this chat; their contents come '
+           'from Lumina, never from you. Actions are limited to: ' + ', '.join(reg['actions']) + '. Buttons and form submissions send exactly their words as the person\'s next message. ' if interactive else
+           'Blocks in this style show information only: no buttons, forms, follow-ups or actions. ') +
+        'Check a draft with `python3 lumina-ui/validate.py document.json` before emitting it; the command reports corrective errors from the server validator. For an interaction with an existing artifact, emit a JSON document (not JSON Lines) with artifactId and baseVersion from the server interaction context; keep compatible node ids. Inspect `lumina-ui/components/<component-id>.json` using your file tools for schemas, usage and examples; do not read the entire registry on each turn. Update the same artifact when continuing an interaction; preserve stable node ids. Calculators accept only named operations. Missing integrations must be labeled unavailable. Pick by what the answer is: prose for explanations; info_card for one entity; table for several attributes; line_chart/area_chart for trends over time; bar_chart for categories; '
+        'scatter_chart for a relationship; timeline for steps in order. Never chart fewer than 4 points. Components (nothing else exists):\n' + reg['catalogByTier'][tier] + '\n')

@@ -83,9 +83,9 @@ class Flow(Base):
 
     def test_a_reply_with_its_own_card_is_never_sent_to_jev(self):
         calls = self.with_display('list')
-        card = 'Here.\n```lumina\n' + json.dumps({'schemaVersion': '1.0', 'type': 'callout', 'tone': 'tip', 'text': 'Book early.'}) + '\n```'
-        self.run_message('tips please', replies=[card])
-        self.assertEqual(calls, []); self.assertEqual([x['kind'] for x in self.blocks()], ['callout'])
+        card = 'Here.\n```lumina-doc\n' + json.dumps({'version': '1.0', 'responseId': 'tip', 'blocks': [{'id': 'tip', 'type': 'callout', 'props': {'tone': 'tip', 'content': 'Book early.'}}]}) + '\n```'
+        self.run_message('tips please', replies=[card], ui='medium')
+        self.assertEqual(calls, []); self.assertEqual([x['kind'] for x in self.blocks()], ['document'])
 
     def test_plain_stays_plain_and_a_broken_decider_never_fails_the_answer(self):
         self.with_display(None)

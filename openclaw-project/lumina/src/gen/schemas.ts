@@ -1,13 +1,16 @@
 // Versioned, discriminated block schemas: the contract between what the model writes and what the renderer draws.
 // Python (platform/agentai_platform/genui/document.py) validates the same shapes from schema.generated.json, which `npm run gen:registry` derives from this file.
 import { z } from 'zod';
+import { ALIASES, FAMILIES, type AliasId, type ExtendedId } from './catalog';
+import { semanticIssue } from './constraints';
+import { extendedSchemas } from './extendedSchemas';
 import { APPEARANCE, COMPONENT_VARIANTS, DENSITY, EMPHASIS, EXPANSION, INTERACTION, SIZE, checkCombination, type ComponentType } from './variants';
 import { assetRef, filePath, httpUrl, ident, md, text } from './safety';
 
 export const SCHEMA_VERSION = '1.0';
 export const LIMITS = { blocks: 24, nested: 60, depth: 3, datasetRows: 500, inlineRows: 60, bytes: 48 * 1024 } as const;
 
-const refId = z.string().regex(/^[a-z][a-z0-9_.:-]{0,63}$/i, 'a reference id');
+const refId = z.string().regex(/^[a-z0-9][a-z0-9_.:-]{0,63}$/i, 'a reference id');
 const requestId = z.string().regex(/^[A-Za-z0-9_-]{6,64}$/, 'a request id');
 const num = z.number().finite().min(-1e15).max(1e15);
 
@@ -79,10 +82,10 @@ const chartCommon = {
   columns: z.array(column).min(1).max(12).optional(), data: inlineRows.optional(), xKey: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
   series: z.array(series).min(1).max(6), unit: text(12).optional(), caption: text(240).optional(), summary: text(400).optional(),
 };
-const fieldType = z.enum(['select', 'radio', 'segmented', 'toggle', 'checkbox', 'slider', 'number', 'text', 'textarea', 'date', 'time']);
+const fieldType = z.enum(['select', 'radio', 'segmented', 'toggle', 'checkbox', 'slider', 'number', 'text', 'textarea', 'date', 'time', 'multiselect', 'range', 'date-range', 'search', 'color', 'rating', 'tags', 'autocomplete']);
 const formField = z.strictObject({
   id: ident, type: fieldType, label: text(120), help: text(240).optional(), group: text(60).optional(),
-  options: z.array(z.strictObject({ label: text(80), value: ident })).min(2).max(12).optional(), default: z.union([text(500, 0), num, z.boolean()]).optional(),
+  options: z.array(z.strictObject({ label: text(80), value: ident })).min(2).max(12).optional(), default: z.union([text(500, 0), num, z.boolean(), z.array(z.union([text(80, 0), num])).max(50)]).optional(),
   min: num.optional(), max: num.optional(), step: num.optional(), unit: text(12).optional(), required: z.boolean().optional(),
   showIf: z.strictObject({ field: ident, equals: z.union([text(80), num, z.boolean()]) }).optional(),
 });
@@ -94,7 +97,7 @@ export interface BlockLike { id: string; type: string; variant?: string; props: 
 const lazyBlock: z.ZodType<BlockLike> = z.lazy(() => blockSchema as unknown as z.ZodType<BlockLike>);
 const nested = z.array(lazyBlock).min(1).max(12);
 
-export const blockSchema = z.discriminatedUnion('type', [
+const baseBlockSchema = z.discriminatedUnion('type', [
   def('text', { content: md(8000), format: z.enum(['plain', 'markdown']).default('markdown') }),
   def('heading', { text: text(160), level: z.union([z.literal(2), z.literal(3), z.literal(4)]).default(3) }),
   def('list', { items: z.array(z.strictObject({ text: md(300), checked: z.boolean().optional() })).min(1).max(40), ordered: z.boolean().optional() }),
@@ -149,24 +152,32 @@ export const blockSchema = z.discriminatedUnion('type', [
   def('tool_call_inspector', { requestId }),
   def('agent_status', { requestId }),
   def('plan_viewer', { planBlockId: refId }),
-  def('approval_request', { planBlockId: refId, phaseId: ident, reason: text(300).optional() }),
+  def('approval_request', { planBlockId: refId, phaseId: ident, expiresEpoch: z.number().int().min(1).optional(), reason: text(300).optional() }),
   def('error_retry', { requestId: requestId.optional(), planBlockId: refId.optional(), phaseId: ident.optional() }),
   def('completion_summary', { requestId }),
 ]);
-export type Block = z.infer<typeof blockSchema>;
+const aliases = Object.entries(ALIASES).map(([id, [base]]) => {
+  const original = baseBlockSchema.options.find(o => o.shape.type.value === base)!;
+  const fieldTypes: Record<string, string> = { text_input: 'text', textarea: 'textarea', checkbox: 'checkbox', radio: 'radio', select: 'select', segmented_control: 'segmented', slider: 'slider', switch: 'toggle', date_picker: 'date', time_picker: 'time', number_stepper: 'number' };
+  const props = fieldTypes[id] ? original.shape.props.extend({ fields: z.array(formField.extend({ type: z.literal(fieldTypes[id]) })).length(1) }) : original.shape.props;
+  return original.extend({ type: z.literal(id), props });
+});
+export const blockSchema = z.discriminatedUnion('type', [...baseBlockSchema.options, ...aliases, ...extendedSchemas(shell, actionSchema, lazyBlock)]);
+export type Block = z.infer<typeof baseBlockSchema> | ({ id: string; type: AliasId | ExtendedId; props: Record<string, any> } & Omit<z.infer<typeof baseBlockSchema>, 'type' | 'props'>);
 export type BlockType = Block['type'];
 export const IMPLEMENTED_TYPES = blockSchema.options.map(o => o.shape.type.value) as BlockType[];
 
 export const presentationPlanSchema = z.strictObject({
   advisory: z.literal(true),
   blocks: z.array(z.strictObject({
-    blockId: ident, componentId: z.string().regex(/^[a-z][a-z0-9_]{0,47}$/), variant: z.string().regex(/^[a-z-]{2,20}$/).optional(), layout: z.enum(['inline', 'stacked', 'horizontal', 'vertical', 'grid']).optional(),
+    blockId: ident, componentId: z.string().regex(/^[a-z0-9][a-z0-9_]{0,47}$/), variant: z.string().regex(/^[a-z-]{2,20}$/).optional(), layout: z.enum(['inline', 'stacked', 'horizontal', 'vertical', 'grid']).optional(),
     purpose: text(160), dataRequirements: z.array(text(80)).max(6).optional(),
   })).min(1).max(8),
 });
 export type PresentationPlan = z.infer<typeof presentationPlanSchema>;
 
 export const documentSchema = z.strictObject({
+  artifactId: requestId.optional(), baseVersion: z.number().int().min(1).optional(),
   version: z.literal(SCHEMA_VERSION), responseId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   blocks: z.array(z.unknown()).max(LIMITS.blocks),                   // each block is validated on its own (parseDocument), so one bad block never hides the rest
   datasets: z.record(refId, datasetSchema).optional(), presentationPlan: presentationPlanSchema.optional(),
@@ -178,15 +189,17 @@ export function children(block: { type?: unknown; props?: unknown }): unknown[] 
   const p = (block.props ?? {}) as Record<string, unknown>;
   if (block.type === 'tabs' && Array.isArray(p.tabs)) return p.tabs.flatMap((t: any) => t?.blocks ?? []);
   if (block.type === 'accordion' && Array.isArray(p.items)) return p.items.flatMap((t: any) => t?.blocks ?? []);
-  if (block.type === 'section' && Array.isArray(p.blocks)) return p.blocks;
+  if ((block.type === 'section' || (FAMILIES as Record<string, string>)[String(block.type)] === 'container') && Array.isArray(p.blocks)) return p.blocks;
   return [];
 }
 export function treeShape(blocks: unknown[]): { count: number; depth: number } {
   let count = 0, deepest = 0;
-  const walk = (list: unknown[], depth: number) => {
-    for (const b of list) { count++; deepest = Math.max(deepest, depth); if (b && typeof b === 'object') walk(children(b as any), depth + 1); }
-  };
-  walk(blocks, 1);
+  const stack = blocks.map(block => ({ block, depth: 1 }));
+  while (stack.length) {
+    const { block, depth } = stack.pop()!; count++; deepest = Math.max(deepest, depth);
+    if (count > LIMITS.nested || deepest > LIMITS.depth) break;
+    if (block && typeof block === 'object') stack.push(...children(block as any).map(child => ({ block: child, depth: depth + 1 })));
+  }
   return { count, depth: deepest };
 }
 
@@ -195,15 +208,20 @@ export type BlockIssue = { id: string; type: string; reason: string };
 export function parseBlock(raw: unknown): { ok: true; block: Block } | { ok: false; issue: BlockIssue } {
   const rec = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const id = typeof rec.id === 'string' ? rec.id.slice(0, 48) : '?'; const type = typeof rec.type === 'string' ? rec.type.slice(0, 48) : '?';
+  const before = treeShape([raw]);
+  if (before.count > LIMITS.nested || before.depth > LIMITS.depth) return { ok: false, issue: { id, type, reason: 'nested blocks are too deep or too many' } };
   const parsed = blockSchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
     return { ok: false, issue: { id, type, reason: `${first?.path.join('.') || 'block'}: ${first?.message ?? 'invalid'}`.slice(0, 200) } };
   }
-  const block = parsed.data;
+  const block = parsed.data as Block;
+  const problem = semanticIssue(block);
+  if (problem) return { ok: false, issue: { id, type, reason: problem } };
   const props = block.props as Record<string, unknown>;
-  const clash = checkCombination({
-    type: block.type, variant: block.variant, appearance: block.appearance, expansion: block.expansion, interaction: block.interaction, emphasis: block.emphasis, density: block.density,
+  const alias = (ALIASES as Record<string, readonly [string, unknown]>)[block.type];
+  const clash = block.type in FAMILIES ? null : checkCombination({
+    type: alias?.[0] ?? block.type, variant: block.variant, appearance: block.appearance, expansion: block.expansion, interaction: block.interaction, emphasis: block.emphasis, density: block.density,
     seriesCount: Array.isArray(props.series) ? props.series.length : undefined,
   });
   if (clash) return { ok: false, issue: { id, type, reason: clash } };

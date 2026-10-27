@@ -1,3 +1,4 @@
+import { extendedFixtures } from './extendedFixtures';
 // Clearly labelled SAMPLE data for the gallery and the tests. Nothing here is a real result, and the gallery says so on screen.
 export const SAMPLE_NOTE = 'Sample data for the component gallery. Not a real result.';
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
@@ -23,7 +24,7 @@ export const SAMPLE_CONVERSATION = {
 const act = (message: string) => ({ kind: 'agent.request', message });
 const nestedText = (id: string, content: string) => ({ id, type: 'text', props: { content } });
 /** One block of every offered type, with realistic props, used by the gallery and by the coverage tests. */
-export const ALL_BLOCKS: unknown[] = [
+const BASE_BLOCKS: any[] = [
   { id: 'a_text', type: 'text', variant: 'lead', props: { title: 'Text', content: 'Plain prose with **markdown**, a list and a [link](https://example.com/).\n\n- one\n- two' } },
   { id: 'a_heading', type: 'heading', props: { text: 'A heading', level: 3 } },
   { id: 'a_list', type: 'list', props: { title: 'Checklist', items: [{ text: 'Gather sources', checked: true }, { text: 'Compare prices', checked: false }] } },
@@ -67,11 +68,17 @@ export const ALL_BLOCKS: unknown[] = [
   { id: 'a_retry', type: 'error_retry', props: { planBlockId: 'plan_demo', phaseId: 'checks' } },
   { id: 'a_done', type: 'completion_summary', props: { requestId: 'fixture_run' } },
 ];
+export const ALL_BLOCKS: unknown[] = [...BASE_BLOCKS, { id: 'fixture_image', type: 'image', props: { assetRef: 'file:sample.png', alt: 'Sample image' } }, { id: 'fixture_gallery', type: 'gallery', props: { images: [{ assetRef: 'file:sample.png', alt: 'Sample image' }] } }, ...extendedFixtures(BASE_BLOCKS)];
 /** A document holds at most 24 blocks, so the full set is shown as parts. */
-export const ALL_PARTS = [ALL_BLOCKS.slice(0, 20), ALL_BLOCKS.slice(20)].map((blocks, n) => ({ version: '1.0', responseId: `resp_all_${n}`, datasets: DATASETS, blocks }));
+export const ALL_PARTS = Array.from({ length: Math.ceil(ALL_BLOCKS.length / 20) }, (_, i) => ALL_BLOCKS.slice(i * 20, (i + 1) * 20)).map((blocks, n) => ({ version: '1.0', responseId: `resp_all_${n}`, datasets: DATASETS, blocks }));
 
 /** Blocks every validator (browser and server) must refuse. The Python tests read the same list from platform/tests/fixtures/gen_parity.json. */
 export const INVALID_BLOCKS: Array<[string, unknown]> = [
+    ['invalid calendar date', { id: 'x', type: 'calendar', props: { items: [{ id: 'e', label: 'Event', start: '2026-02-30' }] } }],
+    ['reversed schedule', { id: 'x', type: 'gantt', props: { items: [{ id: 'e', label: 'Event', start: '2026-10-28', end: '2026-10-27' }] } }],
+    ['unknown graph edge', { id: 'x', type: 'network_graph', props: { nodes: [{ id: 'a', label: 'A' }], edges: [{ source: 'a', target: 'missing' }] } }],
+    ['missing candle measures', { id: 'x', type: 'candlestick_chart', props: { labelKey: 'name', valueKey: 'close', data: [{ name: 'A', close: 2 }] } }],
+    ['choice without options', { id: 'x', type: 'form', props: { fields: [{ id: 'choice', type: 'select', label: 'Choose' }], submit: { label: 'Send', action: { kind: 'agent.request', message: 'Continue the task' } } } }],
     ['html in text', { id: 'a', type: 'text', props: { content: 'hi <script>alert(1)</script>' } }],
     ['unknown prop', { id: 'a', type: 'text', props: { content: 'x', style: 'color:red' } }],
     ['css-like shell field', { id: 'a', type: 'text', style: 'x', props: { content: 'x' } }],

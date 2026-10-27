@@ -5,8 +5,8 @@ import { cx } from './types';
 import { useGen, useLocal } from './context';
 
 type Field = B<'form'>['props']['fields'][number];
-type Val = string | number | boolean;
-const initialOf = (f: Field): Val => f.default ?? (f.type === 'toggle' || f.type === 'checkbox' ? false : f.type === 'slider' || f.type === 'number' ? (f.min ?? 0) : f.type === 'radio' || f.type === 'segmented' || f.type === 'select' ? '' : '');
+type Val = string | number | boolean | Array<string | number>;
+const initialOf = (f: Field): Val => f.default ?? (['multiselect', 'range', 'date-range', 'tags'].includes(f.type) ? [] : f.type === 'toggle' || f.type === 'checkbox' ? false : f.type === 'slider' || f.type === 'number' ? (f.min ?? 0) : f.type === 'radio' || f.type === 'segmented' || f.type === 'select' ? '' : '');
 
 /** Which fields are visible given the answers so far (showIf). Hidden fields are never sent. */
 export function visibleFields(fields: Field[], values: Record<string, Val>): Field[] {
@@ -14,6 +14,7 @@ export function visibleFields(fields: Field[], values: Record<string, Val>): Fie
 }
 export function describe(f: Field, v: Val | undefined): string {
   if (v === undefined || v === '') return '';
+  if (Array.isArray(v)) return v.map(x => f.options?.find(o => o.value === x)?.label ?? String(x)).join(', ');
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
   const o = f.options?.find(x => x.value === v);
   return `${o ? o.label : v}${f.unit && typeof v === 'number' ? ' ' + f.unit : ''}`;
@@ -31,11 +32,11 @@ export function FormBlock({ block }: P<'form'>) {
   const grouped = block.variant === 'grouped'; const groups = grouped ? [...new Set(shown.map(f => f.group ?? ''))] : [''];
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const need = shown.filter(f => f.required && (values[f.id] === '' || values[f.id] === undefined)).map(f => f.id); setMissing(need);
+    const need = shown.filter(f => f.required && (values[f.id] === '' || values[f.id] === undefined || (Array.isArray(values[f.id]) && !(values[f.id] as unknown[]).length))).map(f => f.id); setMissing(need);
     if (need.length) { setStatus({ kind: 'error', msg: 'Fill in the required fields first.' }); return; }
     const a = p.submit.action;
     const action = a.kind === 'agent.request' ? { ...a, message: formMessage(a.message, shown.map(f => ({ label: f.label, value: describe(f, values[f.id]) }))) } : a;
-    setStatus({ kind: 'busy', msg: '' }); const r = await g.act(action, { nonce: block.id });
+    setStatus({ kind: 'busy', msg: '' }); const r = await (a.kind === 'agent.request' && g.submit ? g.submit('submit', Object.fromEntries(shown.map(f => [f.id, values[f.id]]))) : g.act(action, { nonce: block.id }));
     setStatus(r.ok ? { kind: 'done', msg: 'Sent.' } : { kind: r.reason === 'declined' ? 'idle' : 'error', msg: r.reason === 'declined' ? '' : r.message });
   };
   const off = block.disabled || g.readOnly || status.kind === 'done';
@@ -52,6 +53,15 @@ function FieldView({ f, id, value, onChange, invalid }: { f: Field; id: string; 
   const label = <span className="gen-label">{f.label}{f.required && <span aria-hidden> *</span>}</span>;
   let control: React.ReactNode;
   switch (f.type) {
+    case 'multiselect': control = <select className="gen-input" {...common} multiple value={Array.isArray(value) ? value.map(String) : []} onChange={e => onChange(Array.from(e.target.selectedOptions).map(o => o.value))}>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>; break;
+    case 'range': case 'date-range': {
+      const values = Array.isArray(value) ? value : [];
+      control = <div className="gen-row">{['Start', 'End'].map((part, i) => <label key={part}>{part}<input className="gen-input" type={f.type === 'date-range' ? 'date' : 'number'} aria-label={`${f.label} ${part.toLowerCase()}`} min={f.min} max={f.max} step={f.step} value={String(values[i] ?? '')} onChange={e => { const next = [...values]; next[i] = f.type === 'date-range' ? e.target.value : +e.target.value; onChange(next); }} /></label>)}</div>; break;
+    }
+    case 'tags': control = <input className="gen-input" {...common} value={Array.isArray(value) ? value.join(', ') : ''} onChange={e => onChange(e.target.value.split(',').map(v => v.trim()).slice(0, 50))} />; break;
+    case 'autocomplete': control = <><input className="gen-input" {...common} list={`${id}-options`} value={String(value ?? '')} onChange={e => onChange(e.target.value)} /><datalist id={`${id}-options`}>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</datalist></>; break;
+    case 'search': case 'color': control = <input className="gen-input" {...common} type={f.type} value={String(value ?? '')} onChange={e => onChange(e.target.value)} />; break;
+    case 'rating': control = <input className="gen-input" {...common} type="number" min={f.min ?? 1} max={f.max ?? 5} step={1} value={String(value ?? '')} onChange={e => onChange(+e.target.value)} />; break;
     case 'select': control = <select className="gen-input" {...common} value={String(value ?? '')} onChange={e => onChange(e.target.value)}><option value="">Choose…</option>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>; break;
     case 'radio': case 'segmented': return <fieldset className="gen-field" aria-describedby={hint}><legend className="gen-label">{f.label}{f.required && <span aria-hidden> *</span>}</legend>
       <div className={cx('gen-choices', f.type)} role="radiogroup">{f.options?.map(o => <label key={o.value} className={cx('gen-choice', value === o.value && 'on')}><input type="radio" name={id} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} /><span>{o.label}</span></label>)}</div>{f.help && <p id={hint} className="faint">{f.help}</p>}</fieldset>;

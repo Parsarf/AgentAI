@@ -21,6 +21,7 @@ function transform(doc: GenDocument, mode: string, density: string): GenDocument
   const slots = doc.slots.map(s => {
     if (s.status !== 'ready') return s;
     let block: any = { ...s.block, density: density === 'default' ? s.block.density : density };
+    if (mode === 'disabled') block = { ...block, disabled: true };
     if (mode === 'loading') block = { ...block, loading: true };
     if (mode === 'empty' && ['table', 'line_chart', 'bar_chart', 'area_chart'].includes(block.type)) { block = { ...block, dataRef: 'empty_set' }; }
     return { ...s, block };
@@ -31,10 +32,11 @@ function transform(doc: GenDocument, mode: string, density: string): GenDocument
 }
 
 export default function Gallery() {
+  const [component, setComponent] = useState('');
   const [which, setWhich] = useState<'conversation' | 'all'>('conversation'); const [mode, setMode] = useState('normal'); const [density, setDensity] = useState('default');
   const [deploy, setDeploy] = useState('awaiting_approval'); const [log, setLog] = useState<string[]>([]); const [q, setQ] = useState(''); const [status, setStatus] = useState<Status | ''>(''); const [cat, setCat] = useState('');
   const doc = useMemo(() => { const parts = (which === 'all' ? ALL_PARTS : [SAMPLE_CONVERSATION]).map(parseDocument); if (parts.some(p => 'error' in p)) return null; const ok = parts as GenDocument[];
-    return transform({ ...ok[0], slots: ok.flatMap(p => p.slots) }, mode, density); }, [which, mode, density]);
+    return transform({ ...ok[0], slots: ok.flatMap(p => p.slots).filter(s => !component || (s.status === 'ready' && s.block.type === component)) }, mode, density); }, [which, mode, density, component]);
   const exec = useMemo<ExecutionProvider>(() => ({
     label: SAMPLE_NOTE, request: id => (id === 'fixture_run' ? { id, state: 'completed', result: 'The three options were compared; Gamma is the best rated. (sample)', message: 'Compare the three options', created_epoch: 0 } : undefined),
     plan: id => (id === 'plan_demo' ? mkPlan(deploy) : undefined), useActivity: () => ({ rows: ROWS, err: '' }),
@@ -50,7 +52,8 @@ export default function Gallery() {
     <h1>Generative UI gallery</h1><p className="faint">{SAMPLE_NOTE} Actions here only change this page.</p>
     <div className="gen-row" role="group" aria-label="Gallery controls">
       <label>Document <select className="gen-input" value={which} onChange={e => setWhich(e.target.value as any)}><option value="conversation">Sample conversation</option><option value="all">Every offered block</option></select></label>
-      <label>State <select className="gen-input" value={mode} onChange={e => setMode(e.target.value)}>{['normal', 'loading', 'empty', 'error'].map(m => <option key={m}>{m}</option>)}</select></label>
+      <label>Component <select className="gen-input" value={component} onChange={e => { setComponent(e.target.value); setWhich('all'); }}><option value="">All components</option>{MANIFEST.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
+      <label>State <select className="gen-input" value={mode} onChange={e => setMode(e.target.value)}>{['normal', 'loading', 'empty', 'error', 'disabled'].map(m => <option key={m}>{m}</option>)}</select></label>
       <label>Density <select className="gen-input" value={density} onChange={e => setDensity(e.target.value)}><option>default</option>{DENSITY.map(d => <option key={d}>{d}</option>)}</select></label></div>
     {doc ? <GenDocumentView doc={doc} exec={exec} host={host} scope="gallery" /> : <Fallback text="The sample could not be parsed." />}
     {log.length > 0 && <section aria-label="Action log"><h2>Action log</h2><ul>{log.map((l, n) => <li key={n}><code>{l}</code></li>)}</ul></section>}

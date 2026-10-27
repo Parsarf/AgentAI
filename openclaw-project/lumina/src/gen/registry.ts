@@ -1,15 +1,16 @@
 // One registry: component id -> schema, usage guidance, supported actions, fallback and renderer key. The model-facing catalog is derived from it.
+import { ALIASES, FAMILIES, FAMILY_GUIDANCE } from './catalog';
 import { COMPONENT_VARIANTS } from './variants';
 import { IMPLEMENTED_TYPES, SCHEMA_VERSION, blockSchema, type BlockType } from './schemas';
 import { MANIFEST } from './manifest';
 
 export interface RegistryEntry {
-  componentId: BlockType; schemaVersion: string; description: string; useWhen: string; avoidWhen: string; requiredData: string; supportedActions: readonly string[];
+  name: string; category: string; children: string; states: readonly string[]; accessibility: string; requirements: string; runtimeAvailability: string; examples: readonly string[]; componentId: BlockType; schemaVersion: string; description: string; useWhen: string; avoidWhen: string; requiredData: string; supportedActions: readonly string[];
   fallback: string; status: 'implemented' | 'adapter'; rendererKey: string; supportedVariants: readonly string[]; schemaRef: string;
 }
 type Spec = [description: string, useWhen: string, avoidWhen: string, requiredData: string, actions?: string[], fallback?: string];
 const LOCAL = ['local.sort', 'local.filter', 'local.expand', 'local.select', 'local.update'];
-const SPEC: Record<BlockType, Spec> = {
+const SPEC: Partial<Record<BlockType, Spec>> = {
   text: ['Prose; markdown allowed', 'every explanation', 'never avoid: it is the default', 'content'],
   heading: ['A section heading', 'a long answer with several parts', 'short answers', 'text'],
   list: ['Bullets, numbers or a checklist', 'steps or a few parallel items', 'items that need several attributes (use a table)', 'items'],
@@ -52,16 +53,28 @@ const SPEC: Record<BlockType, Spec> = {
   completion_summary: ['What a finished request reported', 'a task has finished', 'a task still running', 'requestId'],
 };
 /** Renderers that exist but cannot be offered: they need a host capability that is not wired (see docs/generative-ui/component-catalog.md). Never shown to the model, refused by the server. */
-export const ADAPTER_ONLY: ReadonlySet<BlockType> = new Set<BlockType>(['image', 'gallery']);
+export const ADAPTER_ONLY: ReadonlySet<BlockType> = new Set<BlockType>();
 const typeVariants = COMPONENT_VARIANTS as Record<string, readonly string[]>;
 export const REGISTRY: Record<BlockType, RegistryEntry> = Object.fromEntries(IMPLEMENTED_TYPES.map(t => {
-  const [description, useWhen, avoidWhen, requiredData, actions = [], fallback = 'the block fallback text, else its title and main values as plain text'] = SPEC[t];
-  const entry: RegistryEntry = { componentId: t, schemaVersion: SCHEMA_VERSION, description, useWhen, avoidWhen, requiredData, supportedActions: actions, fallback, status: ADAPTER_ONLY.has(t) ? 'adapter' : 'implemented', rendererKey: t, supportedVariants: typeVariants[t] ?? [], schemaRef: `lumina-block/${SCHEMA_VERSION}/${t}` };
+  const base = (ALIASES as Record<string, readonly [string, unknown]>)[t]?.[0];
+  const label = t.replaceAll('_', ' ');
+  const guidance = FAMILY_GUIDANCE[(FAMILIES as any)[t] as keyof typeof FAMILY_GUIDANCE];
+  const [description, useWhen, avoidWhen, requiredData, actions = [], fallback = 'the block fallback text, else its title and main values as plain text'] = SPEC[t] ?? SPEC[base as BlockType] ?? [`${label}: ${guidance?.purpose ?? label}`, guidance?.useWhen ?? 'the task benefits from this capability', 'plain prose answers the question', guidance?.requirements ?? 'inspect the schema', guidance?.actions ?? []];
+  const manifest = MANIFEST.find(e => e.id === t);
+  const family = (FAMILIES as Record<string, string>)[t];
+  const children = ['container'].includes(family) || ['tabs', 'accordion', 'section'].includes(t) ? 'Registered children only; maximum depth 3, 60 nodes per document; unique ids throughout.' : 'No child components.';
+  const entry: RegistryEntry = { name: manifest?.name ?? label, category: manifest?.category ?? family ?? 'Content', children, states: ['loading', 'empty', 'error', 'disabled', 'unavailable'], accessibility: 'Semantic labels; keyboard controls; visible focus; visual data has a paged table alternative.', requirements: ['map', 'domain'].includes(family) ? 'Provide verified data with source and observation time. Missing external providers show unavailable. No embedded credentials.' : family === 'runtime' ? 'A task or plan in this conversation; authoritative runtime events only.' : ['media', 'file'].includes(family) ? 'An authorized file reference in the conversation project; safe MIME types only.' : 'Validated inline data or a document dataset; no external credentials.', runtimeAvailability: 'registered', examples: [`Use ${t} for ${useWhen}. Inspect lumina-ui/components/${t}.json for a validated example.`], componentId: t, schemaVersion: SCHEMA_VERSION, description, useWhen, avoidWhen, requiredData, supportedActions: actions, fallback, status: ADAPTER_ONLY.has(t) ? 'adapter' : 'implemented', rendererKey: t, supportedVariants: typeVariants[t] ?? [], schemaRef: `lumina-block/${SCHEMA_VERSION}/${t}` };
   return [t, entry];
 })) as Record<BlockType, RegistryEntry>;
 
 export const rendererKeys = new Set<string>(Object.values(REGISTRY).map(e => e.rendererKey));
-export function isRenderable(type: string): type is BlockType { return type in REGISTRY; }
+export function isRenderable(type: string): type is BlockType { return Object.hasOwn(REGISTRY, type); }
+/** Answer styles. basic: plain text only. medium: static blocks (nothing that sends or changes anything). interactive: everything offered. */
+export const TIERS = ['basic', 'medium', 'interactive'] as const;
+export type Tier = (typeof TIERS)[number];
+export const INTERACTIVE_ONLY: ReadonlySet<BlockType> = new Set<BlockType>(['form', 'button_group', 'follow_up', 'approval_request', 'error_retry', 'agent_status', 'execution_timeline', 'tool_call_inspector', 'plan_viewer', 'completion_summary']);
+/** Types a tier may use (basic: none). Medium cards may not carry action buttons either; the server checks that too. */
+export function tierTypes(tier: Tier): BlockType[] { return tier === 'basic' ? [] : tier === 'medium' ? OFFERED.filter(t => !INTERACTIVE_ONLY.has(t) && !['control', 'upload', 'confirm', 'menu', 'prompt', 'wizard', 'runtime'].includes((FAMILIES as Record<string, string>)[t]) && !INTERACTIVE_ONLY.has((ALIASES as any)[t]?.[0])) : OFFERED; }
 /** Types the model may write and the server accepts. */
 export const OFFERED: BlockType[] = IMPLEMENTED_TYPES.filter(t => !ADAPTER_ONLY.has(t));
 export function unsupportedReason(type: string): string {
@@ -76,8 +89,10 @@ export function modelCatalog(): string {
 }
 
 /** The always-injected form: one short line per offered component. The long form (avoid-when, required data, variants) is `modelCatalog()`, fetched only when needed. */
-export function compactCatalog(): string {
-  return OFFERED.map(t => `${t}: ${REGISTRY[t].description}; ${REGISTRY[t].useWhen}`).join('\n');
+export function compactCatalog(tier: Tier = 'interactive'): string {
+  const groups = new Map<string, string[]>();
+  for (const t of tierTypes(tier)) { const key = REGISTRY[t].category; groups.set(key, [...(groups.get(key) ?? []), t]); }
+  return [...groups].map(([category, ids]) => `${category}: ${ids.join(', ')}`).join('\n');
 }
 
 /** Schema lookup for advanced blocks (the optional tool call): the prop names and which are required, taken from the real schema. */

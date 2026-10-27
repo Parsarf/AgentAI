@@ -7,10 +7,10 @@ import { Prose } from './text';
 import type { Action } from '../schemas';
 
 /** A button that runs one allowlisted action and says what happened. */
-export function ActionButton({ label, action, style = 'secondary', disabled, nonce }: { label: string; action: Action; style?: string; disabled?: boolean; nonce?: string }) {
+export function ActionButton({ label, action, style = 'secondary', disabled, nonce, destructiveStyle }: { label: string; action: Action; style?: string; disabled?: boolean; nonce?: string; destructiveStyle?: boolean }) {
   const g = useGen(); const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle'); const [msg, setMsg] = useState('');
   const run = async () => {
-    setState('busy'); const r = await g.act(action, { nonce, destructiveStyle: style === 'destructive' });
+    setState('busy'); const r = await g.act(action, { nonce, destructiveStyle: destructiveStyle || style === 'destructive' });
     if (r.ok) { setState('done'); setMsg(''); } else { setState(r.reason === 'declined' ? 'idle' : 'error'); setMsg(r.message); }
   };
   const cls = style === 'primary' ? 'btn primary' : style === 'destructive' ? 'btn danger' : style === 'ghost' ? 'btn tertiary' : 'btn';
@@ -25,7 +25,7 @@ export function InfoCard({ block }: P<'info_card'>) {
   return <CardBody b={block} title={p.title} p={p} compact={compact} href={href} open={!!l.expanded} toggle={block.variant === 'expandable' ? () => set({ expanded: !l.expanded }) : undefined} />;
 }
 type CardProps = B<'info_card'>['props'];
-function CardBody({ b, title, p, compact, href, open, toggle }: { b: { id: string; variant?: string; disabled?: boolean }; title?: string; p: Omit<CardProps, 'title'> & { title?: string }; compact: boolean; href: string | null; open: boolean; toggle?: () => void }) {
+function CardBody({ b, title, p, compact, href, open, toggle }: { b: { id: string; variant?: string; disabled?: boolean; actionPrefix?: string }; title?: string; p: Omit<CardProps, 'title'> & { title?: string }; compact: boolean; href: string | null; open: boolean; toggle?: () => void }) {
   return <article className={cx('gen-card', compact && 'compact', b.variant === 'horizontal' && 'horizontal')} aria-labelledby={`${b.id}-t`}>
     <div className="gen-card-main">
       <header><h4 id={`${b.id}-t`}>{title}</h4>{p.badge && <span className="gen-badge">{p.badge}</span>}</header>
@@ -35,13 +35,13 @@ function CardBody({ b, title, p, compact, href, open, toggle }: { b: { id: strin
         {p.body && <Prose>{p.body}</Prose>}
         {p.facts && p.facts.length > 0 && <dl className="gen-facts">{p.facts.map((f, n) => <div key={n}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}</dl>}
         {href && p.link && <a className="gen-link" href={href} target="_blank" rel="noopener noreferrer nofollow">{p.link.label} ↗<span className="sr"> (opens in a new tab)</span></a>}
-        {p.actions && p.actions.length > 0 && <div className="gen-row">{p.actions.map((a, n) => <ActionButton key={n} label={a.label} action={a.action} disabled={b.disabled} />)}</div>}</>}
+        {p.actions && p.actions.length > 0 && <div className="gen-row">{p.actions.map((a, n) => <ActionButton key={n} label={a.label} action={a.action} disabled={b.disabled} nonce={`${b.actionPrefix ?? 'action'}-${n}`} />)}</div>}</>}
     </div></article>;
 }
 export function CardGrid({ block }: P<'card_grid'>) {
   const cols = block.layout?.columns;
-  return <div className={cx('gen-grid', block.variant === 'horizontal' && 'one')} style={cols ? { ['--cols' as string]: cols } : undefined}>
-    {block.props.cards.map((c, n) => <CardBody key={n} b={{ id: `${block.id}-${n}`, variant: block.variant === 'horizontal' ? 'horizontal' : undefined, disabled: block.disabled }} title={c.title} p={c} compact={block.variant === 'compact'} href={c.link ? safeHttpUrl(c.link.url) : null} open />)}</div>;
+  return <div className={cx('gen-grid', !!cols && 'has-cols', block.variant === 'horizontal' && 'one')} style={cols ? { ['--cols' as string]: cols } : undefined}>
+    {block.props.cards.map((c, n) => <CardBody key={n} b={{ id: `${block.id}-${n}`, actionPrefix: `card-${n}-action`, variant: block.variant === 'horizontal' ? 'horizontal' : undefined, disabled: block.disabled }} title={c.title} p={c} compact={block.variant === 'compact'} href={c.link ? safeHttpUrl(c.link.url) : null} open />)}</div>;
 }
 export function MetricCard({ block }: P<'metric_card'>) {
   const p = block.props;
@@ -74,7 +74,7 @@ export function ButtonGroup({ block }: P<'button_group'>) {
   return <div className="gen-row" role="group" aria-label={block.props.title ?? 'Actions'}>{block.props.buttons.map(b => <ActionButton key={b.id} label={b.label} action={b.action} style={b.style ?? (block.variant ?? 'secondary')} disabled={block.disabled} nonce={b.id} />)}</div>;
 }
 export function FollowUp({ block }: P<'follow_up'>) {
-  return <div className="gen-row gen-follow" role="group" aria-label="Suggested next requests">{block.props.suggestions.map((s, n) => <ActionButton key={n} label={s} action={{ kind: 'agent.request', message: s }} style="ghost" />)}</div>;
+  return <div className="gen-row gen-follow" role="group" aria-label="Suggested next requests">{block.props.suggestions.map((s, n) => <ActionButton key={n} label={s} action={{ kind: 'agent.request', message: s }} style="ghost" nonce={`suggestion-${n}`} />)}</div>;
 }
 
 /** Status of a gauge value from its zones (ascending `upTo`); no zones means neutral. */

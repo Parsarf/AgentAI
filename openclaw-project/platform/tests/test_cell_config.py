@@ -204,30 +204,36 @@ class RulesChecks(unittest.TestCase):
         self.assertIn('web_search', text); self.assertIn('never invent prices', text); self.assertIn('do not scrape search-engine pages', text)
         self.assertEqual({o[1:] for o in owners}, {(1000, 1000)})
 
-    def test_the_rules_tell_the_assistant_to_show_products_and_places_as_a_card_with_a_real_link_each(self):
+    def test_rules_use_one_registry_protocol_and_on_demand_schema_files(self):
         from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
-        section = rules[rules.index('## Products, places'):]
-        for must in ('comparison', 'web_search', "browser reported", 'every option a `link`', 'never a search-results page', 'never an address you made up',
-                     'leave `link` out', 'plain text'):
-            self.assertIn(must, section, must)
-        self.assertIn('"type":"comparison"', rules)                                  # the card shape is still taught
-        self.assertEqual(rules.count('## Products, places'), 1)
+        self.assertIn('lumina-doc', rules)
+        self.assertIn('lumina-ui/components/', rules)
+        self.assertNotIn('```lumina\n', rules)
+        self.assertIn('Use plain text', rules)
 
-    def test_the_rules_ask_for_follow_ups_that_fit_each_answer_and_not_one_fixed_prompt(self):
-        from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
-        section = rules[rules.index('## Follow-ups on a card'):]
-        for must in ('`actions`', 'on each item', 'exactly that sentence', 'never offer the same sentence on every option', 'new card with new follow-ups'):
-            self.assertIn(must, section, must)
-        self.assertNotIn('cheapest reliable', rules)                                  # no canned prompt in the instructions
+    def test_written_component_schemas_and_examples_match_the_registry(self):
+        from agentai_platform.genui.document import registry, validate_block
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name); (root / TENANT).mkdir()
+        prov = CellProvisioner(None, None, root, chown=lambda *args: None)
+        prov.write_rules(SimpleNamespace(tenant_ref=TENANT))
+        for component in registry()['offered']:
+            saved = json.loads((root / TENANT / 'workspace' / 'lumina-ui' / 'components' / (component + '.json')).read_text())
+            self.assertEqual(saved['componentId'], component)
+            validate_block(saved['example'], saved['exampleDatasets'])
 
-    def test_every_example_card_in_the_rules_is_one_the_server_accepts_and_plain_text_stays_the_default(self):
-        import json, re
-        from agentai_platform.genui import data
-        from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
-        examples = re.findall(r'```lumina\n(.*?)\n```', rules, re.S)
-        kinds = [data.validate_data(json.loads(e))['type'] for e in examples]                # an example the server would refuse teaches the assistant to fail
-        self.assertEqual(set(kinds), set(data.KINDS))                                         # and every kind is shown once
-        self.assertIn('Most answers are plain text', rules); self.assertIn('Use plain text whenever that reads best', rules)
+    def test_cell_validator_reports_corrective_errors_without_a_server_connection(self):
+        import subprocess, sys
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name); (root / TENANT).mkdir()
+        CellProvisioner(None, None, root, chown=lambda *args: None).write_rules(SimpleNamespace(tenant_ref=TENANT))
+        ui = root / TENANT / 'workspace' / 'lumina-ui'
+        draft = ui / 'draft.json'
+        draft.write_text(json.dumps({'version': '1.0', 'responseId': 'check', 'blocks': [{'id': 'x', 'type': 'script', 'props': {}}]}))
+        result = subprocess.run([sys.executable, str(ui / 'validate.py'), str(draft)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(json.loads(result.stdout)['valid'])
+        self.assertIn('error', json.loads(result.stdout))
 
 
 class SearchSetupChecks(unittest.TestCase):

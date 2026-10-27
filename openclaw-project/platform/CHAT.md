@@ -106,32 +106,14 @@ Haiku or Sonnet tiers any more. With the cell's native browser enabled (`browse-
   unverified, not_applicable) say what that means, from evidence Lumina holds itself (`outcome.py`): the browser's end state and steps, saved files, the goal state. The assistant's
   own words are never evidence.
 
-## Pictures of products and places (live19)
+## Registry-driven answers
 
-Pictures reach the chat only on a `comparison` card: for each option Lumina fetches the page behind its `link` and keeps that page's preview picture (`genui/images.py`; Brave image search is an optional
-fallback and is not configured). The assistant is told, both in its rules file (`cell_config.WORKSPACE_RULES`, rewritten each time an assistant starts) and in the instructions sent with every message
-(the workspace rules, `lifecycle/cell_config.WORKSPACE_RULES`), to show any 2 to 6 products, places or similar things as a card, however it found them (search, pages it read, or a browser result), with a real link per option taken from
-its search results or the pages it read, never a search-results page and never an invented address. The browser's own report is still text only; sites that block automated fetches (for example Yelp) give no picture.
+Composed answers use one versioned `lumina-doc` document protocol. The generated registry covers content, cards, tables, charts, inputs, navigation, media, location, execution monitoring, decisions, scheduling and specialized results. Detailed schemas/examples and a local validator are deployed to `lumina-ui/` inside the cell workspace; the compact capability index is supplied only when the chosen answer style permits structured UI.
 
-## Follow-ups on cards (live20)
+Server extraction validates documents and stores them as anchored `document` blocks. User events carry artifact/node/action identities, document version, submitted values and an idempotency key; the server resolves the stored binding, validates values, and resumes the correct conversation through normal budget admission. Continuations can update the same artifact by version while preserving compatible input and local state. Approval/retry controls use the actual native phase/request authority.
 
-There is no fixed "find the cheapest reliable place to order this" button any more. A card (table, chart or comparison) may carry `actions`: up to 4 short sentences the assistant wrote for this answer, and each option of a
-comparison may carry its own. A sentence is both the button's label and the exact message sent when it is pressed, so nothing is hidden behind a label (`genui/data.py` `_actions`: 4 to 90 characters, plain text,
-repeats dropped, and a sentence aimed at the AI dropped, because it would arrive as the person's own message). A card without follow-ups shows none. The assistant is told (rules file section "Follow-ups on a card" and item 9 of
-the per-message instructions) to write follow-ups that fit what it just found, per option and per card, never the same sentence on every option, and to answer a new question with a new card with new follow-ups, so what
-is offered changes with the conversation. In the UI a pressed follow-up shows a check mark and stays disabled; a failed send can be tried again (`lumina/src/components/genui/Cards.tsx` `FollowUps`).
+The former `lumina` card producer, renderer and automatic remote picture fetching have been retired. Historical cards migrate through the registry renderer or remain readable text/code. Stored conversations, artifacts and account-owned pictures are preserved. New media references resolve only authorized project files, using scanned uploads and generated-artifact tickets.
 
-## Answers laid out for what they are (live21)
+JEV remains an optional advisory fallback for structured prose; its hints can affect presentation but never provide facts, execute actions or grant approval. Partial-document parsing mounts complete validated blocks. Live token streaming requires drafts/deltas from the upstream gateway; the application does not simulate them.
 
-The assistant composes the screen for an answer, and only when a layout helps; most answers stay plain text.
-- **Cards it can attach** (1 to 3 per reply, ` ```lumina ` blocks, validated in `genui/data.py`, drawn by `lumina/src/components/genui/CardView.tsx`): `places` (filter by open now and price, sort by rating or distance, map link,
-  a picture per place), `products` (sort by price or rating, filter by store, tick 2 or 3 and send "Compare A and B"), `comparison`, `steps` (a checklist that remembers what was ticked in this browser), `answer` (the result
-  first, how sure, and sources), `choice` (quick replies; several may be ticked and sent together), `callout` (info, tip, warning, success), `timeline`, `sources`, `table`, `chart`. Places and products get pictures the same
-  way comparisons do. Everything interactive either happens in the browser (filter, sort, tick) or sends exactly the words on a button.
-- **The assistant decides** which card fits, from its rules file ("How to present your answer", with one example of every kind; a test checks that every example is one the server accepts) and item 9 of the per-message
-  instructions. The fixed chips that used to sit under long replies ("Show as table", "Show as chart", "Compare side by side") are gone: follow-ups are written for each answer instead.
-- **JEV as a fallback** (owner switch `jev_display`, off by default): when a reply comes back as plain text with no card, and it is long and structured enough (`routing/display.py` `worth_asking`), JEV picks how the SAME text
-  is laid out: `plain`, `steps` (the numbered list becomes a checklist), `answer` (the opening paragraph becomes the headline) or `list` (bullets become tiles). It never changes a word. Unsure (below 0.7), slow (4 s),
-  unavailable, or a layout the text cannot support means plain. The choice is stored as a `display` row in `data_blocks` anchored to the reply. JEV sees the reply text only (secrets removed, at most 1,500 characters).
-- Migration `0027_more_cards.sql` widens the kinds `data_blocks` may hold; existing cards are copied over unchanged.
-
+See `docs/generative-ui/protocol.md`, `component-catalog.md`, `selection-policy.md`, `security.md`, and `testing.md` for the current contracts and verification workflow.

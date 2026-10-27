@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { getAnswerStyle } from '../lib/answerStyle';
 import * as I from './Icons';
 import Menu from './ui/Menu';
 import { api, ApiError } from '../lib/api';
@@ -66,7 +67,7 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
       const attempt = pending.current;
       const id = attempt.conversation || await createChat();
       attempt.conversation = id;
-      const r = await api('POST', `/v1/conversations/${id}/send`, { message, key: attempt.key, mode: respond, ...(attempt.goal ? { goal: 'true' } : {}) });
+      const r = await api('POST', `/v1/conversations/${id}/send`, { message, key: attempt.key, mode: respond, ui: getAnswerStyle(), ...(attempt.goal ? { goal: 'true' } : {}) });
       saveDraft(storageKey, ''); setText(''); setMode(null); setGoal(false); pending.current = null; onSent?.({ ...r.request, message, conversation_id: id }); await refresh();
     } catch (e) {
       const code = e instanceof ApiError ? e.code : 'unknown';

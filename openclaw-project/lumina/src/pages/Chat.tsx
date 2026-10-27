@@ -9,6 +9,7 @@ import ActivityPanel from '../components/ActivityPanel';
 import AgentThinking, { type ThreadTask } from '../components/AgentThinking';
 import BlockView from '../components/genui/BlockView';
 import type { Bridge } from '../gen/ChatBridge';
+import { getAnswerStyle } from '../lib/answerStyle';
 import { api } from '../lib/api';
 import { download } from './Files';
 import { humanSize, type ArtifactRow } from '../lib/files';
@@ -79,7 +80,7 @@ export default function Chat() {
   const byRequest = new Map(tasks.map(t => [t.id, t]));
   const current = chats.find(c => c.id === id) ?? detail;
 
-  const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text' }); } finally { reload(); } };
+  const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text', ui: getAnswerStyle() }); } finally { reload(); } };
   const lastAgent = [...msgs].reverse().find(m => m.provenance === 'agent');
   const fresh = !id || (loaded && !msgs.length && !err);          // nothing said yet: the composer floats in the middle, then settles at the bottom
   const sent = (r: any) => {

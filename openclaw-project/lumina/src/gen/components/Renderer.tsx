@@ -1,10 +1,11 @@
 // Deterministic, registry-driven renderer: a validated document in, React out. No model-written code, markup or styles ever reaches the DOM.
-import '../gen.css';import { Component, memo, useEffect, type CSSProperties, type ReactNode } from 'react';
+import '../gen.css';import { Component, lazy, Suspense, memo, useEffect, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { ALIASES, FAMILIES } from '../catalog';
 import type { Block } from '../schemas';
 import { isRenderable, REGISTRY } from '../registry';
 import { slotFor, type GenDocument, type Slot } from '../protocol';
 import { cx } from './types';
-import { GenProvider, type ExecutionProvider, type Host } from './context';
+import { GenProvider, NodeProvider, type ExecutionProvider, type Host } from './context';
 import { Accordion, Divider, Gallery, ImageBlock, Section, Tabs, Timeline } from './layout';
 import { CalloutBlock, CitationList, CodeBlock, DiffViewer, HeadingBlock, JsonViewer, ListBlock, QuoteBlock, TerminalOutput, TextBlock } from './text';
 import { ButtonGroup, CardGrid, FollowUp, Gauge, InfoCard, MetricCard, ProgressBlock, StatusCard } from './cards';
@@ -31,6 +32,12 @@ export const RENDERERS: Record<string, Draw> = {
   approval_request: b => <ApprovalRequest block={b} />, error_retry: b => <ErrorRetry block={b} />, completion_summary: b => <CompletionSummary block={b} />,
 };
 
+const Extended = lazy(() => import('./extended'));
+for (const [id, [base, defaults]] of Object.entries(ALIASES)) {
+  RENDERERS[id] = (b, nested) => RENDERERS[base]({ ...b, type: base, variant: id === 'stacked_bar_chart' ? 'stacked' : id === 'grouped_form' ? 'grouped' : b.variant, props: { ...b.props, ...defaults } }, nested);
+}
+for (const id of Object.keys(FAMILIES)) RENDERERS[id] = (b, nested) => <Suspense fallback={<p role="status">Loading component…</p>}><Extended block={b} nested={nested} /></Suspense>;
+
 class Boundary extends Component<{ fallback: string; id: string; type: string; onError: Diagnostic; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -45,7 +52,10 @@ const layoutStyle = (b: Block): CSSProperties | undefined => {
 };
 const layoutClasses = (b: Block) => { const l = b.layout; return cx(l?.width && `w-${l.width}`, l?.height && `h-${l.height}`, l?.gap && `gap-${l.gap}`, l?.sticky && 'sticky', l?.overflow && `of-${l.overflow}`, l?.direction === 'row' && 'dir-row', l?.alignment && `al-${l.alignment}`, l?.justify && `ju-${l.justify}`); };
 
-function BlockShell({ block, fallback, onDiagnostic }: { block: Block; fallback: string; onDiagnostic: Diagnostic }) {
+function BlockShell({ block: original, fallback, onDiagnostic }: { block: Block; fallback: string; onDiagnostic: Diagnostic }) {
+  const breakpoint = useSyncExternalStore<'phone' | 'tablet' | 'desktop'>(cb => { window.addEventListener('resize', cb); return () => window.removeEventListener('resize', cb); }, () => window.innerWidth < 640 ? 'phone' : window.innerWidth < 960 ? 'tablet' : 'desktop', () => 'desktop');
+  const override = breakpoint === 'desktop' ? undefined : original.layout?.responsive?.[breakpoint];
+  const block = override ? { ...original, layout: { ...original.layout, ...override } } : original;
   if (block.visible === false) return null;
   const draw = RENDERERS[REGISTRY[block.type]?.rendererKey];
   if (!draw) { return <Fallback text={fallback} />; }
@@ -55,7 +65,7 @@ function BlockShell({ block, fallback, onDiagnostic }: { block: Block; fallback:
     {block.props.title && !['heading', 'section', 'form', 'info_card'].includes(block.type) && <h4 className="gen-title">{block.props.title}</h4>}
     {block.props.description && !['section', 'form', 'callout'].includes(block.type) && <p className="gen-desc faint">{block.props.description}</p>}
     {block.loading ? <Skeleton /> : (
-      <Boundary fallback={fallback} id={block.id} type={block.type} onError={onDiagnostic}><Draw draw={draw} block={block} nested={nested} /></Boundary>)}
+      <Boundary fallback={fallback} id={block.id} type={block.type} onError={onDiagnostic}><NodeProvider value={block}><fieldset className="gen-shell" disabled={block.disabled} aria-label={block.accessibilityLabel ?? block.props.title ?? block.type.replaceAll('_', ' ')}><Draw draw={draw} block={block} nested={nested} /></fieldset></NodeProvider></Boundary>)}
   </div>;
 }
 /** Calls the renderer inside the boundary, so even a renderer function that throws cannot take the answer down. */

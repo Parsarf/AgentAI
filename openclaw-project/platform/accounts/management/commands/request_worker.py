@@ -10,7 +10,6 @@ from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat_driver import ChatDriver
 from agentai_platform.events import EventService
 from agentai_platform.gateway import NativeGateway
-from agentai_platform.genui import images as card_images
 from agentai_platform.genui.runtime import GenUiRuntime
 from agentai_platform.genui.store import BlockStore
 from agentai_platform.goals import GoalChain
@@ -38,7 +37,7 @@ def build_worker(store):
     display = DisplayDecider(config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE, switch_on=lambda: switches.is_on('jev_display'))
     # OpenClaw owns the run. The driver hands a message over, asks the runtime when it ended and settles it; the browser the assistant uses is a native tool (tool_relay).
     driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store), artifacts=artifacts, sleep=time.sleep, heartbeat=queue.heartbeat,
-                        genui=GenUiRuntime(store, BlockStore(store, images=card_images.from_environment(store))),
+                        genui=GenUiRuntime(store, BlockStore(store)),
                         browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET), display=display, queue=queue, goal_chain_limit=settings.GOAL_CHAIN_LIMIT)
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))

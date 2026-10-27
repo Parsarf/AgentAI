@@ -28,7 +28,7 @@
 .agent-response { width: 100%; max-width: 100%; overflow-wrap: anywhere; }
 .agent-response pre { width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; overflow-wrap: normal; }
 .agent-response pre code { display: block; width: max-content; min-width: 100%; white-space: pre; overflow-wrap: normal; }
-.answer-table, .agent-response .gcard, .agent-response .gtable-wrap { min-width: 0; max-width: 100%; }
+.answer-table, .agent-response .gen-doc, .agent-response .gen-scroll { min-width: 0; max-width: 100%; }
 .agent-response pre::-webkit-scrollbar, .answer-table::-webkit-scrollbar { height: 8px; }
 .agent-response pre::-webkit-scrollbar-track, .answer-table::-webkit-scrollbar-track { background: var(--fill-hover); }
 .agent-response pre::-webkit-scrollbar-thumb, .answer-table::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }

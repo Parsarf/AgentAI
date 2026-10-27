@@ -23,6 +23,7 @@ from .browse.untrusted import neutralize
 from .budget import BudgetLedger
 from .events import EventService
 from .gateway import SyntheticGateway
+from .genui import document as gen_document
 from .lifecycle.coordinator import Coordinator
 from .lifecycle.types import Conflict
 from .request_queue import Defer, Parked, Recover, RequestClaim, RequestQueue, RequestReceipt
@@ -229,6 +230,8 @@ class ChatDriver:
             notes.append('The customer chose Browse mode. Use the Lumina browser tool (find it with tool_search: "lumina browser") for what they ask, then tell them what it found.')
         if context.get('mode') == 'text':
             notes.append('The customer chose Text mode: answer in plain text and do not use the browser.')
+        if context.get('mode') != 'text' and context.get('ui') in ('medium', 'interactive'):
+            notes.append(gen_document.tier_section(context['ui']).rstrip())         # composed-answer instructions for this message only; basic and Text mode send nothing
         if info['retry_of']:
             notes.append(RETRY_NOTE)
         known = self._known_about(claim.account_id)

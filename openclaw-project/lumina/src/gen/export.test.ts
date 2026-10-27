@@ -3,22 +3,25 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { ACTION_KINDS, LIMITS, SCHEMA_VERSION, blockSchema, datasetSchema, presentationPlanSchema } from './schemas';
-import { OFFERED, REGISTRY, compactCatalog, modelCatalog } from './registry';
+import { OFFERED, REGISTRY, compactCatalog, modelCatalog, tierTypes } from './registry';
+import { ORDERED_FIELDS } from './constraints';
+import { ALIASES, FAMILIES } from './catalog';
 import { COMPONENT_VARIANTS } from './variants';
-import { ALL_PARTS, INVALID_BLOCKS, SAMPLE_CONVERSATION } from './fixtures';
+import { ALL_BLOCKS, ALL_PARTS, DATASETS, INVALID_BLOCKS, SAMPLE_CONVERSATION } from './fixtures';
 import { ADAPTER_ONLY } from './registry';
 import { MANIFEST, categories } from './manifest';
 
 const OUT = '../platform/agentai_platform/genui/gen_registry.json';
-const OFFERED_ACTIONS = ACTION_KINDS.filter(k => k !== 'file.download');       // wired in the dispatcher, but no host adapter yet: not offered
+const OFFERED_ACTIONS = ACTION_KINDS;       // wired in the dispatcher, but no host adapter yet: not offered
 const js = (s: z.ZodType) => z.toJSONSchema(s, { unrepresentable: 'any', target: 'draft-2020-12', io: 'input' } as any);
 
 export function buildPayload() {
   return {
     generatedBy: 'lumina/src/gen/export.test.ts (do not edit by hand)', schemaVersion: SCHEMA_VERSION, limits: LIMITS,
-    offered: OFFERED, variants: Object.fromEntries(OFFERED.map(t => [t, (COMPONENT_VARIANTS as Record<string, readonly string[]>)[t]])),
-    actions: OFFERED_ACTIONS, supportedActions: Object.fromEntries(OFFERED.map(t => [t, REGISTRY[t].supportedActions])),
-    catalog: modelCatalog(), catalogCompact: compactCatalog(), blockSchema: js(blockSchema), datasetSchema: js(datasetSchema), presentationPlanSchema: js(presentationPlanSchema),
+    offered: OFFERED, variants: Object.fromEntries(OFFERED.map(t => [t, (COMPONENT_VARIANTS as Record<string, readonly string[]>)[t] ?? []])),
+    actions: OFFERED_ACTIONS, entries: Object.fromEntries(OFFERED.map(t => [t, { ...REGISTRY[t], example: ALL_BLOCKS.find((b: any) => b.type === t), exampleDatasets: DATASETS }])), families: FAMILIES, aliases: ALIASES, orderedFields: ORDERED_FIELDS,
+    supportedActions: Object.fromEntries(OFFERED.map(t => [t, REGISTRY[t].supportedActions])),
+    catalog: modelCatalog(), catalogCompact: compactCatalog(), tiers: { medium: tierTypes('medium'), interactive: tierTypes('interactive') }, catalogByTier: { medium: compactCatalog('medium'), interactive: compactCatalog('interactive') }, blockSchema: js(blockSchema), datasetSchema: js(datasetSchema), presentationPlanSchema: js(presentationPlanSchema),
   };
 }
 const PARITY = '../platform/tests/fixtures/gen_parity.json';

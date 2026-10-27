@@ -162,7 +162,7 @@ def chat_messages(request, conversation_id):
         raise Denied()
 
 
-@endpoint(['POST'], ['message', 'key', 'mode', 'goal'], field_limits={'message': 16000})
+@endpoint(['POST'], ['message', 'key', 'mode', 'goal', 'ui'], field_limits={'message': 16000})
 def chat_send(request, conversation_id):
     denied = customer(request)
     if denied:
@@ -171,7 +171,7 @@ def chat_send(request, conversation_id):
     try:
         result = service().send(principal(request), conversation_id=conversation_id,
                                 message=request.input.get('message', ''), key=request.input.get('key', ''),
-                                mode=request.input.get('mode', 'auto'), goal=goal)
+                                mode=request.input.get('mode', 'auto'), goal=goal, ui=request.input.get('ui', 'basic'))
         request.form_redirect = '/account/chat/?conversation=' + conversation_id
         return JsonResponse({'request': result}, status=202)
     except NotFound:

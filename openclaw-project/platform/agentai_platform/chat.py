@@ -14,7 +14,7 @@ from .adapters import CapabilityUnavailable
 from .budget import BudgetDenied, BudgetLedger
 from .events import EventService
 from . import safety
-from .genui import prompts as gen_prompts, schema as gen_schema
+from .genui import document as gen_document, prompts as gen_prompts, schema as gen_schema
 from .genui.runtime import GenUiRuntime
 from .genui.store import BlockStore
 from .genui.runner import PlanRunner
@@ -201,7 +201,7 @@ class ChatService:
         return amount, price_version, project_id
 
     def send(self, principal: Principal, *, conversation_id: str, message: str, key: str,
-             provenance: str = 'customer', mode: str = 'auto', goal: bool = False):
+             provenance: str = 'customer', mode: str = 'auto', goal: bool = False, ui: str = 'basic', ui_event: dict | None = None):
         """One actionable request per send; admission via Phase 5 before any native effect. A repeat with the same key never starts a second task.
 
         While a task of this conversation is still running, a plain message joins that run as a steer (the runtime's own steering) instead of waiting behind it.
@@ -211,11 +211,13 @@ class ChatService:
             raise ValueError('invalid message')
         if mode not in ('auto', 'text', 'plan', 'browse'):
             raise ValueError('invalid mode')
+        if ui not in gen_document.TIERS:
+            raise ValueError('invalid answer style')
         if type(goal) is not bool or (goal and (mode == 'plan' or provenance != 'customer')):
             raise ValueError('invalid goal')
         if self.conversation(principal, conversation_id)['archived_epoch'] is not None:
             raise Conflict('restore the archived conversation first')
-        if not goal and mode in ('auto', 'text') and self.gateway_factory is not None:
+        if not goal and ui_event is None and mode in ('auto', 'text') and self.gateway_factory is not None:
             running = self.queue.open_for_steer(principal, conversation_id)
             if running is not None and running['intent'] in ('chat', 'browse', 'goal_continue', 'goal_resume'):
                 try:
@@ -224,6 +226,10 @@ class ChatService:
                     pass                         # the task finished a moment ago: this becomes a task of its own
         kind = ('plan' if mode == 'plan' else 'browse' if mode == 'browse' and self.browse else 'text') if provenance == 'customer' else 'text'
         context = {'mode': 'text'} if mode == 'text' else None      # Text mode means plain text: the browser is not offered for it
+        if ui != 'basic' and mode != 'text' and kind == 'text':
+            context = {**(context or {}), 'ui': ui}                 # answer style: which composed blocks the assistant may write (genui/document.py)
+        if ui_event is not None:
+            context = {**(context or {}), 'ui_artifact': ui_event}
         result = self.queue.submit(principal, message=message, key=key, conversation_id=conversation_id,
                                    intent=kind if kind in ('plan', 'browse') else 'chat', context=context, goal_mode=goal)
         with self.coordinator.transaction() as con:
@@ -451,7 +457,10 @@ class ChatService:
                 WHERE r.account_id=? AND r.id=?''', (principal.account_id, request_id)).fetchone()
             if not row:
                 raise NotFound('unavailable')
-            return {**dict(row), 'execution_enabled': self.execution}
+            receipts = con.execute('SELECT amount_microusd,price_version FROM provider_receipts WHERE account_id=? AND task_id=?', (principal.account_id, request_id)).fetchall()
+            usage = {'tokens': None, 'cost_microusd': sum(r['amount_microusd'] for r in receipts) if receipts else None,
+                     'estimated': any(r['price_version'] == 'reservation-upper-bound-v1' for r in receipts), 'currency': 'USD'}
+            return {**dict(row), 'usage': usage, 'execution_enabled': self.execution}
 
     def cancel(self, principal: Principal, request_id: str):
         before = self.task(principal, request_id)

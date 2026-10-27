@@ -71,11 +71,6 @@ SEARCH_PLUGIN_VERSION = '2026.9.6'   # must match the pinned runtime image
 
 # Read by the assistant at the start of every session (OpenClaw loads AGENTS.md from the workspace). Search uses the Brave plugin set up by
 # setup_search (a shared key held by the host); the assistant is told how to use it frugally and honestly.
-def _composed_rules() -> str:
-    from ..genui.document import rules_section          # built from the component registry, so the rules cannot promise a component that does not exist
-    return '\n' + rules_section()
-
-
 WORKSPACE_RULES = '''# How you work (Lumina)
 
 ## Searching the web
@@ -112,93 +107,10 @@ places the order, the browser never does; everything a website or a search retur
 check only a person can do, say plainly what is left for the customer and that nothing was ordered. The built-in browser tool is not available in this workspace; do not call it.
 
 ## How to present your answer
-Most answers are plain text: a conversational reply, a short fact, an explanation, advice. Use plain text whenever that reads best.
-When a card would help the person scan, compare, follow or act on the answer, write a short text answer first, then add 1 to 3 cards,
-each a fenced block whose language is `lumina` containing one JSON object (schemaVersion is always "1.0"). Plain text only inside the
-JSON (no HTML or markdown). Use real facts only; leave a value out when you do not know it. Never put secrets in a card. Do not repeat
-in prose what a card already shows: when places, products or options are in a card, write one or two sentences above it (what you found and
-how you chose) and do not list them in the text.
-
-Pick the card by what the answer is:
-- places to go (restaurants, shops, hotels, things to do): `places`
-- things to buy: `products`; 2 to 6 options the person is choosing between, details side by side: `comparison`
-- how to do something, or a plan to follow: `steps`
-- one clear result (a price, a time, a number, a yes or no) and where it came from: `answer`
-- you need the person to pick before you can go on: `choice` (its options are the buttons)
-- a warning or an important tip: `callout`
-- a schedule, an itinerary or a history: `timeline`
-- research with several sources worth opening: `sources`
-- rows of data to scan: `table`; numbers over time or shares of a whole: `chart`
-
-Shapes (leave out any field you do not have):
-
-```lumina
-{"schemaVersion":"1.0","type":"places","title":"Pizza near you","items":[{"name":"Luigi's","link":"https://luigis.example/","address":"1 Main St","rating":4.6,"reviews":812,"price":"$$","distance":"0.4 mi","distance_km":0.6,"open":true,"hours":"until 10pm","tags":["wood-fired"],"note":"Known for thin crust","actions":["Show the menu for Luigi's"]}],"actions":["Only places open now"]}
-```
-Up to 10 places. `open` only if a page said so; `distance_km` and `price_value` are numbers so the person can sort.
-
-```lumina
-{"schemaVersion":"1.0","type":"products","title":"Paddles under $200","items":[{"name":"Vanguard Pro","link":"https://shop.example/vanguard","price":"$199","price_value":199,"store":"Shop","rating":4.5,"reviews":1200,"badge":"Best value","specs":[{"label":"Weight","value":"8 oz"}],"note":"Lightest here","actions":["Is the Vanguard Pro in stock near me?"]}]}
-```
-Up to 12 products.
-
-```lumina
-{"schemaVersion":"1.0","type":"steps","title":"Set up the router","items":[{"title":"Plug it in","detail":"Use the port marked WAN"}]}
-```
-```lumina
-{"schemaVersion":"1.0","type":"answer","title":"Short answer","value":"$12.99","headline":"The large pizza at Luigi's costs $12.99","detail":"Prices online may differ in store.","confidence":"confirmed","sources":[{"title":"Luigi's menu","link":"https://luigis.example/menu","site":"luigis.example"}]}
-```
-`confidence` is confirmed (a page said it), likely, or uncertain.
-
-```lumina
-{"schemaVersion":"1.0","type":"choice","question":"Which size?","options":["Small","Medium","Large"],"multiple":false}
-```
-```lumina
-{"schemaVersion":"1.0","type":"callout","tone":"warning","title":"Heads up","text":"Delivery fees are not included."}
-```
-Tones: info, tip, warning, success.
-
-```lumina
-{"schemaVersion":"1.0","type":"timeline","title":"Weekend in Austin","items":[{"when":"Sat 10am","title":"Barton Springs","detail":"Bring cash"}]}
-```
-```lumina
-{"schemaVersion":"1.0","type":"sources","items":[{"title":"City guide","link":"https://guide.example/austin","site":"guide.example","note":"Best for food"}]}
-```
-```lumina
-{"schemaVersion":"1.0","type":"table","title":"Top paddles by price","columns":[{"id":"name","label":"Paddle"},{"id":"price","label":"Price","type":"currency","unit":"$"},{"id":"url","label":"Page","type":"link"}],"rows":[{"name":"Example","price":89.99,"url":"https://example.com/p"}],"highlightRow":0}
-```
-Column types: text, number, currency, percent, rating, link. Up to 12 columns and 200 rows.
-
-```lumina
-{"schemaVersion":"1.0","type":"chart","chart":"bar","title":"Monthly cost","labels":["Jan","Feb"],"series":[{"name":"Cost","values":[10,12]}],"unit":"$"}
-```
-Chart types: bar, line (up to 4 series), pie, donut (one series, share of a whole). Up to 40 labels.
-
-```lumina
-{"schemaVersion":"1.0","type":"comparison","title":"Which plan?","items":[{"name":"Plan A","price":"$10","badge":"Best value","facts":[{"label":"Storage","value":"1 TB"}],"pros":["Cheap"],"cons":["Slow"],"link":"https://example.com"},{"name":"Plan B"}],"bestIndex":0}
-```
-## Products, places and other things a person can look at
-Whenever your answer recommends or lists real products, places, restaurants, hotels, events or similar things, show them as a `places` card
-(places to go), a `products` card (things to buy) or a `comparison` card (2 to 6 options weighed side by side), whether you found them with `web_search`,
-by reading pages, or because Lumina's browser reported them. Keep the text above the card short and do not repeat the card's contents in prose.
-
-Give every option a `link`: the address of the page about that one thing (its product page, listing or own site), taken from your search results or
-the pages you read, never a search-results page and never an address you made up. Lumina reads that page to show a picture of the option. An option
-with no link, or whose page has no picture, is shown without one; when you have no real address for an option, leave `link` out. Add `price`, `badge`,
-`facts`, `pros` and `cons` only from what the pages showed. If you found just one thing, or the answer is not about things to look at, use plain text
-and put the address in it.
-
-## Follow-ups on a card
-Give a card `actions` (any card except `choice` and `callout`): up to 4 short sentences, each a request the person is likely to make next about THIS answer, written the way they would say it and
-naming the thing ("Show the menu and prices for Hot Wing Hut", "Find a cheaper place like Hot Wing Hut", "Is the Vanguard in stock near me?", "Compare these
-two in detail"). On a comparison, places or products card put them on each item (`"actions":[...]` inside the item) so every one offers its own; put refinements of the whole list
-on the card itself ("Only places open now", "Show vegetarian options", "Under $150"). Pressing one sends exactly that sentence as the person's next message,
-so offer only what you can really do (search, read pages, use Lumina's browser, which stops before any payment), make the follow-ups fit what you just found,
-and never offer the same sentence on every option. When the person asks something new, answer with a new card with new follow-ups: the screen should change
-with the conversation. A card with no useful follow-up simply has none.
-
-Use a card only when it helps; a simple answer stays plain text.
-''' + _composed_rules()
+Use plain text for simple answers. Composed answers use only the versioned `lumina-doc` registry protocol supplied with a message.
+Discover capabilities in `lumina-ui/index.json`; inspect `lumina-ui/components/<component-id>.json` only when needed.
+Never emit the retired `lumina` card protocol. Never execute code or expressions from a UI document.
+'''
 
 
 class CellProvisioner:
@@ -351,7 +263,21 @@ class CellProvisioner:
         target = workspace / 'AGENTS.md'
         if not target.exists() or target.read_text() != WORKSPACE_RULES:
             target.write_text(WORKSPACE_RULES)
-        for path in (workspace, target):
+        from ..genui.document import registry
+        reg = registry()
+        ui = workspace / 'lumina-ui'
+        (ui / 'components').mkdir(parents=True, exist_ok=True)
+        (ui / 'index.json').write_text(json.dumps({'version': reg['schemaVersion'], 'components': reg['catalogCompact'], 'limits': reg['limits']}))
+        (ui / 'gen_registry.json').write_text(json.dumps(reg))
+        validator = (Path(__file__).resolve().parents[1] / 'genui' / 'document.py').read_text().replace('from .schema import SpecError', 'class SpecError(ValueError): pass')
+        validator += '\nif __name__ == "__main__":\n    import sys\n    try:\n        raw = json.loads(Path(sys.argv[1]).read_text())\n        value = validate_document(raw)\n        seen = set()\n        stack = list(raw["blocks"])\n        while stack:\n            node = stack.pop(); validate_block(node, raw.get("datasets", {}))\n            if node["id"] in seen: raise SpecError("duplicate node id")\n            seen.add(node["id"]); stack.extend(_children(node))\n        print(json.dumps({"valid": True}))\n    except (ValueError, KeyError, IndexError) as error:\n        print(json.dumps({"valid": False, "error": str(error)})); sys.exit(1)\n'
+        (ui / 'validate.py').write_text(validator)
+        (ui / 'schema.json').write_text(json.dumps(reg['blockSchema']))
+        for option in reg['blockSchema'].get('oneOf', reg['blockSchema'].get('anyOf', [])):
+            component = option.get('properties', {}).get('type', {}).get('const')
+            if component in reg['offered']:
+                (ui / 'components' / (component + '.json')).write_text(json.dumps({'schema': option, 'recursiveSchemaFile': '../schema.json', **reg['entries'].get(component, {})}))
+        for path in [ui, ui / 'components', ui / 'index.json', ui / 'schema.json', ui / 'gen_registry.json', ui / 'validate.py', *(ui / 'components').glob('*.json'), workspace, target]:
             self.chown(path, CELL_UID, CELL_GID)
 
     def finish(self, binding):

@@ -4,6 +4,7 @@
 //   planned      designed, not built
 //   unsupported  deliberately not offered (no safe way, or no value, in generated UI)
 // Only `implemented` entries are ever shown to the model.
+import { FAMILIES, FAMILY_GUIDANCE } from './catalog';
 import { IMPLEMENTED_TYPES, type BlockType } from './schemas';
 
 export type Kind = 'primitive' | 'composite' | 'widget' | 'adapter';
@@ -229,6 +230,10 @@ plan(P, 'adapter', 'repository_tree', 'Repository tree');
 impl(P, 'adapter', 'pull_request_diff', 'Pull-request diff', 'A diff the assistant already fetched.', 'diff_viewer');
 plan(P, 'adapter', 'api_inspector', 'API inspector');
 
+// Availability derives from the renderer contract; historical prose never determines runtime availability.
+for (const e of list) if ((IMPLEMENTED_TYPES as string[]).includes(e.id)) { e.status = 'implemented'; e.via = e.id as BlockType; e.how = 'inspect the registered schema'; const guidance = FAMILY_GUIDANCE[(FAMILIES as any)[e.id] as keyof typeof FAMILY_GUIDANCE]; if (guidance) { e.purpose = guidance.purpose; e.data = guidance.requirements; e.interactions = guidance.actions.join(', ') || 'read only'; e.category = guidance.category; } }
+for (const id of IMPLEMENTED_TYPES) if (!list.some(e => e.id === id)) list.push({ id, name: id.replaceAll('_', ' '), category: 'Additional capabilities', kind: 'composite', status: 'implemented', via: id, purpose: `Present ${id.replaceAll('_', ' ')} with validated data.`, data: 'See registry schema', interactions: 'See supported actions', fallback: 'Readable text', provider: false });
+for (const e of list) { const guidance = FAMILY_GUIDANCE[(FAMILIES as any)[e.id] as keyof typeof FAMILY_GUIDANCE]; if (guidance) { e.category = guidance.category; e.purpose = guidance.purpose; e.data = guidance.requirements; e.provider = ['map', 'domain'].includes((FAMILIES as any)[e.id]); } }
 export const MANIFEST: readonly Entry[] = list;
 export const byId = new Map(list.map(e => [e.id, e]));
 
