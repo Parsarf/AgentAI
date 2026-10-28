@@ -83,7 +83,7 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
            needs=(('routing_key_present', 'A TypeSafe key is installed on the server for the app.'),)),
     Switch('open_access', 'Free access for every account (no payment needed) until payments are turned on',
            'Every signed-in account can use the service within the plan allowance without paying. It ends by itself the moment you turn payments on.',
-           'Each account gets the plan allowance ($25 of provider cost a month, $5 a day, $5 a task). You pay that provider cost, not the customer. Turning payments on pauses everyone who has not subscribed.',
+           'Each account gets the plan allowance ($25 of provider cost a month, $15 a day, $5 a task). You pay that provider cost, not the customer. Turning payments on pauses everyone who has not subscribed.',
            'Up to $25 of provider cost per account per month, paid by you. Accounts are still invitation-only, so this is bounded by how many you invite.', 'high',
            confirmations=(('cost_accepted', 'I accept paying provider costs of up to $25 a month for each account while free access is on.'),)),
     Switch('open_signups', 'Let people create an account (you approve each one)',
