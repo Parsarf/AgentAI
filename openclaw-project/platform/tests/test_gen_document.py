@@ -235,12 +235,16 @@ class StyleFlow(Base):
         claim = self.queue.claim(owner='w', capacity=__import__('tests.test_native_run', fromlist=['OK']).OK)
         return self.driver._outgoing(claim, self.driver._admit(claim))
 
-    def test_the_style_travels_with_the_message_and_basic_and_text_mode_add_nothing(self):
-        self.assertEqual(self.outgoing(message='what is 2+2'), 'what is 2+2')
+    def test_basic_keeps_the_message_and_adds_no_composed_ui_instructions(self):
+        text = self.outgoing(message='what is 2+2')
+        self.assertTrue(text.endswith('what is 2+2'))
+        self.assertIn('[Lumina task progress.', text)
+        self.assertNotIn('Answer style:', text)
+        self.assertNotIn('lumina-doc', text)
 
     def test_medium_and_interactive_add_their_instructions_to_that_message_only(self):
         text = self.outgoing(message='compare plans', ui='medium')
-        self.assertTrue(text.startswith('[Lumina context')); self.assertIn('Answer style: medium', text); self.assertIn('Customer message:\ncompare plans', text); self.assertNotIn('agent.request', text)
+        self.assertTrue(text.startswith('[Lumina context')); self.assertIn('Answer style: medium', text); self.assertIn('Customer message:\n', text); self.assertTrue(text.endswith('compare plans')); self.assertNotIn('agent.request', text)
 
     def test_interactive_adds_the_full_set_and_text_mode_overrides_it(self):
         self.assertIn('approval_request', self.outgoing(message='x y z', ui='interactive'))

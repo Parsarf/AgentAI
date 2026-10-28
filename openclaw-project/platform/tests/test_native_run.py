@@ -228,6 +228,19 @@ class DeferChecks(Base):
         self.assertEqual(self.gateway.runs['orphan-run']['error'], 'aborted')                # ownership was resolved first
         self.assertEqual(self.request(sent['id'])['outcome'], 'completed')
 
+    def test_an_old_conversations_unowned_run_is_drained_before_a_new_conversation(self):
+        key, _, _ = self.gateway.open_session('orphan-op', 'chat-old')
+        with self.store.connect() as con:
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id,native_session_ref) VALUES ('a','p-a','old-conversation','d-a',?)", (key,))
+        self.gateway.polls = 99
+        self.gateway.send(key, 'orphan-other', 'resumed old shopping task')
+        self.gateway.active_sessions = lambda: [{'session_key': key, 'run_id': 'orphan-other'}] if not self.gateway.runs['orphan-other'].get('error') else []
+        sent = self.say(key='new-conversation')
+        self.gateway.polls = 0
+        self.worker.tick()
+        self.assertEqual(self.gateway.runs['orphan-other']['error'], 'aborted')
+        self.assertEqual(self.request(sent['id'])['outcome'], 'completed')
+
     def test_a_run_a_live_request_owns_makes_the_new_request_wait_its_turn(self):
         key, _, _ = self.gateway.open_session('op', 'chat-x')
         with self.store.connect() as con:

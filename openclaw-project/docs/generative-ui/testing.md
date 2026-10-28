@@ -26,3 +26,16 @@ Django tests require a private temporary `AGENTAI_STATE_DIR` and generated `AGEN
 The registry-generated gallery is `/app/gen-gallery`; fixtures are explicitly labeled and sandbox actions have no production effects. Its selector exposes each component plus normal/loading/empty/error/disabled states. At 1440px and 390px, inspect working/completed/long/multiple chat fixtures, with both motion settings. Require `document.documentElement.dataset.layoutCheck === 'passed'` and no `layoutFailures`; inspect real chart/table/code overflow and dialog focus.
 
 The interactive fixture on port 5179 uses the production bundle and the real artifact store, request queue and driver with a disposable synthetic account/model. It supports table filtering, scenario recalculation, form submission, in-place updates and refresh recovery. A synthetic gateway proves the application loop deterministically. A live-model run requires a provisioned account, admitted model route and running cell bridge. Partial-token delivery additionally requires the upstream gateway to expose drafts/deltas; Lumina never simulates streaming or execution progress. External providers must be tested against real credentials before claiming live capabilities.
+
+
+Launch regression tools (start both `preview_chat.py` and `preview_genui.py` after building):
+
+```sh
+node tests/launch-genui.mjs chromium
+node tests/launch-genui.mjs firefox
+node tests/launch-genui.mjs webkit
+```
+
+`PLAYWRIGHT_MODULE` can point to an installed Playwright `index.mjs` when the browse runner's older dependency cannot control the installed browser. Install test browsers outside the repository with `PLAYWRIGHT_BROWSERS_PATH`. `tests/audit-genui.mjs` additionally takes `AXE_MODULE` pointing to `@axe-core/playwright/dist/index.mjs`; it checks representative families at two viewports, modal Escape/focus, tab keyboard behavior and the maximum composition/dataset. Results and illustrative screenshots are written to `/tmp/lumina-ui-launch-evidence` by default. Do not rebuild `dist` while a fixture browser is loading its assets.
+
+The bounded real-model operator command is `manage.py verify_interactive_ui --run-live` with the normal production app environment. It uses only the configured owner account and existing admission/caps, sends two model turns, checks same-artifact continuation, retained answers, the expected computed value, and a duplicate event replay. Preserve its result and owner conversation as evidence. Do not increase limits or enable switches to make it pass. See [launch-readiness.md](launch-readiness.md) for current blockers and exact supported scope.

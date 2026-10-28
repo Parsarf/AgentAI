@@ -79,14 +79,16 @@ class TaskProgressTool:
     def __init__(self, store):
         self.store, self.coordinator, self.events = store, Coordinator(store), EventService(store)
 
-    def call(self, account, arguments, closed=lambda: False, name=TOOL_NAME):
+    def call(self, account, arguments, closed=lambda: False, name=TOOL_NAME, *, request_id=None):
         try:
             if arguments == {}:
-                return self.current(account)
+                return self.current(account, request_id)
             steps = validate(arguments)
             if closed():
                 return 'The connection closed; progress was not changed.', True
             task = arguments['task_id']
+            if request_id is not None and task != request_id:
+                raise ValueError('This update belongs to a different task.')
             with self.coordinator.transaction() as con:
                 row = con.execute("""SELECT r.id FROM customer_requests r JOIN accounts a ON a.id=r.account_id
                     WHERE r.account_id=? AND r.id=? AND a.status='active' AND r.state IN ('starting','running')
@@ -128,12 +130,12 @@ class TaskProgressTool:
         except (ValueError, Conflict) as error:
             return str(error), True
 
-    def current(self, account):
+    def current(self, account, request_id=None):
         """Read-only recovery for native goals/restarts, which retain the customer's raw objective."""
         with self.store.connect() as con:
             rows = con.execute("""SELECT r.id FROM customer_requests r JOIN accounts a ON a.id=r.account_id
                 WHERE r.account_id=? AND a.status='active' AND r.state IN ('starting','running')
-                AND r.closing=0 AND r.cancel_requested=0 LIMIT 2""", (account,)).fetchall()
+                AND r.closing=0 AND r.cancel_requested=0 AND (? IS NULL OR r.id=?) LIMIT 2""", (account, request_id, request_id)).fetchall()
             if len(rows) != 1:
                 return 'No single active request is available for this cell.', True
             task = rows[0]['id']

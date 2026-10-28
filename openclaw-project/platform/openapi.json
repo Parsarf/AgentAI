@@ -4254,7 +4254,7 @@
       "description": "Unavailable or not yours"
      },
      "409": {
-      "description": "Version conflict or event is pending; reload before retry"
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
      },
      "429": {
       "description": "Rate limited"
@@ -4321,7 +4321,7 @@
       "description": "Unavailable or not yours"
      },
      "409": {
-      "description": "Version conflict or event is pending; reload before retry"
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
      },
      "429": {
       "description": "Rate limited"
@@ -4395,7 +4395,7 @@
       "description": "Unavailable or not yours"
      },
      "409": {
-      "description": "Version conflict or event is pending; reload before retry"
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
      },
      "429": {
       "description": "Rate limited"
@@ -4457,7 +4457,7 @@
       "description": "Unavailable or not yours"
      },
      "409": {
-      "description": "Version conflict or event is pending; reload before retry"
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
      },
      "429": {
       "description": "Rate limited"
@@ -4517,6 +4517,90 @@
      },
      "429": {
       "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/diagnostics": {
+   "post": {
+    "summary": "Record scoped operational metadata without document contents or submitted values",
+    "responses": {
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "202": {
+      "description": "Diagnostic recorded"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "kind": {
+          "type": "string",
+          "enum": [
+           "render_failed",
+           "save_failed",
+           "submit_failed",
+           "invalid_document"
+          ]
+         },
+         "category": {
+          "type": "string",
+          "enum": [
+           "renderer",
+           "validation",
+           "session",
+           "admission",
+           "permission",
+           "unavailable",
+           "conflict",
+           "rate_limit",
+           "server",
+           "network"
+          ]
+         }
+        },
+        "required": [
+         "version",
+         "kind",
+         "category"
+        ]
+       }
+      }
      }
     }
    }

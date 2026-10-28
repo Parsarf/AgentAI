@@ -1,0 +1,17 @@
+
+> lumina-web@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.5 /Users/parsa/AgentAI/openclaw-project/lumina
+
+
+ Test Files  42 passed (42)
+      Tests  360 passed (360)
+   Start at  16:02:36
+   Duration  40.78s (tests 49%, environment 35%, import 6%, transform 5%, setup 5%)
+
+Environment  jsdom was created 42 times · 87.28s total, 35% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments
+

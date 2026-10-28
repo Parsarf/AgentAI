@@ -1,0 +1,58 @@
+{
+  "engine": "chromium",
+  "version": "156.0.8078.48",
+  "checks": [
+    {
+      "name": "chat layouts",
+      "width": 1440,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "name": "validation, same-artifact update, persistence and save recovery",
+      "width": 1440,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "name": "chat layouts",
+      "width": 1440,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "name": "validation, same-artifact update, persistence and save recovery",
+      "width": 1440,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "name": "chat layouts",
+      "width": 390,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "name": "validation, same-artifact update, persistence and save recovery",
+      "width": 390,
+      "motion": "no-preference",
+      "passed": true
+    },
+    {
+      "name": "chat layouts",
+      "width": 390,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "name": "validation, same-artifact update, persistence and save recovery",
+      "width": 390,
+      "motion": "reduce",
+      "passed": true
+    },
+    {
+      "name": "two-tab conflict resolution",
+      "passed": true
+    }
+  ]
+}

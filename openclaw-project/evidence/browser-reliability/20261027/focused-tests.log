@@ -1,0 +1,82 @@
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 401: 'Unauthorized'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 429: 'Too Many Requests'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+.../opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 400: 'Bad Request'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 413: 'Content Too Large'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 404: 'Not Found'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+.................................browse: JEV miss: did not find where to click (found 10%, sure of the spot 90%)
+browse: JEV miss: did not find where to click (found 10%, sure of the spot 90%)
+........../opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 69705 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/case.py:673: ResourceWarning: unclosed file <_io.TextIOWrapper name=3 encoding='utf-8'>
+  self.doCleanups()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 69706 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+./opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py:1028: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  del self._target, self._args, self._kwargs
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py:1028: ResourceWarning: unclosed file <_io.TextIOWrapper name=7 encoding='utf-8'>
+  del self._target, self._args, self._kwargs
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+......browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+.browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+...........browse: JEV miss: ValueError: operation: bad choice or probabilities
+./opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 400: 'Bad Request'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+..browse: JEV miss: ValueError: click_target: none fits
+browse: JEV miss: ValueError: option belongs to another dropdown
+browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+.......browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+browse: JEV miss: ValueError: click_target: none fits
+....../opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 69751 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 69753 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py:1028: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  del self._target, self._args, self._kwargs
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py:1028: ResourceWarning: unclosed file <_io.TextIOWrapper name=7 encoding='utf-8'>
+  del self._target, self._args, self._kwargs
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:832: ResourceWarning: unclosed file <_io.TextIOWrapper name=3 encoding='utf-8'>
+  _cleanup()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 69795 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+........./opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 69796 is still running
+  _warn("subprocess %s is still running" % self.pid,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py:1028: ResourceWarning: unclosed file <_io.TextIOWrapper name=9 encoding='utf-8'>
+  del self._target, self._args, self._kwargs
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.4_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py:1028: ResourceWarning: unclosed file <_io.TextIOWrapper name=7 encoding='utf-8'>
+  del self._target, self._args, self._kwargs
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+................browse: JEV miss: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+....browse: dddddddddddddddddddddddddddddddd failed (TimeoutError: runner did not answer in time); trace /var/folders/_p/2kvpmprj6fndk5jy33_mtrmc0000gn/T/tmpnjw_55gd/dddddddddddddddddddddddddddddddd/trace.jsonl
+..........browse trace not written: FileNotFoundError
+browse trace not written: FileNotFoundError
+browse trace not written: FileNotFoundError
+...............................................................
+----------------------------------------------------------------------
+Ran 197 tests in 40.121s
+
+OK
+<sys>:0: ResourceWarning: unclosed file <_io.TextIOWrapper name=4 encoding='utf-8'>

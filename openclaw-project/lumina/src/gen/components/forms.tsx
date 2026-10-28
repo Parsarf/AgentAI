@@ -1,4 +1,5 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
+import { validateFields } from '../formValidation';
 import { formMessage } from '../actions';
 import type { B, P } from './types';
 import { cx } from './types';
@@ -26,52 +27,60 @@ export function FormBlock({ block }: P<'form'>) {
   const [l, set] = useLocal(block.id, { values: defaults as Record<string, Val> });
   const values = { ...defaults, ...(l.values as Record<string, Val>) };
   const [status, setStatus] = useState<{ kind: 'idle' | 'busy' | 'done' | 'error'; msg: string }>({ kind: 'idle', msg: '' });
-  const [missing, setMissing] = useState<string[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const form = useRef<HTMLFormElement>(null);
   const shown = visibleFields(p.fields, values);
-  const setV = (id: string, v: Val) => set({ values: { ...values, [id]: v } });
+  const setV = (id: string, v: Val) => { set({ values: { ...values, [id]: v } }); setErrors(e => { const next = { ...e }; delete next[id]; return next; }); };
   const grouped = block.variant === 'grouped'; const groups = grouped ? [...new Set(shown.map(f => f.group ?? ''))] : [''];
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const need = shown.filter(f => f.required && (values[f.id] === '' || values[f.id] === undefined || (Array.isArray(values[f.id]) && !(values[f.id] as unknown[]).length))).map(f => f.id); setMissing(need);
-    if (need.length) { setStatus({ kind: 'error', msg: 'Fill in the required fields first.' }); return; }
+    const invalid = validateFields(shown, values); setErrors(invalid);
+    if (Object.keys(invalid).length) {
+      setStatus({ kind: 'error', msg: 'Check the fields marked below.' });
+      setTimeout(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0);
+      return;
+    }
     const a = p.submit.action;
     const action = a.kind === 'agent.request' ? { ...a, message: formMessage(a.message, shown.map(f => ({ label: f.label, value: describe(f, values[f.id]) }))) } : a;
-    setStatus({ kind: 'busy', msg: '' }); const r = await (a.kind === 'agent.request' && g.submit ? g.submit('submit', Object.fromEntries(shown.map(f => [f.id, values[f.id]]))) : g.act(action, { nonce: block.id }));
+    setStatus({ kind: 'busy', msg: 'Sending…' }); const r = await (a.kind === 'agent.request' && g.submit ? g.submit('submit', Object.fromEntries(shown.map(f => [f.id, values[f.id]]))) : g.act(action, { nonce: block.id }));
+    if (!r.ok && r.fieldErrors) { setErrors(r.fieldErrors); setTimeout(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0); }
     setStatus(r.ok ? { kind: 'done', msg: 'Sent.' } : { kind: r.reason === 'declined' ? 'idle' : 'error', msg: r.reason === 'declined' ? '' : r.message });
   };
-  const off = block.disabled || g.readOnly || status.kind === 'done';
-  return <form className={cx('gen-form', block.variant)} onSubmit={submit} noValidate aria-label={p.title ?? 'Form'}>
+  const off = block.disabled || g.readOnly || status.kind === 'done' || status.kind === 'busy';
+  return <form ref={form} aria-busy={status.kind === 'busy'} className={cx('gen-form', block.variant)} onSubmit={submit} noValidate aria-label={p.title ?? 'Form'}>
     {p.title && <h4>{p.title}</h4>}{p.description && <p className="faint">{p.description}</p>}
     {groups.map(gr => <fieldset key={gr} className="gen-group" disabled={off}>{gr && <legend>{gr}</legend>}
-      {shown.filter(f => !grouped || (f.group ?? '') === gr).map(f => <FieldView key={f.id} f={f} id={`${uid}-${f.id}`} value={values[f.id]} onChange={v => setV(f.id, v)} invalid={missing.includes(f.id)} />)}</fieldset>)}
+      {shown.filter(f => !grouped || (f.group ?? '') === gr).map(f => <FieldView key={f.id} f={f} id={`${uid}-${f.id}`} value={values[f.id]} onChange={v => setV(f.id, v)} error={errors[f.id]} />)}</fieldset>)}
     <div className="gen-row"><button className="btn primary" type="submit" disabled={off || status.kind === 'busy'}>{status.kind === 'done' ? '✓ ' : ''}{p.submit.label}</button>
       <span role="status" className={cx('gen-act-msg', status.kind === 'error' && 'err')}>{status.msg}</span></div></form>;
 }
 
-function FieldView({ f, id, value, onChange, invalid }: { f: Field; id: string; value: Val | undefined; onChange(v: Val): void; invalid: boolean }) {
-  const hint = f.help ? `${id}-h` : undefined; const common = { id, 'aria-describedby': hint, 'aria-invalid': invalid || undefined, 'aria-required': f.required || undefined };
+function FieldView({ f, id, value, onChange, error }: { f: Field; id: string; value: Val | undefined; onChange(v: Val): void; error?: string }) {
+  const hint = [f.help ? `${id}-h` : '', error ? `${id}-e` : ''].filter(Boolean).join(' ') || undefined; const common = { id, 'aria-describedby': hint, 'aria-invalid': !!error || undefined, 'aria-required': f.required || undefined };
+  const errorText = error && <p id={`${id}-e`} className="gen-err" role="alert">{error}</p>;
   const label = <span className="gen-label">{f.label}{f.required && <span aria-hidden> *</span>}</span>;
   let control: React.ReactNode;
   switch (f.type) {
     case 'multiselect': control = <select className="gen-input" {...common} multiple value={Array.isArray(value) ? value.map(String) : []} onChange={e => onChange(Array.from(e.target.selectedOptions).map(o => o.value))}>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>; break;
     case 'range': case 'date-range': {
       const values = Array.isArray(value) ? value : [];
-      control = <div className="gen-row">{['Start', 'End'].map((part, i) => <label key={part}>{part}<input className="gen-input" type={f.type === 'date-range' ? 'date' : 'number'} aria-label={`${f.label} ${part.toLowerCase()}`} min={f.min} max={f.max} step={f.step} value={String(values[i] ?? '')} onChange={e => { const next = [...values]; next[i] = f.type === 'date-range' ? e.target.value : +e.target.value; onChange(next); }} /></label>)}</div>; break;
+      control = <div className="gen-row">{['Start', 'End'].map((part, i) => <label key={part}>{part}<input className="gen-input" type={f.type === 'date-range' ? 'date' : 'number'} aria-label={`${f.label} ${part.toLowerCase()}`} aria-describedby={hint} aria-invalid={!!error || undefined} min={f.min} max={f.max} step={f.step} value={String(values[i] ?? '')} onChange={e => { const next = [...values]; next[i] = f.type === 'date-range' ? e.target.value : +e.target.value; onChange(next); }} /></label>)}</div>; break;
     }
     case 'tags': control = <input className="gen-input" {...common} value={Array.isArray(value) ? value.join(', ') : ''} onChange={e => onChange(e.target.value.split(',').map(v => v.trim()).slice(0, 50))} />; break;
     case 'autocomplete': control = <><input className="gen-input" {...common} list={`${id}-options`} value={String(value ?? '')} onChange={e => onChange(e.target.value)} /><datalist id={`${id}-options`}>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</datalist></>; break;
     case 'search': case 'color': control = <input className="gen-input" {...common} type={f.type} value={String(value ?? '')} onChange={e => onChange(e.target.value)} />; break;
     case 'rating': control = <input className="gen-input" {...common} type="number" min={f.min ?? 1} max={f.max ?? 5} step={1} value={String(value ?? '')} onChange={e => onChange(+e.target.value)} />; break;
     case 'select': control = <select className="gen-input" {...common} value={String(value ?? '')} onChange={e => onChange(e.target.value)}><option value="">Choose…</option>{f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>; break;
-    case 'radio': case 'segmented': return <fieldset className="gen-field" aria-describedby={hint}><legend className="gen-label">{f.label}{f.required && <span aria-hidden> *</span>}</legend>
-      <div className={cx('gen-choices', f.type)} role="radiogroup">{f.options?.map(o => <label key={o.value} className={cx('gen-choice', value === o.value && 'on')}><input type="radio" name={id} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} /><span>{o.label}</span></label>)}</div>{f.help && <p id={hint} className="faint">{f.help}</p>}</fieldset>;
-    case 'toggle': return <div className="gen-field row"><label className="gen-switch"><input type="checkbox" role="switch" {...common} checked={!!value} onChange={e => onChange(e.target.checked)} /><i aria-hidden />{label}</label>{f.help && <p id={hint} className="faint">{f.help}</p>}</div>;
-    case 'checkbox': return <div className="gen-field row"><label className="gen-check"><input type="checkbox" {...common} checked={!!value} onChange={e => onChange(e.target.checked)} />{label}</label>{f.help && <p id={hint} className="faint">{f.help}</p>}</div>;
-    case 'slider': control = <div className="gen-slider"><input type="range" {...common} min={f.min ?? 0} max={f.max ?? 100} step={f.step ?? 1} value={Number(value ?? 0)} onChange={e => onChange(Number(e.target.value))} /><output htmlFor={id}>{Number(value ?? 0).toLocaleString()}{f.unit ? ` ${f.unit}` : ''}</output></div>; break;
-    case 'number': control = <input className="gen-input" type="number" {...common} min={f.min} max={f.max} step={f.step ?? 1} value={String(value ?? '')} onChange={e => onChange(e.target.value === '' ? '' : Number(e.target.value))} />; break;
+    case 'radio': case 'segmented': return <fieldset className="gen-field" aria-describedby={hint} aria-invalid={!!error || undefined} tabIndex={error ? -1 : undefined}><legend className="gen-label">{f.label}{f.required && <span aria-hidden> *</span>}</legend>
+      <div className={cx('gen-choices', f.type)} role="radiogroup" aria-label={f.label} aria-required={f.required || undefined}>{f.options?.map(o => <label key={o.value} className={cx('gen-choice', value === o.value && 'on')}><input type="radio" name={id} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} /><span>{o.label}</span></label>)}</div>{errorText}{f.help && <p id={`${id}-h`} className="faint">{f.help}</p>}</fieldset>;
+    case 'toggle': return <div className="gen-field row"><label className="gen-switch"><input type="checkbox" role="switch" {...common} checked={!!value} onChange={e => onChange(e.target.checked)} /><i aria-hidden />{label}</label>{errorText}{f.help && <p id={`${id}-h`} className="faint">{f.help}</p>}</div>;
+    case 'checkbox': return <div className="gen-field row"><label className="gen-check"><input type="checkbox" {...common} checked={!!value} onChange={e => onChange(e.target.checked)} />{label}</label>{errorText}{f.help && <p id={`${id}-h`} className="faint">{f.help}</p>}</div>;
+    case 'slider': control = <div className="gen-slider"><input type="range" {...common} min={f.min ?? 0} max={f.max ?? 100} step={f.step ?? 'any'} value={Number(value ?? 0)} onChange={e => onChange(Number(e.target.value))} /><output htmlFor={id}>{Number(value ?? 0).toLocaleString()}{f.unit ? ` ${f.unit}` : ''}</output></div>; break;
+    case 'number': control = <input className="gen-input" type="number" {...common} min={f.min} max={f.max} step={f.step ?? 'any'} value={String(value ?? '')} onChange={e => onChange(e.target.value === '' ? '' : Number(e.target.value))} />; break;
     case 'textarea': control = <textarea className="gen-input" rows={3} maxLength={500} {...common} value={String(value ?? '')} onChange={e => onChange(e.target.value)} />; break;
     case 'date': case 'time': control = <input className="gen-input" type={f.type} {...common} value={String(value ?? '')} onChange={e => onChange(e.target.value)} />; break;
     default: control = <input className="gen-input" type="text" maxLength={500} {...common} value={String(value ?? '')} onChange={e => onChange(e.target.value)} />;
   }
-  return <div className="gen-field"><label htmlFor={id}>{label}</label>{control}{invalid && <p className="gen-err" role="alert">Required</p>}{f.help && <p id={hint} className="faint">{f.help}</p>}</div>;
+  if (f.type === 'range' || f.type === 'date-range') return <fieldset className="gen-field" aria-describedby={hint}><legend>{label}</legend>{control}{errorText}{f.help && <p id={`${id}-h`} className="faint">{f.help}</p>}</fieldset>;
+  return <div className="gen-field"><label htmlFor={id}>{label}</label>{control}{errorText}{f.help && <p id={`${id}-h`} className="faint">{f.help}</p>}</div>;
 }

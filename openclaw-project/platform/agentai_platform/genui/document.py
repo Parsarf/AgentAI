@@ -10,6 +10,7 @@ lines, then one block per line); the second form lets a streaming client mount e
 """
 from __future__ import annotations
 import json
+import logging
 import re
 from datetime import date
 from functools import lru_cache
@@ -406,6 +407,7 @@ def extract_documents(text: str, tier: str = 'interactive'):
     def take(match):
         body = match.group(1).strip()
         if len(body) > registry()['limits']['bytes'] * 2:
+            logging.getLogger('agentai.genui').warning('genui_document_rejected category=size')
             return ''
         try:
             try:
@@ -417,11 +419,16 @@ def extract_documents(text: str, tier: str = 'interactive'):
             if tier in ('medium', 'interactive'):
                 docs.append(validate_document(raw, tier))
         except (SpecError, ValueError, KeyError, TypeError):
-            pass
+            logging.getLogger('agentai.genui').warning('genui_document_rejected category=validation')
         return ''
     clean = FENCE.sub(take, text or '')
+    if UNFINISHED.search(clean):
+        logging.getLogger('agentai.genui').warning('genui_document_rejected category=incomplete')
     clean = UNFINISHED.sub('', clean)                       # an unfinished fence is never shown
-    return re.sub(r'\n{3,}', '\n\n', clean).strip(), [dict(d, type='document') for d in docs[:1]]
+    clean = re.sub(r'\n{3,}', '\n\n', clean).strip()
+    if not clean and not docs and tier in ('medium', 'interactive') and (FENCE.search(text or '') or UNFINISHED.search(text or '')):
+        clean = 'This interactive answer could not be displayed. Ask the assistant to try again or explain it in plain text.'
+    return clean, [dict(d, type='document') for d in docs[:1]]
 
 
 def tier_section(tier: str) -> str:

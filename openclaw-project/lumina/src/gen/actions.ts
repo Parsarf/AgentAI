@@ -23,7 +23,7 @@ export interface ActionEnv {
   now(): number;
 }
 export interface AuditEntry { at: number; kind: string; outcome: 'done' | 'refused' | 'declined' | 'failed' | 'duplicate' | 'rate_limited'; detail: string; key: string }
-export type Result = { ok: true } | { ok: false; reason: 'invalid' | 'forbidden' | 'declined' | 'rate_limited' | 'duplicate' | 'failed'; message: string };
+export type Result = { ok: true } | { ok: false; reason: 'invalid' | 'forbidden' | 'declined' | 'rate_limited' | 'duplicate' | 'failed'; message: string; fieldErrors?: Record<string, string> };
 
 const CONSEQUENTIAL = new Set(['agent.approve', 'agent.deny', 'agent.retry', 'agent.request', 'file.download']);
 const NEEDS_CONFIRM = new Set(['agent.approve', 'agent.deny', 'agent.retry']);

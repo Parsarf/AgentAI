@@ -131,7 +131,7 @@ describe('forms', () => {
     { id: 'pay', type: 'toggle', label: 'Take payments', default: false, showIf: { field: 'kind', equals: 'shop' } }], submit: { label: 'Send', action: { kind: 'agent.request', message: 'My choices:' } } } }] };
   it('requires required fields, shows conditional fields, and sends exactly what was chosen', async () => {
     const { host } = setup(form);
-    fireEvent.click(screen.getByText('Send')); expect(await screen.findByText('Required')).toBeTruthy(); expect(host.send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Send')); expect(await screen.findByText('Enter a value.')).toBeTruthy(); expect(host.send).not.toHaveBeenCalled();
     expect(screen.queryByLabelText('Take payments')).toBeNull();
     fireEvent.change(screen.getByLabelText(/Kind/), { target: { value: 'shop' } }); fireEvent.click(screen.getByLabelText('Take payments'));
     fireEvent.click(screen.getByText('Send'));

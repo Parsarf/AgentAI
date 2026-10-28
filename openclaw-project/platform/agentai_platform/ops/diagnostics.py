@@ -22,6 +22,9 @@ def collect(app_db, *, clock=time.time, monitor_status=None, backup_status=None)
     def rows(sql, *a): return con.execute(sql, a).fetchall()
     try:
         accounts = []
+        has_ui_audit = bool(rows("SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts_audit'"))
+        ui_actions = {f'genui.{kind}.{category}' for kind in ('render_failed', 'save_failed', 'submit_failed', 'invalid_document')
+                      for category in ('renderer', 'validation', 'session', 'admission', 'permission', 'unavailable', 'conflict', 'rate_limit', 'server', 'network')}
         for (account,) in rows("SELECT id FROM accounts WHERE status!='deleted' ORDER BY id"):
             tasks = dict(rows('SELECT state,count(*) FROM tasks WHERE account_id=? GROUP BY state', account))
             ops = [{'kind': k, 'state': s, 'error': e or '', 'age_s': now - int(c or now)} for k, s, e, c in rows(
@@ -31,6 +34,7 @@ def collect(app_db, *, clock=time.time, monitor_status=None, backup_status=None)
             ent = rows('SELECT id,status FROM entitlements WHERE account_id=? ORDER BY valid_until DESC LIMIT 1', account)
             accounts.append({'account': label(account), 'tasks': tasks, 'recent_operations': ops, 'cell': cell[0][0] if cell else 'none',
                              'entitlement': {'id': ent[0][0], 'status': ent[0][1]} if ent else None,
+                             'ui_failures_24h': {action: count for action, count in rows("SELECT action,count(*) FROM accounts_audit WHERE account_id=? AND created_at>=datetime(?,'unixepoch','-1 day') AND action LIKE 'genui.%' GROUP BY action", account, now) if action in ui_actions} if has_ui_audit else {},
                              'failed_tasks_24h': rows("SELECT count(*) FROM tasks WHERE account_id=? AND state IN ('failed','blocked','budget_exhausted') AND created_at>=datetime(?,'unixepoch','-1 day')", account, now)[0][0]})
         data = {'generated_epoch': now, 'accounts': accounts,
                 'queue': {'uncertain_operations': rows("SELECT count(*) FROM operations WHERE state='uncertain'")[0][0],

@@ -160,7 +160,7 @@ class Stack:
                             lambda tenant, token, scopes=None: LocalRelay(next(c.port for c in by_account.values() if c.tenant == tenant), token, scopes),
                             lambda tenant: self.model.calls(next(c.key for c in by_account.values() if c.tenant == tenant)) * 1000,
                             binding=lambda account: by_account[account].tenant if account in by_account else None, workspace_root=str(self.root / 'cells'),
-                            identify=lambda credential: by_key.get(credential), ready_timeout=60)
+                            identify=lambda credential: by_key.get(credential), ready_timeout=60, native_state_subdir='state')
         self.bridge = bridge
         server = serve_bridge(bridge, self.socket, allowed_uids={os.getuid()}, peer_uid=lambda sock: os.getuid())
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -191,7 +191,9 @@ class Stack:
         self.worker = RequestWorker(self.queue, self.driver, lambda: CAPACITY, goals=GoalChain(self.chat), runner=lambda: self.chat.runner)
         tool = BrowserTool(self.store, browse_factory=lambda account: self.browse, events=self.events, sleep=time.sleep, poll_interval=0.3, run_timeout=120)
         identify = lambda credential: BridgeRpc('-', self.socket)('cell.identify', {'credential': credential}).get('account')
-        self.tool_server = serve_relay(Relay(tool), Identity(identify), '127.0.0.1', self.relay_port)
+        from agentai_platform.lifecycle.tool_origin import resolve
+        origin = lambda account, name, arguments: resolve(self.cells[account].root / 'state', name, arguments)
+        self.tool_server = serve_relay(Relay(tool, origin=origin), Identity(identify), '127.0.0.1', self.relay_port)
         threading.Thread(target=self.tool_server.serve_forever, daemon=True).start()
         for cell in self.cells.values():
             cell.wait_ready()

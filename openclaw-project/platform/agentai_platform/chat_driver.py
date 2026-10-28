@@ -164,6 +164,22 @@ class ChatDriver:
     # -- 1. hand the message over --------------------------------------------------------------------------------------------------------------
     def _begin(self, claim, gateway, info):
         session = info['session']
+        # Native recovery can resume another conversation. Check only live
+        # native turns, rather than fetching every historical conversation.
+        active = getattr(gateway, 'active_sessions', None)
+        if active is not None:
+            for turn in active():
+                if turn['session_key'] == session:
+                    continue
+                with self.store.connect() as con:
+                    other = con.execute('SELECT id FROM conversations WHERE account_id=? AND native_session_ref=?',
+                                        (claim.account_id, turn['session_key'])).fetchone()
+                if other is None:
+                    gateway.abort(turn['session_key'], turn['run_id'])
+                    if any(t['run_id'] == turn['run_id'] for t in active()):
+                        return Defer('an unowned native run is still stopping')
+                elif not self._quiesced(claim, gateway, turn['session_key'], conversation_id=other['id']):
+                    return Defer('another conversation still owns a native run')
         if session is None:
             session, _started, _error = gateway.open_session(uuid.uuid4().hex, 'chat-' + claim.request_id[:16])
             with self.coordinator.transaction() as con:
@@ -185,7 +201,7 @@ class ChatDriver:
                 con.execute('UPDATE chat_deliveries SET usage_before_microusd=? WHERE account_id=? AND request_id=? AND attempt=?', (before, claim.account_id, claim.request_id, attempt))
         return None
 
-    def _quiesced(self, claim, gateway, session):
+    def _quiesced(self, claim, gateway, session, *, conversation_id=None):
         """Execution ownership comes before new work: no run may be going on in this session unless a live request of this account owns it. A run nobody owns (the runtime resumed an
         interrupted turn by itself, or its request is over) is stopped here; one a live request owns means this request must wait its turn."""
         page = gateway.history(session)
@@ -194,7 +210,7 @@ class ChatDriver:
         with self.store.connect() as con:
             owners = con.execute('''SELECT d.native_run_id FROM chat_deliveries d JOIN customer_requests r ON r.account_id=d.account_id AND r.id=d.request_id
                 WHERE d.account_id=? AND d.request_id<>? AND r.conversation_id=? AND r.state IN ('starting','running','uncertain') AND d.state IN ('acknowledged','uncertain','pending')''',
-                                (claim.account_id, claim.request_id, claim.conversation_id)).fetchall()
+                                (claim.account_id, claim.request_id, conversation_id or claim.conversation_id)).fetchall()
         if owners:
             return False
         gateway.abort(session)                 # nothing owns the run: it must not keep running beside the new work

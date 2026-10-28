@@ -5,7 +5,7 @@ from agentai_platform.budget import BudgetDenied
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import NotFound
 from .chat import denial_category, principal, service
-from .services import Denied, rate
+from .services import Denied, rate, audit
 from .views import endpoint, customer
 
 
@@ -24,9 +24,14 @@ def _guard(request, name):
     return None
 
 
+from agentai_platform.genui.artifacts import FieldErrors
+
+
 def _run(fn):
     try:
         return fn()
+    except FieldErrors as error:
+        return JsonResponse({'error': 'invalid_ui_values', 'field_errors': error.errors}, status=400)
     except ValueError as error:
         return JsonResponse({'error': 'invalid_ui_document', 'detail': str(error)[:300]}, status=400)
     except NotFound:
@@ -139,3 +144,24 @@ def artifact_update(request, artifact_id):
         return denied
     from agentai_platform.genui.artifacts import ArtifactStore
     return _run(lambda: JsonResponse(ArtifactStore(service().store).update(principal(request), artifact_id, _version(request), request.input.get('document'))))
+
+
+@endpoint(['POST'], ['version', 'kind', 'category'], structured=True)
+def artifact_diagnostic(request, artifact_id):
+    """Authenticated, bounded operational metadata; never accept document or field contents."""
+    denied = _guard(request, 'block.diagnostic')
+    if denied: return denied
+    kinds = {'render_failed', 'save_failed', 'submit_failed', 'invalid_document'}
+    categories = {'renderer', 'validation', 'session', 'admission', 'permission', 'unavailable', 'conflict', 'rate_limit', 'server', 'network'}
+    if request.input.get('kind') not in kinds or request.input.get('category') not in categories:
+        return JsonResponse({'error': 'invalid_diagnostic'}, status=400)
+    def record():
+        _version(request)
+        with service().store.connect() as con:
+            service().store._authorize(con, principal(request))
+            row = con.execute("SELECT conversation_id FROM data_blocks WHERE account_id=? AND id=? AND kind='document'", (request.account_id, artifact_id)).fetchone()
+            if row is None: raise NotFound('unavailable')
+        service().blocks.list(principal(request), row['conversation_id'])
+        audit(request.user.pk, request.account_id, artifact_id, 'genui.' + request.input['kind'] + '.' + request.input['category'], 'failed', request.request_id)
+        return JsonResponse({'recorded': True}, status=202)
+    return _run(record)

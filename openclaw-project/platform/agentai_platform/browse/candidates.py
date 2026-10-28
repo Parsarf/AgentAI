@@ -54,12 +54,16 @@ def build(snapshot_text: str, limit: int = 20, elements: list | None = None) -> 
 
 
 def _within(cands: list[dict], limit: int) -> list[dict]:
-    """The first `limit` in page order. A panel or popup added at the end of the page (a cart drawer, a dialog) would never make that cut,
-    so controls on screen with nothing on top of them take the place of covered ones, last first; the list stays in page order."""
+    """Prefer usable controls in the current viewport over offscreen navigation.
+
+    Keep page order in the final list, and preserve the legacy order when the
+    runner supplies no visibility information. This exposes product swatches
+    and drawer controls even when a long header precedes them in the DOM.
+    """
     head, rest = cands[:limit], cands[limit:]
     free = [c for c in rest if c.get('in_view') and c.get('covered') is False]
-    covered = [i for i, c in enumerate(head) if c.get('covered')]
-    for i, c in zip(reversed(covered), free):
+    replace = [i for i, c in enumerate(head) if c.get('covered') or c.get('in_view') is False]
+    for i, c in zip(reversed(replace), free):
         head[i] = c
     return sorted(head, key=lambda c: c['ref'])
 

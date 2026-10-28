@@ -1,3 +1,4 @@
+import { clearArtifactDrafts, pauseArtifactDrafts, bindDraftAccount } from '../gen/drafts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError, onUnauthorized, resetCsrf, type AppInfo, type RequestRow } from '../lib/api';
 import { clearDrafts } from '../lib/drafts';
@@ -29,10 +30,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       const [info, list] = await Promise.all([api<AppInfo>('GET', '/v1/app'), api<{ requests: RequestRow[] }>('GET', '/v1/requests')]);
       if (!alive.current || authVersion.current !== version) return;
-      setApp(info); setRequests(list.requests); setStatus('in');
+      bindDraftAccount(info.user.email); setApp(info); setRequests(list.requests); setStatus('in');
     } catch (e) {
       if (!alive.current || authVersion.current !== version) return;
-      if (e instanceof ApiError && e.status === 401) { ++authVersion.current; setStatus('anon'); setApp(null); setRequests([]); setChats([]); clearDrafts(); }
+      if (e instanceof ApiError && e.status === 401) { ++authVersion.current; setStatus('anon'); setApp(null); setRequests([]); setChats([]); clearDrafts(); pauseArtifactDrafts(); }
       else setStatus(s => (s === 'in' ? 'in' : 'error'));   // a blip while signed in keeps the last good data on screen
     }
   }, []);
@@ -43,7 +44,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { alive.current = true; refresh(); return () => { alive.current = false; }; }, [refresh]);
-  useEffect(() => onUnauthorized(() => { ++authVersion.current; setStatus('anon'); setApp(null); setRequests([]); setChats([]); clearDrafts(); }), []);
+  useEffect(() => onUnauthorized(() => { ++authVersion.current; setStatus('anon'); setApp(null); setRequests([]); setChats([]); clearDrafts(); pauseArtifactDrafts(); }), []);
 
   const live = status === 'in';
   useEffect(() => { if (live) refreshChats(); }, [live, refreshChats]);
@@ -71,7 +72,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
   const signOut = useCallback(async () => {
     ++authVersion.current;
-    try { await api('POST', '/auth/logout', {}); } finally { resetCsrf(); ++authVersion.current; setStatus('anon'); setApp(null); setRequests([]); setChats([]); clearDrafts(); }
+    try { await api('POST', '/auth/logout', {}); } finally { resetCsrf(); ++authVersion.current; setStatus('anon'); setApp(null); setRequests([]); setChats([]); clearDrafts(); clearArtifactDrafts(); }
   }, []);
 
   const value = useMemo(() => ({ status, app, requests, chats, refreshChats, health, refresh, signIn, signOut }), [status, app, requests, chats, refreshChats, health, refresh, signIn, signOut]);

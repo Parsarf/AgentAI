@@ -61,8 +61,8 @@ class Identity:
 class Relay:
     """The MCP protocol and the tools; no sockets (the handler below owns those)."""
 
-    def __init__(self, tool: BrowserTool, progress=None):
-        self.tool, self.progress = tool, progress
+    def __init__(self, tool: BrowserTool, progress=None, *, origin=None):
+        self.tool, self.progress, self.origin = tool, progress, origin
         self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
         self._busy, self._guard = set(), threading.Lock()
 
@@ -89,13 +89,37 @@ class Relay:
                 self._busy.add(account)
             try:
                 handler = self.progress if name == PROGRESS_NAME else self.tool
-                result = handler.call(account, params.get('arguments') or {}, closed, name=name)
+                arguments = params.get('arguments') or {}
+                bound = {}
+                if self.origin is not None:
+                    try:
+                        origin = self.origin(account, name, arguments)
+                        request_id = self._owner(account, origin)
+                    except (CapabilityUnavailable, ValueError, TypeError):
+                        request_id = None
+                    if not request_id:
+                        return self._ok(rid, self._result('This tool call does not belong to an admitted live task. Nothing was started or changed. Do not retry this call in another task.', True))
+                    bound['request_id'] = request_id
+                result = handler.call(account, arguments, closed, name=name, **bound)
             finally:
                 with self._guard:
                     self._busy.discard(account)
             text, is_error, *image = result
             return self._ok(rid, self._result(text, is_error, image[0] if image else None))
         return self._error(rid, -32601, 'method not found')
+
+    def _owner(self, account, origin):
+        if not isinstance(origin, dict) or not all(isinstance(origin.get(k), str) and origin[k] for k in ('session_key', 'run_id', 'call_id')):
+            return None
+        with self.tool.store.connect() as con:
+            rows = con.execute("""SELECT DISTINCT r.id FROM customer_requests r
+                JOIN conversations c ON c.account_id=r.account_id AND c.id=r.conversation_id
+                JOIN chat_deliveries d ON d.account_id=r.account_id AND d.request_id=r.id
+                JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
+                WHERE r.account_id=? AND r.state IN ('starting','running') AND r.closing=0 AND r.cancel_requested=0
+                AND v.state='active' AND c.native_session_ref=? AND (d.native_run_id=? OR (d.native_run_id IS NULL AND d.idempotency_key=?))
+                LIMIT 2""", (account, origin['session_key'], origin['run_id'], origin['run_id'])).fetchall()
+        return rows[0]['id'] if len(rows) == 1 else None
 
     @staticmethod
     def _result(text, is_error, image=None):

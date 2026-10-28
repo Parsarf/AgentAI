@@ -136,3 +136,6 @@ h2.gen-heading { font-size: var(--text-lg); } h3.gen-heading { font-size: var(--
 .gen-tooltip:hover [role=tooltip], .gen-tooltip:focus [role=tooltip] { display: block; }
 .gen-popover { max-width: min(90vw,36rem); padding: var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-primary); background: var(--surface-overlay); }
 .gen-diagram-frame { display: block; width: 100%; height: auto; min-height: 6rem; max-height: 36rem; border: 0; border-radius: var(--radius-xs); }
+/* Preserve the native closed-dialog state despite the authored grid layout. */
+.gen-dialog:not([open]) { display: none; }
+.gen-save { margin-top: var(--space-2); color: var(--text-secondary); font-size: var(--text-sm); }

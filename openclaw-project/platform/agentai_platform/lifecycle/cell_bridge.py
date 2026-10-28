@@ -26,7 +26,7 @@ PROTOCOL = 4
 SESSION_KEY = re.compile(r'^agent:main:[A-Za-z0-9_.:-]{1,120}$')
 TOKEN_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
 ALLOWED = ('hello', 'sessions.create', 'sessions.describe', 'chat.send', 'chat.history', 'chat.abort', 'agent.wait', 'sessions.goal.update', 'sessions.goal.clear',
-           'usage.snapshot', 'cell.status', 'cell.identify', 'workspace.collect', 'browser.request', 'browser.shot', 'browser.live', 'browser.frame')
+           'usage.snapshot', 'cell.status', 'cell.identify', 'tools.origin', 'tools.active', 'workspace.collect', 'browser.request', 'browser.shot', 'browser.live', 'browser.frame')
 # The cell's native browser. Its gateway method needs operator.admin, which the main connection never has: these calls travel on a second connection of their own, and only a
 # caller the socket server names (the browse service, root) may use them. The app itself cannot.
 BROWSER_METHODS = ('browser.request', 'browser.shot', 'browser.live', 'browser.frame')
@@ -260,13 +260,14 @@ class _Connection:
 
 class CellBridge:
     def __init__(self, lookup, spawn, spend, *, binding=None, probe=None, workspace_root=None, identify=None, ready_timeout=120, call_timeout=60, idle_seconds=300, clock=time.monotonic,
-                 browser_callers=()):
+                 browser_callers=(), native_state_subdir=''):
         """lookup(account)->(tenant, token) or None; spawn(tenant, token[, scopes=...])->relay; spend(tenant)->microusd; identify(credential)->account or None;
         browser_callers: the socket peers (uids) that may use the browser methods."""
         self.lookup, self.spawn, self.spend = lookup, spawn, spend
         self.browser_callers = frozenset(browser_callers)
         self._bconns = {}                    # the second, admin-scoped connection per account: only the browser methods ever use it
         self.workspace_root = workspace_root
+        self.native_state_subdir = native_state_subdir
         self.identify = identify
         self.binding, self.probe = binding, probe   # binding(account)->tenant regardless of state; probe(tenant)->container running
         self.ready_timeout, self.call_timeout, self.idle_seconds, self.clock = ready_timeout, call_timeout, idle_seconds, clock
@@ -280,13 +281,19 @@ class CellBridge:
             raise BridgeError('method not allowed')
         if method in BROWSER_METHODS:
             return CellBridge._browser(method, params)
-        if method in ('hello', 'usage.snapshot', 'cell.status'):
+        if method in ('hello', 'usage.snapshot', 'cell.status', 'tools.active'):
             return {}
         if method == 'cell.identify':
             credential = params.get('credential')
             if not isinstance(credential, str) or not 8 <= len(credential) <= 512:
                 raise BridgeError('invalid credential')
             return {'credential': credential}
+        if method == 'tools.origin':
+            from .tool_origin import TOOLS
+            name, arguments = params.get('name'), params.get('arguments')
+            if name not in TOOLS or not isinstance(arguments, dict) or len(json.dumps(arguments)) > 16000:
+                raise BridgeError('invalid tool call')
+            return {'name': name, 'arguments': arguments}
         if method == 'workspace.collect':
             since = params.get('since')
             if type(since) is not int or since < 0:
@@ -468,6 +475,18 @@ class CellBridge:
             if tenant is None or self.probe is None:
                 raise BridgeError('no cell')
             return {'running': bool(self.probe(tenant))}
+        if method in ('tools.origin', 'tools.active'):
+            tenant = self.binding(account) if self.binding else None
+            if not tenant or self.workspace_root is None or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):
+                raise BridgeError('no cell')
+            from .tool_origin import resolve, active
+            root = Path(self.workspace_root) / tenant / self.native_state_subdir
+            if method == 'tools.active':
+                rows = active(root)
+                if rows is None:
+                    raise BridgeError('native turn state unavailable')
+                return {'turns': [{'session_key': key, 'run_id': run} for _, key, run in rows]}
+            return {'origin': resolve(root, clean['name'], clean['arguments'])}
         if method == 'workspace.collect':
             tenant = self.binding(account) if self.binding else None
             if tenant is None or self.workspace_root is None or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):

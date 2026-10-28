@@ -83,3 +83,28 @@ class RegistryDocumentHTTP(TestCase):
             self.assertEqual(download['Content-Type'], 'application/octet-stream')
             self.assertIn('attachment', download['Content-Disposition'])
             download.close()
+
+    def test_diagnostics_are_scoped_csrf_protected_and_cannot_contain_answers(self):
+        from .models import Audit
+        _, path = self.artifact(); a, b = self.clients
+        payload = {'version': 1, 'kind': 'save_failed', 'category': 'conflict'}
+        self.assertEqual(self.post(b, path + '/diagnostics', payload).status_code, 404)
+        self.assertEqual(self.post(a, path + '/diagnostics', dict(payload, category='secret answer')).status_code, 400)
+        self.assertEqual(self.post(a, path + '/diagnostics', dict(payload, values={'secret': 'private'})).status_code, 400)
+        self.assertEqual(a.post(path + '/diagnostics', json.dumps(payload), content_type='application/json', secure=True).status_code, 403)
+        self.assertEqual(self.post(a, path + '/diagnostics', payload).status_code, 202)
+        self.assertEqual(Audit.objects.filter(action='genui.save_failed.conflict', account_id=self.account_ids[0]).count(), 1)
+
+    def test_invalid_submitted_fields_return_errors_without_queuing_work(self):
+        conversation, path = self.artifact(); a = self.clients[0]
+        spec = {'version': '1.0', 'responseId': 'form', 'blocks': [{'id': 'form', 'type': 'form', 'props': {'fields': [{'id': 'quantity', 'label': 'Quantity', 'type': 'number', 'min': 1, 'max': 20}], 'submit': {'label': 'Calculate', 'action': {'kind': 'agent.request', 'message': 'Calculate total'}}}}]}
+        with connection.cursor() as con:
+            con.execute("UPDATE data_blocks SET spec_json=%s WHERE id='artifact-http'", [json.dumps(spec)])
+        payload = {'id': 'bad-values', 'node_id': 'form', 'action_id': 'submit', 'version': 1, 'values': {'quantity': 100}}
+        response = self.post(a, path + '/events', payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('quantity', response.json()['field_errors'])
+        self.assertNotIn('100', json.dumps(response.json()))
+        with connection.cursor() as con:
+            con.execute('SELECT count(*) FROM gen_artifact_events WHERE account_id=%s', [self.account_ids[0]])
+            self.assertEqual(con.fetchone()[0], 0)

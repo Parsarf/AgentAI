@@ -56,7 +56,7 @@ urlpatterns += [
  path('v1/conversations/<str:conversation_id>/blocks',gen.blocks),
  path('v1/media/<str:image_id>',media.card_image),path('v1/blocks/<str:block_id>/state',gen.block_state),path('v1/blocks/<str:block_id>/submit',gen.block_submit),path('v1/blocks/<str:block_id>/launch',gen.block_launch),
  path('v1/genui/artifacts/<str:artifact_id>/asset',fl.gen_asset),
- path('v1/genui/registry',gen.component_registry),path('v1/genui/artifacts/<str:artifact_id>/state',gen.artifact_state),path('v1/genui/artifacts/<str:artifact_id>/events',gen.artifact_event),path('v1/genui/artifacts/<str:artifact_id>/update',gen.artifact_update),
+ path('v1/genui/artifacts/<str:artifact_id>/diagnostics',gen.artifact_diagnostic),path('v1/genui/registry',gen.component_registry),path('v1/genui/artifacts/<str:artifact_id>/state',gen.artifact_state),path('v1/genui/artifacts/<str:artifact_id>/events',gen.artifact_event),path('v1/genui/artifacts/<str:artifact_id>/update',gen.artifact_update),
  path('v1/blocks/<str:block_id>/live',gen.block_live),path('v1/blocks/<str:block_id>/phase',gen.block_phase),path('v1/blocks/<str:block_id>/stop',gen.block_stop),
  path('v1/conversations/<str:conversation_id>/rename',ch.chat_rename),
  path('v1/browse',br.runs),path('v1/browse/<str:request_id>',br.run),path('v1/browse/<str:request_id>/control',br.control),

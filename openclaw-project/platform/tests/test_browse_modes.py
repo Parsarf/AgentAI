@@ -365,3 +365,22 @@ class ClaudeTakesThePage(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SemanticCycleChecks(unittest.TestCase):
+    def test_variant_changes_do_not_hide_an_a_b_a_cycle(self):
+        history = [{'by': 'jev', 'action': 'click', 'label': label, 'changed': True, 'result': 'ok'} for label in ('Neem', 'Brook', 'Neem')]
+        self.assertIn('previously selected option', modes.claude_reason(history))
+        self.assertEqual(modes.claude_reason(history[:2]), '')
+        self.assertEqual(modes.claude_reason([*history[:2], {**history[2], 'by': 'agent'}]), '')
+
+    def test_repeated_selected_swatch_hands_back_even_when_pixels_change(self):
+        history = [{'by': 'jev', 'action': 'click', 'label': 'White', 'changed': True, 'result': 'ok'} for _ in range(3)]
+        self.assertIn('same control three times', modes.claude_reason(history))
+
+    def test_visible_product_options_displace_offscreen_navigation(self):
+        controls = [{'ref': i, 'in_view': False, 'covered': False} for i in range(1, 24)]
+        controls += [{'ref': 24, 'in_view': True, 'covered': False}]
+        selected = cand._within(controls, 20)
+        self.assertEqual(len(selected), 20)
+        self.assertIn(24, [c['ref'] for c in selected])

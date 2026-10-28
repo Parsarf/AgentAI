@@ -30,3 +30,7 @@ A live-model test could not run: this workspace has no running cell bridge/provi
 Street imagery, map tiles, geocoding, road routing, live domain data, bookings and schedule publishing require configured external providers/credentials. Their validated presentation/editor components exist and explicitly identify unavailable services. Selecting a reservation does not book it, and editing recurrence does not create a scheduled job. No sample data is presented as live. Token totals remain unavailable until the runtime supplies them. The pre-existing Ultra answer-style option remains planned/unavailable.
 
 Changes were implemented and checked locally; no push or deployment was performed.
+
+## Launch hardening follow-up
+
+See [launch-readiness.md](launch-readiness.md) for saving/conflict recovery, structured form errors, operational diagnostics, repeatable acceptance tools and the current release gates. That document distinguishes local implementation from live-model acceptance and production deployment.

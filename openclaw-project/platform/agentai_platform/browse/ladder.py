@@ -571,6 +571,7 @@ class Ladder:
     agent: object = None                     # callable(goal, history, page, candidates, handover, look) -> Decision: the assistant, working in the same browser
     give_up_after: int = 4                   # this many JEV misses in a row: stop asking JEV for the rest of the run (each miss can cost a 5 s timeout)
     max_cost: int | None = None              # micro-USD JEV may spend in this run; past it JEV is refused (the run stops, it never evades the cap)
+    on_call: object = lambda: None           # count admitted JEV requests, including failures
     trace: object = NULL                     # the operator's record of the run (see trace.py)
     spent: int = field(default=0, init=False)         # what JEV has cost so far
     handed: str = field(default='', init=False)       # not empty once the assistant has taken the task over for good, and why
@@ -598,6 +599,7 @@ class Ladder:
         """Ask JEV once. A decision comes back for any valid, consistent answer: there is no confidence cut-off. Everything else is a `miss` (nothing ran)."""
         if not self.admit('jev') or (self.max_cost is not None and self.spent > self.max_cost):
             raise Refused('jev')
+        self.on_call()
         started = time.monotonic()
         look = look or Look()
         picture = look.shot is not None and not candidates                   # only the picture: the page lists no controls

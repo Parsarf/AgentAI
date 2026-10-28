@@ -47,6 +47,9 @@ class InteractivePreview(Preview):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if path == '/v1/conversations/stress/blocks':
+            spec = document([{'id': f'table_{n}', 'type': 'table', 'dataRef': 'large', 'props': {'title': f'Stress table {n + 1}', 'searchable': True, 'sortable': True, 'pageSize': 20}} for n in range(24)], datasets={'large': {'columns': [{'id': 'name', 'label': 'Item'}, {'id': 'value', 'label': 'Value', 'type': 'number'}], 'rows': [{'name': f'Illustrative item {i}', 'value': i} for i in range(500)]}})
+            return self.respond({'blocks': [{'id': 'stress-document', 'conversation_id': 'stress', 'anchor_message_id': 2, 'kind': 'document', 'schema_version': '1.0', 'spec': spec, 'state': {}, 'version': 1, 'state_revision': 1, 'status': 'final', 'launched_request_id': None}]})
         if path == '/v1/csrf': return self.respond({'csrf_token': 'disposable-fixture'})
         if path == '/v1/conversations/c-a/messages': return self.respond(fixture.chat.messages(fixture.a, 'c-a', after=int(parse_qs(urlparse(self.path).query).get('after', ['0'])[0])))
         if path == '/v1/conversations/c-a/blocks': return self.respond({'blocks': fixture.chat.blocks.list(fixture.a, 'c-a')})

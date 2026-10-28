@@ -10,7 +10,7 @@ import unittest
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.bridge_client import BridgeRpc
 from agentai_platform.gateway import NativeGateway
-from tests.e2e.harness import Stack, openclaw_package
+from tests.e2e.harness import Stack, openclaw_package, CAPACITY
 
 PACKAGE = openclaw_package()
 STEP = {'n': 2, 'kind': 'step', 'by': 'haiku', 'action': 'click', 'label': 'Add to cart', 'result': 'ok', 'url': 'https://ubereats.com/cart', 'changed': True}
@@ -95,7 +95,8 @@ class NativeEndToEnd(unittest.TestCase):
         session = S.rows("SELECT native_session_ref FROM conversations WHERE id='c-a'")[0]['native_session_ref']
         gw = NativeGateway(BridgeRpc('a', S.socket))
         before = len([r for r in gw.history(session)['messages'] if r['role'] == 'agent'])
-        ack = gw.send(session, f'{first["id"]}-a1', 'Say hello once. SCENARIO:answer')          # even a deliberate resend of the same key
+        payload = S.rows('SELECT payload FROM chat_deliveries WHERE request_id=? AND attempt=1', (first['id'],))[0]['payload']
+        ack = gw.send(session, f'{first["id"]}-a1', payload)          # even a deliberate resend of the same key
         self.assertEqual((ack['duplicate'], ack['status']), (True, 'ok'))
         time.sleep(1.5)
         self.assertEqual(len([r for r in gw.history(session)['messages'] if r['role'] == 'agent']), before)
@@ -122,6 +123,24 @@ class NativeEndToEnd(unittest.TestCase):
         events = [e['payload'] for e in S.events.events(S.principals['a'], sent['id'])['events']]
         self.assertTrue(any('Add to cart' in str(p.get('summary', '')) for p in events))
         self.assertTrue(any(p.get('tool') == 'browser' or p.get('label') == 'Used the browser' for p in events))
+
+    def test_an_old_session_cannot_borrow_a_new_tasks_browser_budget(self):
+        S = self.S
+        old, _ = self.run_to_end('a', 'Original task. SCENARIO:answer', 'origin-old')
+        old_session = S.rows("SELECT native_session_ref FROM conversations WHERE id='c-a'")[0]['native_session_ref']
+        S.browse.calls = []
+        newer = S.say('a', 'New UI task. SCENARIO:answer', 'origin-new', conversation=S.new_conversation('a'))
+        claim = S.queue.claim(owner='origin-test', capacity=CAPACITY)
+        self.assertEqual(claim.request_id, newer['id'])
+        gateway = NativeGateway(BridgeRpc('a', S.socket))
+        run = gateway.send(old_session, 'unowned-old-resume', 'Resume old shopping task. SCENARIO:browse')
+        S.wait_for(lambda: gateway.wait(run['run_id'], 0)['status'] != 'running', message='old run rejected')
+        self.assertEqual(S.browse.calls, [])
+        self.assertEqual(S.rows('SELECT * FROM browse_runs WHERE request_id=?', (newer['id'],)), [])
+        page = gateway.history(old_session)
+        self.assertIn('does not belong to an admitted live task', page['messages'][-1]['content'])
+        S.queue.cancel(S.principals['a'], newer['id'])
+        S.worker._run(claim)
 
     def test_a_browser_job_that_finishes_is_completed_and_the_cart_page_is_checked(self):
         S = self.S
@@ -337,7 +356,7 @@ class NativeEndToEnd(unittest.TestCase):
         before = len(S.browse.calls)
         text, error = self._call_tool_as('b')
         self.assertTrue(error)
-        self.assertIn('no running task', text)
+        self.assertIn('does not belong to an admitted live task', text)
         self.assertEqual(len(S.browse.calls), before)
 
     def _call_tool_as(self, account):

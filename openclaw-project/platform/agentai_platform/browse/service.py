@@ -82,7 +82,7 @@ def watch_purge(service, stop, every=PURGE_EVERY_SECONDS, sleep=time.sleep):
 
 # What the owner reads to judge JEV and the hand-over to the assistant: acted steps by who decided them (jev_acted + agent_step = steps taken), how often JEV handed over
 # (jev_too_complex, jev_misses, no_change_loops, claude_page_takeovers), and what the assistant did for JEV (agent_text, agent_answer).
-STAT_KEYS = ('ask_answered', 'ask_remembered', 'jev_acted', 'jev_typed_from_goal', 'agent_step', 'agent_text', 'agent_answer', 'jev_needs_user', 'jev_too_complex', 'jev_misses',
+STAT_KEYS = ('jev_calls', 'ask_answered', 'ask_remembered', 'jev_acted', 'jev_typed_from_goal', 'agent_step', 'agent_text', 'agent_answer', 'jev_needs_user', 'jev_too_complex', 'jev_misses',
              'jev_ask', 'no_change_loops', 'claude_page_takeovers', 'other_step')
 
 
@@ -528,7 +528,7 @@ class BrowseService:
             job.session = session = Session(transport, trace=trace)
             jev = self.jev_for(job.account) if self.jev_mode != 'off' else None
             trace.emit('ready', start=_where(start), jev=jev is not None)
-            ladder = Ladder(admit=self._admit(job), jev=jev, agent=self._agent_gate(job), max_cost=job.max_cost, trace=trace)
+            ladder = Ladder(admit=self._admit(job), jev=jev, agent=self._agent_gate(job), max_cost=job.max_cost, trace=trace, on_call=lambda: job.stats.__setitem__('jev_calls', job.stats['jev_calls'] + 1))
 
             def on_event(kind, data):
                 job.add(kind, data)

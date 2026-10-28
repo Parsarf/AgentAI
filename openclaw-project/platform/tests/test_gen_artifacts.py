@@ -101,3 +101,33 @@ class ArtifactLoop(Base):
         self.assertTrue(usage['estimated'])
         self.assertGreaterEqual(usage['cost_microusd'], 123)
         with self.assertRaises(NotFound): self.chat.task(Principal('b', 'actor-b', 'customer'), task)
+
+    def test_server_validates_dates_ranges_steps_and_defaults_without_side_effects(self):
+        from agentai_platform.genui.artifacts import answers, FieldErrors
+        for kind, value, options in [('number', 1.5, {'step': 1}), ('date', '2026-02-30', {}), ('time', '25:01', {}), ('range', [2, 1], {}), ('date-range', ['2026-02-30', '2026-03-01'], {}), ('color', 'red', {})]:
+            node = {'type': 'form', 'props': {'fields': [{'id': 'value', 'label': 'Value', 'type': kind, **options}]}}
+            with self.subTest(kind=kind), self.assertRaises(FieldErrors) as caught:
+                answers(node, {'value': value})
+            self.assertEqual(set(caught.exception.errors), {'value'})
+        node = {'type': 'form', 'props': {'fields': [{'id': 'show', 'label': 'Show', 'type': 'toggle', 'default': True}, {'id': 'detail', 'label': 'Detail', 'type': 'text', 'required': True, 'showIf': {'field': 'show', 'equals': True}}]}}
+        with self.assertRaises(FieldErrors): answers(node, {})
+        self.assertEqual(answers(node, {'show': False})[0], {'show': False})
+
+    def test_failed_admission_can_retry_same_event_without_a_duplicate_request(self):
+        from unittest.mock import patch
+        from agentai_platform.budget import BudgetDenied
+        artifact, store = self.create()
+        before = len(self.rows('SELECT id FROM customer_requests'))
+        with patch.object(self.chat, 'send', side_effect=BudgetDenied('queue full')):
+            with self.assertRaises(BudgetDenied): store.event(self.a, artifact['id'], self.event(artifact), self.chat)
+        self.assertEqual(self.rows('SELECT status FROM gen_artifact_events')[0][0], 'failed')
+        first = store.event(self.a, artifact['id'], self.event(artifact), self.chat)
+        self.assertEqual(store.event(self.a, artifact['id'], self.event(artifact), self.chat), first)
+        self.assertEqual(len(self.rows('SELECT id FROM customer_requests')), before + 1)
+
+    def test_invalid_only_document_has_a_readable_fallback_and_sanitized_diagnostic(self):
+        from agentai_platform.genui.document import extract_documents
+        with self.assertLogs('agentai.genui', level='WARNING') as logged:
+            text, docs = extract_documents('```lumina-doc\n{"blocks":[{"type":"script","secret":"private input"}]}\n```')
+        self.assertTrue(text); self.assertFalse(docs)
+        self.assertNotIn('private', ''.join(logged.output))

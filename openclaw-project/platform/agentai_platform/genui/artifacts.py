@@ -5,6 +5,7 @@ import json
 import math
 import re
 import time
+from datetime import date
 from . import document
 from .schema import SpecError
 from agentai_platform.lifecycle.coordinator import Coordinator, identifier
@@ -54,6 +55,48 @@ def bindings(node):
         yield f'suggestion-{i}', {'kind': 'agent.request', 'message': s}
 
 
+class FieldErrors(SpecError):
+    def __init__(self, errors):
+        super().__init__('Some fields need attention')
+        self.errors = errors
+
+
+def field_error(f, value):
+    if value == '' or value is None or value == []:
+        return 'Enter a value.' if f.get('required') else None
+    kind = f['type']
+    def bounded(v):
+        return type(v) in (int, float) and math.isfinite(v) and f.get('min', -1e15) <= v <= f.get('max', 1e15)
+    def calendar(v):
+        if not isinstance(v, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', v): return False
+        try: date.fromisoformat(v); return True
+        except ValueError: return False
+    if kind in ('multiselect', 'range', 'date-range', 'tags'):
+        if not isinstance(value, list) or len(value) > 50 or any(type(v) not in (str, int, float) or (isinstance(v, str) and len(v) > 80) or (type(v) in (int, float) and not math.isfinite(v)) for v in value):
+            return 'Use at most 50 valid items, with at most 80 characters each.'
+        if kind in ('range', 'date-range'):
+            valid = len(value) == 2 and all(bounded(v) if kind == 'range' else calendar(v) for v in value)
+            if not valid: return 'Enter both valid ends of the range.'
+            if value[0] > value[1]: return 'Start must be before or equal to end.'
+    elif kind in ('checkbox', 'toggle'):
+        if type(value) is not bool: return 'Choose yes or no.'
+    elif kind in ('number', 'slider', 'rating'):
+        if not bounded(value): return 'Enter a number within the allowed range.'
+        step = f.get('step')
+        if step and step > 0:
+            count = (value - f.get('min', 0)) / step
+            if abs(count - round(count)) > 1e-7: return f'Use increments of {step}.'
+    elif not isinstance(value, str) or len(value) > 500 or document._CONTROL.search(value):
+        return 'Use at most 500 characters without control characters.'
+    if kind == 'date' and not calendar(value): return 'Enter a valid calendar date.'
+    if kind == 'time' and not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', value): return 'Enter a valid time.'
+    if kind == 'color' and not re.fullmatch(r'#[0-9a-fA-F]{6}', value): return 'Choose a valid color.'
+    options = f.get('options')
+    if options and kind in ('select', 'radio', 'segmented', 'multiselect') and any(v not in {o['value'] for o in options} for v in (value if isinstance(value, list) else [value])):
+        return 'Choose an available option.'
+    return None
+
+
 def answers(node, values):
     fields = node['props'].get('fields', [])
     if node['type'] == 'wizard':
@@ -62,36 +105,19 @@ def answers(node, values):
         fields = [{'id': 'response', 'label': node['props']['message'], 'type': 'text', 'required': True}]
     if not isinstance(values, dict) or set(values) - {f['id'] for f in fields}:
         raise SpecError('unknown submitted fields')
-    out, lines = {}, []
+    effective = {f['id']: values.get(f['id'], f.get('default', '')) for f in fields}
+    out, lines, errors = {}, [], {}
     for f in fields:
-        value = values.get(f['id'], f.get('default', ''))
+        value = effective[f['id']]
         cond = f.get('showIf')
-        if cond and values.get(cond['field']) != cond['equals']:
-            continue
-        if value == '' or value is None or value == []:
-            if f.get('required'):
-                raise SpecError(f'{f["id"]}: required')
-            continue
-        kind = f['type']
-        if kind in ('multiselect', 'range', 'date-range', 'tags'):
-            valid = isinstance(value, list) and len(value) <= 50 and all(type(v) in (str, int, float) and (not isinstance(v, str) or len(v) <= 80) and (not isinstance(v, (int, float)) or math.isfinite(v)) for v in value)
-            if kind in ('range', 'date-range'):
-                valid = valid and len(value) == 2 and type(value[0]) is type(value[1]) and value[0] <= value[1]
-            if kind == 'range':
-                valid = valid and all(type(v) in (int, float) and f.get('min', -1e15) <= v <= f.get('max', 1e15) for v in value)
-        elif kind in ('checkbox', 'toggle'):
-            valid = type(value) is bool
-        elif kind in ('number', 'slider', 'rating'):
-            valid = type(value) in (int, float) and math.isfinite(value) and f.get('min', -1e15) <= value <= f.get('max', 1e15)
-        else:
-            valid = isinstance(value, str) and len(value) <= 500 and not document._CONTROL.search(value)
-        if not valid:
-            raise SpecError(f'{f["id"]}: invalid value')
-        options = f.get('options')
-        if options and kind in ('select', 'radio', 'segmented', 'multiselect') and any(v not in {o['value'] for o in options} for v in (value if isinstance(value, list) else [value])):
-            raise SpecError(f'{f["id"]}: unknown option')
+        if cond and effective.get(cond['field']) != cond['equals']: continue
+        error = field_error(f, value)
+        if error:
+            errors[f['id']] = error; continue
+        if value == '' or value is None or value == []: continue
         out[f['id']] = value
         lines.append(f'- {f["label"]}: {value}')
+    if errors: raise FieldErrors(errors)
     return out, lines
 
 

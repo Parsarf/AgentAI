@@ -70,7 +70,7 @@ class NativeGateway:
     The callable is the bridge client (the app never holds a cell token or a docker handle). Raises CapabilityUnavailable for any refusal or malformed reply.
     """
     METHODS = ('hello', 'sessions.create', 'sessions.describe', 'chat.send', 'chat.history', 'chat.abort', 'agent.wait', 'sessions.goal.update', 'sessions.goal.clear',
-               'usage.snapshot', 'workspace.collect', 'cell.status')
+               'usage.snapshot', 'workspace.collect', 'cell.status', 'tools.active')
 
     def __init__(self, rpc):
         self._rpc = rpc
@@ -104,6 +104,12 @@ class NativeGateway:
         if operation not in {'send', 'history', 'abort', 'wait', 'goals'} or not getattr(caps, operation):
             raise CapabilityUnavailable('installed gateway does not support ' + operation)
         return caps
+
+    def active_sessions(self):
+        turns = self._call('tools.active').get('turns')
+        if not isinstance(turns, list) or len(turns) > 32 or any(not isinstance(t, dict) or not isinstance(t.get('session_key'), str) or not isinstance(t.get('run_id'), str) for t in turns):
+            raise CapabilityUnavailable('native turn state unavailable')
+        return turns
 
     def open_session(self, operation_id, label):
         self.require('send')

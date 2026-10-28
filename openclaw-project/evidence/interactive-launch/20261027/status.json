@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-27",
+  "deployment": "not_deployed",
+  "production_base_release": "20261027T114539Z-cancel-e700e33",
+  "live_model_acceptance": {
+    "result": "blocked",
+    "reason": "normal owner allowance exhausted",
+    "corrected_harness": "Auto mode + Interactive answer style",
+    "initial_pilot": "Text mode was mistakenly used; no passing interactive evidence was obtained",
+    "limits_changed": false
+  },
+  "webkit_acceptance": {
+    "result": "blocked",
+    "reason": "native macOS text-input crash in both WebKit 27.2 and 26.5 test builds"
+  },
+  "physical_device_screen_reader_acceptance": "not_run",
+  "conditional_provider_features": "not_activated",
+  "package": "/tmp/lumina-ui-launch-package",
+  "package_platform_files": 303,
+  "frontend_tests": {
+    "passed": 360,
+    "files": 42
+  },
+  "platform_tests": {
+    "run": 985,
+    "skipped": 2,
+    "result": "passed"
+  },
+  "affected_authenticated_api_and_contract_tests": {
+    "passed": 14
+  },
+  "production_canary": {
+    "result": "dry-run-passed",
+    "binary_rollback_compatible": true,
+    "live_state_changed": false
+  },
+  "automated_accessibility": {
+    "violations": 0,
+    "families": 13,
+    "viewports": [
+      1440,
+      390
+    ]
+  },
+  "real_model_limit": {
+    "rolling_day_limit_usd": 5,
+    "recorded_24h_usd": 4.129578,
+    "new_task_reservation_usd": 1
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "automatedAccessibilityViolations": [],
+  "auditedFamilies": 13,
+  "viewports": [
+    1440,
+    390
+  ],
+  "maximumComposition": {
+    "blocks": 24,
+    "datasetRows": 500,
+    "mountedMs": 313.6871250000004,
+    "filteredMs": 45.828582999998616
+  }
+}

@@ -1,8 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useId, useReducer, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Dispatcher, type ActionEnv, type AuditEntry, type PhaseState, type Result } from '../actions';
 import type { Action, Block, Dataset } from '../schemas';
 import type { Ev } from '../../lib/useActivity';
 import type { ActivityItem } from '../../lib/activity';
+import { ArtifactDraft, artifactDraft, downloadAnswers, previousDrafts, type LocalState, type RemoteState } from '../drafts';
+import { ApiError } from '../../lib/api';
+import { interactionError, failureCategory } from '../errors';
 
 export interface RequestInfo { id: string; state: string; result: string | null; message?: string; outcome?: string | null; outcome_note?: string | null; created_epoch: number }
 export interface PlanInfo { id: string; title: string; phases: Array<{ id: string; title: string; description?: string; dependsOn?: string[] }>; run: Record<string, { state: PhaseState; summary: string | null }>; run_status?: string }
@@ -17,11 +20,12 @@ export interface ExecutionProvider {
   label?: string;
   planEditor?(id: string): ReactNode;
 }
-export type LocalState = Record<string, Record<string, unknown>>;
+export type { LocalState } from '../drafts';
 export type Host = Omit<ActionEnv, 'local' | 'confirm' | 'audit' | 'now'> & { audit?(e: AuditEntry): void;
-  /** Turns a `file:` reference into a URL the signed-in person may load, or null. The chat host has none yet (files are served by artifact id behind a ticket), so images show their alt text. */
+  /** Resolves a stored document's authorized project-file reference, or returns null. */
   assetUrl?(ref: string): string | null;
   artifactVersion?: number; initialState?: LocalState; saveState?(state: LocalState): Promise<void>;
+  loadState?(): Promise<RemoteState>; diagnostic?(kind: string, category: string): void;
   submit?(nodeId: string, actionId: string, values: Record<string, unknown>, eventId: string): Promise<void>;
 };
 
@@ -68,36 +72,41 @@ type Confirm = { title: string; detail: string; destructive: boolean; resolve(v:
 export function GenProvider({ datasets, blockIds, exec, host, scope, readOnly = false, children }: {
   datasets: Record<string, Dataset>; blockIds: string[]; exec: ExecutionProvider; host: Host; scope: string; readOnly?: boolean; children: ReactNode;
 }) {
-  const [local, patch] = useReducer((s: Record<string, Record<string, unknown>>, a: { id: string; patch: Record<string, unknown> }) => ({ ...s, [a.id]: { ...(s[a.id] ?? {}), ...a.patch } }), host.initialState ?? {});
   const hostRef = useRef(host); hostRef.current = host;
-  const localRef = useRef(local); localRef.current = local;
-  const saved = useRef(local); const scheduled = useRef<LocalState | null>(null); const saveQueue = useRef(Promise.resolve());
-  const [saveError, setSaveError] = useState('');
-  const persist = useCallback((state: LocalState): Promise<void> => {
-    if (!hostRef.current.saveState || state === saved.current || readOnly) return saveQueue.current;
-    if (state === scheduled.current) return saveQueue.current;
-    scheduled.current = state;
-    const save = hostRef.current.saveState;
-    const work = saveQueue.current.catch(() => {}).then(async () => { await save(state); saved.current = state; setSaveError(''); });
-    saveQueue.current = work;
-    void work.catch(() => { scheduled.current = null; setSaveError('Changes could not be saved. Reload before continuing.'); });
-    return work;
-  }, [readOnly]);
+  const [draft] = useState(() => host.artifactVersion === undefined ? new ArtifactDraft(1, host.initialState ?? {}) : artifactDraft(scope, host.artifactVersion, host.initialState ?? {}));
+  draft.host = {
+    saveState: host.saveState ? state => hostRef.current.saveState!(state) : undefined,
+    loadState: host.loadState ? () => hostRef.current.loadState!() : undefined,
+    diagnostic: (kind, category) => hostRef.current.diagnostic?.(kind, category),
+  };
+  const snapshot = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
+  const local = snapshot.state;
+  const patch = ({ id, patch }: { id: string; patch: Record<string, unknown> }) => draft.patch(id, patch);
+  const [older, setOlder] = useState(() => host.artifactVersion === undefined ? [] : previousDrafts(scope, host.artifactVersion));
   useEffect(() => {
-    if (saved.current === local || !host.saveState || readOnly) return;
-    const timer = window.setTimeout(() => { void persist(local).catch(() => {}); }, 350);
+    if (!snapshot.dirty || !host.saveState || readOnly || snapshot.error) return;
+    const timer = window.setTimeout(() => { void draft.flush().catch(() => {}); }, 350);
     return () => window.clearTimeout(timer);
-  }, [local, readOnly, persist, host.saveState]);
-  const eventIds = useRef(new Map<string, string>());
-  const inFlight = useRef(new Set<string>());
+  }, [local, snapshot.dirty, snapshot.error, readOnly, draft, !!host.saveState]);
+  useEffect(() => {
+    const flush = () => { if (!readOnly) void draft.flush().catch(() => {}); };
+    const leaving = (e: BeforeUnloadEvent) => {
+      if (draft.getSnapshot().dirty || older.some(d => d.getSnapshot().dirty)) { e.preventDefault(); e.returnValue = ''; flush(); }
+    };
+    const hidden = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('beforeunload', leaving); window.addEventListener('online', flush); document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('beforeunload', leaving); window.removeEventListener('online', flush); document.removeEventListener('visibilitychange', hidden); flush(); };
+  }, [draft, readOnly, older]);
+  const eventIds = draft.events;
+  const inFlight = draft.inFlight;
   const submit = host.submit ? async (binding: string, values: Record<string, unknown>): Promise<Result> => {
     if (readOnly) return { ok: false, reason: 'forbidden', message: 'Actions are off in this view.' };
     const [node, action] = binding.split(':');
     const fingerprint = `${hostRef.current.artifactVersion ?? 1}:${binding}:${JSON.stringify(values)}`;
-    if (inFlight.current.has(fingerprint)) return { ok: false, reason: 'duplicate', message: 'Submission is pending.' };
-    const eventId = eventIds.current.get(fingerprint) ?? crypto.randomUUID().replaceAll('-', ''); eventIds.current.set(fingerprint, eventId); inFlight.current.add(fingerprint);
-    try { await persist(localRef.current); await hostRef.current.submit!(node, action, values, eventId); return { ok: true }; }
-    catch { return { ok: false, reason: 'failed', message: 'Submission failed. Reload if this artifact changed, then retry.' }; } finally { inFlight.current.delete(fingerprint); }
+    if (inFlight.has(fingerprint)) return { ok: false, reason: 'duplicate', message: 'Submission is pending.' };
+    const eventId = eventIds.get(fingerprint) ?? crypto.randomUUID().replaceAll('-', ''); eventIds.set(fingerprint, eventId); inFlight.add(fingerprint);
+    try { await draft.flush(); await hostRef.current.submit!(node, action, values, eventId); return { ok: true }; }
+    catch (error) { hostRef.current.diagnostic?.('submit_failed', failureCategory(error)); return { ok: false, reason: 'failed', message: draft.getSnapshot().conflict ? 'Resolve the conflicting edits below before sending.' : interactionError(error), fieldErrors: error instanceof ApiError ? error.fieldErrors : undefined }; } finally { inFlight.delete(fingerprint); }
   } : undefined;
   const [confirm, setConfirm] = useState<Confirm>(null);
   const ids = useRef(new Set(blockIds)); ids.current = new Set(blockIds);
@@ -120,8 +129,15 @@ export function GenProvider({ datasets, blockIds, exec, host, scope, readOnly = 
     return new Dispatcher(env, { scope });
   }, [scope]);
   const act = useCallback((raw: unknown, o?: { nonce?: string; destructiveStyle?: boolean }) => (readOnly ? Promise.resolve<Result>({ ok: false, reason: 'forbidden', message: 'Actions are off in this view.' }) : dispatcher.dispatch(raw, o)), [dispatcher, readOnly]);
-  const value = useMemo<Ctx>(() => ({ datasets, exec, act, submit, confirm: detail => new Promise<boolean>(resolve => setConfirm({ title: 'Confirm action', detail, destructive: true, resolve })), local, setLocal: (id, p) => patch({ id, patch: p }), scope, readOnly, assetUrl: r => hostRef.current.assetUrl?.(r) ?? null }), [datasets, exec, act, local, scope, readOnly]);
-  return <GenCtx.Provider value={value}>{children}{saveError && <p role="alert">{saveError}</p>}{confirm && <ConfirmDialog {...confirm} onDone={v => { confirm.resolve(v); setConfirm(null); }} />}</GenCtx.Provider>;
+  const value = useMemo<Ctx>(() => ({ datasets, exec, act, submit, confirm: detail => new Promise<boolean>(resolve => setConfirm({ title: 'Confirm action', detail, destructive: true, resolve })), local, setLocal: (id, p) => patch({ id, patch: p }), scope, readOnly, assetUrl: r => hostRef.current.assetUrl?.(r) ?? null }), [datasets, exec, act, local, scope, readOnly, host.submit, host.artifactVersion]);
+  return <GenCtx.Provider value={value}>{children}
+    {host.saveState && <div className="gen-save" aria-live="polite" role="status">{snapshot.saving ? 'Saving changes…' : snapshot.dirty ? 'Unsaved changes' : 'Changes saved'}</div>}
+    {snapshot.error && <div className="notice" role="alert"><p>{snapshot.error}</p><div className="gen-row">
+      {snapshot.conflict ? <><button className="btn" onClick={() => { void draft.resolve(true).catch(() => {}); }}>Keep my edits</button><button className="btn" onClick={() => { void draft.resolve(false); }}>Use saved edits</button></> : <button className="btn" disabled={snapshot.saving} onClick={() => { void draft.flush().catch(() => {}); }}>Retry saving</button>}
+      <button className="btn tertiary" onClick={() => downloadAnswers(local)}>Download my answers</button>
+    </div></div>}
+    {older.length > 0 && <div className="notice" role="alert"><p>This answer was updated while you had unsaved edits. Your earlier answers are kept in this tab.</p><div className="gen-row"><button className="btn" onClick={() => downloadAnswers(older[older.length - 1].getSnapshot().state)}>Download earlier answers</button><button className="btn tertiary" onClick={() => { if (window.confirm('Discard the unsaved answers from the earlier version?')) { older.forEach(d => d.cancel()); setOlder([]); } }}>Discard earlier edits</button></div></div>}
+    {confirm && <ConfirmDialog {...confirm} onDone={v => { confirm.resolve(v); setConfirm(null); }} />}</GenCtx.Provider>;
 }
 
 function ConfirmDialog({ title, detail, destructive, onDone }: { title: string; detail: string; destructive: boolean; onDone(v: boolean): void }) {

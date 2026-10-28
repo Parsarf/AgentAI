@@ -88,6 +88,15 @@ def claude_reason(history):
         if h.get('by') != 'jev':
             break                                                                  # the unbroken run of JEV's own steps at the end of the history
         tail.append(h)
+    # A changing URL/fingerprint is not proof of progress: variant swatches can
+    # alternate forever. Compare semantic targets across the unbroken JEV run.
+    clicks = [h for h in reversed(tail) if h.get('action') in ('click', 'select')]
+    if len(clicks) >= 3:
+        a, b, c = clicks[-3:]
+        if a.get('label') and _same(a, c) and not _same(a, b):
+            return 'JEV returned to a previously selected option; compare the observed choices before continuing'
+    if len(tail) >= 3 and all(h.get('action') in ('click', 'select') and _same(h, tail[0]) for h in tail[:3]):
+        return 'JEV selected the same control three times without advancing the task'
     if tail and tail[0].get('result') in JEV_FAILS:
         return f'JEV\'s last step could not be carried out ({tail[0]["result"]})'
     if len(tail) >= REPEAT_AFTER and all(did_nothing(h) and _same(h, tail[0]) for h in tail[:REPEAT_AFTER]):

@@ -1,0 +1,8 @@
+./Users/parsa/AgentAI/openclaw-project/platform/tests/e2e/harness.py:207: ResourceWarning: unclosed file <_io.FileIO name=13 mode='rb' closefd=True>
+  self.bridge.close_all()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+
+----------------------------------------------------------------------
+Ran 1 test in 18.285s
+
+OK
