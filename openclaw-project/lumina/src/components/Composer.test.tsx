@@ -86,9 +86,33 @@ describe('Composer', () => {
     const calls = mockFetch(); setup();
     const box = await screen.findByLabelText(/message lumina/i) as HTMLTextAreaElement;
     expect((screen.getByRole('button', { name: /send message/i }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Tools' })); fireEvent.click(screen.getByRole('menuitemradio', { name: /web search/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' })); fireEvent.click(screen.getByRole('menuitemradio', { name: /research something/i }));
     expect(box.value).toMatch(/^Search the web/);
     expect(calls.filter(c => c.url.endsWith('/send'))).toHaveLength(0);
+  });
+  it('tools menu choices change what is sent: plan first, keep working, and the answer style', async () => {
+    const calls = mockFetch(); setup({ conversationId: 'c1' });
+    const box = await screen.findByLabelText(/message lumina/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^interactive/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /keep working until complete/i }));
+    expect(screen.getByRole('menuitemcheckbox', { name: /keep working/i }).getAttribute('aria-checked')).toBe('true');   // a switch keeps the menu open
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^text answer only/i }));
+    fireEvent.change(box, { target: { value: 'hello' } }); fireEvent.click(screen.getByRole('button', { name: /send message/i }));
+    await waitFor(() => expect(calls.some(c => c.url.endsWith('/send'))).toBe(true));
+    const body = calls.find(c => c.url.endsWith('/send'))!.body;
+    expect(body.mode).toBe('text'); expect(body.goal).toBe('true'); expect(body.ui).toBe('interactive');
+    localStorage.clear();
+  });
+  it('plan first switches keep-working off, and attach files is shown as not available', async () => {
+    mockFetch(); setup();
+    await screen.findByLabelText(/message lumina/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+    expect((screen.getByRole('menuitemradio', { name: /attach files/i }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^plan first/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+    expect((screen.getByRole('menuitemcheckbox', { name: /keep working/i }) as HTMLButtonElement).disabled).toBe(true);
   });
   it('explains that attachments are not enabled instead of silently dropping them', async () => {
     mockFetch(); setup();

@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom';
 
 export interface MenuItem {
   id: string; label: string; hint?: string; icon?: ReactNode; checked?: boolean; danger?: boolean; disabled?: boolean; separatorBefore?: boolean; onSelect(): void;
+  /** `switch` renders an on/off toggle that keeps the menu open; `section` prints a heading above the row; `tint` colours the icon tile; `trailing` is quiet text at the right. */
+  kind?: 'switch'; section?: string; tint?: string; trailing?: string;
 }
 
 /** The shared dropdown: an opaque elevated menu with roving focus, Escape to close and focus returned to the trigger.
  *  `checkable` makes it a choice list (menuitemradio with a check); otherwise rows are plain menuitems. It renders in a portal with fixed coordinates so no scrolling or overflow-hidden parent can clip it; tokens live on :root, so it stays themed. */
-export default function Menu({ label, heading, items, trigger, side = 'bottom', align = 'start', checkable = false, className = '' }: {
-  label: string; heading?: string; items: MenuItem[]; side?: 'top' | 'bottom'; align?: 'start' | 'end'; checkable?: boolean; className?: string;
+export default function Menu({ label, heading, items, trigger, side = 'bottom', align = 'start', checkable = false, rich = false, className = '' }: {
+  label: string; heading?: string; items: MenuItem[]; side?: 'top' | 'bottom'; align?: 'start' | 'end'; checkable?: boolean; rich?: boolean; className?: string;
   trigger(p: { open: boolean; props: Record<string, unknown> }): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -50,15 +52,18 @@ export default function Menu({ label, heading, items, trigger, side = 'bottom', 
       {trigger({ open, props: { 'data-menu-trigger': '', 'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-controls': open ? id : undefined, onClick: () => setOpen(o => !o),
         onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true); } } } })}
       {open && createPortal(
-        <div className="menu" id={id} role="menu" aria-label={label} data-side={pos?.side ?? side} style={pos?.style ?? { visibility: 'hidden', left: 0, top: 0 }} ref={list} onKeyDown={onKey}>
+        <div className={`menu${rich ? ' rich' : ''}`} id={id} role="menu" aria-label={label} data-side={pos?.side ?? side} style={pos?.style ?? { visibility: 'hidden', left: 0, top: 0 }} ref={list} onKeyDown={onKey}>
           {heading && <div className="menu-label" aria-hidden>{heading}</div>}
           {items.map(it => (
             <div key={it.id} style={{ display: 'contents' }}>
-              {it.separatorBefore && <hr className="menu-sep" />}
-              <button type="button" role={checkable ? 'menuitemradio' : 'menuitem'} aria-checked={checkable ? !!it.checked : undefined} disabled={it.disabled}
-                className={`menu-item${it.danger ? ' danger' : ''}`} onClick={() => { it.onSelect(); close(); }}>
-                {it.icon}<span className="menu-text">{it.label}{it.hint && <small className="menu-hint">{it.hint}</small>}</span>
-                {checkable && it.checked && <svg className="menu-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>}
+              {it.section ? <div className="menu-section" aria-hidden>{it.section}</div> : it.separatorBefore && <hr className="menu-sep" />}
+              <button type="button" role={it.kind === 'switch' ? 'menuitemcheckbox' : checkable ? 'menuitemradio' : 'menuitem'} aria-checked={it.kind === 'switch' || checkable ? !!it.checked : undefined} disabled={it.disabled}
+                className={`menu-item${it.danger ? ' danger' : ''}`} onClick={() => { it.onSelect(); if (it.kind !== 'switch') close(); }}>
+                {rich && it.icon ? <span className="menu-tile" style={it.tint ? { '--tint': it.tint } as CSSProperties : undefined}>{it.icon}</span> : it.icon}
+                <span className="menu-text">{it.label}{it.hint && <small className="menu-hint">{it.hint}</small>}</span>
+                {it.trailing && <span className="menu-trailing">{it.trailing}</span>}
+                {it.kind === 'switch' && <span className={`switch sm${it.checked ? ' on' : ''}`} aria-hidden><i /></span>}
+                {checkable && it.kind !== 'switch' && it.checked && <svg className="menu-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>}
               </button>
             </div>))}
         </div>, document.body)}

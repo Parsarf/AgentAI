@@ -92,3 +92,12 @@
   --gen-row-compact: 28px; --gen-row-comfortable: 36px; --gen-row-spacious: 46px;
   --touch-min: 44px;
 }
+
+/* Rich menu (Tools): iOS-style icon tile colours, switch and popover surface. */
+:root {
+  --tile-blue: #0a84ff; --tile-purple: #bf5af2; --tile-gray: #8e8e93; --tile-orange: #ff9f0a; --tile-green: #30d158; --tile-teal: #64d2ff; --tile-red: #ff453a;
+  --on-tile: #fff;
+  --menu-rich-bg: #1c1c1f; --menu-rich-line: rgb(255 255 255 / .1);
+  --menu-row-hover: rgb(255 255 255 / .07); --menu-row-selected: rgb(255 255 255 / .06); --menu-row-active: rgb(255 255 255 / .11);
+  --switch-off: rgb(120 120 128 / .32);
+}
