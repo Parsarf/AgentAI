@@ -27,7 +27,7 @@ accounts.env
 
 # local hosting configuration and private credential variants
 .vercel/
-node_modules/
+node_modules
 .env.*
 !.env.example
 *.sqlite3
@@ -35,3 +35,26 @@ node_modules/
 *.sqlite3-shm
 *.pem
 *.key
+
+# Private keys without extensions; keep source files such as id_utils.py visible.
+ssk-key*
+*_key
+*-key
+*-key.pub
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+
+# Local tooling, private exports and root-level scratch artifacts.
+.claude/
+/brag-output/
+/sonarqube-export/
+/lumina-cost-audit/
+/*.png
+/*.PNG
+/*.jpg
+/*.jpeg
+/*.zip
+/*.tgz
+/*.tar.gz
