@@ -1587,3 +1587,6 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   rate-limit gaps closed, canary release tool with rollback, nightly tenant backup scheduling, runbooks. Deployed with timers; four real canary releases.
   Drills: owner-side decrypt of all 7 artifacts, real-schema account restore, corruption rejection, release rollback in sandboxes.
 - Open: automatic off-server destination (launch blocker), SSH keys-only, Phase 15 acceptance. 421 platform / 79 Django / 35 dashboard tests pass.
+
+## 2026-10-30: experimental jev-ultrafast browser (owner testing)
+Safety switch `standard_browser`, engine `browse/ultrafast.py`, installer `bin/update-ultrafast.py`, vendored `browse-ultrafast/` (commit 1231850 of browser-use/jev-ultrafast). Deployed as release `20261030T071755Z-ultrafast-2b37c2e`; UI wording via `deploy-lumina.py`. Smoke test through the production path: opened books.toscrape.com, clicked Travel, done in 5.8 s, picture copied. See platform/OPERATIONS.md section 19. Roll back: `update-ultrafast.py --rollback`.
