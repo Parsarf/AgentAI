@@ -99,10 +99,10 @@ export const HELP: Record<string, Help> = {
     off: 'Your pictures are kept until you turn this back on; the next sweep then removes the old ones.',
   },
   standard_browser: {
-    does: 'Runs browser tasks in the sandboxed stage, with a clean browser profile every time.',
-    why: 'Nothing a task saw or stored can reach the next task, and the payment and private-address stops always apply.',
-    on: 'Browser tasks use the standard Lumina browser.',
-    off: "Only for the owner's own account: tasks run in the experimental jev-ultrafast browser, which shares one Chrome profile and has none of the payment or private-address stops. Use a time limit; it goes back to the standard browser by itself.",
+    does: 'Chooses who decides each step of a browser task: the standard decider (ON) or the experimental ultrafast one (OFF, your own account only).',
+    why: 'To compare them on the same browser. Both run in the same sandboxed browser with the same stops, limits and clean profile, so nothing else about the task changes.',
+    on: 'Browser tasks are decided the standard way.',
+    off: "Only for the owner's own account, from the next task, until the time limit ends: the ultrafast decider chooses the steps and a small fast model writes field text that the request does not give. The payment and sign-in stops and all limits still apply.",
   },
   // -- Prompt-injection defenses
   untrusted_page_text: {

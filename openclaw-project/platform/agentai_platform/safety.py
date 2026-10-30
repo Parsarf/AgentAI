@@ -47,7 +47,7 @@ GROUPS = (('platform', 'Lumina platform'), ('browser', 'Browser'), ('data', 'Dat
 
 FEATURES: dict[str, Feature] = {f.key: f for f in (
     Feature('budget_caps', 'platform', 'Spending caps', 'The per-task, daily and monthly limits and the money reservation before a task starts.', True),
-    Feature('standard_browser', 'browser', 'Use the standard Lumina browser', 'Browser tasks run in the sandboxed stage with a clean profile every time. Switch OFF (your own account, with a time limit) to test the experimental jev-ultrafast browser instead.', True),
+    Feature('standard_browser', 'browser', 'Use the standard Lumina browser', 'Browser tasks are decided the standard way. Switch OFF (your own account, with a time limit) and the next task is decided the experimental ultrafast way instead, on the same sandboxed browser with the same stops and limits.', True),
     Feature('queue_limit', 'platform', 'Queue limit', 'At most 3 tasks waiting per account; a fourth is refused until one starts.', True),
     Feature('rate_limits', 'platform', 'Request rate limits', 'Per-account limits on how often routes can be called.', True),
     Feature('routing_policy', 'platform', 'Routing policy gates', 'Rules that can refuse or reshape how a request runs. Not in the live request path yet, so nothing reads this switch.'),
