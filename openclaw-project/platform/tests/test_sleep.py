@@ -1,13 +1,15 @@
 import unittest
-from agentai_platform.lifecycle.sleep import CellFacts, can_sleep, wake_plan
+from agentai_platform.lifecycle.sleep import CellFacts, IDLE_AFTER_SECONDS, can_sleep, wake_plan
 
 def cell(acct='a',state='running',last=0,run=0,queue=0,appr=0,maint=False):
     return CellFacts(acct,state,last,run,queue,appr,maint)
 
 class SleepChecks(unittest.TestCase):
     def test_sleeps_only_after_idle_threshold_with_no_work(self):
+        self.assertEqual(IDLE_AFTER_SECONDS, 45 * 60)                      # the owner's choice: 45 minutes
         self.assertFalse(can_sleep(cell(last=100),now=500))
-        self.assertTrue(can_sleep(cell(last=100),now=1000))
+        self.assertFalse(can_sleep(cell(last=100),now=100 + IDLE_AFTER_SECONDS - 1))     # one second short of the threshold: still awake
+        self.assertTrue(can_sleep(cell(last=100),now=100 + IDLE_AFTER_SECONDS))
     def test_any_live_work_blocks_sleep(self):
         for kw in [dict(run=1),dict(queue=1),dict(appr=1),dict(maint=True)]:
             self.assertFalse(can_sleep(cell(last=0,**kw),now=10**6),kw)

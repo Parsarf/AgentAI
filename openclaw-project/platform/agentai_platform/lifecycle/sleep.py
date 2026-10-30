@@ -8,7 +8,7 @@ a cell that has live work, and never touches the owner workload.
 """
 from dataclasses import dataclass
 
-IDLE_AFTER_SECONDS = 900
+IDLE_AFTER_SECONDS = 45 * 60      # an assistant cell with nothing running, queued or waiting is stopped after this long (was 15 minutes)
 
 
 @dataclass(frozen=True)
