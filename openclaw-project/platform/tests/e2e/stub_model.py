@@ -5,6 +5,7 @@ marker in the customer's message (SCENARIO:...), so each scenario is determinist
 real cells hold.
 """
 import json
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,6 +34,15 @@ def decide(messages, tools):
     user = text_of(last)
     everything = ' '.join(text_of(m) for m in messages if m['role'] in ('user', 'system'))        # the goal's objective is shown to the model as internal context on every turn, not in the last message
     answered = sum(1 for m in live if m['role'] == 'assistant' and text_of(m).strip())
+    if 'SCENARIO:ownership_parallel' in user:
+        task = re.search(r'Current task_id: ([a-f0-9]+)', everything).group(1)
+        progress = {'task_id': task, 'update_id': 'parallel-start', 'revision': 0, 'mode': 'direct',
+                    'steps': [{'id': 'browse', 'title': 'Inspect the shop', 'status': 'running'}]}
+        browser = {'task': 'Inspect products in the shop', 'site': 'shop.example', 'done_when': 'Report the visible product names'}
+        progress['_lumina_origin'] = 'model-invented'
+        browser['_lumina_origin'] = 'model-invented'
+        return {'calls': [{'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_task_update', 'args': progress}},
+                          {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser', 'args': browser}}], 'fragment_delay': 0.1}
     if 'SCENARIO:browse' in user:
         return {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser', 'args': {
             'task': 'Add the spiciest chicken wings to the cart on Uber Eats', 'site': 'ubereats.com', 'steps': ['Open the site', 'Add the spiciest wings to the cart']}}}
@@ -88,7 +98,15 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(out.get('delay', 0))
             send({'role': 'assistant'})
             usage = {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}
-            if 'tool' in out:
+            if 'calls' in out:
+                for i, call in enumerate(out['calls']):
+                    send({'tool_calls': [{'index': i, 'id': 'parallel_%d_%d' % (len(stub.requests), i), 'type': 'function', 'function': {'name': call['tool'], 'arguments': ''}}]})
+                    encoded = json.dumps(call['args'])
+                    for part in (encoded[:len(encoded)//2], encoded[len(encoded)//2:]):
+                        send({'tool_calls': [{'index': i, 'function': {'arguments': part}}]})
+                        time.sleep(out.get('fragment_delay', 0))
+                send({}, 'tool_calls', usage)
+            elif 'tool' in out:
                 send({'tool_calls': [{'index': 0, 'id': 'call_%d' % len(stub.requests), 'type': 'function', 'function': {'name': out['tool'], 'arguments': json.dumps(out['args'])}}]})
                 send({}, 'tool_calls', usage)
             else:

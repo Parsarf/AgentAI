@@ -35,6 +35,7 @@ from agentai_platform.request_worker import RequestWorker
 from agentai_platform.security import Principal
 from agentai_platform.store import Store
 from agentai_platform.tool_relay import Identity, Relay, serve as serve_relay
+from agentai_platform.task_progress import TaskProgressTool
 from .stub_model import StubModel
 
 PIN = '2026.9.6'
@@ -93,9 +94,12 @@ class Cell:
         self.workspace = self.root / 'workspace'
         self.workspace.mkdir(parents=True)
         base = {'gateway': {'mode': 'local', 'port': self.port, 'bind': 'loopback', 'auth': {'mode': 'token', 'token': self.token}}}
-        config = cell_config.patch(base, relay=f'http://127.0.0.1:{stack.model.port}', tools=(f'http://127.0.0.1:{stack.relay_port}/mcp', self.key))
+        from agentai_platform.lifecycle.tool_origin_install import install
+        (self.root / 'state').mkdir(exist_ok=True)
+        origin_path = install(self.root / 'state')
+        config = cell_config.patch(base, relay=f'http://127.0.0.1:{stack.model.port}', tools=(f'http://127.0.0.1:{stack.relay_port}/mcp', self.key), tool_origin_path=origin_path)
         config['agents']['defaults']['workspace'] = str(self.workspace)
-        (self.root / 'state').mkdir()
+        (self.root / 'state').mkdir(exist_ok=True)
         self.config = config
         (self.root / 'state' / 'openclaw.json').write_text(json.dumps(config, indent=2))
         self.log = open(self.root / 'gateway.log', 'wb')
@@ -191,9 +195,12 @@ class Stack:
         self.worker = RequestWorker(self.queue, self.driver, lambda: CAPACITY, goals=GoalChain(self.chat), runner=lambda: self.chat.runner)
         tool = BrowserTool(self.store, browse_factory=lambda account: self.browse, events=self.events, sleep=time.sleep, poll_interval=0.3, run_timeout=120)
         identify = lambda credential: BridgeRpc('-', self.socket)('cell.identify', {'credential': credential}).get('account')
-        from agentai_platform.lifecycle.tool_origin import resolve
-        origin = lambda account, name, arguments: resolve(self.cells[account].root / 'state', name, arguments)
-        self.tool_server = serve_relay(Relay(tool, origin=origin), Identity(identify), '127.0.0.1', self.relay_port)
+        def origin(account, name, arguments):
+            arguments = dict(arguments)
+            nonce = arguments.pop('_lumina_origin', None)
+            return BridgeRpc(account, self.socket)('tools.origin', {'name': name, 'arguments': arguments, 'nonce': nonce})
+        self.tool_relay = Relay(tool, progress=TaskProgressTool(self.store), origin=origin)
+        self.tool_server = serve_relay(self.tool_relay, Identity(identify), '127.0.0.1', self.relay_port)
         threading.Thread(target=self.tool_server.serve_forever, daemon=True).start()
         for cell in self.cells.values():
             cell.wait_ready()

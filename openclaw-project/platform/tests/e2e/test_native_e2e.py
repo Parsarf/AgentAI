@@ -124,6 +124,22 @@ class NativeEndToEnd(unittest.TestCase):
         self.assertTrue(any('Add to cart' in str(p.get('summary', '')) for p in events))
         self.assertTrue(any(p.get('tool') == 'browser' or p.get('label') == 'Used the browser' for p in events))
 
+    def test_parallel_streamed_progress_and_browser_use_runtime_proofs(self):
+        S = self.S
+        # Fresh sessions and repeated turns exercise both cold and warm MCP
+        # catalogs. The stub deliberately supplies a forged transport nonce.
+        for i in range(3):
+            S.browse.calls = []
+            S.hold_cell('a')
+            sent = S.say('a', 'Inspect the shop. SCENARIO:ownership_parallel', 'parallel-' + str(i), conversation=S.new_conversation('a'))
+            S.work(until=self.finished(sent['id']))
+            self.assertEqual(len([c for c in S.browse.calls if c[0] == 'start']), 1)
+            progress = S.rows("SELECT public_payload FROM events WHERE task_id=? AND kind='task_steps'", (sent['id'],))
+            self.assertEqual(len(progress), 1)
+            self.assertEqual(json.loads(progress[0]['public_payload'])['revision'], 1)
+            directory = S.cells['a'].root / 'state/tool-origins'
+            self.assertEqual([p for p in directory.glob('*.json') if p.name != 'protocol.json'], [])
+
     def test_an_old_session_cannot_borrow_a_new_tasks_browser_budget(self):
         S = self.S
         old, _ = self.run_to_end('a', 'Original task. SCENARIO:answer', 'origin-old')
