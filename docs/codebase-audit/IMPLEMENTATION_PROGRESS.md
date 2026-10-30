@@ -36,7 +36,7 @@ Started 2026-10-29. This supplements HANDOFF.md; production has not been changed
   errors and 2 were package-relative imports. The latter modules passed all
   15 tests when invoked with their package names.
 - Tool-origin/relay/bridge/native/supervisor checks with localhost socket
-  access: **88 tests passed, 2 skipped** (Linux peer-credential tests on Mac).
+  access: **88 tests run, OK (2 skipped)** (Linux peer-credential tests on Mac).
 - Native-run, request-worker, chat-history and task-progress checks: **66 passed**.
 - Tool-origin JS plugin checks repeated during cleanup: **3 passed**.
 - One sandbox run reported a concurrent-proof assertion failure. It did not
@@ -54,7 +54,8 @@ Started 2026-10-29. This supplements HANDOFF.md; production has not been changed
   `evidence/browser-ownership/` remains untracked pending its separate privacy
   review. Production archives matched 131 supervisor + 216 platform source
   files with no changed, missing or unsafe entries. The committed service
-  source has no remaining working-tree changes. Release tags/pushes and the
+  source had no remaining working-tree changes at the preservation point.
+  Subsequent local fixes below are not deployed. Release tags/pushes and the
   rest of GH-005 are still pending, not implicitly resolved by these commits.
 
 ## CI expansion
@@ -65,7 +66,7 @@ Started 2026-10-29. This supplements HANDOFF.md; production has not been changed
   frontend build/tests and plugin tests, and browser tests with a visible
   report-only Linux baseline.
   Chrome fixtures now honor BROWSE_CHROME. The new tool-origin inputs are
-  tracked. Local results: original blocking list 244 tests passed (2 skipped),
+  tracked. Local results: original blocking list 244 tests run, OK (2 skipped),
   Python browse fixtures 78 passed, Node browser runner 26 passed. YAML and all
   run-step shell syntax passed; a synthetic failing test preserved its nonzero
   exit through the blocking pipeline. Explicit bash pipefail prevents tail
@@ -89,9 +90,37 @@ named test temporary directories contained almost no remaining data, so no
 unrelated directories or user files were deleted to free space. No customer
 production database was used by these tests.
 
+Free space subsequently increased to about 1.7 GiB without deleting user files.
+Reran all **73 platform modules selected by CI** with localhost access: **980
+tests run, OK (2 skipped)** in 108 seconds. This clears the local platform-CI
+baseline; it excludes the heavier runtime end-to-end classes, whose clean
+rerun is still pending. The separate 49-test webhook suite also passed.
+
+## Webhook boundary fix
+
+- **P1-7 RESOLVED — `98d091a`** (BE-004, ST-018): exactly the billing and
+  Telegram webhook paths receive a 256 KiB outer body ceiling. Billing retains
+  its existing signature and body checks. Telegram authenticates first, then
+  ignores updates over 64 KiB without reading the body or calling its service.
+  Ordinary paths keep their 8 KiB ceiling; metering semantics are unchanged.
+- Regression proof: before the fix, three of four new tests failed with 413.
+  After the fix, **49 billing/Telegram/account-boundary tests passed**. The
+  additional assertion that oversized Telegram bodies are never read also
+  passed in a focused check. No migration is involved; deployment is pending.
+
+## Owner decisions
+
+- Owner approved the four P0-3 commits; saved as listed above.
+- **P1-11 / M-02: owner explicitly chose “Leave screenshot behavior unchanged
+  for now.”** No screenshot privacy policy or egress behavior was changed.
+  M-02 remains open and deferred by this decision.
+- Budget admission hold: awaiting the owner's choice of the additive
+  `admitting` column (0032 per the registry), checks/sweep without a schema
+  change, or deferral. No budget/migration source has been changed yet.
+
 ## Next decision
 
-Owner approved P0-3; all four commits are saved. Next: screenshot privacy
-policy (P1-11), including keeping text-only JEV active while leaving the old
-optimization switch unwired. Pushing, tagging, deploying, pruning, server
+Owner approved P0-3; all four commits are saved. Screenshot privacy is
+deferred per the owner. Next: task/budget correctness (P1-1), pending the
+admission-hold schema decision. Pushing, tagging, deploying, pruning, server
 changes and customer-data retention changes remain separate decisions.

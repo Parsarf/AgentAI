@@ -8,7 +8,7 @@ Repo root `/Users/parsa/AgentAI` (git). Project `openclaw-project/`. Branch `pro
 
 ## Implementation status
 
-See [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for completed cleanup, local test results and the pending tool-origin commit review. P0-1, P0-2 and the owner-approved P0-3 source commits are complete. P3-1 CI implementation is saved in `671f121`; its first GitHub/Linux run is pending. The full local integration run was blocked by low disk space; see the progress record. No production settings have been changed.
+See [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for completed cleanup, local test results and owner decisions. P0-1, P0-2 and the owner-approved P0-3 source commits are complete. P3-1 CI implementation is saved in `671f121`; its first GitHub/Linux run is pending. A full integration run hit low disk space. A later rerun of all 73 CI platform modules passed (980 tests, 2 skipped); the runtime end-to-end rerun is pending. P1-7 is RESOLVED in `98d091a` (49 tests passed). Owner explicitly deferred screenshot behavior changes; M-02 remains open. Budget admission-hold decision is pending. No production settings have been changed.
 
 ## 1. Start here (paste this as your first action)
 
