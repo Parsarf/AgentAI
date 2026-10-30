@@ -1,5 +1,7 @@
 # Browser reliability fixes — 27 October 2026
 
+Update 28 October: the original transcript-based ownership check subsequently rejected valid YoungLA and restaurant calls. Protocol 2 replaces that check with runtime-issued, one-use tool proofs; see [browser-tool-ownership.md](browser-tool-ownership.md). The historical table below describes the first hardening pass.
+
 These changes address the production traces examined on 27 October. They are source changes pending coordinated deployment; they do not certify merchant checkout success or change spending limits.
 
 | Observed failure | Change |
