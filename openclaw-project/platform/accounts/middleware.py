@@ -8,6 +8,8 @@ from django.core.exceptions import RequestDataTooBig, TooManyFieldsSent, Suspici
 from .models import Identity
 from .services import Denied, Limited, customer_scope, rate
 
+WEBHOOKS={'/v1/telegram/webhook','/v1/billing/webhook'}
+
 class BoundaryMiddleware:
     def __init__(self, get_response): self.get_response=get_response
     def __call__(self, request):
@@ -19,7 +21,7 @@ class BoundaryMiddleware:
             except ValueError: return JsonResponse({'error':'invalid_proxy_identity'},status=400)
         try:
             request.get_host()
-            if len(request.get_full_path()) > 2048 or int(request.META.get('CONTENT_LENGTH') or 0) > (31457280 if request.path=='/v1/requests' or request.path.endswith('/send') or request.path.endswith('/files') else 8192):
+            if len(request.get_full_path()) > 2048 or int(request.META.get('CONTENT_LENGTH') or 0) > (31457280 if request.path=='/v1/requests' or request.path.endswith('/send') or request.path.endswith('/files') else 262144 if request.path in WEBHOOKS else 8192):
                 response=JsonResponse({'error':'request_too_large'},status=413)
             elif any(x in request.GET for x in ['account','account_id','tenant','tenant_id','session','session_id','native_session_ref','deployment_id']) or any(x in request.META for x in ['HTTP_X_ACCOUNT_ID','HTTP_X_TENANT_ID','HTTP_X_SESSION_ID','HTTP_X_AGENT_ID']):
                 response=JsonResponse({'error':'routing_override_denied'},status=400)
@@ -39,7 +41,7 @@ class BoundaryMiddleware:
         print(json.dumps({'event':'account_http','request_id':str(request.request_id),'status':response.status_code}),flush=True)
         return response
 
-PUBLIC_UNMETERED={'/healthz','/readyz','/v1/telegram/webhook','/v1/billing/webhook'}
+PUBLIC_UNMETERED={'/healthz','/readyz'}|WEBHOOKS
 
 class AccountMiddleware:
     def __init__(self, get_response): self.get_response=get_response
