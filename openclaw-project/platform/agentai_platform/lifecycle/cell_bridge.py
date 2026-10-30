@@ -291,9 +291,9 @@ class CellBridge:
         if method == 'tools.origin':
             from .tool_origin import TOOLS
             name, arguments = params.get('name'), params.get('arguments')
-            if name not in TOOLS or not isinstance(arguments, dict) or len(json.dumps(arguments)) > 16000:
+            if not isinstance(name, str) or name not in TOOLS or not isinstance(arguments, dict) or len(json.dumps(arguments)) > 16000:
                 raise BridgeError('invalid tool call')
-            return {'name': name, 'arguments': arguments}
+            return {'name': name, 'arguments': arguments, 'nonce': params.get('nonce')}
         if method == 'workspace.collect':
             since = params.get('since')
             if type(since) is not int or since < 0:
@@ -479,14 +479,14 @@ class CellBridge:
             tenant = self.binding(account) if self.binding else None
             if not tenant or self.workspace_root is None or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):
                 raise BridgeError('no cell')
-            from .tool_origin import resolve, active
+            from .tool_origin import inspect_origin, active
             root = Path(self.workspace_root) / tenant / self.native_state_subdir
             if method == 'tools.active':
                 rows = active(root)
                 if rows is None:
                     raise BridgeError('native turn state unavailable')
                 return {'turns': [{'session_key': key, 'run_id': run} for _, key, run in rows]}
-            return {'origin': resolve(root, clean['name'], clean['arguments'])}
+            return inspect_origin(root, clean['name'], clean['arguments'], clean['nonce'])
         if method == 'workspace.collect':
             tenant = self.binding(account) if self.binding else None
             if tenant is None or self.workspace_root is None or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):

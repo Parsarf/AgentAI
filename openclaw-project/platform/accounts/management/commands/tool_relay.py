@@ -16,7 +16,10 @@ def build(store):
     switches = SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None)
     tool = BrowserTool(store, browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET), enabled=lambda: switches.is_on('browse_tasks'), events=EventService(store))
     identify = lambda credential: BridgeRpc('-', settings.CELL_BRIDGE_SOCKET)('cell.identify', {'credential': credential}).get('account')
-    origin = lambda account, name, arguments: BridgeRpc(account, settings.CELL_BRIDGE_SOCKET)('tools.origin', {'name': name, 'arguments': arguments}).get('origin')
+    def origin(account, name, arguments):
+        arguments = dict(arguments)
+        nonce = arguments.pop('_lumina_origin', None)
+        return BridgeRpc(account, settings.CELL_BRIDGE_SOCKET)('tools.origin', {'name': name, 'arguments': arguments, 'nonce': nonce})
     return Relay(tool, progress=TaskProgressTool(store), origin=origin), Identity(identify)
 
 

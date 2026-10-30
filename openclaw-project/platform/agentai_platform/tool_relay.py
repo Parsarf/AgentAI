@@ -13,6 +13,7 @@ Nothing about content is logged; counts and states only.
 from __future__ import annotations
 import hmac
 import json
+import logging
 import select
 import socket
 import threading
@@ -28,6 +29,8 @@ MAX_BODY = 64 * 1024
 IDENTIFY_TTL = 60
 FAIL_LIMIT = 20                     # refused credentials per source address per minute before it is told to slow down
 TOOLS = {TOOL_NAME: TOOL, STEP_NAME: STEP}
+log = logging.getLogger('agentai.tools')
+ORIGIN_STATUSES = frozenset({'verified', 'invalid_arguments', 'proof_missing', 'proof_invalid', 'proof_expired', 'argument_mismatch', 'proof_missing_or_consumed', 'proof_unavailable'})
 
 
 class Identity:
@@ -64,6 +67,14 @@ class Relay:
     def __init__(self, tool: BrowserTool, progress=None, *, origin=None):
         self.tool, self.progress, self.origin = tool, progress, origin
         self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
+        # The runtime hook overwrites this optional transport field. It is
+        # stripped before the browser/progress handler sees user arguments.
+        import copy
+        self.tools = copy.deepcopy(self.tools)
+        for spec in self.tools.values():
+            spec['inputSchema']['properties']['_lumina_origin'] = {'type': 'string', 'description': 'Runtime-generated ownership proof. Leave unset; the runtime supplies it.'}
+        if self.progress is not None:
+            self.tools[PROGRESS_NAME]['inputSchema']['anyOf'].insert(0, {'maxProperties': 1, 'required': ['_lumina_origin']})
         self._busy, self._guard = set(), threading.Lock()
 
     def handle(self, account, message, closed=lambda: False):
@@ -83,10 +94,11 @@ class Relay:
             name = params.get('name')
             if name not in self.tools:
                 return self._error(rid, -32602, 'unknown tool')
+            busy_key = (account, 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:
-                if account in self._busy:
+                if busy_key in self._busy:
                     return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
-                self._busy.add(account)
+                self._busy.add(busy_key)
             try:
                 handler = self.progress if name == PROGRESS_NAME else self.tool
                 arguments = params.get('arguments') or {}
@@ -94,16 +106,24 @@ class Relay:
                 if self.origin is not None:
                     try:
                         origin = self.origin(account, name, arguments)
+                        status = 'unverified_origin'
+                        if isinstance(origin, dict) and 'origin' in origin:
+                            status = origin.get('status') if origin.get('status') in ORIGIN_STATUSES else status
+                            origin = origin['origin']
                         request_id = self._owner(account, origin)
+                        if origin and not request_id:
+                            status = 'admission_mismatch'
                     except (CapabilityUnavailable, ValueError, TypeError):
-                        request_id = None
+                        request_id, status = None, 'origin_service_unavailable'
                     if not request_id:
+                        log.warning('tool_ownership_refused tool=%s reason=%s', name, status)
                         return self._ok(rid, self._result('This tool call does not belong to an admitted live task. Nothing was started or changed. Do not retry this call in another task.', True))
                     bound['request_id'] = request_id
+                arguments = {k: v for k, v in arguments.items() if k != '_lumina_origin'}
                 result = handler.call(account, arguments, closed, name=name, **bound)
             finally:
                 with self._guard:
-                    self._busy.discard(account)
+                    self._busy.discard(busy_key)
             text, is_error, *image = result
             return self._ok(rid, self._result(text, is_error, image[0] if image else None))
         return self._error(rid, -32601, 'method not found')

@@ -359,6 +359,26 @@ class RelayChecks(Base):
         huge = Relay(type('H', (), {'call': lambda s, a, b, c=None, name=None: ('t', False, 'x' * 3_000_001)})()).handle('a', {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'lumina_browser', 'arguments': {}}})
         self.assertEqual(len(huge['result']['content']), 1)                                    # an oversized picture is dropped, not sent
 
+    def test_progress_can_update_while_a_browser_tool_is_running(self):
+        entered, release = threading.Event(), threading.Event()
+        class Slow:
+            def call(s, *a, **kw):
+                entered.set(); release.wait(5); return 'done', False
+        class Progress:
+            def call(s, account, arguments, *a, **kw):
+                self.assertNotIn('_lumina_origin', arguments)
+                return 'progress updated', False
+        relay = Relay(Slow(), progress=Progress())
+        browser = {'id': 1, 'method': 'tools/call', 'params': {'name': 'lumina_browser', 'arguments': {}}}
+        worker = threading.Thread(target=lambda: relay.handle('a', browser)); worker.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            reply = relay.handle('a', {'id': 2, 'method': 'tools/call', 'params': {'name': 'lumina_task_update', 'arguments': {'_lumina_origin': 'runtime'}}})
+            self.assertFalse(reply['result']['isError'])
+            self.assertEqual(reply['result']['content'][0]['text'], 'progress updated')
+        finally:
+            release.set(); worker.join(5)
+
     def test_one_browser_call_at_a_time_per_account(self):
         gate, release = threading.Event(), threading.Event()
         class Slow:

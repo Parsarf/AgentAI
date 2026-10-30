@@ -34,7 +34,7 @@ NATIVE_BROWSER = {'enabled': True, 'headless': True, 'noSandbox': True, 'default
                   'extraArgs': ['--disable-dev-shm-usage', '--disable-background-networking']}
 
 
-def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL, tools=None, native_browser=False, switch=None):
+def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL, tools=None, native_browser=False, switch=None, tool_origin_path=None):
     """`tools` = (url, credential) of Lumina's tool relay: the cell's assistant then has the browser as a native tool, authenticated by the cell's own model key.
     `native_browser`: the cell's own browser is on (for the hands of Lumina's browser jobs); the assistant still cannot call it.
     `switch(key) -> bool`: the account's safety switches (agentai_platform/safety.py), on unless the owner turned one off. Two of them shape the cell's config, and take effect the
@@ -60,6 +60,8 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL,
     if native_browser and not on('ssrf_guard'):
         config['browser']['ssrfPolicy'] = {'dangerouslyAllowPrivateNetwork': True}      # set from the switch at every start, never inherited; the cell's network firewall still applies
     if tools:
+        from .tool_origin_install import configure, CONTAINER_PATH
+        config = configure(config, tool_origin_path or CONTAINER_PATH)
         url, credential = tools
         config['mcp'] = {**(config.get('mcp') or {}), 'servers': {'lumina': {'url': url, 'transport': 'streamable-http', 'enabled': True, 'headers': {'Authorization': 'Bearer ' + credential},
                                                                            'connectionTimeoutMs': 5000, 'requestTimeoutMs': BROWSER_TOOL_TIMEOUT_MS}}}
@@ -132,6 +134,24 @@ class CellProvisioner:
     def _switch(self, binding):
         return self.safety.for_account(binding.account_id) if self.safety is not None else None
 
+    def ensure_tool_origin(self, binding):
+        if self.tool_relay_url:
+            from .tool_origin_install import install, configure
+            root = self.root / binding.tenant_ref
+            install(root, chown=self.chown)
+            # Ownership wiring must not depend on the unrelated provider-model
+            # allow-list refresh succeeding during this start.
+            path = root / 'openclaw.json'
+            current = json.loads(path.read_text())
+            wanted = configure(current)
+            if wanted != current:
+                tmp = path.with_suffix('.origin.tmp')
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(fd, 'w') as handle:
+                    json.dump(wanted, handle, indent=2)
+                self.chown(tmp, CELL_UID, CELL_GID)
+                os.replace(tmp, path)
+
     def ensure_browser_relay_secret(self, binding):
         """The browser plugin keeps a loopback "extension relay" secret in the cell's credentials folder and creates it with an atomic rename-without-replace, which the
         sandbox rejects (EINVAL): the plugin's whole start then fails behind a wrapper that says only "an error was suppressed during disposal". If the file already exists
@@ -161,6 +181,7 @@ class CellProvisioner:
         """Run before every start. Brings an EXISTING assistant up to the current model setup, so a change to MODELS or DEFAULT_MODEL reaches cells that were
         created earlier: the key's model allow-list (at the gateway) and the assistant's own config. Both are idempotent and a failure never blocks the start."""
         try:
+            self.ensure_tool_origin(binding)
             self.ensure_browser_relay_secret(binding)
         except Exception:
             pass                             # the cell's browser then fails visibly on its first use; nothing else about the start depends on it
@@ -285,6 +306,7 @@ class CellProvisioner:
 
     def finish(self, binding):
         self.write_rules(binding)
+        self.ensure_tool_origin(binding)
         self.ensure_browser_relay_secret(binding)
         path = self.root / binding.tenant_ref / 'openclaw.json'
         config = patch(json.loads(path.read_text()), tools=self._tools(binding), native_browser=self.native_browser, switch=self._switch(binding))
