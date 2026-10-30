@@ -101,10 +101,12 @@
     "svg_hashes_checked": 7,
     "restored_evidence_hashes_checked": 4,
     "batch_d_unchanged": 14,
-    "superseded_files_pending_deletion": 21,
     "application_source_changes": 0,
     "sql_migrations": 30,
-    "effective_goal_limit_wiring_rechecked": true
+    "effective_goal_limit_wiring_rechecked": true,
+    "superseded_files_removed": 21,
+    "validation_stage": "after approved cleanup commits",
+    "local_links_including_cleanup_records": 115
   },
   "visual_qa": "All seven SVG exports inspected as local rendered PNG previews; no application or production screenshots captured."
 }

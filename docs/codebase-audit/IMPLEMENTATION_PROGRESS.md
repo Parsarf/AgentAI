@@ -125,3 +125,26 @@ Owner approved P0-3; all four commits are saved. Screenshot privacy is
 deferred per the owner. Next: task/budget correctness (P1-1), pending the
 admission-hold schema decision. Pushing, tagging, deploying, pruning, server
 changes and customer-data retention changes remain separate decisions.
+
+## Approved file cleanup and current reports
+
+- Owner: **A delete; B rebuild current main reports/diagrams and delete the
+  superseded set; C restore; D no action**.
+- A: `8c10824` removes the three superseded browser/continuation prompts.
+- B: `d9e4e9d` rebuilds system overview, native execution, state/recovery and
+  findings, plus the index and seven current SVG exports. Twenty-one old files
+  are removed; findings.md is replaced in place, preserving retained links.
+- C: all four task-progress evidence files restored from HEAD; exact prior
+  hashes verified. These are old verification captures, not new app tests.
+- D: all 14 proposed archive candidates verified unchanged by SHA-256.
+- Validation: 115 local links (98 in the main reports), seven Mermaid/SVG pairs, visual QA of all seven
+  rendered diagrams, restoration hashes and unchanged runtime/source trees.
+- Finding check: current `build_worker()` already passes the configured
+  GOAL_CHAIN_LIMIT into ChatDriver. The old blanket "knob does nothing" claim
+  is not supported; the unused GoalChain.limit field is a separate matter.
+- Recovery archives and Git history remain. No application change, new task
+  cap, feature retirement, server action, push or deployment was performed.
+
+Start with [the current architecture index](../../openclaw-project/docs/architecture/README.md).
+The [cleanup review](CLEANUP_REVIEW.md) records the exact scope. Existing budget
+admission, screenshot and other product decisions remain as previously recorded.

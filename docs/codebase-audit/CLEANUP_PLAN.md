@@ -1,5 +1,7 @@
 # Cleanup plan (NOT executed)
 
+> **Approved cleanup, 2026-10-29:** [CLEANUP_REVIEW.md](CLEANUP_REVIEW.md) records the owner decisions and completed A/B/C work; [CLEANUP_INVENTORY.json](CLEANUP_INVENTORY.json) preserves the original per-file proposal and execution ledger. Batch D is explicitly unchanged. The rebuilt [current architecture index](../../openclaw-project/docs/architecture/README.md) replaces the superseded main reports. These original plan tables remain a historical snapshot; use [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for completed work and deployment status.
+
 > **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `179.236.71.203`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
 
 Audit date 2026-10-29. Nothing in this plan has been run. It is dependency-aware and ordered; every item cites master IDs from `TECHNICAL_DEBT.md`. Production is UNVERIFIED, so anything that changes deployed behavior waits for Phase 2 (VPS checklist in `DEPLOYMENT_AUDIT.md`). The uncommitted tool_origin / tool_relay / cell_bridge / cell_config work is IN PROGRESS and is the owner's to finish; this plan only sequences it.
