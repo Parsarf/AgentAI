@@ -544,7 +544,10 @@ class SafetyFloor(unittest.TestCase):
         self.assertEqual(policy.gate('https://x/y', '', '', None), 'ok')
 
 
-@unittest.skipUnless(shutil.which('node') and Path('/Applications/Google Chrome.app').exists() and (Path(__file__).resolve().parents[2] / 'browse' / 'node_modules').exists(),
+CHROME = os.environ.get('BROWSE_CHROME') or '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+
+
+@unittest.skipUnless(shutil.which('node') and Path(CHROME).exists() and (Path(__file__).resolve().parents[2] / 'browse' / 'node_modules').exists(),
                      'needs node, local Chrome and the runner dependencies')
 class RealRunner(unittest.TestCase):
     def test_python_drives_the_real_runner_against_the_mock_shop_and_stops_at_checkout(self):
@@ -553,7 +556,7 @@ class RealRunner(unittest.TestCase):
         root = Path(__file__).resolve().parents[2] / 'browse'
         site = subprocess.Popen(['node', '-e', "import('./fixtures/site.mjs').then(async m=>{const s=await m.startSite();console.log(s.port)})"], cwd=root, stdout=subprocess.PIPE, text=True)
         port = int(site.stdout.readline()); self.addCleanup(site.terminate)
-        env = {**os.environ, 'BROWSE_CHROME': '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'BROWSE_ALLOW_LOOPBACK': '1', 'BROWSE_OUT': '/tmp/lumina-browse-py'}
+        env = {**os.environ, 'BROWSE_CHROME': CHROME, 'BROWSE_ALLOW_LOOPBACK': '1', 'BROWSE_OUT': '/tmp/lumina-browse-py'}
         session = Session(ProcessTransport(['node', 'runner.mjs'], env=env, cwd=root)); self.addCleanup(session.close)
         time.sleep(1.5)
         llm = scripted_llm(['{"action":"click","ref":3}', '{"action":"click","ref":1}', '{"action":"click","ref":1}'])
@@ -573,7 +576,7 @@ class RealRunner(unittest.TestCase):
         root = Path(__file__).resolve().parents[2] / 'browse'
         site = subprocess.Popen(['node', '-e', "import('./fixtures/site.mjs').then(async m=>{const s=await m.startSite();console.log(s.port)})"], cwd=root, stdout=subprocess.PIPE, text=True)
         port = int(site.stdout.readline()); self.addCleanup(site.terminate)
-        env = {**os.environ, 'BROWSE_CHROME': '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'BROWSE_ALLOW_LOOPBACK': '1', 'BROWSE_OUT': '/tmp/lumina-browse-py2'}
+        env = {**os.environ, 'BROWSE_CHROME': CHROME, 'BROWSE_ALLOW_LOOPBACK': '1', 'BROWSE_OUT': '/tmp/lumina-browse-py2'}
         session = Session(ProcessTransport(['node', 'runner.mjs'], env=env, cwd=root)); self.addCleanup(session.close)
         time.sleep(1.5)
 

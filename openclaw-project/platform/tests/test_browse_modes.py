@@ -1,5 +1,7 @@
 """Picture steps, the mode rules, JEV 1.14 pointing, scroll feedback and the hint, and Claude taking a page over from JEV."""
 import json
+import os
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -257,10 +259,10 @@ class PictureSteps(unittest.TestCase):
         self.assertNotIn('Cookie banner', json.dumps(rows))
 
 
-CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+CHROME = os.environ.get('BROWSE_CHROME') or '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 
-@unittest.skipUnless(Path(CHROME).exists(), 'needs Chrome and Node')
+@unittest.skipUnless(shutil.which('node') and Path(CHROME).exists() and (Path(__file__).resolve().parents[2] / 'browse' / 'node_modules').exists(), 'needs Chrome, Node and the runner dependencies')
 class RealRunner(unittest.TestCase):
     def test_a_popup_that_hides_every_control_is_seen_in_the_picture_accepted_and_the_next_step_sees_the_list_too(self):
         import os

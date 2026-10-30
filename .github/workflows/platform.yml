@@ -1,13 +1,21 @@
-name: Customer platform
+name: Lumina CI
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
+        shell: bash
         working-directory: openclaw-project/platform
+    env:
+      AGENTAI_PUBLIC_ORIGIN: https://localhost
+      BROWSE_CHROME: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,20 +24,85 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: sudo apt-get update && sudo apt-get install -y age
       - run: python -m pip install --require-hashes -r requirements.lock
+      - name: Browser fixture dependencies
+        run: |
+          test -x "$BROWSE_CHROME"
+          npm ci --prefix ../browse
       - name: Account API checks
         run: |
           export AGENTAI_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
           export AGENTAI_STATE_DIR="$(mktemp -d)"
-          export AGENTAI_PUBLIC_ORIGIN=https://localhost
           python manage.py test accounts --verbosity 1
-      - name: Queue, lifecycle, budget, chat and telegram checks
-        run: python -m unittest tests.test_request_queue tests.test_lifecycle tests.test_supervisor tests.test_budget tests.test_capacity tests.test_foundation tests.test_fleet_driver tests.test_chat tests.test_gateway tests.test_telegram tests.test_files tests.test_events tests.test_native tests.test_policy_check tests.test_durable tests.test_phase10_assets tests.test_connectors tests.test_optimization tests.test_phase12_assets tests.test_switches
+      - name: Migration drift
+        run: |
+          export AGENTAI_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          export AGENTAI_STATE_DIR="$(mktemp -d)"
+          python manage.py makemigrations --check --dry-run
+      - name: Platform tests (blocking list)
+        run: python -m unittest $(sed 's/^/tests./' tests/ci_blocking.txt | tr '\n' ' ') -v 2>&1 | tail -n 40
+      - name: Platform tests (report-only, not yet promoted)
+        continue-on-error: true
+        run: |
+          fail=0
+          echo "### Report-only platform modules" >> "$GITHUB_STEP_SUMMARY"
+          for f in tests/test_*.py; do
+            m=$(basename "$f" .py)
+            grep -qx "$m" tests/ci_blocking.txt && continue
+            if timeout 300 python -m unittest "tests.$m" >"$RUNNER_TEMP/$m.log" 2>&1; then
+              echo "PASS $m" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "FAIL $m (see log tail)" >> "$GITHUB_STEP_SUMMARY"; tail -n 15 "$RUNNER_TEMP/$m.log" | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"; fail=1
+            fi
+          done
+          exit $fail
       - name: Vercel routing checks
         run: node deploy/vercel/check.mjs
+      - name: Tool-origin plugin test
+        run: node --test tests/tool_origin_plugin.test.mjs
       - name: Optional optimization track checks (offline)
         run: |
           (cd ../browser-opt && python -m unittest test_jev_adapter test_route)
           (cd ../research-opt && python -m unittest test_adapter)
           node --test ../research-opt/plugin/test.mjs
           (cd ../dashboard && python -m unittest test_dashboard)
+
+  lumina:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: openclaw-project/lumina
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: openclaw-project/lumina/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+      - run: npm run build          # check-design + tsc + vite build (see package.json)
+
+  browse:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: openclaw-project/browse
+    env:
+      BROWSE_CHROME: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: openclaw-project/browse/package-lock.json
+      - run: npm ci
+      - name: Browse runner tests (report-only until the first CI baseline)
+        continue-on-error: true
+        timeout-minutes: 5
+        run: node --test --test-timeout=120000 test/
