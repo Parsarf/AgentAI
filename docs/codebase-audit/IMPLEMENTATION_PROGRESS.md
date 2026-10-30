@@ -59,7 +59,7 @@ Started 2026-10-29. This supplements HANDOFF.md; production has not been changed
 
 ## CI expansion
 
-- **P3-1:** expanded CI is being prepared. Preserve the existing 20 blocking
+- **P3-1 IMPLEMENTED — `671f121`** (M-10, ST-001, AG-017): expanded CI is saved locally; first Linux/GitHub run is pending. Preserve the existing 20 blocking
   modules and promote five locally verified modules (native-run, request-worker,
   chat-history, task-progress, tool-origin): 25 blocking, 48 report-only. Add
   frontend build/tests and plugin tests, and browser tests with a visible
@@ -70,7 +70,24 @@ Started 2026-10-29. This supplements HANDOFF.md; production has not been changed
   run-step shell syntax passed; a synthetic failing test preserved its nonzero
   exit through the blocking pipeline. Explicit bash pipefail prevents tail
   from hiding failures. Linux/GitHub execution remains unverified. Scanner
-  tooling is deferred; no unpinned lint tool installation was added.
+  tooling is deferred; no unpinned lint tool installation was added. The Python
+  fixture job installs browse dependencies and explicitly checks for the configured
+  Linux Chrome binary so real-browser classes do not silently stay Mac-only.
+  Migration drift check passed with an isolated state directory. The report-only
+  runner was exercised with one simulated failing module: all 48 modules were
+  reported and the failing exit status was preserved.
+
+## Full integration limitation
+
+The final unrestricted `unittest discover -s tests -t .` run executed **1,012
+tests in 299 seconds**, ending with **290 errors and 2 skips**. Error groups:
+253 SQLite disk I/O errors, 36 SQLite unable-to-open errors, and 1 explicit
+`No space left on device`. The Mac had about **143 MiB free** when checked.
+This is not a green full-suite result; rerun after disk space is available.
+The focused suites listed above passed before this failure. The explicitly
+named test temporary directories contained almost no remaining data, so no
+unrelated directories or user files were deleted to free space. No customer
+production database was used by these tests.
 
 ## Next decision
 

@@ -8,7 +8,7 @@ Sources: per-scope findings in `_findings/` (BE backend, AG orchestration, FE fr
 
 ## Cleanup status
 
-P0-1 ignore-rule portion (M-03, GH-002, OP-002, ST-004) RESOLVED in `a973add`. P0-2 preservation/ignore and inventory (GX-024..026) RESOLVED in `cc136cf`; nothing was deleted. AG-006 source custody is RESOLVED by the owner-approved commits `82bbdf4`, `af10c90`, `6df24da`, `6404d90`; the saved production source archives match the committed service code. This does not resolve the broader fork, worktree, release-tag or push decisions. See [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for validation and pending work.
+P0-1 ignore-rule portion (M-03, GH-002, OP-002, ST-004) RESOLVED in `a973add`. P0-2 preservation/ignore and inventory (GX-024..026) RESOLVED in `cc136cf`; nothing was deleted. AG-006 source custody is RESOLVED by the owner-approved commits `82bbdf4`, `af10c90`, `6df24da`, `6404d90`; the saved production source archives match the committed service code. This does not resolve the broader fork, worktree, release-tag or push decisions. M-10 CI expansion is IMPLEMENTED in `671f121` (25 blocking + 48 report-only platform modules, frontend/plugin/browser jobs); keep the finding open until the first Linux/GitHub run and subsequent promotions. Full local integration encountered disk exhaustion, not a green baseline. See [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md) for validation and pending work.
 
 ## Summary
 
