@@ -219,6 +219,7 @@ class Pick:
     target: str | None = None      # candidate id
     option: str | None = None      # dropdown option text
     text: str | None = None        # a phrase from the user's request to type; None means "write new text"
+    text_src: str = ''             # who wrote `text` when it is not a phrase from the request: 'helper' (the ultrafast text writer); '' = the request's own words
     answers: dict = field(default_factory=dict)   # question -> (choice, probability), for the log
     point: tuple | None = None     # picture mode: the spot to click or type at, in page pixels
     found: float | None = None     # picture mode: JEV's chance that something fits
@@ -656,8 +657,8 @@ class Ladder:
             return _Step(Decision('act', 'jev', 'JEV choice', {'action': 'select', 'ref': cand['ref'], 'value': pick.option, 'label': cand['label']}, confidence=pick.confidence, cost_microusd=cost, meta=meta))
         # type
         if pick.text is not None:
-            return _Step(Decision('act', 'jev', 'JEV chose the field and a phrase from your request', {'action': 'type', 'ref': cand['ref'], 'value': pick.text, 'label': cand['label']},
-                                  confidence=pick.confidence, cost_microusd=cost, meta=meta, text_src='goal'))
+            return _Step(Decision('act', 'jev', 'JEV chose the field and ' + ('text from the fast writer' if pick.text_src == 'helper' else 'a phrase from your request'), {'action': 'type', 'ref': cand['ref'], 'value': pick.text, 'label': cand['label']},
+                                  confidence=pick.confidence, cost_microusd=cost, meta=meta, text_src=pick.text_src or 'goal'))
         return _Step(signal='text', cost=cost, cand=cand)                 # JEV chose the field; the request gives no text for it
 
     def decide(self, goal, history, page, candidates, *, force_escalate=False, failures=0, jev_misses=0, caps=frozenset(), look=None):

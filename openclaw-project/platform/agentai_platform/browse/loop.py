@@ -316,7 +316,7 @@ class BrowseRunner:
             history.append(entry)
             self.on_stat({'jev': 'jev_acted', 'agent': 'agent_step'}.get(d.by, 'other_step'))        # every acted step is counted exactly once
             if d.text_src:
-                self.on_stat('jev_typed_from_goal' if d.text_src == 'goal' else 'agent_text')               # sub-counts of a JEV step
+                self.on_stat('jev_typed_from_goal' if d.text_src == 'goal' else 'helper_text' if d.text_src == 'helper' else 'agent_text')               # sub-counts of a JEV step
             why = {k: v for k, v in (('miss', d.miss), ('signal', d.signal), ('src', d.text_src)) if v}      # short facts for the run's record; never page text or typed values
             self.trace.emit('act', **{k: entry[k] for k in ('action', 'label', 'result', 'changed', 'by')}, page_fp_before=fp_before, page_fp_after=after)
             self.on_event('step', {**entry, 'url': out.get('url', url), 'confidence': d.confidence, **d.meta, **why})

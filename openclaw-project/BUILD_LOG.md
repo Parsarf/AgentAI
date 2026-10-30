@@ -1588,5 +1588,5 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   Drills: owner-side decrypt of all 7 artifacts, real-schema account restore, corruption rejection, release rollback in sandboxes.
 - Open: automatic off-server destination (launch blocker), SSH keys-only, Phase 15 acceptance. 421 platform / 79 Django / 35 dashboard tests pass.
 
-## 2026-10-30: experimental jev-ultrafast browser (owner testing)
-Safety switch `standard_browser`, engine `browse/ultrafast.py`, installer `bin/update-ultrafast.py`, vendored `browse-ultrafast/` (commit 1231850 of browser-use/jev-ultrafast). Deployed as release `20261030T071755Z-ultrafast-2b37c2e`; UI wording via `deploy-lumina.py`. Smoke test through the production path: opened books.toscrape.com, clicked Travel, done in 5.8 s, picture copied. See platform/OPERATIONS.md section 19. Roll back: `update-ultrafast.py --rollback`.
+## 2026-10-30: experimental "ultrafast" decider (owner testing)
+Safety switch `standard_browser` chooses who decides each step on the one standard browser stage: `browse/ultrafast_brain.py` (`jev-latest` alias, fast text writer) or the standard chooser. Installer `bin/update-ultrafast.py` (plan / `--apply` / `--rollback`). A first design that ran jev-ultrafast's own loop on a separate shared Chrome was deployed, failed in the real service (the browse service cannot switch users), was rolled back and removed (commits 2aa3396, 2b37c2e). See platform/OPERATIONS.md section 19.
