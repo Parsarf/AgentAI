@@ -133,7 +133,12 @@ def main():
             pass
         env = child_env(args.ultrafast_dir / 'home', extra, read_secret(args.jev_key_file), read_secret(args.ultrafast_text_key_file))
         driver = Path(__file__).with_name('ultrafast_driver.py')
-        return Child([str(args.ultrafast_dir / '.venv' / 'bin' / 'python'), '-I', str(driver)], env=env, cwd='/tmp', user=args.ultrafast_user)
+        scratch = args.ultrafast_dir / 'home' / 'shots' / job_id          # the child's own folder for pictures: the job folder is root's, so the host copies each picture over
+        scratch.mkdir(parents=True, exist_ok=True)
+        owner = pwd.getpwnam(args.ultrafast_user)
+        os.chown(scratch, owner.pw_uid, owner.pw_gid)
+        os.chmod(scratch, 0o700)
+        return Child([str(args.ultrafast_dir / '.venv' / 'bin' / 'python'), '-I', str(driver)], env=env, cwd='/tmp', user=args.ultrafast_user, scratch=scratch)
 
     service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account,
                             ultrafast_spawn=ultrafast_spawn, ultrafast_for=ultrafast_for)

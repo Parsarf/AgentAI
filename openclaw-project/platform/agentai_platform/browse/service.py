@@ -524,8 +524,9 @@ class BrowseService:
             if self.switch_for(job.account)('personal_data_scrub'):
                 task = scrub(task, MAX_GOAL_CHARS, force=True)
             trace.emit('start', engine='ultrafast', goal_chars=len(task), max_steps=job.max_steps, max_seconds=job.max_seconds, where=_where(job.start_url or ''))
-            request = {'url': self._pick_start(job), 'goal': task, 'out': str(out_dir), 'max_steps': job.max_steps}
+            start = self._pick_start(job)                               # a task with no site stops here, before anything is started
             child = self.ultrafast_spawn(job.id, out_dir)
+            request = {'url': start, 'goal': task, 'out': str(child.scratch), 'max_steps': job.max_steps}      # the child writes its pictures to its own folder; the host copies them over
 
             def on_event(kind, data):
                 job.add(kind, data)
@@ -533,7 +534,8 @@ class BrowseService:
                     job.url = data['url']
 
             status, reason, url = uf.run(child=child, request=request, trace=trace, on_event=on_event, cancelled=job.cancel.is_set,
-                                         allowed=lambda: self.ultrafast_for(job.account), clock=self.clock, max_seconds=job.max_seconds)
+                                         allowed=lambda: self.ultrafast_for(job.account), clock=self.clock, max_seconds=job.max_seconds,
+                                         collect=lambda name: uf.copy_shot(child.scratch, out_dir, name))
             job.reason, job.url = reason, url or job.url
             job.state = status
             trace.emit('final', state=job.state, reason=job.reason, stats=dict(job.stats), cost_microusd=job.cost)

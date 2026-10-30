@@ -12,7 +12,9 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import signal
+import stat
 import subprocess
 import threading
 import time
@@ -25,13 +27,16 @@ from .native_runner import url_allowed
 POLL_SECONDS = 0.25
 MAX_LINE = 8192
 EOF = object()                                           # what a child's reader returns once its output has ended
+SHOT = re.compile(r'^shot-\d{3}\.jpg$')
+MAX_SHOT_BYTES = 2_000_000
 FINAL = {'done': 'done', 'blocked': 'blocked', 'max_steps': 'max_steps'}
 
 
 class Child:
     """A real child process: one JSON request line in, JSON lines out. A reader thread feeds a queue, so the host can keep watching the clock and the switch."""
 
-    def __init__(self, argv, env, cwd=None, user=None):
+    def __init__(self, argv, env, cwd=None, user=None, scratch=None):
+        self.scratch = scratch                              # where the child writes its pictures (owned by the child's user)
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, cwd=cwd, text=True, bufsize=1, start_new_session=True, user=user)
         self.q = queue.Queue()
         threading.Thread(target=self._pump, daemon=True).start()
@@ -68,6 +73,24 @@ class Child:
             pass
 
 
+def copy_shot(src_dir, dst_dir, name) -> bool:
+    """Copy one picture from the child's own scratch folder into the job's folder. The child runs as another user and the job folder is root's, so the host does the copy: only a
+    plain file of the expected name and a sane size, never a link the child could point at something of root's."""
+    if not SHOT.fullmatch(name or ''):
+        return False
+    try:
+        fd = os.open(Path(src_dir) / name, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, 'rb') as fh:
+            info = os.fstat(fh.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_SHOT_BYTES:
+                return False
+            data = fh.read(MAX_SHOT_BYTES + 1)
+        (Path(dst_dir) / name).write_bytes(data)
+        return True
+    except OSError:
+        return False
+
+
 def child_env(home, extra, typesafe_key, text_key) -> dict:
     """Everything the child's environment holds: nothing inherited from the service (which is root's), its two keys, one stable home (Browser Harness keeps a single background
     connection to the Chrome there and reuses it for every task), and the non-secret settings from harness.env (the Chrome's address). Browser Harness reports usage to PostHog and
@@ -87,9 +110,9 @@ def address_ok(url) -> bool:
     return not DEFAULT_DENY.search((urlsplit(url).hostname or '').lower() + '.')
 
 
-def run(*, child, request, trace, on_event, cancelled, allowed, clock=time.monotonic, max_seconds=600):
+def run(*, child, request, trace, on_event, cancelled, allowed, clock=time.monotonic, max_seconds=600, collect=None):
     """Drive one task. -> (status, reason, url). `status` is one of done | blocked | max_steps | deadline | cancelled | error.
-    `allowed()` is the owner's switch (False stops the task); `cancelled()` is Stop."""
+    `allowed()` is the owner's switch (False stops the task); `cancelled()` is Stop; `collect(name)` moves a picture out of the child's scratch folder and says whether it arrived."""
     start = request['url']
     if not address_ok(start) or start.startswith('about:'):
         return 'blocked', 'that site is not allowed', ''
@@ -134,7 +157,7 @@ def run(*, child, request, trace, on_event, cancelled, allowed, clock=time.monot
                      'result': 'ok', 'changed': line.get('changed'), 'confidence': line.get('confidence')}
             trace.emit('step', n=n, move=entry['action'], changed=entry['changed'], confidence=entry['confidence'])
             on_event('step', {**entry, 'url': url})
-            if line.get('shot'):
+            if line.get('shot') and (collect is None or collect(str(line['shot']))):
                 on_event('screenshot', {'file': str(line['shot']), 'step': n})
         elif kind == 'final':
             url = str(line.get('url') or url)

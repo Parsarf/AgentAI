@@ -30,8 +30,8 @@ STEPS = [line(t='opened', url='https://shop.example/'),
 
 class FakeChild:
     """The child process: replays lines, then ends (EOF). `hang` returns nothing forever, to test the clock."""
-    def __init__(self, lines, hang=False):
-        self.lines, self.hang, self.sent, self.killed = list(lines), hang, [], 0
+    def __init__(self, lines, hang=False, scratch=None):
+        self.lines, self.hang, self.sent, self.killed, self.scratch = list(lines), hang, [], 0, scratch
 
     def send(self, request):
         self.sent.append(request)
@@ -142,7 +142,10 @@ class Service(unittest.TestCase):
 
     def make(self, owner_only=True, lines=STEPS):
         def spawn_uf(job_id, out_dir):
-            child = FakeChild(lines)
+            scratch = Path(self.tmp.name) / 'scratch'
+            scratch.mkdir(exist_ok=True)
+            (scratch / 'shot-001.jpg').write_bytes(b'\xff\xd8jpeg')
+            child = FakeChild(lines, scratch=scratch)
             self.children.append(child)
             return child
 
@@ -216,6 +219,29 @@ class Service(unittest.TestCase):
         service.cancel(OWNER, RID)
         out = self.wait(service, OWNER)
         self.assertEqual(out['state'], 'cancelled')
+
+
+class Pictures(unittest.TestCase):
+    def test_only_plain_files_of_the_right_name_and_size_are_copied(self):
+        with tempfile.TemporaryDirectory() as src, tempfile.TemporaryDirectory() as dst, tempfile.TemporaryDirectory() as secret:
+            src, dst, secret = Path(src), Path(dst), Path(secret)
+            (src / 'shot-001.jpg').write_bytes(b'pic')
+            (secret / 'root-only').write_text('root secret')
+            (src / 'shot-002.jpg').symlink_to(secret / 'root-only')
+            (src / 'shot-003.jpg').write_bytes(b'x' * (uf.MAX_SHOT_BYTES + 1))
+            (src / 'notes.txt').write_text('hi')
+            self.assertTrue(uf.copy_shot(src, dst, 'shot-001.jpg'))
+            self.assertEqual((dst / 'shot-001.jpg').read_bytes(), b'pic')
+            for bad in ('shot-002.jpg', 'shot-003.jpg', 'notes.txt', '../shot-001.jpg', 'shot-9.jpg', '', None, 'shot-004.jpg'):
+                self.assertFalse(uf.copy_shot(src, dst, bad), bad)
+            self.assertEqual(sorted(p.name for p in dst.iterdir()), ['shot-001.jpg'])
+
+    def test_a_picture_that_does_not_arrive_is_not_announced(self):
+        events = []
+        child = FakeChild(STEPS)
+        uf.run(child=child, request={'url': 'https://shop.example/', 'goal': 'g', 'out': '/o', 'max_steps': 5}, trace=NULL, on_event=lambda k, d: events.append(k),
+               cancelled=lambda: False, allowed=lambda: True, collect=lambda name: False)
+        self.assertNotIn('screenshot', events)
 
 
 class Driver(unittest.TestCase):
