@@ -1,6 +1,6 @@
 # Cleanup implementation progress
 
-Started 2026-10-29. This supplements HANDOFF.md; production has not been changed.
+Started 2026-10-29. This supplements HANDOFF.md. The owner-requested backend deployment is now live; see [DEPLOYMENT_2026-10-29.md](DEPLOYMENT_2026-10-29.md).
 
 ## Completed
 
@@ -106,7 +106,8 @@ rerun is still pending. The separate 49-test webhook suite also passed.
 - Regression proof: before the fix, three of four new tests failed with 413.
   After the fix, **49 billing/Telegram/account-boundary tests passed**. The
   additional assertion that oversized Telegram bodies are never read also
-  passed in a focused check. No migration is involved; deployment is pending.
+  passed in a focused check. No migration is involved. Deployed and verified as
+  `20261030T022448Z-webhook-0c48ade`; see the deployment record.
 
 ## Owner decisions
 
