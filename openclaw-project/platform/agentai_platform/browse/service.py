@@ -527,7 +527,7 @@ class BrowseService:
             stage = transport
             job.session = session = Session(transport, trace=trace)
             jev = self.jev_for(job.account) if self.jev_mode != 'off' else None
-            trace.emit('ready', start=_where(start), jev=jev is not None)
+            trace.emit('ready', start=_where(start), jev=jev is not None, decider=type(jev).__name__ if jev is not None else '')       # JevChooser (standard) | UltrafastChooser (the owner's switch is off)
             ladder = Ladder(admit=self._admit(job), jev=jev, agent=self._agent_gate(job), max_cost=job.max_cost, trace=trace, on_call=lambda: job.stats.__setitem__('jev_calls', job.stats['jev_calls'] + 1))
 
             def on_event(kind, data):
