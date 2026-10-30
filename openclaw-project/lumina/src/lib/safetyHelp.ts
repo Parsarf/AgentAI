@@ -98,6 +98,12 @@ export const HELP: Record<string, Help> = {
     on: 'Pictures are removed after 24 hours.',
     off: 'Your pictures are kept until you turn this back on; the next sweep then removes the old ones.',
   },
+  standard_browser: {
+    does: 'Runs browser tasks in the sandboxed stage, with a clean browser profile every time.',
+    why: 'Nothing a task saw or stored can reach the next task, and the payment and private-address stops always apply.',
+    on: 'Browser tasks use the standard Lumina browser.',
+    off: "Only for the owner's own account: tasks run in the experimental jev-ultrafast browser, which shares one Chrome profile and has none of the payment or private-address stops. Use a time limit; it goes back to the standard browser by itself.",
+  },
   // -- Prompt-injection defenses
   untrusted_page_text: {
     does: "Removes sentences on a web page that are aimed at the AI (like 'ignore your instructions') before a model reads the page.",

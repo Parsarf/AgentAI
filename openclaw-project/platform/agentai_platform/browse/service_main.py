@@ -55,6 +55,10 @@ def main():
     parser.add_argument('--bridge-socket', type=Path, default=Path('/run/agentai-cell-bridge/bridge.sock'))
     parser.add_argument('--engine-file', type=Path, default=Path('/etc/agentai-supervisor/browse-engine.json'))
     parser.add_argument('--safety-file', type=Path, default=Path('/var/lib/agentai-platform/safety-switches.json'))       # the account's safety switches, written by the app (agentai_platform/safety.py)
+    parser.add_argument('--ultrafast-dir', type=Path, default=Path('/opt/agentai-browse/ultrafast'))      # the experimental engine's own python environment (.venv) and non-secret settings (harness.env)
+    parser.add_argument('--ultrafast-owner-file', type=Path, default=Path('/etc/agentai-supervisor/ultrafast-owner'))      # the one account id allowed to use it; no file = off
+    parser.add_argument('--ultrafast-text-key-file', type=Path, default=Path('/var/lib/agentai-supervisor-secrets/_shared/openrouter-key'))
+    parser.add_argument('--ultrafast-user', default='agentai-ultrafast')                                  # the child runs as this unprivileged user, never as root
     args = parser.parse_args()
     if args.jev_mode == 'shadow':
         print('jev-mode shadow is retired; running as live', flush=True)
@@ -102,7 +106,37 @@ def main():
             return 'native'
         return 'native' if config.get('default') == 'native' else 'runner'
 
-    service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account)
+    def read_secret(path):
+        try:
+            return path.read_text().strip()
+        except OSError:
+            return ''
+
+    def ultrafast_for(account):
+        """The experimental engine: True only for the owner's own account, only while the standard browser is switched off for it (the temporary toggle; an "off" with a time
+        limit lapses by itself), and only when its environment and both keys are installed. Anything missing or unreadable means the standard browser."""
+        owner = read_secret(args.ultrafast_owner_file)
+        if not owner or account != owner or safety.on(account, 'standard_browser'):
+            return False
+        return (args.ultrafast_dir / '.venv' / 'bin' / 'python').is_file() and bool(read_secret(args.jev_key_file)) and bool(read_secret(args.ultrafast_text_key_file))
+
+    def ultrafast_spawn(job_id, out_dir):
+        """The child gets the goal and a start address on stdin and its two model keys in its environment (never argv), as an unprivileged user."""
+        from .ultrafast import Child, child_env
+        extra = {}
+        try:
+            for line in (args.ultrafast_dir / 'harness.env').read_text().splitlines():
+                key, sep, value = line.partition('=')
+                if sep and key.strip() and not line.lstrip().startswith('#'):
+                    extra[key.strip()] = value.strip()
+        except OSError:
+            pass
+        env = child_env(args.ultrafast_dir / 'home', extra, read_secret(args.jev_key_file), read_secret(args.ultrafast_text_key_file))
+        driver = Path(__file__).with_name('ultrafast_driver.py')
+        return Child([str(args.ultrafast_dir / '.venv' / 'bin' / 'python'), '-I', str(driver)], env=env, cwd='/tmp', user=args.ultrafast_user)
+
+    service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account,
+                            ultrafast_spawn=ultrafast_spawn, ultrafast_for=ultrafast_for)
     import threading
     from ..switches import SwitchStore
     from .service import watch_kill_switch, watch_purge

@@ -22,6 +22,7 @@ from agentai_platform.live import now as live_now
 from .ladder import Decision, Handover, Ladder, Refused, parse_decision, render
 from .goals import goal_parts
 from .loop import BrowseRunner, Policy
+from . import ultrafast as uf
 from .session import Session
 from .trace import NULL, Trace
 from .loop import _where
@@ -143,11 +144,15 @@ class Job:
 
 class BrowseService:
     def __init__(self, *, spawn, jev_for=lambda account: None, root, jev_mode='live', clock=time.monotonic,
-                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep, native_spawn=None, engine_for=lambda account: 'runner', switch_for=None):
+                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep, native_spawn=None, engine_for=lambda account: 'runner', switch_for=None,
+                 ultrafast_spawn=None, ultrafast_for=lambda account: False):
         """spawn(job_id, out_dir) -> transport; jev_for(account) -> JevChooser|None. The only model the service itself calls is JEV: every step JEV hands over goes to the
         account's own assistant, which answers through agent_step().
         native_spawn(account, job_id, out_dir) -> transport on the account's own cell browser; engine_for(account) -> 'runner' | 'native' says which a new job uses;
-        switch_for(account) -> switch(key) -> bool reads the account's safety switches (read again at every step, so a change in the menu applies at once)."""
+        switch_for(account) -> switch(key) -> bool reads the account's safety switches (read again at every step, so a change in the menu applies at once).
+        ultrafast_spawn(job_id, out_dir) -> a child (ultrafast.Child) running the experimental jev-ultrafast engine; ultrafast_for(account) -> True only for the owner's own account
+        while the temporary toggle is off-for-standard (read at start and again every quarter second of the run, so the toggle expiring stops the task)."""
+        self.ultrafast_spawn, self.ultrafast_for, self._uf_slot = ultrafast_spawn, ultrafast_for, threading.Semaphore(1)       # one shared Chrome: one experimental task at a time
         self.spawn, self.jev_for, self.root, self.jev_mode, self.clock = spawn, jev_for, Path(root), jev_mode, clock
         self.native_spawn, self.engine_for, self._account_slots = native_spawn, engine_for, {}
         self.switch_for = switch_for or (lambda account: (lambda key: True))      # switch_for(account) -> switch(key) -> bool: the account's safety switches (agentai_platform/safety.py); everything is on unless the owner turned it off
@@ -168,7 +173,7 @@ class BrowseService:
             job = Job(account, request_id, goal, start_url, max_cost, min(int(max_steps), 40), min(int(max_seconds), 900))
             job.prefs = clean_prefs(prefs)
             job.vault = clean_vault(vault)
-            job.engine = 'native' if self.native_spawn is not None and self.engine_for(account) == 'native' else 'runner'
+            job.engine = 'ultrafast' if self.ultrafast_spawn is not None and self.ultrafast_for(account) else 'native' if self.native_spawn is not None and self.engine_for(account) == 'native' else 'runner'
             self.jobs[request_id] = job
             self._make_room(job)
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
@@ -493,6 +498,61 @@ class BrowseService:
         except Exception:
             pass
 
+    def _run_ultrafast(self, job):
+        """The experimental engine (ultrafast.py), for the owner's own account only. Same states, steps, pictures and final record as a standard run; what it cannot give is
+        the standard browser's stops, a cost figure (its two model keys are billed elsewhere: only the step and time limits bound it) and a hand-off to the customer."""
+        slot = self._uf_slot
+        slot.acquire()
+        child = None
+        try:
+            if job.cancel.is_set():
+                job.state, job.reason = 'cancelled', 'stopped by you'
+                return
+            if not self._wait_for_memory(job):
+                job.state = 'cancelled' if job.cancel.is_set() else 'error'
+                job.reason = 'stopped by you' if job.cancel.is_set() else 'the server is busy right now; please try again in a minute'
+                job.add('status', {'state': job.state, 'reason': job.reason})
+                return
+            job.state = 'running'
+            out_dir = self.root / job.id / 'out'
+            out_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(out_dir, 0o777)
+            marker = self.root / job.id / 'account'
+            marker.write_text(job.account); os.chmod(marker, 0o600)
+            job.trace = trace = Trace(self.root / job.id / 'trace.jsonl')
+            task = goal_parts(job.goal)[0]                              # this request only: the saved chat history is not sent to the two outside model services
+            if self.switch_for(job.account)('personal_data_scrub'):
+                task = scrub(task, MAX_GOAL_CHARS, force=True)
+            trace.emit('start', engine='ultrafast', goal_chars=len(task), max_steps=job.max_steps, max_seconds=job.max_seconds, where=_where(job.start_url or ''))
+            request = {'url': self._pick_start(job), 'goal': task, 'out': str(out_dir), 'max_steps': job.max_steps}
+            child = self.ultrafast_spawn(job.id, out_dir)
+
+            def on_event(kind, data):
+                job.add(kind, data)
+                if kind in ('opened', 'step') and data.get('url'):
+                    job.url = data['url']
+
+            status, reason, url = uf.run(child=child, request=request, trace=trace, on_event=on_event, cancelled=job.cancel.is_set,
+                                         allowed=lambda: self.ultrafast_for(job.account), clock=self.clock, max_seconds=job.max_seconds)
+            job.reason, job.url = reason, url or job.url
+            job.state = status
+            trace.emit('final', state=job.state, reason=job.reason, stats=dict(job.stats), cost_microusd=job.cost)
+            log.info('browse: %s ended %s (ultrafast); trace %s', job.id, job.state, self.root / job.id / 'trace.jsonl')
+            job.add('status', {'state': job.state, 'reason': job.reason, 'stats': dict(job.stats)})
+        except (BrowseError, Refused) as exc:
+            self._crash_trace(job, exc, 'stopped before the run')
+            job.state, job.reason = 'error', str(exc)
+            job.add('status', {'state': job.state, 'reason': job.reason})
+        except Exception as exc:                   # a crash must never leave the shared Chrome slot held
+            self._crash_trace(job, exc, 'crash')
+            job.state, job.reason = 'error', f'the browser run failed ({type(exc).__name__})'
+            job.add('status', {'state': 'error', 'reason': job.reason})
+        finally:
+            if child is not None:
+                child.kill()
+            slot.release()
+            self.purge()
+
     def _slot_for(self, job):
         """The host's one Docker stage for a runner job; for a native job the browser is the account's own (in its cell), so the only thing to wait for is that account's previous browser job."""
         if job.engine != 'native':
@@ -501,6 +561,8 @@ class BrowseService:
             return self._account_slots.setdefault(job.account, threading.Semaphore(1))
 
     def _run(self, job):
+        if job.engine == 'ultrafast':
+            return self._run_ultrafast(job)
         slot = self._slot_for(job)
         slot.acquire()
         stage = None
