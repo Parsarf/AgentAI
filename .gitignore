@@ -51,6 +51,7 @@ id_dsa*
 /brag-output/
 /sonarqube-export/
 /lumina-cost-audit/
+/openclaw-project/experiments/
 /*.png
 /*.PNG
 /*.jpg
