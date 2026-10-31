@@ -4,7 +4,7 @@ import LiveScreen from './LiveScreen';
 
 vi.mock('../lib/api', () => ({ api: vi.fn().mockResolvedValue({ ticket: 'tkt', path: '/v1/live/abc/frame', expires_in: 300 }) }));
 
-const frame = (headers: Record<string, string>, status = 200) => new Response(status === 200 ? new Blob(['x'], { type: 'image/jpeg' }) : null, { status, headers });
+const frame = (headers: Record<string, string>, status = 200) => new Response(status === 200 ? 'x' : null, { status, headers });
 const NEXT = { 'X-Seq': '1', 'X-Now-Seq': '1', 'X-By': 'jev', 'X-Mode': 'picture', 'X-Note': 'picture' };
 
 /** A frame gateway that answers with the given responses in turn, then never answers again (so the loop stops there). */
