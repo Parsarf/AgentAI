@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
-import { MODE_DRAWS, resolvePreset, type OrbState } from '../vendor/thinking-orbs';
+import { MODE_DRAWS, resolvePreset } from '../vendor/thinking-orbs';
 import { addOrb } from '../lib/orbLoop';
-import { MAX_ANIMATED_ORBS } from '../lib/orbs';
+import { MAX_ANIMATED_ORBS, type OrbState } from '../lib/orbs';
+import { drawLumina } from '../lib/luminaOrb';
 import { useSettings } from '../state/settings';
 
 // Orbs currently on screen, in the order they appeared. Only the first few animate (see MAX_ANIMATED_ORBS).
@@ -21,7 +22,7 @@ function register(id: string) {
  * them on everywhere); at most MAX_ANIMATED_ORBS animate at once. Lumina is always dark, so the light-ink palette is fixed.
  * Decorative by default: put the meaning in the text beside it, or pass `label` to make it an image with a name.
  */
-export default function Orb({ state = 'breathing', size = 20, label, still = false }: { state?: OrbState; size?: 20 | 48 | 64; label?: string; still?: boolean }) {
+export default function Orb({ state = 'lumina', size = 20, label, still = false }: { state?: OrbState; size?: 20 | 48 | 64; label?: string; still?: boolean }) {
   const id = useId(); const { reducedMotion } = useSettings();
   const order = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => register(id), [id]);
@@ -51,8 +52,10 @@ export default function Orb({ state = 'breathing', size = 20, label, still = fal
     // Keep the library's purpose-tuned avatar preset; render it at 48px instead
     // of changing its dot geometry or pretending 48 is a shipped preset.
     const presetSize = size === 48 ? 64 : size;
-    const { mode, speed, opts } = resolvePreset(state, presetSize);
-    const draw = MODE_DRAWS[mode];
+    const preset = state === 'lumina' ? null : resolvePreset(state, presetSize);
+    const speed = preset?.speed ?? 1;
+    const opts = preset?.opts ?? {};
+    const draw = preset ? MODE_DRAWS[preset.mode] : drawLumina;
     const started = performance.now() / 1000;
     let last = started;
     const paint = (seconds: number) => {

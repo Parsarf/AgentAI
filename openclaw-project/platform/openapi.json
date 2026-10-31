@@ -4604,6 +4604,137 @@
      }
     }
    }
+  },
+  "/v1/devices": {
+   "get": {
+    "summary": "Your paired computers, whether \"use my own browser\" is on, whether one is connected now, and whether the feature is available at all",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/devices/pair": {
+   "post": {
+    "summary": "Get a one-time pairing code (valid ten minutes) to type into, or hand to, the Lumina extension",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available for this account yet"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
+  },
+  "/v1/devices/{device_id}/revoke": {
+   "post": {
+    "summary": "Remove a paired computer; its connection is dropped within seconds",
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/devices/use": {
+   "post": {
+    "summary": "Switch on or off \"use my own browser\" for browser tasks (takes effect while the Lumina extension is on and connected)",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available (switched off for everyone)"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
   }
  },
  "components": {

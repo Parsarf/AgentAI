@@ -125,7 +125,7 @@ class Job:
         self.state, self.reason, self.answer, self.url, self.pending = 'queued', '', None, '', None
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
-        self.engine = 'runner'                      # 'runner' (the host's Docker stage) | 'native' (the cell's own browser); recorded on the job, never switched mid-run
+        self.engine = 'runner'                      # 'runner' (the host's Docker stage) | 'native' (the cell's own browser) | 'local' (the customer's own Chrome, through the extension); recorded on the job, never switched mid-run
         self.last_shot = 0.0
         self.trace = NULL                           # set when the run starts: the operator's record (trace.py)
         self.pause_req = threading.Event()          # the user asked for the wheel; the loop acknowledges at the next step boundary (state -> 'paused')
@@ -143,13 +143,15 @@ class Job:
 
 class BrowseService:
     def __init__(self, *, spawn, jev_for=lambda account: None, root, jev_mode='live', clock=time.monotonic,
-                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep, native_spawn=None, engine_for=lambda account: 'runner', switch_for=None):
+                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep, native_spawn=None, engine_for=lambda account: 'runner', switch_for=None, local_spawn=None, devices=None):
         """spawn(job_id, out_dir) -> transport; jev_for(account) -> JevChooser|None. The only model the service itself calls is JEV: every step JEV hands over goes to the
         account's own assistant, which answers through agent_step().
-        native_spawn(account, job_id, out_dir) -> transport on the account's own cell browser; engine_for(account) -> 'runner' | 'native' says which a new job uses;
+        native_spawn(account, job_id, out_dir) -> transport on the account's own cell browser; local_spawn(account, job_id, out_dir) -> transport on the customer's own paired Chrome
+        (raises BrowseError when it is not connected); engine_for(account) -> 'runner' | 'native' | 'local' says which a new job uses (an engine without its spawn falls back to 'runner');
         switch_for(account) -> switch(key) -> bool reads the account's safety switches (read again at every step, so a change in the menu applies at once)."""
         self.spawn, self.jev_for, self.root, self.jev_mode, self.clock = spawn, jev_for, Path(root), jev_mode, clock
-        self.native_spawn, self.engine_for, self._account_slots = native_spawn, engine_for, {}
+        self.native_spawn, self.local_spawn, self.engine_for, self._account_slots = native_spawn, local_spawn, engine_for, {}
+        self.devices = devices                      # a DeviceDesk (browse/devices.py) when the customers' own Chrome is switched on, else None
         self.switch_for = switch_for or (lambda account: (lambda key: True))      # switch_for(account) -> switch(key) -> bool: the account's safety switches (agentai_platform/safety.py); everything is on unless the owner turned it off
         self.free_memory, self.sleep = free_memory or available_memory, sleep
         self.takeover_seconds, self.jobs, self._slot, self._guard = takeover_seconds, {}, threading.Semaphore(1), threading.Lock()
@@ -168,11 +170,19 @@ class BrowseService:
             job = Job(account, request_id, goal, start_url, max_cost, min(int(max_steps), 40), min(int(max_seconds), 900))
             job.prefs = clean_prefs(prefs)
             job.vault = clean_vault(vault)
-            job.engine = 'native' if self.native_spawn is not None and self.engine_for(account) == 'native' else 'runner'
+            job.engine = self._engine(account)
             self.jobs[request_id] = job
             self._make_room(job)
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
         return {'ok': True, 'state': 'queued'}
+
+    def _engine(self, account):
+        """The hands a new job gets. Asked only when there is somewhere other than the host stage to run; a choice we cannot serve is the host stage."""
+        spawns = {'native': self.native_spawn, 'local': self.local_spawn}
+        if all(v is None for v in spawns.values()):
+            return 'runner'
+        wanted = self.engine_for(account)
+        return wanted if spawns.get(wanted) is not None else 'runner'
 
     def _window(self):
         """Seconds a hand-off stays open. Nobody waiting: the full window. Someone waiting for the one browser stage: a short grace, because an idle
@@ -494,8 +504,8 @@ class BrowseService:
             pass
 
     def _slot_for(self, job):
-        """The host's one Docker stage for a runner job; for a native job the browser is the account's own (in its cell), so the only thing to wait for is that account's previous browser job."""
-        if job.engine != 'native':
+        """The host's one Docker stage for a runner job; for a native or local job the browser is the account's own (in its cell, or on its computer), so the only thing to wait for is that account's previous browser job."""
+        if job.engine == 'runner':
             return self._slot
         with self._guard:
             return self._account_slots.setdefault(job.account, threading.Semaphore(1))
@@ -508,7 +518,7 @@ class BrowseService:
             if job.cancel.is_set():
                 job.state, job.reason = 'cancelled', 'stopped by you'
                 return
-            if job.engine != 'native' and not self._wait_for_memory(job):
+            if job.engine == 'runner' and not self._wait_for_memory(job):
                 job.state = 'cancelled' if job.cancel.is_set() else 'error'
                 job.reason = 'stopped by you' if job.cancel.is_set() else 'the server is busy right now; please try again in a minute'
                 job.add('status', {'state': job.state, 'reason': job.reason})
@@ -523,7 +533,7 @@ class BrowseService:
             trace.emit('start', engine=job.engine, jev_mode=self.jev_mode, goal_chars=len(job.goal), max_steps=job.max_steps, max_seconds=job.max_seconds, max_cost_microusd=job.max_cost,
                        where=_where(job.start_url or ''))
             start = self._pick_start(job)
-            transport = self.native_spawn(job.account, job.id, out_dir) if job.engine == 'native' else self.spawn(job.id, out_dir)
+            transport = {'native': self.native_spawn, 'local': self.local_spawn}[job.engine](job.account, job.id, out_dir) if job.engine != 'runner' else self.spawn(job.id, out_dir)
             stage = transport
             job.session = session = Session(transport, trace=trace)
             jev = self.jev_for(job.account) if self.jev_mode != 'off' else None
@@ -623,6 +633,12 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
                     out = {'jpeg_b64': base64.b64encode(service.shot(account, rid, req.get('file'))).decode()}
                 elif op == 'control':
                     out = service.control(account, rid, req.get('action'), x=req.get('x'), y=req.get('y'), text=req.get('text'))
+                elif op in ('device_pair', 'device_list', 'device_revoke', 'device_use'):
+                    if service.devices is None:
+                        raise BrowseError('devices off')
+                    out = (service.devices.pair(account) if op == 'device_pair' else service.devices.listing(account) if op == 'device_list'
+                           else service.devices.use(account, req.get('on') is True) if op == 'device_use'
+                           else service.devices.revoke(account, str(req.get('device_id') or '')[:40]))
                 else:
                     raise BrowseError('unknown operation')
                 reply = {'ok': True, 'result': out}

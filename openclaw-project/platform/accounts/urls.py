@@ -8,6 +8,7 @@ from . import uishell as shell
 from . import genui as gen
 from . import media
 from . import browse as br
+from . import devices as dvc
 from . import vault as vt
 from . import safety as sfy
 from . import signup as su
@@ -60,7 +61,7 @@ urlpatterns += [
  path('v1/blocks/<str:block_id>/live',gen.block_live),path('v1/blocks/<str:block_id>/phase',gen.block_phase),path('v1/blocks/<str:block_id>/stop',gen.block_stop),
  path('v1/conversations/<str:conversation_id>/rename',ch.chat_rename),
  path('v1/browse',br.runs),path('v1/browse/<str:request_id>',br.run),path('v1/browse/<str:request_id>/control',br.control),
- path('v1/browse/<str:request_id>/release',br.release),path('v1/browse/<str:request_id>/pause',br.pause),path('v1/browse/<str:request_id>/resume',br.resume),path('v1/browse/<str:request_id>/answer',br.answer),path('v1/saved',br.saved_list),path('v1/vault',vt.items),path('v1/safety',sfy.state),path('v1/safety/change',sfy.change),path('v1/safety/access',sfy.access),path('v1/safety/access/change',sfy.access_change),path('v1/vault/add',vt.add),path('v1/vault/<str:item_id>/delete',vt.remove),path('v1/saved/<str:field>/forget',br.saved_forget),path('v1/browse/<str:request_id>/live',br.live),path('v1/browse/<str:request_id>/shot/<str:name>',br.shot),
+ path('v1/browse/<str:request_id>/release',br.release),path('v1/browse/<str:request_id>/pause',br.pause),path('v1/browse/<str:request_id>/resume',br.resume),path('v1/browse/<str:request_id>/answer',br.answer),path('v1/saved',br.saved_list),path('v1/vault',vt.items),path('v1/devices',dvc.listing),path('v1/devices/pair',dvc.pair),path('v1/devices/use',dvc.use),path('v1/devices/<str:device_id>/revoke',dvc.revoke),path('v1/safety',sfy.state),path('v1/safety/change',sfy.change),path('v1/safety/access',sfy.access),path('v1/safety/access/change',sfy.access_change),path('v1/vault/add',vt.add),path('v1/vault/<str:item_id>/delete',vt.remove),path('v1/saved/<str:field>/forget',br.saved_forget),path('v1/browse/<str:request_id>/live',br.live),path('v1/browse/<str:request_id>/shot/<str:name>',br.shot),
  path('v1/assistant/presence',api.presence),
  path('v1/tasks/<str:request_id>',ch.chat_task),path('v1/tasks/<str:request_id>/cancel',ch.chat_cancel),
  path('v1/requests/<str:request_id>/pause',ch.chat_pause),path('v1/requests/<str:request_id>/resume',ch.chat_resume),path('v1/requests/<str:request_id>/retry',ch.chat_retry),

@@ -10,14 +10,49 @@ import stat
 from agentai_platform.bridge_client import BridgeRpc
 from agentai_platform.routing.classifier import http_post
 
+from .device_gateway import DeviceGateway, make_server as make_device_server, sweep_forever
+from .device_transport import DeviceTransport
+from .devices import DeviceDesk, DeviceHub, DeviceStore
 from .ladder import JevChooser
 from .native_runner import NativeRunner, NativeTransport
-from .service import BrowseService, serve, stage_argv
+from .service import BrowseError, BrowseService, serve, stage_argv
 from .session import ProcessTransport
 from .ultrafast_brain import UltrafastChooser
 
 JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
 JEV_MODEL = 'jev-1.14.0'            # box questions and pictures need 1.14; the same model decides controls steps and picture steps
+
+
+def local_enabled(config):
+    """The customer's-own-Chrome engine is available to everyone unless browse-engine.json says `"local": false`."""
+    return not (isinstance(config, dict) and config.get('local') is False)
+
+
+def pick_engine(config, account, device_connected, wants_local=False):
+    """Which hands a new job for `account` gets, from browse-engine.json: 'local' (the customer's own Chrome) when the customer has switched "use my own browser" on AND
+    their extension is connected right now AND the feature is not switched off for everyone (`"local": false`), else 'native' when listed under "native" (or the file's
+    default is native), else the host stage. A switch that is on while the extension is off quietly means the hosted browser: the icon at the top of the chat says which."""
+    if not isinstance(config, dict):
+        return 'runner'
+    if wants_local and device_connected and local_enabled(config):
+        return 'local'
+    listed = config.get('native')
+    if isinstance(listed, list) and account in listed:
+        return 'native'
+    return 'native' if config.get('default') == 'native' else 'runner'
+
+
+def start_device_gateway(args, hub, store):
+    """The customers' extensions connect here (loopback, behind the proxy). No port = off."""
+    import threading
+    if not args.device_port:
+        print('devices: off (no port)', flush=True)
+        return None
+    gateway = DeviceGateway(store, hub, origins=[o for o in args.device_origin if o])
+    threading.Thread(target=make_device_server(gateway, '127.0.0.1', args.device_port).serve_forever, daemon=True).start()
+    threading.Thread(target=sweep_forever, args=(gateway, threading.Event()), daemon=True).start()
+    print(f'devices: on 127.0.0.1:{args.device_port}', flush=True)
+    return gateway
 
 
 def start_live_view(args, service):
@@ -55,6 +90,9 @@ def main():
     parser.add_argument('--live-port', type=int, default=18801)
     parser.add_argument('--bridge-socket', type=Path, default=Path('/run/agentai-cell-bridge/bridge.sock'))
     parser.add_argument('--engine-file', type=Path, default=Path('/etc/agentai-supervisor/browse-engine.json'))
+    parser.add_argument('--device-port', type=int, default=18802)       # 0 = the customer's-own-Chrome engine is off
+    parser.add_argument('--device-store', type=Path, default=Path('/var/lib/agentai-supervisor/devices.json'))
+    parser.add_argument('--device-origin', action='append', default=[])   # the extension's origin, chrome-extension://<id>; none given = any extension origin (token still required)
     parser.add_argument('--safety-file', type=Path, default=Path('/var/lib/agentai-platform/safety-switches.json'))       # the account's safety switches, written by the app (agentai_platform/safety.py)
     parser.add_argument('--ultrafast-owner-file', type=Path, default=Path('/etc/agentai-supervisor/ultrafast-owner'))      # the one account id allowed to use the experimental decider; no file = off
     parser.add_argument('--ultrafast-text-key-file', type=Path, default=Path('/var/lib/agentai-supervisor-secrets/_shared/openrouter-key'))       # for its fast text writer
@@ -105,20 +143,33 @@ def main():
         call = BridgeRpc(account, args.bridge_socket, timeout=75)
         return NativeTransport(call, out_dir, runner=NativeRunner(call, out_dir, allow_private=not safety.on(account, 'ssrf_guard')))
 
+    hub = DeviceHub()
+    device_store = DeviceStore(args.device_store)
+
+    def local_allowed(account):
+        """Is the customer's-own-Chrome engine on at all? Yes unless the engine file says `"local": false` (read each time, like the engine choice itself)."""
+        try:
+            return local_enabled(json.loads(args.engine_file.read_text()))
+        except (OSError, ValueError):
+            return True
+
+    def local_spawn(account, job_id, out_dir):
+        """The customer's own Chrome, through their paired extension (this process is the only one that holds the connection)."""
+        link = hub.link(account)
+        if link is None:
+            raise BrowseError('your browser is not connected. Open the Lumina extension in Chrome and switch it on.')
+        return DeviceTransport(link, out_dir)
+
     def engine_for(account):
-        """Which hands a new job for this account gets: 'native' when the engine file lists the account (or its default is native), else the host stage. Read at every start, so a change needs no restart."""
+        """Which hands a new job for this account gets (see pick_engine). Read at every start, so a change needs no restart."""
         try:
             config = json.loads(args.engine_file.read_text())
         except (OSError, ValueError):
-            return 'runner'
-        if not isinstance(config, dict):
-            return 'runner'
-        listed = config.get('native')
-        if isinstance(listed, list) and account in listed:
-            return 'native'
-        return 'native' if config.get('default') == 'native' else 'runner'
+            config = {}                                   # no file: nothing is listed for native, and the customer's own Chrome is on unless the file says otherwise
+        return pick_engine(config, account, hub.link(account) is not None, device_store.wants_local(account))
 
-    service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account)
+    service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account, local_spawn=local_spawn,
+                           devices=DeviceDesk(device_store, hub, allowed=local_allowed) if args.device_port else None)
     import threading
     from ..switches import SwitchStore
     from .service import watch_kill_switch, watch_purge
@@ -126,6 +177,7 @@ def main():
     threading.Thread(target=watch_kill_switch, args=(service, lambda: switches.is_on('browse_tasks'), threading.Event()), daemon=True).start()
     threading.Thread(target=watch_purge, args=(service, threading.Event()), daemon=True).start()      # now, and then every 15 minutes: screenshots and live frames live a day
     start_live_view(args, service)
+    start_device_gateway(args, hub, device_store)
     app = pwd.getpwnam(args.app_user)
     server = serve(service, str(args.socket), allowed_uids={app.pw_uid}, group_gid=grp.getgrnam(args.app_user).gr_gid)
     server.serve_forever()

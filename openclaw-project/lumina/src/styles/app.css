@@ -414,3 +414,17 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .task-steps .failed .mk, .task-steps .blocked .mk { border-color: var(--danger); }
 .task-steps .failed .task-step-status, .task-steps .blocked .task-step-status { color: var(--danger); }
 .task-steps .skipped .mk, .task-steps .stopped .mk, .task-steps .unreported .mk { border-style: dashed; }
+
+/* Settings → Your browser */
+.device-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.device-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.device-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.pair-box { margin-top: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-inset); display: grid; gap: var(--space-2); }
+.pair-code { font-family: var(--font-mono); font-size: var(--text-xl); letter-spacing: .12em; color: var(--text-primary); user-select: all; margin: 0; }
+@media (max-width: 480px) { .device-row { flex-wrap: wrap; } .device-name { flex-basis: 100%; } }
+
+/* The browser icon at the top of every chat */
+.thread-tools { display: flex; justify-content: flex-end; padding: var(--space-2) var(--space-1) 0; }
+.own-browser .dot { top: 5px; right: 5px; width: 7px; height: 7px; }
+.own-browser .dot.live { background: var(--success); }
+.own-browser .dot.waiting { background: none; border: 1.5px solid var(--text-muted); box-shadow: none; width: 6px; height: 6px; }

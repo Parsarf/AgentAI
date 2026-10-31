@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Composer from '../components/Composer';
 import ChatActions from '../components/ChatActions';
+import BrowserToggle from '../components/BrowserToggle';
 import { loadMessages, type Message as Msg } from '../lib/conversations';
 import type { ChatSummary } from '../lib/chats';
 import AgentResponse from '../components/response/AgentResponse';
@@ -92,7 +93,8 @@ export default function Chat() {
   return (
     <div className="chatpage">
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
-        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{latest && isActive(latest.state) && <button className="btn small danger" onClick={() => cancel(latest.id)}>Stop</button>}{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</header>}
+        {!(id && !fresh) && <div className="thread-tools"><BrowserToggle /></div>}
+        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}<BrowserToggle />{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{latest && isActive(latest.state) && <button className="btn small danger" onClick={() => cancel(latest.id)}>Stop</button>}{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</header>}
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}
@@ -115,7 +117,7 @@ export default function Chat() {
           <div ref={bottom} />
         </div>
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }}>Jump to latest ↓</button>}
-        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
+        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="lumina" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
       </section>
     {shown && <ActivityPanel taskId={shown.id} active={isActive(shown)} startedAt={shown.created_epoch} onStop={() => cancel(shown.id)} onClose={() => setActivityId(null)} />}
     </div>);

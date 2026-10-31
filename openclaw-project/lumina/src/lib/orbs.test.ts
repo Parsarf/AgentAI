@@ -11,7 +11,7 @@ describe('orb states', () => {
     expect(orbStateFor('command')).toBe('working');
     expect(orbStateFor('file')).toBe('composing');
     expect(orbStateFor('plan')).toBe('weaving');
-    for (const c of [undefined, null, '', 'other', 'note', 'error']) expect(orbStateFor(c)).toBe('breathing');
+    for (const c of [undefined, null, '', 'other', 'note', 'error']) expect(orbStateFor(c)).toBe('lumina');
   });
 
   it('follows the most recent event that names a category', () => {
@@ -100,7 +100,7 @@ describe('assistant activity lifecycle', () => {
   });
   it('returns to thinking after a tool finishes instead of showing stale searching', () => {
     const events = [{ kind: 'activity', payload: { ref: 'a', category: 'search', status: 'running' } }, { kind: 'activity', payload: { ref: 'a', category: 'search', status: 'done' } }];
-    expect(agentActivityFor('running', events)?.orb).toBe('breathing');
+    expect(agentActivityFor('running', events)?.orb).toBe('lumina');
   });
   it('preserves another concurrent running tool when one finishes', () => {
     const events = [{ kind: 'activity', payload: { ref: 'a', category: 'search', status: 'running' } }, { kind: 'activity', payload: { ref: 'b', category: 'command', status: 'running' } }, { kind: 'activity', payload: { ref: 'b', category: 'command', status: 'done' } }];

@@ -1,4 +1,7 @@
-import type { OrbState } from '../vendor/thinking-orbs';
+import type { OrbState as LibraryOrbState } from '../vendor/thinking-orbs';
+
+/** Lumina's brand state plus the nine original activity animations. */
+export type OrbState = LibraryOrbState | 'lumina';
 
 /** What Lumina is doing (the category of its latest tool use) -> which orb animation shows it. */
 export function orbStateFor(category?: string | null): OrbState {
@@ -15,7 +18,8 @@ export function orbStateFor(category?: string | null): OrbState {
     case 'searching': return 'searching';
     case 'working': return 'working';
     case 'weaving': case 'plan': return 'weaving';            // strands plait together
-    default: return 'breathing';              // thinking, nothing specific yet
+    case 'breathing': return 'breathing';
+    default: return 'lumina';              // thinking, nothing specific yet
   }
 }
 
@@ -28,9 +32,9 @@ export function latestCategory(events: { payload?: { category?: string } }[]): s
 /** At most this many orbs animate at once; any others show a still frame. Each one runs its own drawing loop, so this keeps the cost flat. */
 export const MAX_ANIMATED_ORBS = 3;
 
-/** All nine library animations have an explicit, accessible product label. */
+/** Every animation has an explicit, accessible product label. */
 export const ORB_LABELS: Record<OrbState, string> = {
-  breathing: 'Thinking', searching: 'Searching', solving: 'Analysing',
+  lumina: 'Thinking', breathing: 'Thinking', searching: 'Searching', solving: 'Analysing',
   listening: 'Listening', connecting: 'Connecting', weaving: 'Planning',
   composing: 'Writing', shaping: 'Designing', working: 'Running a command',
 };
@@ -41,7 +45,7 @@ export interface ActivityEvent {
 }
 export function agentActivityFor(taskState: string, events: ActivityEvent[]): { orb: OrbState; label: string } | null {
   if (['completed', 'failed', 'cancelled'].includes(taskState)) return null;
-  if (taskState === 'waiting') return { orb: 'breathing', label: 'Queued' };
+  if (taskState === 'waiting') return { orb: 'lumina', label: 'Queued' };
   if (taskState === 'starting') return { orb: 'connecting', label: 'Getting ready' };
   if (taskState === 'uncertain') return { orb: 'connecting', label: 'Reconnecting' };
   // Tool updates carry the same ref: a completion replaces its running event.
@@ -62,5 +66,5 @@ export function agentActivityFor(taskState: string, events: ActivityEvent[]): { 
     if (event.payload?.tool === 'read' || category === 'read') return { orb: 'connecting', label: 'Reading' };
     return { orb, label: category === 'browse' ? 'Browsing' : ORB_LABELS[orb] };
   }
-  return { orb: 'breathing', label: 'Thinking' };
+  return { orb: 'lumina', label: 'Thinking' };
 }
