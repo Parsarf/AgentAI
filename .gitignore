@@ -52,6 +52,8 @@ id_dsa*
 /sonarqube-export/
 /lumina-cost-audit/
 /openclaw-project/experiments/
+# Raw host acceptance logs and operational exports remain local.
+/openclaw-project/evidence/browser-ownership/
 /*.png
 /*.PNG
 /*.jpg
