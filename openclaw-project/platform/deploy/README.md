@@ -142,6 +142,9 @@ Install order on the 16 GiB host (all reversible; none touches the owner stack):
    `agentai-lifecycle-worker` (app user, no caps).
 7. **Enroll** an account only after its `create` is queued: `python3 -m
    agentai_platform.lifecycle.enroll_cli --app-db ... --account ... --image <digest>`.
+   Alternatively, enable the host-owned [automatic enrollment policy](AUTOMATIC_CELLS.md)
+   once: approval-created claims then receive their own binding without a manual
+   enrollment command per customer. Existing bindings are never overwritten.
 
 Verification scripts (disposable, host-run, scratch state, clean up after themselves):
 `p4_live_check.py`, `p4_broker_check.py`, `p4_pipeline_check.py`.

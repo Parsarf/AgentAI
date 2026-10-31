@@ -94,6 +94,28 @@ class SignupChecks(TestCase):
         self.assertEqual(self.signup(email='b3@example.invalid', password=PW, website='http://spam').status_code, 202)   # honeypot answers the same...
         self.assertFalse(User.objects.filter(email='b3@example.invalid').exists())                                       # ...but creates nothing
 
+    def test_approval_rolls_back_if_cell_creation_cannot_be_queued(self):
+        from unittest.mock import patch
+        from agentai_platform.lifecycle.types import Conflict
+        self.open_door()
+        self.signup()
+        self.post(self.new_client(), '/auth/signup/verify', {'code': self.code_from_mail()})
+        account = Identity.objects.get(user__email='new@example.invalid').account_id
+        before = len(mail.outbox)
+        with patch('accounts.management.commands.signup_admin.coordinator') as coordinator:
+            coordinator.return_value.host_create.side_effect = Conflict('capacity changed')
+            with self.assertRaises(CommandError): call_command('signup_admin', 'approve', account=account)
+        with connection.cursor() as cur:
+            cur.execute('SELECT s.state,a.status FROM signups s JOIN accounts a ON a.id=s.account_id WHERE a.id=%s', [account])
+            self.assertEqual(cur.fetchone(), ('pending', 'suspended'))
+            cur.execute('SELECT count(*) FROM lifecycle_cells WHERE account_id=%s', [account])
+            self.assertEqual(cur.fetchone()[0], 0)
+        self.assertEqual(len(mail.outbox), before)
+        call_command('signup_admin', 'approve', account=account)
+        with connection.cursor() as cur:
+            cur.execute("SELECT count(*) FROM operations WHERE account_id=%s AND kind='create'", [account])
+            self.assertEqual(cur.fetchone()[0], 1)
+
     def test_rate_limits_and_resend_for_unconfirmed(self):
         self.open_door()
         for i in range(3):

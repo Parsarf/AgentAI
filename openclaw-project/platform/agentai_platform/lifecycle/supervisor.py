@@ -1,8 +1,9 @@
 """Host custody and serialized dispatch; contains no shell or agent loop.
 
 This database is separate from the app database and inaccessible to its user.
-Only a host operator enrolls bindings. The authenticated controller can submit
-fixed claims against those bindings. A native backend must prove every receipt;
+Bindings are enrolled manually or by an explicit host-owned enrollment policy.
+The authenticated controller can submit fixed claims against those bindings.
+A native backend must prove every receipt;
 this module does not turn a container status or fixture into native acceptance.
 """
 from contextlib import contextmanager
@@ -70,13 +71,14 @@ def validate_receipt(claim, receipt):
 
 
 class HostSupervisor:
-    def __init__(self, root, backend, *, owner_uid=None, admission=None):
+    def __init__(self, root, backend, *, owner_uid=None, admission=None, enrollment=None):
         self.root=Path(root)
         self.owner_uid=os.geteuid() if owner_uid is None else owner_uid
         self.backend=backend
         # Independent host-side dispatch bound (e.g. HeadroomAdmission); None only
         # in disposable environments. Rejections are SupervisorBusy, never intents.
         self.admission=admission
+        self.enrollment=enrollment
         self.root.mkdir(mode=0o700,parents=False,exist_ok=True)
         self._private(self.root,directory=True)
         self.db=self.root/'custody.sqlite3'
@@ -173,6 +175,9 @@ class HostSupervisor:
         claim=decode_claim(asdict(claim));self.check(claim.kind)
         with self.serialized():
             with self.connect() as con:
+                if self.enrollment is not None and claim.kind=='create' and not con.execute(
+                        'SELECT 1 FROM bindings WHERE account=?',(claim.account_id,)).fetchone():
+                    self.enrollment.enroll(con,claim)
                 bound,binding=self._binding(con,claim)
                 old=con.execute('SELECT * FROM journal WHERE operation=?',(claim.operation_id,)).fetchone()
                 if old:

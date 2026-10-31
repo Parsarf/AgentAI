@@ -152,10 +152,10 @@ class Command(BaseCommand):
             if access_mode() == 'invite_only':          # open/paid modes are applied by the billing worker; the private beta gets the small trial
                 from django.core.management import call_command
                 call_command('seed_trial', account=account, stdout=StringIO())
+            try:
+                coordinator().host_create(account, key='signup-' + account, target_profile=PROFILE)
+            except Conflict as exc:
+                raise CommandError('Approval could not queue the assistant; no approval was saved. Please retry.') from exc
             audit('host-admin', account, account, 'signup.approve', 'completed', request, op)
-        try:
-            coordinator().host_create(account, key='signup-' + account, target_profile=PROFILE)
-        except Conflict as exc:
-            raise CommandError(f'Approved, but the assistant could not be created yet: {exc}')
         _mail(user, 'Your Lumina account is ready', f'Your account is approved. Sign in at {settings.PUBLIC_ORIGIN}/app/ with the email and password you chose.\n')
         self.stdout.write(json.dumps({'ok': True, 'state': 'approved'}))

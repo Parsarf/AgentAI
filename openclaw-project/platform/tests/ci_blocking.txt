@@ -1,6 +1,7 @@
 test_request_queue
 test_lifecycle
 test_supervisor
+test_automatic_cells
 test_budget
 test_capacity
 test_foundation

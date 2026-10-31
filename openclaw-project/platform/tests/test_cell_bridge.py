@@ -54,6 +54,22 @@ def bridge(relays, hold=()):
 
 
 class BridgeTests(unittest.TestCase):
+    def test_same_session_name_in_two_accounts_uses_distinct_cell_credentials_and_relays(self):
+        relays = []
+        bindings = {'a': ('aa-' + 'a' * 32, 'token-a'), 'b': ('aa-' + 'b' * 32, 'token-b')}
+        def spawn(tenant, token):
+            relay = FakeRelay(tenant, token); relays.append(relay); return relay
+        b = CellBridge(bindings.get, spawn, lambda tenant: 0)
+        self.addCleanup(b.close_all)
+        params = {'sessionKey': 'agent:main:dashboard:shared'}
+        b.call('a', 'chat.history', params)
+        b.call('b', 'chat.history', params)
+        b.call('a', 'chat.history', params)
+        self.assertEqual([(r.tenant, r.token) for r in relays], [bindings['a'], bindings['b']])
+        self.assertEqual([len(r.sent) for r in relays], [2, 1])
+        with self.assertRaises(BridgeError): b.call('unknown', 'chat.history', params)
+        self.assertEqual(len(relays), 2)
+
     def test_validation_refuses_unknown_and_malformed(self):
         b = bridge([])
         for method, params in [('exec', {}), ('chat.send', {'sessionKey': 'agent:main:x', 'message': '', 'idempotencyKey': 'k'}),

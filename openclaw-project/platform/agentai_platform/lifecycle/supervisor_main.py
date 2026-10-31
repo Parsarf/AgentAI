@@ -1,7 +1,7 @@
-"""Private supervisor entry point. Native effects intentionally disabled.
+"""Private supervisor entry point with explicit host-owned native configuration.
 
-The entry point is usable for transport/custody installation checks, but cannot
-execute native lifecycle operations until a verified backend is implemented.
+Without native wiring, effects stay disabled. Optional automatic enrollment
+uses a separate host-owned policy; callers cannot select images or resources.
 """
 import argparse
 import grp
@@ -15,6 +15,7 @@ import stat
 from .supervisor import HostSupervisor
 from .supervisor_transport import handle_connection
 from .native_wiring import build_native_backend
+from .enrollment import EnrollmentPolicy
 from .types import DisabledDriver
 
 
@@ -26,6 +27,8 @@ def main():
     parser.add_argument('--check',action='store_true')
     parser.add_argument('--native-wiring',type=Path,default=None,
         help='host-owned wiring file; without it native effects stay disabled')
+    parser.add_argument('--enrollment-policy',type=Path,default=None,
+        help='host-owned fixed policy to enroll approved create claims automatically')
     args=parser.parse_args()
     if os.geteuid()!=0: raise SystemExit('host supervisor requires root custody')
     uid=pwd.getpwnam(args.controller_user).pw_uid
@@ -37,9 +40,13 @@ def main():
         if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)&0o022:
             raise SystemExit('wiring file must be a host-owned regular file without group/world writes')
         backend,admission=build_native_backend(args.native_wiring)
-    supervisor=HostSupervisor(args.state_dir,backend,owner_uid=0,admission=admission)
+    if args.enrollment_policy is not None and args.native_wiring is None:
+        raise SystemExit('automatic enrollment requires native wiring')
+    enrollment=EnrollmentPolicy.load(args.enrollment_policy) if args.enrollment_policy is not None else None
+    supervisor=HostSupervisor(args.state_dir,backend,owner_uid=0,admission=admission,enrollment=enrollment)
     if args.check:
-        print(json.dumps({'custody_ready':True,'native_execution_enabled':args.native_wiring is not None}));return
+        print(json.dumps({'custody_ready':True,'native_execution_enabled':args.native_wiring is not None,
+                          'automatic_enrollment_enabled':enrollment is not None}));return
     parent=args.socket.parent
     info=parent.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)&0o022:
