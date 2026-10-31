@@ -133,4 +133,3 @@ def load_key(path):
             if sep and name == 'TYPESAFE_API_KEY':
                 return value.strip().strip('\"\'')
     raise ModelError('Set TYPESAFE_API_KEY or add it to .env in this folder.')
-

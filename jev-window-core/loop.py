@@ -84,4 +84,3 @@ def run(controller, model, prompt_source, texts=(), steps=500, delay=.8, say=pri
         history = history[-12:]
         sleep(delay)
     return 'max_steps'
-

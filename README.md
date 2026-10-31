@@ -1,57 +1,60 @@
-# AgentAI customer platform
+# Lumina
 
-The active runtime is [openclaw-project](openclaw-project/README.md), running
-on the always-on VPS. The existing owner agent/dashboard is the starting point
-for the customer platform: accounts, isolated deployments, dashboard/Telegram
-work, project artifacts, live progress, enforceable usage and hosted billing.
+Lumina is a customer AI-assistant platform with chat, task controls, live browser
+viewing, generated UI and project artifacts. The customer site is
+**https://getlumina.pro**.
 
-Customer account site: **https://getlumina.pro**. HTTPS and Vercel-to-VPS routing
-are connected. Gmail invitation delivery is configured; agent execution is still pending.
+The customer UI is a React/Vite app. Django owns account authentication and
+tenant-scoped APIs. A durable queue and budget ledger admit work; a worker
+supervises native OpenClaw execution inside each account's own assistant cell.
+The host uses gVisor and account-specific state and credentials. Model and
+browser integrations remain part of the system's trust boundary.
 
-## Publish from GitHub to Vercel
+## Current status
 
-Import this repository into Vercel with root directory
-`openclaw-project/platform/deploy/vercel`, framework **Other** and the build command from `vercel.json`. Keep the
-output-directory override disabled: the build emits Vercel Build Output API files.
-It deploys a setup page when no backend is configured.
-To connect customer login, configure the VPS HTTPS backend and Vercel's
-`BACKEND_ORIGIN` environment variable. See the complete
-[publication guide](openclaw-project/platform/deploy/vercel/README.md).
+Automatic cell enrollment during account approval was deployed on 31 October
+2026. A prompt wakes the account's existing cell; idle sleep preserves its
+workspace. The current host permits one running customer cell at a time.
+Deployment checks do not establish that every possible cross-account data leak
+has been excluded: real new-user provisioning and two-live-cell adversarial
+acceptance remain unrun for that release.
 
-The private customer account backend is installed on the existing VPS. Verified
-accounts, trial onboarding, scoped request intake and a persistent global serial
-queue are implemented, and the Phase 6 customer chat surface (projects,
-conversations, durable transcript, admission-gated sends and task controls) is
-built with the local contract flow verified. The native agent adapter is still
-disabled: saved requests and chat sends wait. Website publication does not
-enable agents or paid signup. Full chat execution, Telegram linking, artifacts,
-live events and billing remain later phase work.
+The repository also contains customer Chrome-extension/device-browser source,
+parallel UI work, optional browser experiments, and separate local JEV
+prototypes. Their presence in Git is not proof of production rollout or Chrome
+Web Store publication. Consult the dated deployment records for live status.
 
-The [offer and screen designs](product/CONTRACT.md),
-[platform implementation](openclaw-project/platform/README.md) and
-[Phase 6 status](openclaw-project/plans/product/phase-06.md) describe the scope.
+See the [change description and chronological commit list](CHANGELOG.md) for
+the GitHub catch-up since the previous working-branch push on 13 October.
 
-Follow the replacement [Phase 1–19 plan](phase-prompts/openclaw/README.md).
-It includes all unfinished earlier requirements and two optional optimization
-phases. Old executable prompts were replaced; historical plans and evidence
-retain their original labels. This planning update does not deploy features,
-pass acceptance gates or resume deferred paid testing.
+## Code map
 
-- [Requirement coverage and old-to-new mapping](phase-prompts/openclaw/coverage-ledger.md)
-- [Execution rules and cost/capacity formulas](phase-prompts/openclaw/execution-contract.md)
-- [Implementation status and evidence](openclaw-project/BUILD_LOG.md)
-- [Connect tools](openclaw-project/CONNECT_TOOLS.md)
-- [Operations and recovery](openclaw-project/RUNBOOK.md)
+| Directory | Responsibility |
+|---|---|
+| `openclaw-project/lumina/` | Customer React app, chat, live view, generated UI and shared components. |
+| `openclaw-project/platform/accounts/` | Django identity, routes, account APIs and management commands. |
+| `openclaw-project/platform/agentai_platform/` | Chat, queue, budgets, events, files, integrations and product services. |
+| `platform/agentai_platform/lifecycle/` | Host supervisor, cell provisioning, bridge, sleep/wake and recovery. |
+| `platform/agentai_platform/browse/` | Browser orchestration, transports, device pairing and handover. |
+| `openclaw-project/browse/` | Hosted browser runner and customer Chrome extension. |
+| `openclaw-project/platform/deploy/` | Release, rollback, systemd, Caddy and Vercel configuration. |
+| `jev-browser/`, `jev-window-core/` | Separate local browser and macOS window-control prototypes. |
+| `output/`, `product/marketing/` | Reusable brand assets, animation sources and a proposed advertising brief. |
 
-Local operator helpers use the ignored, mode0600 `openclaw-project/.env`.
-To recreate their small Python environment:
+Paths beginning `platform/` in the table are relative to `openclaw-project/`.
 
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r openclaw-project/requirements-local.txt
-./openclaw-project/bin/connect-tool list
-```
+## Architecture and operations
 
-The retired multi-user Python application remains in Git history and is not
-the new runtime. Production data, credentials, backups and current evidence
-are preserved.
+- [Current architecture reports](openclaw-project/docs/architecture/README.md)
+- [CBM structural map](docs/codebase-audit/CBM_STRUCTURE_2026-10-31.md)
+- [Automatic-cell rollout and rollback record](docs/codebase-audit/DEPLOYMENT_2026-10-31_AUTOMATIC_CELLS.md)
+- [Automatic-cell host configuration](openclaw-project/platform/deploy/AUTOMATIC_CELLS.md)
+- [Customer Chrome extension](openclaw-project/browse/extension/README.md)
+- [Device-browser deployment](openclaw-project/platform/deploy/DEVICE_BROWSER.md)
+- [Product contract](product/CONTRACT.md) and [implementation log](openclaw-project/BUILD_LOG.md)
+- [Operations runbook](openclaw-project/RUNBOOK.md) and [release guide](openclaw-project/platform/deploy/README.md)
+- [Vercel publication guide](openclaw-project/platform/deploy/vercel/README.md)
+
+Older phase plans and readiness statements are historical. Current source and
+dated deployment evidence take precedence. Production data, real environment
+files, credentials, private backups and raw operational logs remain outside Git.

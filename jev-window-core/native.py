@@ -44,4 +44,3 @@ class Controller:
                 self.proc.wait()
         self.proc.stdin.close()
         self.proc.stdout.close()
-
