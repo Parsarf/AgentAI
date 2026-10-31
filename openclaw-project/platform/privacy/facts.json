@@ -1,0 +1,244 @@
+{
+ "_about": "The reviewed record behind the privacy policy. Everything under 'derived' is read back from the code by privacy/derive.py and compared by tests/test_privacy_policy.py: when the code moves away from this record, review the policy, then update this file and privacy.html together. See README.md.",
+ "operator": "Parsa Raouf",
+ "contact_email": "raouparsa@gmail.com",
+ "policy_file": "deploy/vercel/public/privacy.html",
+ "policy_url": "https://getlumina.pro/privacy",
+ "policy_updated": "2026-10-31",
+ "derived": {
+  "retention": {
+   "browse_pictures_and_trace_hours": 24.0,
+   "browse_purge_every_minutes": 15.0,
+   "encrypted_backups_max_days": 30,
+   "encrypted_backups_daily_kept": 14,
+   "encrypted_backups_weekly_kept": 2,
+   "plaintext_snapshots_keep_newest": 3,
+   "plaintext_snapshots_max_days": 30,
+   "plaintext_snapshot_cleanup_matches_real_names": true,
+   "defined_but_unscheduled": {
+    "event_timeline_days": 30,
+    "retention_command_days": [
+     180,
+     180,
+     180,
+     90,
+     30
+    ]
+   },
+   "scheduled_retention_jobs": []
+  },
+  "extension": {
+   "permissions": [
+    "debugger",
+    "storage",
+    "tabGroups"
+   ],
+   "host_permissions": [],
+   "page_may_message_it": [
+    "https://getlumina.pro/*"
+   ],
+   "server": "wss://backend.getlumina.pro/v1/device",
+   "stored_on_the_computer": [
+    "bridge",
+    "devAllowLoopback",
+    "enabled",
+    "pairCode",
+    "token"
+   ],
+   "page_text_limit_chars": 6000,
+   "max_controls_listed": 80,
+   "secret_field_values_withheld": true,
+   "loads_remote_code": false,
+   "network_calls_other_than_the_server": []
+  },
+  "hosts": [
+   "api.stripe.com",
+   "api.telegram.org",
+   "api.typesafe.ai",
+   "backend.getlumina.pro",
+   "billing.stripe.com",
+   "checkout.stripe.com",
+   "getlumina.pro",
+   "invoice.stripe.com",
+   "openrouter.ai",
+   "t.me",
+   "www.googleapis.com"
+  ],
+  "owner_only_ultrafast": true,
+  "schema_sha256": "0151bd7e31b7dd8a726fd8f3fca54416dba89b4433ad03ec94e8701efdc3c0cf",
+  "schema_columns": 621,
+  "assistant": {
+   "search_provider": "brave",
+   "plugins": [
+    "@openclaw/brave-plugin"
+   ],
+   "mcp_servers": [
+    "lumina"
+   ],
+   "tools_switched_off": [
+    "ask_user",
+    "browser"
+   ],
+   "dns_servers": [
+    "1.1.1.1",
+    "9.9.9.9"
+   ]
+  }
+ },
+ "hosts_explained": {
+  "getlumina.pro": {
+   "who": "Lumina (us)",
+   "why": "the web app",
+   "customer_data": true
+  },
+  "backend.getlumina.pro": {
+   "who": "Lumina (us)",
+   "why": "our server: the app's API and the extension's connection",
+   "customer_data": true
+  },
+  "api.typesafe.ai": {
+   "who": "TypeSafe",
+   "why": "the model that decides each browser step (JEV): gets a screenshot of the page and the task text with personal data removed",
+   "customer_data": true,
+   "in_policy": "TypeSafe"
+  },
+  "openrouter.ai": {
+   "who": "OpenRouter",
+   "why": "the experimental browser decider, limited in code to the owner's own account",
+   "customer_data": false,
+   "in_policy": null
+  },
+  "api.stripe.com": {
+   "who": "Stripe",
+   "why": "payments; not in use while access is free",
+   "customer_data": false,
+   "in_policy": "Stripe"
+  },
+  "checkout.stripe.com": {
+   "who": "Stripe",
+   "why": "hosted checkout",
+   "customer_data": false,
+   "in_policy": "Stripe"
+  },
+  "billing.stripe.com": {
+   "who": "Stripe",
+   "why": "hosted billing portal",
+   "customer_data": false,
+   "in_policy": "Stripe"
+  },
+  "invoice.stripe.com": {
+   "who": "Stripe",
+   "why": "invoices",
+   "customer_data": false,
+   "in_policy": "Stripe"
+  },
+  "api.telegram.org": {
+   "who": "Telegram",
+   "why": "optional account linking; not configured on the live server (2026-10-31)",
+   "customer_data": false,
+   "in_policy": null
+  },
+  "t.me": {
+   "who": "Telegram",
+   "why": "link to the bot",
+   "customer_data": false,
+   "in_policy": null
+  },
+  "www.googleapis.com": {
+   "who": "Google",
+   "why": "connectors (Gmail, Calendar, Drive); switched off on the live server (2026-10-31)",
+   "customer_data": false,
+   "in_policy": null
+  }
+ },
+ "recipients_not_visible_in_code": {
+  "Anthropic": "the assistant's model; every model in the server's LiteLLM config is anthropic/* (/opt/openclaw-production/config/litellm.yaml, checked 2026-10-31)",
+  "Vercel": "serves getlumina.pro and forwards requests to our server (platform/deploy/vercel)",
+  "email delivery (SMTP)": "sign-in and verification emails (AGENTAI_SMTP_*)",
+  "server hosting provider": "the VPS the service runs on",
+  "Brave Search": "receives the assistant's web-search terms (the Brave plugin, a shared key held by the host: lifecycle/cell_config.py setup_search)",
+  "Cloudflare": "public DNS 1.1.1.1 used by the assistant's cell to look up website names (lifecycle/cell_config.py RESOLVERS)",
+  "Quad9": "public DNS 9.9.9.9, same"
+ },
+ "server": {
+  "checked": "2026-10-31",
+  "journald_max_retention": "7day",
+  "daily_encrypted_backup_timer": "agentai-ops-backup.timer",
+  "features_off_so_policy_is_silent_on_them": [
+   "telegram_linking",
+   "file_uploads",
+   "google_connectors",
+   "paid_billing"
+  ],
+  "known_gap": "Cleanup fix deployed 2026-10-31 (release 20261031T204618Z-f789bf2) and dry-run verified on the server (it keeps the newest 3 copies and would remove 35), but it has not yet been seen to delete anything: after the nightly backup at 03:40 UTC on 2026-11-01 run privacy/check_server.py (expect 3 copies left, no warning), then delete this entry. If it did not run, the 30-day promise holds only until 2026-11-11.",
+  "model_providers": [
+   "anthropic"
+  ]
+ },
+ "policy_must_say": [
+  "Parsa Raouf",
+  "raouparsa@gmail.com",
+  "24 hours",
+  "30 days",
+  "7 days",
+  "Anthropic",
+  "TypeSafe",
+  "Vercel",
+  "Stripe",
+  "debugger",
+  "tabGroups",
+  "storage",
+  "wss://backend.getlumina.pro",
+  "31 October 2026",
+  "6,000",
+  "80 controls",
+  "until you ask us to delete",
+  "Brave Search",
+  "Cloudflare",
+  "Quad9",
+  "Connecting other services and tools",
+  "This is everything we collect today"
+ ],
+ "policy_must_not_say": [
+  "OpenRouter",
+  "Telegram",
+  "Google account",
+  "Gmail",
+  "we never",
+  "100%",
+  "guarantee"
+ ],
+ "review_log": [
+  {
+   "date": "2026-10-31",
+   "by": "initial draft",
+   "note": "Written from the code and the live server on 2026-10-31. Open items: deploy the snapshot-cleanup fix before 2026-11-11; decide whether to schedule the retention job (accounts/management/commands/retention_accounts.py)."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "publication",
+   "note": "Published at https://getlumina.pro/privacy as Vercel production deployment dpl_EQQqt89GP3DsnSdE4n2kYCWpjyq1 (prebuilt output of deploy/vercel, BACKEND_ORIGIN https://backend.getlumina.pro). Before and after snapshots of 8 existing paths matched except three that embed a random token or request id. Previous production deployment, for rollback: dpl_3H9wwD4aEmrFTncKcede8BPhigYc. NOT yet committed or merged: a Git-based production deploy from a branch without privacy.html and the build.mjs route would remove /privacy."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "owner approval",
+   "note": "Owner approved deploying the snapshot-cleanup fix. Shipped as push-release 20261031T204618Z-f789bf2 to the app tree (which runs the backup job). Dry run on the server with the deployed code: 38 copies matched, keeps newest 3, would remove 35 copies and 70 sidecar files, touches nothing else. Previous app release for rollback is recorded by push-release."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "owner question: 'are we sure the info is correct?'",
+   "note": "Audit found the first draft omitted what the assistant's tools send out: Brave Search (web-search terms), public DNS (Cloudflare 1.1.1.1, Quad9 9.9.9.9) and that the assistant can contact public websites. Added them, added 'This is everything we collect today', and a section 'Connecting other services and tools' (nothing can be connected today; outside MCP servers, connectors, uploads and Telegram are all off or host-controlled). Detector widened: derive.assistant() now reads the search provider, plugins, MCP servers, switched-off tools and DNS servers from lifecycle/cell_config.py, and check_server.py verifies LiteLLM still routes only to anthropic."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "publication of the corrected policy",
+   "note": "Corrected policy (Brave Search, Cloudflare/Quad9 DNS, public-website access, 'everything we collect today', 'Connecting other services and tools') published as Vercel production deployment dpl_45fb7R4i7mYxmV3HQmCj7vCa6BVt. The five existing paths I compared (/, /app/, /robots.txt, /v1/devices, /auth/login) were identical before and after. Previous production deployment (first policy draft): dpl_EQQqt89GP3DsnSdE4n2kYCWpjyq1; before that dpl_3H9wwD4aEmrFTncKcede8BPhigYc (2026-10-12, no /privacy). Still not committed to Git."
+  }
+ ],
+ "assistant_recipients": {
+  "search_provider:brave": "Brave Search",
+  "plugin:@openclaw/brave-plugin": "Brave Search",
+  "dns:1.1.1.1": "Cloudflare",
+  "dns:9.9.9.9": "Quad9"
+ }
+}
