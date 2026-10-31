@@ -17,7 +17,13 @@ def audit(actor, account, object_id, action, outcome, request_id, operation=None
     return Audit.objects.create(actor=str(actor), account_id=account, object_id=str(object_id), action=action,
                                 outcome=outcome, request_id=request_id, operation_id=operation or uuid.uuid4())
 
+# Limits keyed by an account. Only these can be switched off for everyone: sign-in, sign-up, recovery, token and anonymous-ingress limits are keyed by address or
+# email and are never touched by the all-users switch (a scope not listed here keeps its limit).
+ACCOUNT_RATE_SCOPES = frozenset({'billing.hosted', 'browse.control', 'browse.live', 'browse.answer', 'browse.saved', 'task.create', 'connector.link', 'media.read',
+                                 'telegram.link', 'vault.add', 'vault.remove'})   # not 'safety.change': it guards this menu's own password check
+
 def rate(scope, key, limit, seconds=600):
+    if _rate_limits_off(key, everyone=scope in ACCOUNT_RATE_SCOPES): return
     now = timezone.now()
     window = int(now.timestamp()) // seconds
     digest = salted_hmac('agentai.rate', f'{scope}:{key}:{window}').hexdigest()
@@ -26,6 +32,18 @@ def rate(scope, key, limit, seconds=600):
         if bucket.count >= limit: raise Limited()
         bucket.count += 1
         bucket.save(update_fields=['count'])
+
+def _rate_limits_off(key, everyone=False):
+    """The `rate_limits` safety switch (agentai_platform/safety.py): off for this account (its own row) or, for account-keyed scopes, off for everyone. Fails closed: any error means limits stay on."""
+    try:
+        from agentai_platform import safety as sf
+        now = int(timezone.now().timestamp())
+        with connection.cursor() as c:
+            c.execute("SELECT account_id, enabled, expires_epoch FROM safety_overrides WHERE feature='rate_limits' AND account_id IN (%s, %s)", [str(key), sf.ALL])
+            rows = {r[0]: (r[1], r[2]) for r in c.fetchall()}
+        return not sf.effective(rows.get(str(key)), rows.get(sf.ALL) if everyone else None, now)
+    except Exception:
+        return False
 
 def token_for(user, purpose):
     identity = user.identity

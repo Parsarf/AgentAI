@@ -1,0 +1,49 @@
+# Lumina UI requirements
+
+**Visual design:** read `DESIGN.md` before any UI change. Colours, radii, type and spacing come from the tokens in `src/styles/tokens.css`; use the shared components in `src/styles/ui.css` and `src/components/ui/` (Menu, Toggle) instead of writing new buttons, menus or switches. `npm run check:design` (part of `npm run build`) rejects hardcoded colours. Do not build features the product does not have just because a mock shows them.
+
+Messages and assistant thinking indicators must size to their content. Spare pane height belongs
+between the transcript and composer, never inside message rows. Any grid filling
+the chat pane must pack its rows at the start; nested turns must not stretch their
+children. Never reintroduce a Working card in chat. Pending replies use a left-aligned 48px thinking orb and short state label; Stop and Activity belong in the header.
+
+Active conversation routes must not render the decorative globe. On screens that
+show it, use the static fallback only while loading, after a rendering failure, or
+when motion is reduced. Never render the fallback underneath a loaded globe.
+
+For chat layout changes, run the UI tests and build, then inspect the rendered page
+at desktop and mobile widths with: one short message while working, completed
+reply, long wrapped message, and multiple turns. Check both motion settings.
+Confirm a short bubble stays one line tall plus padding, thinking indicators have no
+unused vertical space, and the composer and messages do not overlap. jsdom does
+not perform real layout, so passing unit tests alone is insufficient visual QA.
+
+The real-browser fixture is `tests/preview_chat.py` (instructions in its docstring).
+It runs `tests/browser-layout.js` against the production bundle. For each fixture
+and viewport, require `document.documentElement.dataset.layoutCheck === 'passed'`;
+inspect `dataset.layoutFailures` if it fails. Keep these checks when editing chat CSS.
+
+Orb state definitions live in `src/lib/orbs.ts`. Map actual task/event state, never
+simulate progress by cycling animations on a timer. Finished tool calls must stop
+showing their old activity; completed replies remove the indicator. Keep terminal
+errors visible without a looping orb. Preserve reduced-motion support.
+
+Thinking orbs run at 55% of the library preset speed and blend states over 600ms.
+Keep their motion timeline continuous across state changes, preserve the displayed
+frame if a transition is interrupted, and skip blends when motion is reduced.
+
+The transcript has a bounded width with `minmax(0, 1fr)` grid tracks. Prose and
+inline code wrap naturally (long tokens must not widen the page); fenced code
+preserves lines and scrolls horizontally within a keyboard-focusable code box.
+Wide tables scroll within their own container. Never add horizontal scrolling to
+ordinary paragraphs. Recognized read-only JSON cards are schema-validated before
+rendering; malformed data and code examples remain literal, locally scrollable code.
+Verify charts plus very long code lines, prose, URLs, and tables at mobile/desktop
+widths, including the visible scrollbar and ability to reach the end of a code line.
+
+Live view opens the newest active task directly, with a compact task selector for
+history. Show observable tool activity and reported terminal output, never invented
+reasoning or simulated shell output. Browser takeover is enabled only after the
+backend confirms pause/handoff and takeover. Sensitive text is masked by default,
+cleared after submission, and never stored in local/session storage. Browser input
+must be serialized before returning control. Keep task details bounded on mobile.

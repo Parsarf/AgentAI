@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Canvas, useFrame, useLoader } from '@react-three/fiber';
+import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
+import { onFrame } from '../lib/frameClock';
 import { ShaderMaterial, TextureLoader, Vector3, SRGBColorSpace, type Mesh } from 'three';
 
 const REVOLUTION_SECONDS = 150;
+// One turn takes 150 s, so 15 frames a second looks identical to 60 and costs a quarter of the GPU. Frames are also skipped while the page is
+// scrolling, hidden or the planet is off screen: the planet must never compete with the interface for the GPU.
 
 // Monochrome planet: near-black ocean, grey continents from NASA imagery, light from the upper right, thin bright limb.
 const vertex = /* glsl */ `
@@ -42,13 +45,19 @@ function Planet({ animate, lowPower }: { animate: boolean; lowPower: boolean }) 
   useEffect(() => () => material.dispose(), [material]);
   // delta-based: the same speed at any frame rate; one turn per REVOLUTION_SECONDS.
   useFrame((_, delta) => { if (animate && mesh.current) mesh.current.rotation.y += delta * (Math.PI * 2) / REVOLUTION_SECONDS; });
-  return <mesh ref={mesh} rotation={[0.35, 2.2, 0.1]} material={material}><sphereGeometry args={[1, lowPower ? 64 : 128, lowPower ? 48 : 96]} /></mesh>;
+  return <mesh ref={mesh} rotation={[0.35, 2.2, 0.1]} material={material}><sphereGeometry args={[1, lowPower ? 48 : 96, lowPower ? 36 : 72]} /></mesh>;
+}
+
+/** Asks for a new frame on the shared frame clock (15 a second, together with the orbs; none while scrolling or hidden), when the planet is on screen. */
+function Pacer({ active, visible }: { active: boolean; visible: React.MutableRefObject<boolean> }) {
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => (active ? onFrame(() => { if (visible.current) invalidate(); }) : undefined), [active, invalidate, visible]);
+  return null;
 }
 
 export default function Globe({ animate, lowPower }: { animate: boolean; lowPower: boolean }) {
   const wrap = useRef<HTMLDivElement>(null);
   const visible = useRef(true);
-  const loop = useRef<'always' | 'demand'>(animate ? 'always' : 'demand');
   useEffect(() => {
     const el = wrap.current; if (!el) return;
     const io = new IntersectionObserver(([e]) => { visible.current = e.isIntersecting; }, { threshold: 0 });
@@ -57,8 +66,9 @@ export default function Globe({ animate, lowPower }: { animate: boolean; lowPowe
   const running = animate && typeof document !== 'undefined' && document.visibilityState === 'visible';
   return (
     <div ref={wrap} className="globe-frame">
-      <Canvas dpr={lowPower ? 1 : [1, 1.75]} frameloop={running ? 'always' : 'demand'} camera={{ position: [0, 0, 4], fov: 34 }}
+      <Canvas dpr={lowPower ? 1 : [1, 1.25]} frameloop="demand" camera={{ position: [0, 0, 4], fov: 34 }}
               gl={{ antialias: !lowPower, alpha: true, powerPreference: lowPower ? 'low-power' : 'default' }} style={{ pointerEvents: 'none' }}>
+        <Pacer active={running} visible={visible} />
         <Planet animate={running} lowPower={lowPower} />
       </Canvas>
     </div>

@@ -1,0 +1,12 @@
+python-dotenv could not parse statement starting at line 16
+python-dotenv could not parse statement starting at line 24
+python-dotenv could not parse statement starting at line 27
+python-dotenv could not parse statement starting at line 16
+python-dotenv could not parse statement starting at line 24
+python-dotenv could not parse statement starting at line 27
+ok   build release (hash-pinned dependencies)
+ok   migrate a COPY of the database with the new release
+ok   new release passes its canary probes on the copy
+ok   previous release still serves the migrated schema (binary rollback possible)
+ok   dry run: stopping before any live change
+{"result": "dry-run-passed", "binary_rollback_compatible": true}

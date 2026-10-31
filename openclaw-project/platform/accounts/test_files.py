@@ -62,11 +62,18 @@ class FileHTTPChecks(TestCase):
 
     def test_routes_fail_closed_without_storage(self):
         a = self.signed()
-        self.assertEqual(a.post('/v1/projects/project-a/files', '{}', content_type='application/json', secure=True).status_code, 503)
+        self.assertEqual(self.post(a, '/v1/projects/project-a/files', {}).status_code, 503)
+        self.assertEqual(a.post('/v1/projects/project-a/files', '{}', content_type='application/json', secure=True).status_code, 403)
         self.assertEqual(a.get('/v1/projects/project-a/files', secure=True).status_code, 503)
         self.assertEqual(self.post(a, '/v1/artifacts/x/versions/1/ticket', {}).status_code, 503)
         self.assertEqual(a.get('/v1/artifacts/x/versions/1/download', secure=True).status_code, 503)
         self.assertEqual(self.new_client().get('/v1/projects/project-a/files', secure=True).status_code, 401)
+
+    def test_malformed_ids_are_a_clean_client_error_not_a_server_error(self):
+        self.enable_storage()
+        a = self.signed()
+        for fid in ('..%2f..%2fetc', '%00', 'a' * 300, "x' OR '1'='1"):
+            self.assertIn(a.get(f'/v1/projects/project-a/files/{fid}/preview', secure=True).status_code, (400, 404), fid)
 
     def test_upload_validation_and_ownership(self):
         self.enable_storage(uploads=True)

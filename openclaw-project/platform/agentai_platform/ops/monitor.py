@@ -17,7 +17,7 @@ from .inventory import gaps
 OK, WARN, CRIT, UNKNOWN = 'ok', 'warn', 'crit', 'unknown'
 RANK = {OK: 0, UNKNOWN: 1, WARN: 2, CRIT: 3}
 REQUIRED_UNITS = ('agentai-platform-app', 'openclaw-dashboard', 'caddy', 'agentai-cells-docker', 'agentai-cells-firewall',
-                  'agentai-supervisor-native', 'agentai-lifecycle-worker', 'agentai-cell-bridge', 'agentai-request-worker', 'agentai-model-proxy',
+                  'agentai-supervisor-native', 'agentai-lifecycle-worker', 'agentai-cell-bridge', 'agentai-request-worker', 'agentai-tool-relay', 'agentai-model-proxy',
                   'fail2ban', 'docker')
 REQUIRED_CONTAINERS = ('openclaw-production-openclaw-gateway-1', 'openclaw-production-litellm-1', 'openclaw-production-postgres-1')
 TIMERS = {'agentai-billing-worker.timer': 300, 'agentai-platform-mail.timer': 600, 'openclaw-ops-backup.timer': 2 * 86400,

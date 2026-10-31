@@ -1,0 +1,9 @@
+ok   build release (hash-pinned dependencies)
+ok   migrate a COPY of the database with the new release
+ok   new release passes its canary probes on the copy
+ok   previous release still serves the migrated schema (binary rollback possible)
+ok   final database backup with the app stopped
+ok   migrate the live database
+ok   live release answers its probes
+{"result": "released", "binary_rollback_compatible": true}
+{"result": "coordinated-release-complete", "release": "20261027T114539Z-cancel-e700e33", "running_cell_workspaces_refreshed": 0}

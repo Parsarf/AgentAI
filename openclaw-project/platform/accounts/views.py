@@ -43,7 +43,7 @@ def assets(request,name='ui.css'):
     response['Cache-Control']='public, max-age=86400'
     return response
 
-def endpoint(methods, fields=(), field_limits=None):
+def endpoint(methods, fields=(), field_limits=None, structured=False):
     def decorate(fn):
         @wraps(fn)
         def view(request,*args,**kwargs):
@@ -55,10 +55,14 @@ def endpoint(methods, fields=(), field_limits=None):
                 if request.method=='POST':
                     if request.content_type=='application/json':
                         data=json.loads(request.body or b'{}')
-                    elif request.content_type=='application/x-www-form-urlencoded':
+                    elif request.content_type=='application/x-www-form-urlencoded' and not structured:
                         data=request.POST.dict(); data.pop('csrfmiddlewaretoken',None)
                     else: return JsonResponse({'error':'unsupported_media_type'},status=415)
-                    if not isinstance(data,dict) or set(data)-set(fields) or any(not isinstance(value,str) or len(value)>(field_limits or {}).get(key,512) for key,value in data.items()):
+                    if structured:
+                        # Structured JSON (generative-UI state): only named top-level keys, bounded size; content is validated by the service.
+                        if not isinstance(data,dict) or set(data)-set(fields) or len(request.body)>131072:
+                            return JsonResponse({'error':'invalid_request'},status=400)
+                    elif not isinstance(data,dict) or set(data)-set(fields) or any(not isinstance(value,str) or len(value)>(field_limits or {}).get(key,512) for key,value in data.items()):
                         return JsonResponse({'error':'invalid_request'},status=400)
                     request.input=data
                 response=fn(request,*args,**kwargs)
@@ -132,6 +136,10 @@ def signin(request):
         try: customer_scope(authenticated,identity.epoch)
         except Denied:
             audit('anonymous',None,'identity','identity.login','denied',request.request_id)
+            with connection.cursor() as c:                  # the password was right: say honestly why they cannot come in yet
+                c.execute('SELECT state FROM signups WHERE account_id=%s',[identity.account_id]); waiting=c.fetchone()
+            if waiting and waiting[0]=='pending': return JsonResponse({'error':'pending_approval'},status=403)
+            if waiting and waiting[0]=='declined': return JsonResponse({'error':'not_approved'},status=403)
             return JsonResponse({'error':'invalid_credentials'},status=401)
     with transaction.atomic():
         op=uuid.uuid4(); audit(user.pk,identity.account_id,user.pk,'identity.login','pending',request.request_id,op)

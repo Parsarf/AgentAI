@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import connection
 from django.http import JsonResponse, FileResponse
 from django.views.decorators.csrf import csrf_exempt
+from agentai_platform import safety as sf
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat import ChatService
 from agentai_platform.files import FileService, Rejected, MAX_PREVIEW_BYTES
@@ -22,6 +23,15 @@ from .views import endpoint, customer
 
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def _limits_on(request):
+    """The account's `upload_limits` switch (agentai_platform/safety.py). Fails closed: any error means the limit applies."""
+    try:
+        with AccountStore(connection.settings_dict['NAME']).connect() as con:
+            return sf.is_on(con, request.account_id, 'upload_limits')
+    except Exception:
+        return True
 
 
 def _ready():
@@ -66,9 +76,10 @@ def _mapped(fn):
     except NotFound:
         # Same public shape on both endpoint-decorated and plain views.
         return JsonResponse({'error': 'unavailable'}, status=404)
+    except ValueError:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
 
 
-@csrf_exempt
 def upload(request, project_id):
     denial = _guard(request)
     if denial:
@@ -81,9 +92,6 @@ def upload(request, project_id):
         return JsonResponse({'error': 'invalid_request'}, status=400)
     if len(request.FILES) > 10:
         return JsonResponse({'error': 'rejected', 'reason': 'batch must contain 1 to 10 files'}, status=422)
-    Path('/tmp/dbg2.json').write_text(__import__('json').dumps(
-        {'files': {k: [type(f).__name__ for f in v] for k, v in request.FILES.items()},
-         'ctype': request.content_type}))
     import json as _json
     try:
         hints = _json.loads(request.POST.get('filenames', '[]'))
@@ -94,7 +102,7 @@ def upload(request, project_id):
         for index, item in enumerate(field):
             # Upload handlers may hand over an UploadedFile or raw bytes.
             data = item.read() if hasattr(item, 'read') else item
-            if len(data) > MAX_UPLOAD_BYTES:
+            if len(data) > MAX_UPLOAD_BYTES and _limits_on(request):
                 return JsonResponse({'error': 'rejected', 'reason': 'file exceeds 10MiB'}, status=422)
             name = getattr(item, 'name', '') or (hints[index] if index < len(hints) else '')
             entries.append((name or 'upload.bin', getattr(item, 'content_type', '') or '', data))
@@ -105,7 +113,6 @@ def upload(request, project_id):
     return _mapped(run)
 
 
-@csrf_exempt
 def files_route(request, project_id):
     if request.method == 'POST':
         return upload(request, project_id)
@@ -203,7 +210,6 @@ def ticket(request, artifact_id, version):
     return _mapped(run)
 
 
-@csrf_exempt
 def bundle(request, project_id):
     denial = _guard(request)
     if denial:
@@ -219,4 +225,62 @@ def bundle(request, project_id):
             from django.http import HttpResponseRedirect
             return HttpResponseRedirect(request.form_redirect)
         return JsonResponse({'bundle': result}, status=201)
+    return _mapped(run)
+
+
+def gen_asset(request, artifact_id):
+    """Resolve a stored document's file reference within its own authorized project."""
+    denial = _guard(request)
+    if denial:
+        return denial
+    if request.method != 'GET':
+        return JsonResponse({'error': 'method_not_allowed'}, status=405)
+    from agentai_platform.genui.document import _safe_file
+    import json
+    path = request.GET.get('path', '')
+    if not _safe_file(path):
+        return JsonResponse({'error': 'invalid_file_reference'}, status=400)
+
+    def run():
+        store, chat, files, artifacts = _services()
+        actor = _principal(request)
+        with store.connect() as con:
+            store._authorize(con, actor)
+            row = con.execute("SELECT d.spec_json,c.project_id FROM data_blocks d JOIN conversations c ON c.account_id=d.account_id AND c.id=d.conversation_id WHERE d.account_id=? AND d.id=? AND d.kind='document'", (actor.account_id, artifact_id)).fetchone()
+        if row is None:
+            raise NotFound('unavailable')
+        # The file must be explicitly referenced by this document, not an arbitrary query parameter.
+        def references(value):
+            if isinstance(value, dict):
+                return any((k == 'assetRef' and v == 'file:' + path) or (value.get('kind') == 'file.download' and k == 'path' and v == path) or references(v) for k, v in value.items())
+            return isinstance(value, list) and any(references(v) for v in value)
+        if not references(json.loads(row['spec_json'])):
+            raise NotFound('unavailable')
+        candidates = [r for r in artifacts.list_artifacts(actor, row['project_id']) if r['display_name'] == path]
+        if candidates:
+            latest = max(candidates, key=lambda r: r['version'])
+            minted = artifacts.mint_ticket(actor, latest['id'], latest['version'])
+            from urllib.parse import parse_qs, urlparse
+            ticket_value = parse_qs(urlparse(minted['path']).query)['ticket'][0]
+            parts, name, media = artifacts.consume_ticket(latest['id'], latest['version'], ticket_value)
+            data = artifacts.storage.read_private(parts, max_bytes=MAX_PREVIEW_BYTES)
+        else:
+            matched = next((r for r in files.list_files(actor, row['project_id']) if r['display_name'] == path and r['state'] == 'scanned'), None)
+            if matched is None:
+                raise NotFound('unavailable')
+            parts, media = files.open_parts(actor, row['project_id'], matched['id'])
+            data = files.storage.read_private(parts, max_bytes=MAX_PREVIEW_BYTES)
+            name = path
+        allowed = {'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'video/mp4', 'video/webm', 'model/gltf-binary'}
+        if request.GET.get('download') != '1' and media not in allowed:
+            raise NotFound('unsupported preview type')
+        response = FileResponse(_Bytes(data), content_type=media if media in allowed else 'application/octet-stream')
+        response['X-Frame-Options'] = 'SAMEORIGIN'
+        response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+        response['X-Content-Type-Options'] = 'nosniff'
+        response['Cache-Control'] = 'no-store'
+        if request.GET.get('download') == '1':
+            from django.utils.http import content_disposition_header
+            response['Content-Disposition'] = content_disposition_header(True, name)
+        return response
     return _mapped(run)

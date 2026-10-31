@@ -1,0 +1,11 @@
+9e719d1c0e1e1e38032ce026184df5b6c915612258be67ed0ac649d109b3674a  /root/lumina-platform-10efb73.tgz
+e52b557d6299a81728d83e78156190b611a4873a617e67b6eab651630eb6bd4c  /root/lumina-ui-10efb73.tgz
+ok   build release (hash-pinned dependencies)
+ok   migrate a COPY of the database with the new release
+ok   new release passes its canary probes on the copy
+ok   previous release cannot read the new schema: rollback = restore the pre-migration backup
+ok   final database backup with the app stopped
+ok   migrate the live database
+ok   live release answers its probes
+{"result": "released", "binary_rollback_compatible": false}
+{"result": "coordinated-release-complete", "release": "20261027T110435Z-genui-10efb73", "running_cell_workspaces_refreshed": 0}

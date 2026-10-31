@@ -3,7 +3,7 @@ import io
 import json
 import re
 import uuid
-from unittest.mock import patch
+from unittest.mock import patch, PropertyMock
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.core.management import call_command
@@ -44,6 +44,32 @@ class TelegramHTTPChecks(TestCase):
             self.assertEqual(self.secret_post(self.new_client(), {}, secret='wrong').status_code, 403)
             self.assertEqual(self.new_client().post('/v1/telegram/webhook', 'not json', content_type='application/json', secure=True,
                               HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN='s' * 40).status_code, 200)
+
+    @ENABLED
+    def test_webhook_accepts_an_update_above_the_default_boundary_cap(self):
+        update = {'update_id': 1, 'junk': 'x' * 9000}
+        with patch('accounts.telegram.service') as factory:
+            factory.return_value.handle_update.return_value = 'ignored'
+            self.assertEqual(self.secret_post(self.new_client(), update).status_code, 200)
+            factory.return_value.handle_update.assert_called_once_with(update)
+            factory.reset_mock()
+            self.assertEqual(self.secret_post(self.new_client(), update, secret='wrong').status_code, 403)
+            factory.assert_not_called()
+
+    @ENABLED
+    def test_oversized_webhook_updates_are_ignored_before_parsing(self):
+        with patch('accounts.telegram.service') as factory:
+            update = {'update_id': 2, 'junk': 'x' * 70000}
+            with patch('django.http.HttpRequest.body', new_callable=PropertyMock,
+                       side_effect=AssertionError('oversized update body must not be read')):
+                response = self.secret_post(self.new_client(), update)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {'ok': True})
+            factory.assert_not_called()
+            self.assertEqual(self.secret_post(self.new_client(), update, secret='wrong').status_code, 403)
+            huge = self.secret_post(self.new_client(), {'junk': 'x' * 300000})
+            self.assertEqual(huge.status_code, 413)
+            factory.assert_not_called()
 
     @ENABLED
     def test_webhook_routes_linked_update_to_own_account(self):

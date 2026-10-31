@@ -1,0 +1,1 @@
+{"id":"lumina-tool-origin","name":"Lumina tool ownership","description":"Bind Lumina MCP calls to their runtime-provided session and run.","activation":{"onStartup":true},"configSchema":{"type":"object","additionalProperties":false}}

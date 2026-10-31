@@ -21,12 +21,13 @@ def csrf(request):
 
 def features(request):
     from .billing import access_mode
-    from .chat import execution_on
+    from .chat import browse_on, execution_on
     from .connections import switch_on as connectors_on
     storage = bool(settings.STORAGE_DIR) and settings.STORAGE_READY
     return {
         'chat': True,
-        'execution': execution_on(),                      # false: messages are saved and wait; true: the assistant answers
+        'execution': execution_on(),
+        'browse': browse_on(),                            # the browser agent may be chosen for interactive goals                      # false: messages are saved and wait; true: the assistant answers
         'files': storage,
         'uploads': storage and settings.UPLOADS_ENABLED,
         'telegram': bool(settings.TELEGRAM_ENABLED),
@@ -35,6 +36,30 @@ def features(request):
         'requests': True,
         'usage': True,
     }
+
+
+@endpoint(['GET'])
+def presence(request):
+    """Whether the assistant's workspace is asleep, waking or awake. Read-only; drives the chat scene.
+
+    `waking` is a stopped workspace with a request waiting for it: the lifecycle worker is about to start it.
+    """
+    denied = customer(request)
+    if denied:
+        return denied
+    with connection.cursor() as c:
+        c.execute('SELECT observed_state FROM lifecycle_cells WHERE account_id=%s', [request.account_id])
+        row = c.fetchone()
+        c.execute("SELECT 1 FROM customer_requests WHERE account_id=%s AND state='waiting' AND paused=0 LIMIT 1", [request.account_id])
+        queued = c.fetchone() is not None
+    observed = row[0] if row else 'absent'
+    if observed == 'running':
+        state = 'awake'
+    elif observed == 'stopped':
+        state = 'waking' if queued else 'asleep'
+    else:
+        state = 'unknown'
+    return JsonResponse({'state': state})
 
 
 @endpoint(['GET'])

@@ -1587,3 +1587,19 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   rate-limit gaps closed, canary release tool with rollback, nightly tenant backup scheduling, runbooks. Deployed with timers; four real canary releases.
   Drills: owner-side decrypt of all 7 artifacts, real-schema account restore, corruption rejection, release rollback in sandboxes.
 - Open: automatic off-server destination (launch blocker), SSH keys-only, Phase 15 acceptance. 421 platform / 79 Django / 35 dashboard tests pass.
+
+## 2026-10-30: experimental "ultrafast" decider (owner testing)
+Safety switch `standard_browser` chooses who decides each step on the one standard browser stage: `browse/ultrafast_brain.py` (`jev-latest` alias, fast text writer) or the standard chooser. Installer `bin/update-ultrafast.py` (plan / `--apply` / `--rollback`). A first design that ran jev-ultrafast's own loop on a separate shared Chrome was deployed, failed in the real service (the browse service cannot switch users), was rolled back and removed (commits 2aa3396, 2b37c2e). See platform/OPERATIONS.md section 19.
+
+## 2026-10-30: where things stand (status note for the next session)
+**Deployed now** (HEAD `e20a9e6`; supervisor release `20261030T083553Z-e20a9e6`, app release `20261030T074351Z-ultrafast-fd625e8`, UI wording shipped with `deploy-lumina.py`):
+- Safety switch `standard_browser` (Safety console, Browser group, owner account only, timed): OFF = the next browser task is decided by `UltrafastChooser` on the same sandboxed stage; the trace's `ready` event records `decider`. `bin/update-ultrafast.py --rollback` undoes it.
+- Assistant cells now sleep after **45 minutes** idle (was 15): `lifecycle/sleep.py`. `bin/push-release.py` ships changed files as a new release (`--rollback` undoes it).
+- Nothing is pushed to a remote; every change is a local commit. The VPS root password was printed in a session on 2026-10-30 and should be rotated.
+
+**Findings from real runs (youngla.com, Google Flights), not yet fixed:**
+- JEV scrolled twice into a fixed search drawer that ignores the wheel; the loop then handed the page to the assistant, which took 70 to 80 s per step.
+- Google Flights "Where from?": JEV typed a request phrase with a bracketed code (`Los Angeles (LAX)`), the field said "No matching locations found", and JEV retried the same text three times.
+- The Live view produced no `live.jpg` in recent jobs (only per-step pictures 10 to 25 s apart), and the browser stage is capped at 1 CPU under gVisor (snapshot ~3 s, click ~6 s, open ~28 s). Planned: raise the stage to 2 CPUs and cap streaming at about 5 fps; measure with the Live page open.
+
+**Next (agreed, not started): no-handoff JEV.** For the owner's experimental decider only: no assistant takeover (loops, misses, too_complex, ask_user, done-confirmation, text-for-a-field); instead feed JEV hints, drop dead options (no scroll after a no-op scroll, no third try of an inert target), retry failed typing with simpler text, and stop honestly after a few no-progress steps. Sign-in, captcha and payment stops to the user stay. Test on saved copies of the two failing pages, then real runs. Entry points: `browse/loop.py` (`claude_reason`, `forced`, `unchanged`), `browse/ladder.py` (`Ladder.decide`, `_agent`), `browse/modes.py`.

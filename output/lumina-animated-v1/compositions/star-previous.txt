@@ -1,0 +1,38 @@
+<template>
+<style>#root{position:absolute;inset:0;background:#070709;overflow:hidden}#particle-stage{position:absolute;inset:0}#particle-canvas{width:100%;height:100%}#particle-source{display:none}</style>
+<div id="root" data-composition-id="star" data-width="720" data-height="720"><div id="particle-stage" class="clip" data-start="0" data-duration="10" data-track-index="0"><canvas id="particle-canvas" width="720" height="720"></canvas><img id="particle-source" src="assets/star.png" alt="Lumina star source"></div></div>
+<script>
+// Seeded table and pure frame repaint adapted from Registry particle-image-reveal.
+const canvas=document.getElementById('particle-canvas'),ctx=canvas.getContext('2d');
+const source=document.getElementById('particle-source');
+let seed=0x50a71c1e;const rnd=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296};
+const clamp=v=>Math.max(0,Math.min(1,v)),smooth=v=>{v=clamp(v);return v*v*(3-2*v)};
+const mix=(a,b,q)=>a+(b-a)*q;
+source.decode().then(()=>{
+ const sample=document.createElement('canvas');sample.width=240;sample.height=240;const sc=sample.getContext('2d');sc.drawImage(source,0,0,240,240);const pix=sc.getImageData(0,0,240,240).data;
+ const pool=[];for(let y=35;y<205;y++)for(let x=35;x<205;x++){let i=(y*240+x)*4;if(pix[i+2]>47&&pix[i+2]>pix[i]*1.7&&pix[i+2]>pix[i+1]*1.65)pool.push({x:x*3,y:y*3,r:pix[i],g:pix[i+1],blue:pix[i+2]});}
+ const particles=Array.from({length:4600},()=>{const p=pool[Math.floor(rnd()*pool.length)];return {...p,x:p.x+(rnd()-.5)*3,y:p.y+(rnd()-.5)*3,a:rnd(),b:rnd(),c:rnd(),size:.45+rnd()*.75}});
+ function position(p,t){
+  const bottom={x:360+(p.b-.5)*35,y:612+(p.c-.5)*22};
+  if(t<4){let q=smooth((t-2.65-p.a*.35)/1);return {x:mix(p.x,bottom.x,q)+Math.sin(q*Math.PI)*(p.b-.5)*160,y:mix(p.y,bottom.y,q)-Math.sin(q*Math.PI)*65};}
+  if(t<6.75){const q=clamp((t-4)/2.75);const angle=Math.PI/2+Math.PI*2*smooth(q)+(p.a-.5)*.85*Math.sin(Math.PI*q);const radius=202+(p.b-.5)*24;return {x:360+Math.cos(angle)*radius*.94,y:410+Math.sin(angle)*radius+(p.c-.5)*10};}
+  let q=clamp((t-6.75-p.a*.65)/1.1),e=1-Math.pow(1-q,3);
+  return {x:mix(bottom.x,p.x,e)+Math.sin(q*Math.PI)*(p.b-.5)*22,y:mix(bottom.y,p.y,e)-Math.sin(q*Math.PI)*90};
+ }
+ function paint(t){
+ ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;ctx.fillStyle='#070709';ctx.fillRect(0,0,720,720);
+ const breakup=smooth((t-2.65)/.65),reform=smooth((t-8.05)/.65);
+ let logoAlpha=t<2.65?.55+.12*Math.pow(Math.sin(t/2.65*Math.PI),2):t<4?.55*(1-breakup):.55*reform;
+ ctx.globalAlpha=logoAlpha;ctx.drawImage(source,0,0,720,720);ctx.globalAlpha=1;
+ const fieldAlpha=breakup*(1-reform);if(fieldAlpha<.001)return;
+ ctx.globalCompositeOperation='screen';
+ for(const p of particles){let pos=position(p,t);let bright=.58+p.c*.3;ctx.fillStyle=`rgb(${Math.round(p.r*bright*.6+18)},${Math.round(p.g*bright+10)},${Math.min(255,Math.round(p.blue*bright+45))})`;
+ const moving=t>2.65&&t<8.3;
+ if(moving){const old=position(p,Math.max(2.65,t-.045));ctx.globalAlpha=fieldAlpha*.22;ctx.lineWidth=p.size*.75;ctx.beginPath();ctx.moveTo(old.x,old.y);ctx.lineTo(pos.x,pos.y);ctx.strokeStyle=ctx.fillStyle;ctx.stroke();}
+ ctx.globalAlpha=fieldAlpha*(.42+p.c*.5);ctx.fillRect(pos.x,pos.y,p.size,p.size);
+ }
+ ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+ }
+ const clock={t:0};const tl=gsap.timeline({paused:true,onUpdate:()=>paint(clock.t)});tl.fromTo(clock,{t:0},{t:10,duration:10,ease:'none'},0);paint(0);window.__timelines=window.__timelines||{};window.__timelines.star=tl;
+});
+</script></template>

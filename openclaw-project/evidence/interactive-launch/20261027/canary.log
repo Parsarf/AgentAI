@@ -1,0 +1,5 @@
+PASS build hash-pinned dependencies
+PASS migrate database copy
+PASS new release canary probes
+PASS previous release on copied schema (binary rollback compatible)
+PASS dry run stopped before live change

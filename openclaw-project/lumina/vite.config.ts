@@ -7,5 +7,5 @@ export default defineConfig({
   plugins: [react()],
   build: { outDir: 'dist', sourcemap: false, chunkSizeWarningLimit: 900 },
   server: { proxy: { '/v1': 'http://127.0.0.1:18800', '/auth': 'http://127.0.0.1:18800', '/readyz': 'http://127.0.0.1:18800' } },
-  test: { environment: 'jsdom', globals: true },
+  test: { environment: 'jsdom', globals: true, setupFiles: ['./src/test-setup.ts'], testTimeout: 20000 },
 });

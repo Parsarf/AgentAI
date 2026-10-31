@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import time
 
+from agentai_platform.events import EventService
 from agentai_platform.store import Store
 from agentai_platform.switches import SwitchStore
 
@@ -44,7 +45,7 @@ def main():
     switches = SwitchStore(args.switches_file or None, facts_path=args.switch_facts_file or None)
     worker = LifecycleWorker(Store(args.db), SocketDriver(args.socket, timeout_seconds=600), host_capacity,
                              idle_after=args.idle_after, backup_max_age=20 * 3600,
-                             wake=lambda: switches.is_on('customer_execution'), observe=observe)
+                             wake=lambda: switches.is_on('customer_execution'), observe=observe, events=EventService(Store(args.db)))
     while True:
         # Counts only: no account, tenant, token or path ever reaches the journal.
         print(json.dumps(worker.tick(), sort_keys=True), flush=True)

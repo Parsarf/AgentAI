@@ -298,7 +298,7 @@ class OpenAccessChecks(Kit):
         summary = self.ledger.summary(self.a)
         self.assertEqual((summary['period_limit_microusd'], summary['admission_eligible']), (25_000_000, True))
         with self.store.connect() as con: limits = json.loads(con.execute("SELECT limits_json FROM entitlements WHERE id='open' AND account_id='a'").fetchone()[0])
-        self.assertEqual((limits['daily_microusd'], limits['task_microusd'], limits['max_queued_tasks']), (5_000_000, 5_000_000, 3))
+        self.assertEqual((limits['daily_microusd'], limits['task_microusd'], limits['max_queued_tasks']), (15_000_000, 5_000_000, 3))
         import calendar, time
         t = time.gmtime(self.now); self.assertEqual(limits['period_start_epoch'], calendar.timegm((t.tm_year, t.tm_mon, 1, 0, 0, 0)))
         self.assertTrue(self.admit('free1', amount=5_000_000))

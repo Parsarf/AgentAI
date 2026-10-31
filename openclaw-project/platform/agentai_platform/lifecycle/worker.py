@@ -15,13 +15,16 @@ from agentai_platform.security import NotFound
 
 from .coordinator import Coordinator
 from .sleep import CellFacts, IDLE_AFTER_SECONDS, can_sleep
+
+BROWSER_QUIET_SECONDS = 120        # a browser job that has not moved for this long (and has no hand-off window open) no longer keeps its cell up
 from .supervisor import OutcomeUncertain, SupervisorBusy
 from .types import Conflict
 
 
 class LifecycleWorker:
     def __init__(self, store, driver, capacity, *, coordinator=None, clock=time.time,
-                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None, wake=False, handover_idle=60, observe=None):
+                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None, wake=False, handover_idle=60, observe=None, events=None):
+        self.events = events   # EventService: tells the waiting customer's live timeline that their assistant is being woken
         self.store, self.driver, self.capacity = store, driver, capacity
         self.coordinator = coordinator or Coordinator(store, clock=clock)
         self.clock, self.owner, self.idle_after, self.batch = clock, owner, idle_after, batch
@@ -49,8 +52,12 @@ class LifecycleWorker:
                     UNION ALL SELECT strftime('%s',max(created_at)) FROM events WHERE account_id=?
                     UNION ALL SELECT strftime('%s',max(created_at)) FROM operations WHERE account_id=?)""", (a, a, a)).fetchone()[0]
                 busy_op = con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')", (a,)).fetchone()
+                # The browser a job uses can be the cell's own: while a browser job is live, or the customer still has the wheel in its hand-off window, the cell stays up under them.
+                now = self.clock()
+                browsing = con.execute("SELECT count(*) FROM browse_runs WHERE account_id=? AND status IN ('queued','running','handoff','paused','asking') "
+                                       "AND (coalesce(takeover_until,0)>? OR updated_epoch>?)", (a, now, now - BROWSER_QUIET_SECONDS)).fetchone()[0]
                 out.append((CellFacts(a, 'running', float(last or 0), count('running'), count('queued'),
-                                      count('waiting_for_approval') + count('paused'), bool(busy_op)), cell['generation']))
+                                      count('waiting_for_approval') + count('paused') + browsing, bool(busy_op)), cell['generation']))
         return out
 
     def enqueue_due_backups(self, max_age=20 * 3600):
@@ -99,20 +106,29 @@ class LifecycleWorker:
         queued = 0
         with self.store.connect() as con:
             due = [(r['account_id'], r['generation'], r['request_id']) for r in con.execute(
-                "SELECT c.account_id,d.generation,(SELECT id FROM customer_requests q WHERE q.account_id=c.account_id AND q.state='waiting' "
+                "SELECT c.account_id,d.generation,(SELECT id FROM customer_requests q WHERE q.account_id=c.account_id AND q.state='waiting' AND q.paused=0 "
                 "ORDER BY q.sequence LIMIT 1) AS request_id FROM lifecycle_cells c JOIN deployments d "
                 "ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.observed_state='stopped'").fetchall() if r['request_id']]
         for account, generation, request in due:
             try:
                 self.coordinator.request_system(account, key=f'wake-{generation}-{request}', generation=generation, kind='start')
                 queued += 1
+                self._say(account, request, 'Waking your assistant. Its workspace is starting up.', 'waking')
             except (Conflict, NotFound):
                 pass
         return queued
 
+    def _say(self, account, request, summary, step):
+        if self.events is None:
+            return
+        try:
+            self.events.append(account, request, 'progress', {'summary': summary, 'step': step}, 'lifecycle')
+        except Exception:
+            pass          # the live timeline is best-effort and never holds up a cell operation
+
     def waiting_accounts(self):
         with self.store.connect() as con:
-            return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting'")}
+            return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting' AND paused=0")}
 
     def tick(self):
         report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0, 'woken': 0, 'realigned': 0}

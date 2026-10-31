@@ -1,0 +1,4 @@
+PASS design-token check
+PASS TypeScript
+PASS Vite production build
+Existing optional lazy Mermaid ELK chunk size warning remains.

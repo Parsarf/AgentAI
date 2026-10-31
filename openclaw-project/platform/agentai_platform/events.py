@@ -16,6 +16,7 @@ import time
 import uuid
 from .lifecycle.coordinator import Coordinator, identifier
 from .lifecycle.types import Conflict
+from . import safety
 from .security import NotFound, Principal
 
 MAX_PAYLOAD_BYTES = 32 * 1024
@@ -29,6 +30,7 @@ EVENT_KINDS = {
     'task_queued': {'summary'},
     'task_started': {'summary'},
     'plan': {'summary', 'steps'},
+    'task_steps': {'revision', 'update_id', 'mode', 'steps'},
     'progress': {'summary', 'step', 'detail'},
     'search': {'query', 'sources'},
     'file_change': {'path', 'change'},
@@ -39,7 +41,8 @@ EVENT_KINDS = {
     'error': {'summary', 'category'},
     'budget': {'remaining_microusd', 'held_microusd', 'note'},
     'artifact': {'artifact_id', 'version', 'name', 'sha256'},
-    'result': {'summary'},
+    'result': {'summary', 'outcome', 'verify_level'},        # outcome (completed | partial | blocked | failed | cancelled) and verify_level (verified | unverified | not_applicable) from outcome.py
+    'activity': {'ref', 'tool', 'category', 'label', 'detail', 'output', 'status'},
 }
 
 SECRET_PATTERNS = [
@@ -49,6 +52,8 @@ SECRET_PATTERNS = [
     re.compile(
         r'(api[_-]?key|secret|password|token|credential)"?\s*[:=]\s*"[^"]{6,}"',
         re.IGNORECASE),
+    re.compile(r'\bBSA[A-Za-z0-9_-]{20,}'),                                          # Brave Search API keys
+    re.compile(r'x-subscription-token"?\s*[:=]\s*"?[^\s",;]+', re.IGNORECASE),        # ...and the header they travel in
 ]
 
 
@@ -66,10 +71,10 @@ def redact(value):
     return value
 
 
-def normalize(kind: str, payload: dict | None) -> dict:
+def normalize(kind: str, payload: dict | None, redact_on: bool = True) -> dict:
     if kind not in EVENT_KINDS:
         raise ValueError('unknown event kind')
-    payload = redact(payload or {})
+    payload = redact(payload or {}) if redact_on else dict(payload or {})
     if not isinstance(payload, dict):
         raise ValueError('event payload must be an object')
     unknown = set(payload) - EVENT_KINDS[kind]
@@ -95,24 +100,22 @@ class EventService:
         identifier(account_id)
         identifier(task_id)
         identifier(source)
-        public = normalize(kind, payload)
-        now = int(self.clock())
         with self.coordinator.transaction() as con:
-            if not con.execute('SELECT 1 FROM tasks WHERE account_id=? AND id=?',
-                               (account_id, task_id)).fetchone():
-                raise NotFound('unavailable')
-            count = con.execute('SELECT count(*) FROM events WHERE account_id=? AND task_id=?',
-                                (account_id, task_id)).fetchone()[0]
-            if count >= MAX_EVENTS_PER_TASK:
-                raise Conflict('event limit reached for this task')
-            sequence = con.execute('''SELECT coalesce(max(sequence),0)+1 FROM events
-                WHERE account_id=? AND task_id=?''', (account_id, task_id)).fetchone()[0]
-            event_id = uuid.uuid4().hex
-            con.execute('''INSERT INTO events(account_id,task_id,id,sequence,kind,public_payload)
-                VALUES (?,?,?,?,?,?)''',
-                        (account_id, task_id, event_id, sequence, kind,
-                         json.dumps({'source': source, **public}, sort_keys=True)))
-            return {'id': event_id, 'sequence': sequence, 'kind': kind, 'payload': public}
+            return self.append_in(con, account_id, task_id, kind, payload, source)
+
+    def append_in(self, con, account_id, task_id, kind, payload=None, source='system'):
+        """Append inside an existing transaction, allowing progress compare-and-swap to be atomic."""
+        public = normalize(kind, payload, safety.is_on(con, account_id, 'secret_redaction'))
+        if not con.execute('SELECT 1 FROM tasks WHERE account_id=? AND id=?', (account_id, task_id)).fetchone():
+            raise NotFound('unavailable')
+        count = con.execute('SELECT count(*) FROM events WHERE account_id=? AND task_id=?', (account_id, task_id)).fetchone()[0]
+        if count >= MAX_EVENTS_PER_TASK:
+            raise Conflict('event limit reached for this task')
+        sequence = con.execute('SELECT coalesce(max(sequence),0)+1 FROM events WHERE account_id=? AND task_id=?', (account_id, task_id)).fetchone()[0]
+        event_id = uuid.uuid4().hex
+        con.execute('INSERT INTO events(account_id,task_id,id,sequence,kind,public_payload) VALUES (?,?,?,?,?,?)',
+                    (account_id, task_id, event_id, sequence, kind, json.dumps({'source': source, **public}, sort_keys=True)))
+        return {'id': event_id, 'sequence': sequence, 'kind': kind, 'payload': public}
 
     # ---------- reads (customer path) ----------
 

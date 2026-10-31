@@ -1,0 +1,40 @@
+/* Parchment: the drawing's own paper, warm brown ink and an amber signal taken from the creature's glow. Legacy accent names remain aliases so
+   existing components keep the same styling contract. The previous dark world is kept as [data-theme='obsidian'] (set it on <html> to roll back). */
+:root {
+  color-scheme: light;
+  --bg: #f1e8d8; --bg-2: #eee3d1; --card: #f7f4ed; --elevated: #eadecd;
+  --ink: #24190e; --ink-2: #5c4c38; --ink-3: #6f5f4a;
+  --line: rgba(62,45,31,.12); --line-2: rgba(62,45,31,.22);
+  --accent: #3e2d1f; --accent-soft: rgba(62,45,31,.07);
+  --accent-line: rgba(62,45,31,.30); --on-accent: #f7efe2;
+  --signal: #f4a514; --signal-soft: #f7d8a5; --signal-ink: #8a5a00; --signal-deep: #c78414; --serif: Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --neon: var(--accent); --neon-2: #6b5a46;
+  --ok: #55704f; --warn: #98650f; --bad: #a3392e;
+  --info: #56677a; --creative: #7a6483;
+  --web: var(--ink-2); --code: var(--ink-2); --data: var(--ink-2); --automate: var(--ink-2);
+  --chart-1: var(--info); --chart-2: var(--ok); --chart-3: var(--accent);
+  --chart-4: var(--creative); --chart-5: var(--bad); --chart-6: var(--warn);
+  --r-xs: 6px; --r-sm: 8px; --r-md: 10px; --r: 12px; --r-xl: 14px; --r-lg: 16px; --r-pill: 999px;
+  --fs-label: 12px; --fs-2xs: 10px; --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-input: 16px; --fs-lead: 17px; --fs-lg: 18px; --fs-xl: 20px; --fs-2xl: 30px;   /* steps beside the ramp in DESIGN.md (12 label, 14 body, 26, 36) */
+  --wash-soft: rgba(62,45,31,.05); --wash: rgba(62,45,31,.07); --wash-strong: rgba(62,45,31,.10); --backdrop: rgba(36,25,14,.45);
+  --shadow: 0 10px 30px rgba(80,55,25,.12);
+  --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --gap: 16px; --pad: 24px; --ease: cubic-bezier(.2,.7,.2,1);
+}
+:root[data-theme='obsidian'] {
+  color-scheme: dark;
+  --bg: #111211; --bg-2: #171817; --card: #1c1d1c; --elevated: #272827;
+  --ink: #eee9df; --ink-2: #b5b2a8; --ink-3: #929187;
+  --line: rgba(238,233,223,.10); --line-2: rgba(238,233,223,.20);
+  --accent: #e5e2da; --accent-soft: rgba(229,226,218,.07);
+  --accent-line: rgba(229,226,218,.26); --on-accent: #1a1b19;
+  --signal: #e5e2da; --signal-soft: rgba(229,226,218,.16); --signal-ink: #e5e2da; --signal-deep: #e5e2da;
+  --neon-2: #b9b9b3;
+  --ok: #b3bdb2; --warn: #cfbd9e; --bad: #d7a69e;
+  --info: #c2c5c3; --creative: #c6c3be;
+  --wash-soft: rgba(255,255,255,.06); --wash: rgba(255,255,255,.07); --wash-strong: rgba(255,255,255,.08); --backdrop: rgba(0,0,0,.6);
+  --shadow: 0 12px 36px rgba(0,0,0,.18);
+}
+:root[data-compact='true'] { --gap: 10px; --pad: 14px; }
+:root[data-motion='reduced'] *, :root[data-motion='reduced'] *::before, :root[data-motion='reduced'] *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JEV Browser</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --ink: #1b1b1a; --muted: #6a6a66; --line: #e2e1dc;
+  --accent: #2f5bea; --ok: #1f8a4c; --warn: #b7791f; --bad: #c0392b; --jev: #7a3fe0; --browser: #0b8aa8;
+  --chip: #eeeee9; --shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131312; --panel: #1c1c1a; --ink: #ecebe6; --muted: #9b9a93; --line: #2e2e2b;
+    --accent: #7c9bff; --ok: #4cc283; --warn: #e0a84a; --bad: #ff7a6b; --jev: #b68cff; --browser: #4cc9e0; --chip: #262624; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131312; --panel: #1c1c1a; --ink: #ecebe6; --muted: #9b9a93; --line: #2e2e2b;
+  --accent: #7c9bff; --ok: #4cc283; --warn: #e0a84a; --bad: #ff7a6b; --jev: #b68cff; --browser: #4cc9e0; --chip: #262624; --shadow: none;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+.pill.on { color: var(--ok); } .pill.off { color: var(--bad); }
+main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; padding: 16px; max-width: 1500px; margin: 0 auto; }
+@media (max-width: 960px) { main { grid-template-columns: minmax(0, 1fr); } }
+main > section { min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pad { padding: 12px 14px; }
+textarea { width: 100%; min-height: 76px; resize: vertical; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; }
+textarea:focus, input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+input[type=text], input[type=number] { font: inherit; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+input[type=number] { width: 78px; }
+label.opt { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+.hint { color: var(--muted); font-size: 13px; }
+.status { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.chip { font-weight: 600; padding: 2px 10px; border-radius: 999px; background: var(--chip); color: var(--ink); }
+.chip.running { color: var(--accent); } .chip.done { color: var(--ok); } .chip.waiting, .chip.needs_user, .chip.password, .chip.sensitive { color: var(--warn); }
+.chip.error, .chip.stuck, .chip.stopped, .chip.max_steps { color: var(--bad); }
+.screen { position: relative; background: #0d0d0c; aspect-ratio: 16 / 10; overflow: hidden; }
+.screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.screen .empty { position: absolute; inset: 0; display: grid; place-items: center; color: #8a8a84; text-align: center; padding: 20px; }
+.banner { padding: 10px 14px; background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border-bottom: 1px solid var(--line); }
+.banner p { margin: 0 0 8px; }
+.answer { white-space: pre-wrap; padding: 12px 14px; border-top: 1px solid var(--line); }
+.summary { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.summary b { font-weight: 600; } .summary .bad { color: var(--bad); }
+#timeline { max-height: 74vh; overflow: auto; padding: 6px 10px 12px; }
+.step { margin: 12px 0 2px; font-size: 12px; font-weight: 700; letter-spacing: .6px; color: var(--muted); text-transform: uppercase; }
+.ev { border-left: 3px solid var(--line); margin: 3px 0; padding: 4px 8px 4px 10px; border-radius: 0 6px 6px 0; }
+.ev .top { display: flex; gap: 8px; align-items: baseline; }
+.ev .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; min-width: 52px; }
+.ev .kind { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; min-width: 66px; color: var(--muted); }
+.ev .sum { flex: 1; overflow-wrap: anywhere; }
+.ev.page { border-color: var(--browser); } .ev.page .kind { color: var(--browser); }
+.ev.jev_answer, .ev.jev_call, .ev.decision { border-color: var(--jev); } .ev.jev_answer .kind, .ev.jev_call .kind, .ev.decision .kind { color: var(--jev); }
+.ev.act { border-color: var(--ok); } .ev.act .kind { color: var(--ok); }
+.ev.runner, .ev.runner_event, .ev.browser_start { opacity: .75; }
+.ev.safety_stop, .ev.end, .ev.run_start { border-color: var(--warn); } .ev.safety_stop .kind, .ev.end .kind, .ev.run_start .kind { color: var(--warn); }
+.ev.bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, var(--panel)); } .ev.bad .kind { color: var(--bad); }
+.heads { margin: 4px 0 2px 74px; display: grid; gap: 4px; }
+.head { display: grid; grid-template-columns: 104px minmax(0, 1fr) 44px; gap: 8px; align-items: center; font-size: 12px; }
+.head > div { min-width: 0; }
+.head .nm { color: var(--muted); } .head .ch { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar { height: 6px; background: var(--chip); border-radius: 3px; position: relative; margin-top: 2px; } .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--jev); }
+.bar i.low { background: var(--warn); }
+.thumb { margin: 4px 0 2px 74px; max-width: 160px; border: 1px solid var(--line); border-radius: 6px; cursor: zoom-in; display: block; }
+.thumb.big { max-width: 100%; cursor: zoom-out; }
+details.raw { margin: 2px 0 0 74px; } details.raw summary { cursor: pointer; color: var(--muted); font-size: 11px; }
+details.raw pre { margin: 4px 0; padding: 8px; background: var(--bg); border-radius: 6px; font-size: 11px; overflow: auto; max-height: 260px; white-space: pre-wrap; }
+.tools { text-transform: none; letter-spacing: 0; display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.past { display: grid; gap: 4px; max-height: 240px; overflow: auto; }
+.past button { text-align: left; font-size: 12px; padding: 6px 10px; display: flex; gap: 10px; justify-content: space-between; }
+.past button span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>JEV Browser</h1>
+  <span class="pill" id="p-key"></span><span class="pill" id="p-state"></span>
+</header>
+<main>
+  <section>
+    <div class="card">
+      <h2>Request</h2>
+      <div class="pad">
+        <textarea id="goal" placeholder="e.g. Order me underwear from youngla.com"></textarea>
+        <div class="row">
+          <input type="text" id="url" placeholder="Start page (optional; taken from the request)" style="flex:1;min-width:220px">
+        </div>
+        <div class="row">
+          <button class="primary" id="go">Run</button>
+          <button class="danger" id="stop" disabled>Stop</button>
+          <label class="opt">steps <input type="number" id="steps" value="25" min="1" max="60"></label>
+          <label class="opt"><input type="checkbox" id="visible" checked> show the Chrome window</label>
+        </div>
+        <div class="hint" id="msg" style="margin-top:8px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2><span>The page JEV was last shown</span><span class="tools" id="url-now"></span></h2>
+      <div class="banner" id="banner" hidden>
+        <p id="banner-text"></p>
+        <div class="row" style="margin-top:0"><button id="close-browser">Close the browser</button></div>
+      </div>
+      <div class="screen"><img id="shot" alt="The page JEV was last shown" hidden><div class="empty" id="empty">Nothing yet. Write a request and press Run.</div></div>
+      <div class="status">
+        <span class="chip" id="state">idle</span>
+        <span id="elapsed">0.0 s</span><span id="steps-n">0 steps</span>
+      </div>
+      <div class="answer" id="result" hidden></div>
+    </div>
+  </section>
+  <section>
+    <div class="card">
+      <h2><span>What happened</span>
+        <span class="tools"><label class="opt"><input type="radio" name="f" value="all"> everything</label><label class="opt"><input type="radio" name="f" value="key" checked> key events</label><label class="opt"><input type="radio" name="f" value="bad"> problems</label></span></h2>
+      <div class="summary" id="summary" hidden></div>
+      <div id="timeline"><div class="hint pad">Every step shows here as it happens: the page that was read (with a picture), what JEV was sent and how sure it was of each answer, what was done, and whether the page changed. Problems are marked in red.</div></div>
+    </div>
+    <div class="card">
+      <h2>Earlier runs</h2>
+      <div class="pad past" id="past"><span class="hint">None yet.</span></div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let runId = null, since = 0, rows = [], timer = null, token = 0, lastCall = null, curStep = -1, shownShot = '';
+const STATUS = { done: 'done', needs_user: 'needs you', password: 'password page', sensitive: 'risky button', stuck: 'stuck', max_steps: 'step limit', error: 'error', stopped: 'stopped', running: 'running', waiting: 'waiting for you', unfinished: 'unfinished' };
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+async function api(path, body) {
+  try {
+    const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let data = null; try { data = await res.json(); } catch {}
+    return { ok: res.ok, status: res.status, data };
+  } catch { return { ok: false, status: 0, data: null }; }
+}
+const pct = p => Math.round(p * 100) + '%';
+const ms = v => v == null ? '' : v >= 1000 ? (v / 1000).toFixed(1) + ' s' : v + ' ms';
+const where = u => { try { const x = new URL(u); return x.hostname + x.pathname; } catch { return u || ''; } };
+
+// ---- how each log row reads in plain words
+const KEY = new Set(['run_start', 'page', 'jev_answer', 'jev_error', 'decision', 'act', 'safety_stop', 'end', 'crash', 'runner_event']);
+function isBad(r) {
+  switch (r.kind) {
+    case 'crash': case 'jev_error': case 'runner_stderr': case 'runner_error': return true;
+    case 'jev_call': return !!r.error;
+    case 'runner': return !r.ok;
+    case 'act': return !r.ok || r.changed === false;
+    case 'decision': return r.action == null;
+    case 'page': return r.controls.length === 0;
+    case 'runner_event': return /CLOSED|CRASHED|DISCONNECTED/.test(r.text);
+    case 'end': return r.status !== 'done';
+    default: return false;
+  }
+}
+function summary(r) {
+  switch (r.kind) {
+    case 'run_start': return `Goal: "${r.goal}" · start ${r.url} · may type ${r.texts.map(t => '"' + t + '"').join(', ') || 'nothing'} · up to ${r.steps} steps`;
+    case 'browser_start': return `Chrome started${r.headless ? ' (hidden)' : ''}`;
+    case 'page': return `Read ${where(r.url)}: ${r.controls.length} controls, ${r.text_chars} characters of text${r.controls.length === 0 ? ' — JEV had nothing to click' : ''}`;
+    case 'jev_call': return r.error ? `JEV failed in ${ms(r.ms)}: ${r.error}` : `Sent JEV ${Object.keys(r.questions).length} questions, answered in ${ms(r.ms)}`;
+    case 'jev_answer': return 'JEV answered';
+    case 'jev_error': return `JEV error: ${r.error}`;
+    case 'decision': return r.action == null ? `Nothing to do: ${r.note}` : `Decided: ${r.action}${r.label ? ' "' + r.label + '"' : ''}${r.value ? ' with "' + r.value + '"' : ''}`;
+    case 'runner': return `browser ${r.cmd} ${r.action || r.url || ''} → ${r.ok ? 'ok' : 'FAILED ' + (r.error || '')} (${ms(r.ms)})`;
+    case 'runner_error': return `browser ${r.cmd} broke: ${r.error}`;
+    case 'runner_event': return 'Tab: ' + r.text;
+    case 'runner_stderr': return 'Browser said: ' + r.text;
+    case 'act': return `${r.action}${r.label ? ' "' + r.label + '"' : ''} → ${r.ok ? (r.changed ? 'done, the page changed' : 'done, but the page did NOT change') : 'FAILED: ' + r.error}`;
+    case 'safety_stop': return 'Stopped: ' + r.why;
+    case 'end': return `Ended: ${STATUS[r.status] || r.status} — ${r.detail}`;
+    case 'crash': return `Crash: ${r.error}`;
+    default: return r.kind;
+  }
+}
+function render(r) {
+  const e = el('div', 'ev ' + r.kind + (isBad(r) ? ' bad' : '')); e.dataset.kind = r.kind; e.dataset.bad = isBad(r) ? '1' : '';
+  const top = el('div', 'top'); top.append(el('span', 't', '+' + (r.t || 0).toFixed(1) + 's'), el('span', 'kind', r.kind.replace('_', ' ')), el('span', 'sum', summary(r))); e.append(top);
+  if (r.kind === 'jev_answer' && lastCall) {
+    const box = el('div', 'heads');
+    for (const [name, [choice, p]] of Object.entries(r.answers)) {
+      const row = el('div', 'head'); const bar = el('div', 'bar'); const i = el('i', p < 0.6 ? 'low' : ''); i.style.width = pct(p); bar.append(i);
+      const w = el('div'); w.append(el('div', 'ch', ((lastCall.questions[name] || {})[choice]) || choice), bar);
+      row.append(el('span', 'nm', name.replace('_', ' ')), w, el('span', '', pct(p))); box.append(row);
+    }
+    e.append(box);
+  }
+  if (r.kind === 'page' && r.shot && runId) {
+    const img = el('img', 'thumb'); img.loading = 'lazy'; img.alt = 'The page as it looked'; img.src = `/api/shot/${runId}/${r.shot}`;
+    img.addEventListener('click', () => img.classList.toggle('big')); e.append(img);
+  }
+  const d = el('details', 'raw'); d.append(el('summary', '', 'details'));
+  const raw = r.kind === 'page' ? { ...r, controls: r.controls.map(c => `${c.ref}: ${c.tag}${c.type ? '/' + c.type : ''} "${c.label}"${c.value ? ' = "' + c.value + '"' : ''}`) } : r;
+  d.append(el('pre', '', JSON.stringify(raw, null, 1))); e.append(d);
+  return e;
+}
+function addRows(list) {
+  const tl = $('timeline'); const stick = tl.scrollTop + tl.clientHeight >= tl.scrollHeight - 40;
+  if (!rows.length) tl.textContent = '';
+  for (const r of list) {
+    if (r.kind === 'jev_call' && !r.error) lastCall = r;
+    if (r.step !== curStep) { curStep = r.step; tl.append(el('div', 'step', r.step ? 'Step ' + r.step : 'Setup')); }
+    rows.push(r); tl.append(render(r));
+    if (r.kind === 'page' && r.shot && r.shot !== shownShot && runId) { shownShot = r.shot; const img = $('shot'); img.src = `/api/shot/${runId}/${r.shot}`; img.hidden = false; $('empty').hidden = true; $('url-now').textContent = where(r.url); }
+    if (r.kind === 'page' && !r.shot) $('url-now').textContent = where(r.url);
+  }
+  applyFilter(); if (stick) tl.scrollTop = tl.scrollHeight;
+}
+function applyFilter() {
+  const f = document.querySelector('input[name=f]:checked').value;
+  for (const e of $('timeline').querySelectorAll('.ev')) e.hidden = f === 'key' ? !KEY.has(e.dataset.kind) : f === 'bad' ? !(e.dataset.bad || e.dataset.kind === 'run_start' || e.dataset.kind === 'end') : false;
+}
+document.querySelectorAll('input[name=f]').forEach(i => i.addEventListener('change', applyFilter));
+
+function showSummary() {
+  const acts = rows.filter(r => r.kind === 'act'), box = $('summary'); box.textContent = ''; box.hidden = !rows.length;
+  const items = [['steps', rows.filter(r => r.kind === 'page').length], ['JEV calls', rows.filter(r => r.kind === 'jev_call').length],
+    ['JEV errors', rows.filter(r => r.kind === 'jev_error' || (r.kind === 'jev_call' && r.error)).length, 1], ['actions', acts.length],
+    ['failed', acts.filter(r => !r.ok).length, 1], ['no change', acts.filter(r => r.ok && r.changed === false).length, 1], ['tab closes', rows.filter(r => r.kind === 'runner_event' && /CLOSED/.test(r.text)).length, 1]];
+  for (const [name, n, warn] of items) { const s = el('span', warn && n ? 'bad' : ''); s.append(el('b', '', String(n)), document.createTextNode(' ' + name)); box.append(s); }
+}
+
+// ---- the run
+function setState(s) {
+  const word = s.active ? (s.state === 'waiting' ? 'waiting' : 'running') : (s.status || 'unfinished');
+  const st = $('state'); st.textContent = STATUS[word] || word; st.className = 'chip ' + word;
+  $('p-state').textContent = s.active ? (s.state === 'waiting' ? 'waiting for you' : 'running') : 'idle';
+  const last = rows.length ? rows[rows.length - 1] : null; $('elapsed').textContent = (last ? last.t : 0).toFixed(1) + ' s';
+  const n = rows.filter(r => r.kind === 'act').length; $('steps-n').textContent = n + (n === 1 ? ' action' : ' actions');
+  $('go').disabled = s.active; $('stop').disabled = !s.active;
+  $('banner').hidden = !s.can_close;
+  if (s.can_close) $('banner-text').textContent = `It stopped for you: ${s.detail} The Chrome window is open and is yours. Press "Close the browser" when you are done.`;
+  const res = $('result'); res.hidden = s.active || !s.detail; if (!s.active && s.detail) { res.textContent = `${STATUS[s.status] || s.status}: ${s.detail}`; }
+  showSummary();
+}
+async function poll(my) {
+  const r = await api(`/api/run/${runId}?since=${since}`);
+  if (my !== token) return;
+  if (r.ok) {
+    const s = r.data; if (s.rows.length) { since = s.rows[s.rows.length - 1].n; addRows(s.rows); }
+    setState(s);
+    if (shownShot === '' && !rows.some(x => x.kind === 'page' && x.shot)) $('empty').textContent = s.active ? 'Waiting for the first page…' : 'This run has no pictures (it was saved before pictures were kept).';
+    if (!s.active) { loadPast(); return; }
+  }
+  timer = setTimeout(() => poll(my), 700);
+}
+function attach(id, live) {
+  clearTimeout(timer); token++; const my = token; runId = id; since = 0; rows = []; lastCall = null; curStep = -1; shownShot = '';
+  $('timeline').textContent = ''; $('shot').hidden = true; $('empty').hidden = false; $('empty').textContent = live ? 'Starting Chrome…' : 'Loading this run…'; $('url-now').textContent = ''; $('result').hidden = true;
+  poll(my);
+}
+$('go').addEventListener('click', async () => {
+  $('msg').textContent = '';
+  const r = await api('/api/run', { goal: $('goal').value, url: $('url').value, steps: +$('steps').value, visible: $('visible').checked });
+  if (!r.ok) { $('msg').textContent = (r.data && r.data.error) || 'Could not start.'; return; }
+  attach(r.data.id, true);
+});
+$('goal').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('go').click(); });
+$('stop').addEventListener('click', () => runId && api(`/api/run/${runId}/stop`, {}));
+$('close-browser').addEventListener('click', () => runId && api(`/api/run/${runId}/close`, {}));
+
+async function loadPast() {
+  const r = await api('/api/status'); if (!r.ok) return; const box = $('past'); box.textContent = '';
+  if (!r.data.past.length) { box.append(el('span', 'hint', 'None yet.')); return; }
+  for (const p of r.data.past) {
+    const b = el('button'); b.append(el('span', '', `${new Date(p.at * 1000).toLocaleString()} · ${p.goal || '(no goal)'}`), el('span', 'hint', `${STATUS[p.status] || p.status} · ${p.steps} actions`));
+    b.addEventListener('click', () => attach(p.id, false)); box.append(b);
+  }
+}
+(async () => {
+  const r = await api('/api/status'); if (!r.ok) return;
+  $('p-key').textContent = 'JEV key ' + (r.data.key ? 'set' : 'missing'); $('p-key').className = 'pill ' + (r.data.key ? 'on' : 'off');
+  $('p-state').textContent = 'idle'; if (!r.data.key) $('msg').textContent = 'Put TYPESAFE_API_KEY=... in jev-browser/.env and restart the dashboard.';
+  loadPast(); if (r.data.active) attach(r.data.active, true);
+})();
+</script>
+</body>
+</html>

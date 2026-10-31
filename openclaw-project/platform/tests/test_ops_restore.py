@@ -82,6 +82,28 @@ class RestoreChecks(unittest.TestCase):
         self.assertEqual(self.q("SELECT state FROM task_reservations WHERE task_id='t-run'"), [('settled',)])
         self.assertGreaterEqual(report['neutralized']['schedules_paused'], 1)
 
+    def test_a_run_restored_mid_flight_is_stopped_with_its_goal_and_its_sessions_come_back(self):
+        con = self.connect(self.live)
+        put(con, "INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch,conversation_id,parked_reason,continue_goal,goal_mode) "
+                 "VALUES ('a','r1','x','p-a','k','h','m','running',1,'c-a','browser_question',1,1)")
+        put(con, "INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch,conversation_id,continue_goal,goal_mode) "
+                 "VALUES ('a','r0','x','p-a','k0','h','m','completed',1,'c-a',1,1)")
+        put(con, "INSERT INTO chat_deliveries(account_id,request_id,attempt,idempotency_key,payload_hash,state,native_run_id,created_epoch,updated_epoch,kind) VALUES ('a','r1',1,'r1-a1','h','acknowledged','r1-a1',5,5,'turn')")
+        put(con, "INSERT INTO browse_sessions(account_id,request_id,session,job_id,n_offset,created_epoch) VALUES ('a','r1',2,?,3,5)", 'f' * 32)
+        con.commit(); con.close()
+        backup = self.root / 'with-run.sqlite3'
+        src = sqlite3.connect(self.live); dst = sqlite3.connect(backup); src.backup(dst); dst.close(); src.close()
+        con = self.connect(self.live); con.execute('PRAGMA foreign_keys=OFF')
+        for table in ('chat_deliveries', 'browse_sessions', 'customer_requests'):
+            con.execute(f"DELETE FROM {table} WHERE account_id='a'")
+        con.commit(); con.close()
+        report = restore_account(backup, self.live, A, self.out)
+        self.assertEqual(self.q("SELECT state,outcome,parked_reason,continue_goal FROM customer_requests WHERE id='r1'"), [('cancelled', 'cancelled', None, 0)])        # nothing resumes by itself
+        self.assertEqual(self.q("SELECT state,continue_goal FROM customer_requests WHERE id='r0'"), [('completed', 0)])                                         # a goal waiting for its next turn does not get one
+        self.assertEqual(self.q("SELECT state FROM chat_deliveries WHERE request_id='r1'"), [('aborted',)])                                                  # the runtime's run is not in the restored cell
+        self.assertEqual(self.q("SELECT session,job_id,n_offset FROM browse_sessions WHERE request_id='r1'"), [(2, 'f' * 32, 3)])
+        self.assertEqual(report['neutralized']['goals_stopped'], 1)
+
     def test_missing_in_flight_work_comes_back_blocked_with_no_open_reservation(self):
         con = self.connect(self.live); con.execute("DELETE FROM task_reservations"); con.execute("DELETE FROM tasks WHERE id='t-run'"); con.commit(); con.close()
         restore_account(self.backup, self.live, A, self.out)

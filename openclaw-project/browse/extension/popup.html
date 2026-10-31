@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumina</title>
+<link rel="stylesheet" href="src/popup.css">
+</head>
+<body>
+<main>
+  <h1>Lumina</h1>
+  <p id="status" role="status" aria-live="polite">…</p>
+  <form id="pair" hidden>
+    <label for="code">Pairing code from Lumina → Settings → Your browser</label>
+    <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" placeholder="ABCD-2345" inputmode="text">
+    <button type="submit" class="primary">Connect</button>
+    <p id="error" role="alert" hidden></p>
+  </form>
+  <button id="toggle" type="button" hidden></button>
+  <p class="note">Lumina only works in tabs it opens itself, grouped as “Lumina”. Press Cancel on Chrome’s “is debugging this browser” bar, or Turn off here, to stop it at once.</p>
+  <p class="note">While it is on, Lumina can use any site in those tabs, including ones you are signed in to. Install this extension in a separate Chrome profile used only for Lumina.</p>
+</main>
+<script type="module" src="src/popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "image": "ghcr.io/openclaw/openclaw@sha256:REPLACE_WITH_HOST_VERIFIED_DIGEST",
+  "profile": "trial-unmeasured-v1",
+  "backup_root": "/var/lib/agentai-cells/backups",
+  "max_cells": 10
+}

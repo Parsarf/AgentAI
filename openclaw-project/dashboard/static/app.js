@@ -7,6 +7,28 @@
   document.querySelectorAll("nav a").forEach(function (a) {
     if (a.getAttribute("href") === location.pathname) a.classList.add("on");
   });
+  // small-screen menu
+  const menuBtn = document.getElementById("menu-btn");
+  if (menuBtn) menuBtn.addEventListener("click", function () { document.body.classList.toggle("menu"); });
+  document.addEventListener("click", function (e) {
+    if (document.body.classList.contains("menu") && !e.target.closest("#side") && !e.target.closest("#menu-btn")) document.body.classList.remove("menu");
+  });
+  // table search: <input data-filter-table="id"> hides rows that do not contain the text (textContent only)
+  document.querySelectorAll("input[data-filter-table]").forEach(function (box) {
+    const holder = document.getElementById(box.getAttribute("data-filter-table"));
+    if (!holder) return;
+    box.addEventListener("input", function () {
+      const q = box.value.trim().toLowerCase();
+      holder.querySelectorAll("tr").forEach(function (tr, i) {
+        if (i === 0) return;
+        tr.style.display = !q || tr.textContent.toLowerCase().indexOf(q) >= 0 ? "" : "none";
+      });
+    });
+  });
+  // the home page refreshes its numbers every 30 seconds unless you are typing or a form is focused
+  if (location.pathname === "/") setInterval(function () {
+    if (!document.hidden && !document.activeElement.closest("form")) location.reload();
+  }, 30000);
   // theme
   const themeBtn = document.getElementById("theme-toggle");
   function setTheme(t) {

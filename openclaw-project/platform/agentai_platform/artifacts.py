@@ -62,6 +62,27 @@ class ArtifactService:
             self.coordinator._audit(con, account_id, 'worker', artifact_id, 'artifact.capture', 'completed')
             return {'artifact_id': artifact_id, 'version': 1, 'sha256': digest, 'size_bytes': len(data)}
 
+    def capture_or_version(self, *, account_id, project_id, task_id, name, media_type, data: bytes):
+        """Trusted host path for files an assistant wrote: same name in the project -> a new version (nothing if unchanged)."""
+        digest = hashlib.sha256(data).hexdigest()
+        with self.coordinator.transaction() as con:
+            row = con.execute('''SELECT id,version,sha256 FROM artifacts WHERE account_id=? AND project_id=? AND display_name=?
+                ORDER BY created_at DESC, version DESC LIMIT 1''', (account_id, project_id, name[:128])).fetchone()
+        if row is None:
+            return self.capture(account_id=account_id, project_id=project_id, task_id=task_id, name=name, media_type=media_type, data=data)
+        if row['sha256'] == digest:
+            return None
+        if row['version'] >= 1000 or len(data) > MAX_ARTIFACT_BYTES:
+            raise Conflict('version limit reached')
+        version = row['version'] + 1
+        with self.coordinator.transaction() as con:
+            con.execute('''INSERT INTO artifacts(account_id,project_id,task_id,id,version,display_name,media_type,size_bytes,sha256,storage_ref)
+                VALUES (?,?,?,?,?,?,?,?,?,?)''', (account_id, project_id, task_id, row['id'], version, name[:128], media_type, len(data), digest,
+                                                   f'artifacts/{row["id"]}/{version}'))
+            self.storage.write_private([account_id, 'artifacts', row['id'], str(version)], bytes(data))
+            self.coordinator._audit(con, account_id, 'worker', row['id'], 'artifact.version', 'completed')
+        return {'artifact_id': row['id'], 'version': version, 'sha256': digest, 'size_bytes': len(data)}
+
     def add_version(self, principal: Principal, artifact_id: str, data: bytes) -> dict:
         """Customers may add a new immutable version of their own artifact."""
         identifier(artifact_id)
@@ -94,7 +115,7 @@ class ArtifactService:
         identifier(project_id)
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            rows = con.execute('''SELECT a.id,a.version,a.display_name,a.media_type,a.size_bytes,a.sha256,a.created_at,
+            rows = con.execute('''SELECT a.id,a.version,a.display_name,a.media_type,a.size_bytes,a.sha256,a.created_at,a.task_id,
                     t.state AS task_state
                 FROM artifacts a LEFT JOIN tasks t ON t.account_id=a.account_id AND t.id=a.task_id
                 WHERE a.account_id=? AND a.project_id=? ORDER BY a.created_at,a.id,a.version LIMIT 200''',

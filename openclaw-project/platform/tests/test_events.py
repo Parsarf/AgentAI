@@ -3,7 +3,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from agentai_platform.events import EventService, normalize, redact, RETENTION_DAYS
-from agentai_platform.chat import ChatService, ChatDriver, FixedRoute, synthetic_gateway_factory
+from agentai_platform.chat import ChatService, FixedRoute
+from agentai_platform.chat_driver import ChatDriver, synthetic_gateway_factory
 from agentai_platform.events import EventService as ES
 from agentai_platform.gateway import SyntheticGateway
 from agentai_platform.budget import BudgetLedger

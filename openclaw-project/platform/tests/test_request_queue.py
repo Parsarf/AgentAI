@@ -63,6 +63,54 @@ class SerialQueueChecks(unittest.TestCase):
             with self.assertRaises(Conflict):self.q.finish(claim,bad)
         self.q.finish(claim,receipt)
         with self.assertRaises(Conflict):self.q.finish(claim,receipt)
+    def test_queue_position_counts_the_running_task_and_earlier_waiting_tasks_of_any_account(self):
+        a1 = self.submit(key='a1'); b1 = self.submit(self.b, key='b1'); a2 = self.submit(key='a2')
+        ahead = lambda who, r: self.q.get(who, r['id'])['ahead']
+        self.assertEqual([ahead(self.a, a1), ahead(self.b, b1), ahead(self.a, a2)], [0, 1, 2])
+        claim = self.claim()                                                      # a1 now holds the slot
+        self.assertEqual([ahead(self.a, a1), ahead(self.b, b1), ahead(self.a, a2)], [None, 1, 2])
+        self.assertEqual([r['ahead'] for r in self.q.get(self.a)], [2, None])       # the list carries it too (newest first)
+        self.q.finish(claim, self.receipt(claim)); self.assertEqual([ahead(self.b, b1), ahead(self.a, a2)], [0, 1])
+        self.assertNotIn('account_id', self.q.get(self.b, b1['id']))                 # only a number crosses accounts
+
+    def test_a_paused_task_keeps_its_place_but_is_never_claimed_and_does_not_count_as_ahead(self):
+        a1 = self.submit(key='a1'); b1 = self.submit(self.b, key='b1'); a2 = self.submit(key='a2')
+        held = self.q.pause(self.a, a1['id'])
+        self.assertEqual((held['state'], held['paused'], held['ahead']), ('waiting', True, None))
+        self.assertEqual(self.q.pause(self.a, a1['id'])['paused'], True)              # pressing it twice changes nothing
+        self.assertEqual(self.q.get(self.b, b1['id'])['ahead'], 0); self.assertEqual(self.q.get(self.a, a2['id'])['ahead'], 1)
+        claim = self.claim(); self.assertEqual(claim.request_id, b1['id'])             # the paused task was skipped
+        self.q.finish(claim, self.receipt(claim)); self.assertEqual(self.claim().request_id, a2['id'])
+        resumed = self.q.resume(self.a, a1['id']); self.assertEqual((resumed['paused'], resumed['state']), (False, 'waiting'))
+        self.assertEqual(self.q.resume(self.a, a1['id'])['paused'], False)
+        with self.assertRaises(Conflict): self.q.pause(self.a, a2['id'])              # it has started: no safe place to stop it
+        with self.assertRaises(NotFound): self.q.pause(self.b, a1['id'])
+        with self.assertRaises(NotFound): self.q.resume(self.b, a1['id'])
+
+    def test_paused_tasks_still_count_toward_the_queue_limit_and_can_be_cancelled(self):
+        ids = [self.submit(key=f'k{i}')['id'] for i in range(3)]
+        for i in ids: self.q.pause(self.a, i)
+        with self.assertRaises(Conflict): self.submit(key='k9')                         # holding work is not a way around the limit of 3
+        self.assertEqual(self.q.cancel(self.a, ids[0])['state'], 'cancelled'); self.assertIsNone(self.claim())
+
+    def test_a_paused_task_survives_a_restart(self):
+        a1 = self.submit(); self.q.pause(self.a, a1['id'])
+        again = RequestQueue(self.store, clock=lambda: self.now)
+        self.assertEqual(again.get(self.a, a1['id'])['paused'], True); self.assertIsNone(again.claim(owner='w', capacity=CAPACITY))
+
+    def test_only_a_failed_or_cancelled_task_can_be_retried_and_attempts_are_counted(self):
+        a1 = self.submit(); self.assertRaises(Conflict, self.q.retry_source, self.a, a1['id'])           # still waiting
+        self.q.cancel(self.a, a1['id'])
+        with self.store.connect() as c: c.execute("UPDATE customer_requests SET conversation_id='c1',intent='plan',context_json='{\"mode\":\"text\"}' WHERE id=?", (a1['id'],))
+        src = self.q.retry_source(self.a, a1['id'])
+        self.assertEqual((src['message'], src['conversation_id'], src['intent'], src['context'], src['attempts'], src['latest']), ('private request', 'c1', 'plan', {'mode': 'text'}, 0, None))
+        with self.assertRaises(NotFound): self.q.retry_source(self.b, a1['id'])
+        with self.store.connect() as c: c.execute("UPDATE customer_requests SET conversation_id=NULL WHERE id=?", (a1['id'],))
+        with self.assertRaises(Conflict): self.q.retry_source(self.a, a1['id'])                          # nowhere to retry it
+        with self.store.connect() as c:
+            c.execute("UPDATE customer_requests SET conversation_id='c1',state='completed' WHERE id=?", (a1['id'],))
+        with self.assertRaises(Conflict): self.q.retry_source(self.a, a1['id'])                          # nothing to retry
+
     def test_revoked_author_skipped(self):
         self.submit();self.submit(self.b)
         with self.store.connect() as c:c.execute("UPDATE memberships SET status='revoked' WHERE account_id='a'")

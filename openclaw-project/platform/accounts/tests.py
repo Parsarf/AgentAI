@@ -332,7 +332,7 @@ class AccountBoundaryTests(TestCase):
         OperatorGrant.objects.update(expires_at=timezone.now()-timedelta(seconds=1))
         self.assertEqual(self.post(op,'/internal/accounts/a/suspend').status_code,404)
         a=self.signed()
-        for _ in range(60): self.assertEqual(a.get('/v1/me',secure=True).status_code,200)
+        for _ in range(240): self.assertEqual(a.get('/v1/me',secure=True).status_code,200)
         self.assertEqual(a.get('/v1/me',secure=True).status_code,429)
 
     def test_host_role_change_revokes_access_and_grants(self):

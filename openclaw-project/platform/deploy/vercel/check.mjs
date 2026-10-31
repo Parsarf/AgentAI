@@ -40,3 +40,8 @@ assert.equal(target('/v1/requests'),'https://backend.agentai-demo.com/v1/request
 assert.equal(target('/app/'),'https://backend.agentai-demo.com/app/');
 assert.equal(target('/internal/'),null);
 build('');console.log('Build output checks passed (root, account slashes, APIs and internal exclusion).');
+// The public privacy policy is served at /privacy in both modes, ahead of the filesystem, and is never sent to the server.
+assert.equal(target('/privacy'), '/privacy.html'); assert.equal(target('/privacy/'), '/privacy.html'); assert.equal(target('/privacy.html'), null);
+assert.ok(existsSync(new URL('./.vercel/output/static/privacy.html', import.meta.url)));
+const setup = build(''); assert.ok(setup.routes.some(r => r.src === '^/privacy/?$' && r.dest === '/privacy.html')); assert.ok(existsSync(new URL('./.vercel/output/static/privacy.html', import.meta.url)));
+console.log('Vercel privacy page checks passed.');

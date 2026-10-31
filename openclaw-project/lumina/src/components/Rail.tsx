@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as I from './Icons';
-import { api, type EventRow } from '../lib/api';
-import { activeTask, counts, phase, visibleEvents } from '../lib/tasks';
+import { useActivity } from '../lib/useActivity';
+import { taskProgress, STEP_LABEL, type WorkProgress } from '../lib/taskProgress';
+import { activeTask, counts, phase, statusLabel } from '../lib/tasks';
 import { elapsed, title } from '../lib/format';
 import { useData } from '../state/data';
+import { agentActivityFor } from '../lib/orbs';
+import Orb from './Orb';
 
 function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
@@ -12,35 +15,39 @@ function useNow(active: boolean) {
   return now;
 }
 
+export function TaskSteps({ progress }: { progress: WorkProgress }) {
+  const steps = progress.mode === 'direct' ? progress.steps.slice(-5) : progress.steps;
+  return <ul className="steps task-steps" aria-label={progress.mode === 'plan' ? 'Phase plan' : 'Task activity'}>
+    {steps.map(step => <li key={step.id} className={step.status === 'running' ? 'now' : step.status}>
+      <span className="mk" aria-hidden="true">{step.status === 'done' && <I.Check width={12} height={12} />}</span>
+      <div><span className="task-step-title">{step.title}</span><span className="task-step-status">{STEP_LABEL[step.status]}</span>
+        {step.checkpoint && <p className="task-checkpoint">Checkpoint: {step.checkpoint}</p>}
+        {step.result && <p className="task-checkpoint">{step.result}</p>}
+      </div>
+    </li>)}
+  </ul>;
+}
+
 export function ActiveTask() {
   const { requests } = useData();
-  const task = activeTask(requests);
-  const [events, setEvents] = useState<EventRow[]>([]);
-  const now = useNow(!!task);
-  const id = task?.id;
-  useEffect(() => {
-    if (!id) { setEvents([]); return; }
-    let stop = false;
-    const load = async () => { try { const r = await api<{ events: EventRow[] }>('GET', `/v1/tasks/${id}/events?after=0&limit=50`); if (!stop) setEvents(visibleEvents(r.events)); } catch { /* keep last */ } };
-    load(); const t = setInterval(load, 3000); return () => { stop = true; clearInterval(t); };
-  }, [id]);
-  return (
-    <section className="panel card" aria-labelledby="at-h">
-      <div className="card-h"><h2 id="at-h">Active Task</h2>{task && <span className={`pill${phase(task.state) === 'running' ? ' live' : ''}`}>{phase(task.state) === 'running' ? 'Live' : 'Queued'}</span>}</div>
-      {!task ? <p className="muted">Nothing is running. Describe a task to get started.</p> : (
-        <>
-          <Link to={`/tasks/${task.id}`} style={{ display: 'block' }}>{title(task.message, 70)}</Link>
-          <div className="bar" style={{ margin: '12px 0 6px' }} aria-hidden><i /></div>
-          <p className="faint" style={{ fontSize: 12.5 }}>Working… {elapsed(task.created_epoch, now)}</p>
-          <ul className="steps">
-            {events.slice(-4).map((e, n, arr) => {
-              const last = n === arr.length - 1;
-              return <li key={`${e.created_at}-${n}`} className={last ? 'now' : 'done'}><span className="mk">{!last && <I.Check width={12} height={12} />}</span>{e.payload?.summary ?? e.kind}</li>;
-            })}
-            {!events.length && <li className="now"><span className="mk" />Waiting to start</li>}
-          </ul>
-        </>)}
-    </section>);
+  // Show actual running work ahead of newer queued messages, then retain the latest result.
+  const task = activeTask(requests.filter(r => phase(r.state) === 'running')) ?? activeTask(requests)
+    ?? requests.filter(r => ['completed', 'failed', 'cancelled'].includes(r.state)).sort((a, b) => b.created_epoch - a.created_epoch)[0];
+  const active = !!task && ['queued', 'running'].includes(phase(task.state));
+  const { events, err } = useActivity(task?.id ?? '', active);
+  const now = useNow(active);
+  const progress = task ? taskProgress(events, task) : null;
+  const activity = task ? agentActivityFor(task.state, events) : null;
+  const label = task?.parked ? 'Waiting for you' : progress?.steps.find(s => s.status === 'running')?.title ?? activity?.label;
+  return <section className="panel card active-task" aria-labelledby="at-h">
+    <div className="card-h"><h2 id="at-h">Active Task</h2>{task && <span className={`pill${active && !task.parked && phase(task.state) === 'running' ? ' live' : ''}`}>{statusLabel(task)}</span>}</div>
+    {!task ? <p className="muted">Nothing is running. Describe a task to get started.</p> : <>
+      <Link to={`/tasks/${task.id}`} className="active-task-title">{title(task.message, 100)}</Link>
+      {active && <p className="faint orb-row active-task-current" role="status">{!task.parked && activity && <Orb state={activity.orb} size={20} />}{label ?? 'Waiting to start'}<span>{elapsed(task.created_epoch, now)}</span></p>}
+      {progress && progress.steps.length > 0 ? <TaskSteps progress={progress} /> : <p className="faint active-task-empty">{active ? 'Activity will appear as work begins.' : 'No step updates were recorded.'}</p>}
+      {err && <p className="faint" role="status">{err}</p>}
+    </>}
+  </section>;
 }
 
 export function Today() {

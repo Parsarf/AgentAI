@@ -9,13 +9,14 @@ import uuid
 from django.db import connection
 from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import render
+from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.budget import BudgetLedger, BudgetDenied
 from agentai_platform.chat import ChatService, denial_category
 from agentai_platform.request_queue import RequestQueue
 from agentai_platform.security import Principal, NotFound
 from agentai_platform.lifecycle.types import Conflict
 from .lifecycle import AccountStore
-from .services import Denied
+from .services import Denied, rate
 from .views import endpoint, customer
 
 ERROR_CATEGORIES = {
@@ -33,15 +34,28 @@ def execution_on():
     return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('customer_execution')
 
 
+def browse_on():
+    from django.conf import settings
+    from agentai_platform.switches import SwitchStore
+    return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('browse_tasks')
+
+
+from agentai_platform.events import EventService
+
+
 def service():
     from django.conf import settings
     from agentai_platform.chat import FixedRoute
     store = AccountStore(connection.settings_dict['NAME'])
     live = execution_on()
+    browse = browse_on()
     # Without the owner switch no route is priced, so a send waits unfunded exactly as before.
     kwargs = {'pricer': FixedRoute(settings.CUSTOMER_RESERVATION_MICROUSD, 'plan-reservation-v1')} if live else {}
+    from agentai_platform.bridge_client import BridgeRpc
+    from agentai_platform.gateway import NativeGateway
+    gateway = (lambda account: NativeGateway(BridgeRpc(account, settings.CELL_BRIDGE_SOCKET))) if live else None      # steering and goal controls talk to the customer's own cell
     return ChatService(store, queue=RequestQueue(store, require_cell=live), ledger=BudgetLedger(store, service_limit_microusd=settings.SERVICE_ALLOCATION_MICROUSD if live else None),
-                       execution=live, **kwargs)
+                       execution=live, browse=browse, events=EventService(store), gateway_factory=gateway, **kwargs)
 
 
 def principal(request):
@@ -59,6 +73,17 @@ def _error_redirect(request, conversation_id, error, category=None):
     request.form_redirect = target
 
 
+@endpoint(['POST'], ['title'], field_limits={'title': 90})
+def chat_rename(request, conversation_id):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        return JsonResponse({'conversation': service().rename_conversation(principal(request), conversation_id, request.input.get('title', ''))})
+    except NotFound:
+        raise Denied()
+
+
 @endpoint(['POST'], [])
 def chat_archive(request, conversation_id):
     denied = customer(request)
@@ -72,6 +97,19 @@ def chat_archive(request, conversation_id):
         raise Denied()
 
 
+@endpoint(['POST'], [])
+def chat_restore(request, conversation_id):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        return JsonResponse({'conversation': service().restore_conversation(principal(request), conversation_id)})
+    except NotFound:
+        raise Denied()
+    except Conflict:
+        return JsonResponse({'error': 'conversation_conflict'}, status=409)
+
+
 @endpoint(['GET', 'POST'], ['project_id'])
 def chat_conversations(request, conversation_id=None):
     denied = customer(request)
@@ -82,6 +120,9 @@ def chat_conversations(request, conversation_id=None):
         p = principal(request)
         if request.method == 'POST':
             project_id = request.input.get('project_id', '')
+            if not project_id:                       # a new chat needs no project choice: use the account's first one
+                projects = s.projects(p)
+                project_id = projects[0]['id'] if projects else ''
             created = s.create_conversation(p, project_id)
             request.form_redirect = '/account/chat/?project=' + created['project_id'] + '&conversation=' + created['id']
             return JsonResponse({'conversation': created}, status=201)
@@ -89,9 +130,14 @@ def chat_conversations(request, conversation_id=None):
             found = s.conversation(p, conversation_id)
             request.form_redirect = '/account/chat/?conversation=' + conversation_id
             return JsonResponse({'conversation': found})
-        listed = s.conversations(p, request.GET.get('project_id') or None)
+        raw_limit, raw_offset = request.GET.get('limit', '100'), request.GET.get('offset', '0')
+        archived = request.GET.get('archived', '0')
+        if not raw_limit.isdecimal() or not raw_offset.isdecimal() or archived not in ('0', '1') or not 1 <= int(raw_limit) <= 500:
+            raise ValueError('invalid pagination')
+        limit = int(raw_limit)
+        listed = s.conversations(p, request.GET.get('project_id') or None, query=request.GET.get('q', ''), archived=archived == '1', limit=limit + 1, offset=int(raw_offset))
         request.form_redirect = '/account/chat/'
-        return JsonResponse({'conversations': listed})
+        return JsonResponse({'conversations': listed[:limit], 'has_more': len(listed) > limit, 'next_offset': int(raw_offset) + min(len(listed), limit)})
     except NotFound:
         raise Denied()
     except Conflict:
@@ -106,22 +152,26 @@ def chat_messages(request, conversation_id):
         return denied
     raw = request.GET.get('after', '0')
     after = int(raw) if raw.isdecimal() else -1
+    raw_limit = request.GET.get('limit', '100')
+    limit = int(raw_limit) if raw_limit.isdecimal() else -1
     try:
-        return JsonResponse(service().messages(principal(request), conversation_id, after=after))
+        return JsonResponse(service().messages(principal(request), conversation_id, after=after, limit=limit))
     except (ValueError,):
         return JsonResponse({'error': 'invalid_request'}, status=400)
     except NotFound:
         raise Denied()
 
 
-@endpoint(['POST'], ['message', 'key'], field_limits={'message': 16000})
+@endpoint(['POST'], ['message', 'key', 'mode', 'goal', 'ui'], field_limits={'message': 16000})
 def chat_send(request, conversation_id):
     denied = customer(request)
     if denied:
         return denied
+    goal = str(request.input.get('goal', '')).lower() in ('1', 'true', 'on', 'yes')          # fields are strings (a form sends 'on')
     try:
         result = service().send(principal(request), conversation_id=conversation_id,
-                                message=request.input.get('message', ''), key=request.input.get('key', ''))
+                                message=request.input.get('message', ''), key=request.input.get('key', ''),
+                                mode=request.input.get('mode', 'auto'), goal=goal, ui=request.input.get('ui', 'basic'))
         request.form_redirect = '/account/chat/?conversation=' + conversation_id
         return JsonResponse({'request': result}, status=202)
     except NotFound:
@@ -137,6 +187,26 @@ def chat_send(request, conversation_id):
         if request.content_type == 'application/x-www-form-urlencoded':
             return HttpResponseRedirect(request.form_redirect)
         return JsonResponse({'error': 'budget_denied', 'category': category, 'execution_enabled': False}, status=402)
+
+
+@endpoint(['POST'], ['action', 'key'])
+def chat_goal(request, conversation_id):
+    """The customer's controls on a "Keep working until complete" goal: resume a paused, blocked or budget-limited one, or clear it."""
+    denied = customer(request)
+    if denied:
+        return denied
+    rate('task.create', request.account_id, 30, 3600)
+    try:
+        result = service().goal_action(principal(request), conversation_id, request.input.get('action', ''), key=request.input.get('key', ''))
+        return JsonResponse({'goal': result.get('goal'), **({'request': result} if 'id' in result else {})}, status=202)
+    except NotFound:
+        raise Denied()
+    except (Conflict, CapabilityUnavailable):
+        return JsonResponse({'error': 'request_conflict'}, status=409)
+    except ValueError:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    except BudgetDenied as error:
+        return JsonResponse({'error': 'budget_denied', 'category': denial_category(error), 'execution_enabled': False}, status=402)
 
 
 @endpoint(['GET'])
@@ -162,6 +232,45 @@ def chat_cancel(request, request_id):
         return JsonResponse({'task': cancelled}, status=202)
     except NotFound:
         raise Denied()
+
+
+def _hold(request, request_id, action):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        return JsonResponse({'request': getattr(service(), action)(principal(request), request_id)}, status=202)
+    except NotFound:
+        raise Denied()
+    except Conflict:
+        return JsonResponse({'error': 'request_conflict'}, status=409)
+
+
+@endpoint(['POST'])
+def chat_pause(request, request_id):
+    """Hold a task that has not started. A running task cannot be paused (the assistant has no safe stopping point mid-run); browser tasks have their own pause."""
+    return _hold(request, request_id, 'pause')
+
+
+@endpoint(['POST'])
+def chat_resume(request, request_id):
+    return _hold(request, request_id, 'resume')
+
+
+@endpoint(['POST'])
+def chat_retry(request, request_id):
+    denied = customer(request)
+    if denied:
+        return denied
+    try:
+        rate('task.create', request.account_id, 30, 3600)          # a retry is a new task: same limit as sending one
+        return JsonResponse({'request': service().retry(principal(request), request_id)}, status=202)
+    except NotFound:
+        raise Denied()
+    except Conflict:
+        return JsonResponse({'error': 'request_conflict'}, status=409)
+    except BudgetDenied as error:
+        return JsonResponse({'error': 'budget_denied', 'category': denial_category(error), 'execution_enabled': False}, status=402)
 
 
 @endpoint(['GET'])

@@ -1,0 +1,8 @@
+# Local editor history, thumbnails and render diagnostics. Keep reusable source
+# compositions and finished brand assets in Git.
+**/.hyperframes/
+**/.thumbnails/
+**/*-render.log
+**/*-check.json
+**/*-catalog.json
+**/*-snapshots*.json

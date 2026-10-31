@@ -83,6 +83,28 @@ class WorkerChecks(unittest.TestCase):
         self.assertEqual(self.worker().tick()['drained'],0)
         with self.store.connect() as con: con.execute("UPDATE tasks SET state='completed'")
         self.assertEqual(self.worker(idle_after=10**12).tick()['drained'],0)   # not idle long enough
+    def test_a_live_browser_job_or_an_open_hand_off_window_keeps_the_cell_up_under_the_customer(self):
+        self.start_cell()
+        facts = lambda: next(f for f, _generation in self.worker().facts() if f.account_id == 'a')
+        self.assertEqual(facts().pending_approvals, 0)
+        self.insert_browse('handoff', takeover_until=self.now + 300, updated=1)
+        self.assertEqual(facts().pending_approvals, 1)                                      # the customer's hand-off window is open
+        self.set_browse(takeover_until=self.now - 1, updated=1)
+        self.assertEqual(facts().pending_approvals, 0)                                      # window over, nothing moving: the cell may sleep
+        self.set_browse(takeover_until=0, updated=self.now - 30, status='running')
+        self.assertEqual(facts().pending_approvals, 1)                                      # a job that moved a moment ago is live
+        self.set_browse(takeover_until=0, updated=self.now - 30, status='done')
+        self.assertEqual(facts().pending_approvals, 0)
+
+    def insert_browse(self, status, takeover_until, updated):
+        with self.store.connect() as con:
+            con.execute('PRAGMA foreign_keys=OFF')                       # the row is what the sleep rule reads; the request behind it does not matter here
+            con.execute("INSERT INTO browse_runs(account_id,request_id,goal,status,created_epoch,updated_epoch,takeover_until) VALUES ('a','r1','g',?,1,?,?)", (status, updated, takeover_until))
+
+    def set_browse(self, takeover_until, updated, status=None):
+        with self.store.connect() as con:
+            con.execute('UPDATE browse_runs SET takeover_until=?,updated_epoch=?' + (',status=?' if status else ''), (takeover_until, updated, *([status] if status else [])))
+
     def test_system_request_is_stop_only_and_bounded(self):
         quiet=lambda:self.worker(idle_after=10**12)
         self.request('create');quiet().tick()
@@ -154,6 +176,40 @@ class WakeChecks(unittest.TestCase):
         self.assertEqual(self.state(), 'running')
         self.assertIsNotNone(self.queue().claim(owner='w', capacity=OK))
         self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 0)   # running cells are not woken again
+
+    def test_the_customers_live_timeline_hears_that_their_assistant_is_being_woken(self):
+        from agentai_platform.events import EventService
+        self.request('create'); self.worker(wake=True).tick()
+        item = self.submit()
+        with self.store.connect() as con:
+            con.execute("INSERT INTO deployments(account_id,id,generation,state) SELECT 'a','d-evt',9,'ready' WHERE NOT EXISTS (SELECT 1 FROM deployments WHERE account_id='a' AND id='d-evt')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES ('a','p-a','c-evt','d-evt')")
+            con.execute("INSERT INTO tasks(account_id,project_id,conversation_id,id,state,budget_microusd) VALUES ('a','p-a','c-evt',?,'queued',1000)", (item['id'],))
+        events = EventService(self.store, clock=lambda: self.now)
+        self.worker(wake=True, idle_after=10**12, events=events).tick()
+        got = events.events(Principal('a', 'customer-a', 'customer'), item['id'], after=0, limit=10)['events']
+        self.assertEqual([(e['kind'], e['payload']['step']) for e in got], [('progress', 'waking')]); self.assertIn('Waking your assistant', got[0]['payload']['summary'])
+        self.worker(wake=True, idle_after=10**12, events=events).tick()
+        self.assertEqual(len(events.events(Principal('a', 'customer-a', 'customer'), item['id'], after=0, limit=10)['events']), 1)      # told once, not on every tick
+        broken = type('Broken', (), {'append': lambda *a, **k: (_ for _ in ()).throw(RuntimeError('x'))})()
+        self.worker(wake=True, idle_after=10**12, events=broken).enqueue_wakes()                                                         # a failing timeline never holds up a wake
+
+    def test_browse_mode_wakes_a_stopped_cell_too_because_the_assistant_now_runs_the_browser(self):
+        self.request('create'); self.worker(wake=True).tick()
+        with self.store.connect() as con:
+            con.execute('INSERT OR IGNORE INTO projects(account_id,id,name) VALUES (?,?,?)', ('a', 'p-a', 'P'))
+        self.queue().submit(Principal('a', 'customer-a', 'customer'), message='open the shop', key='b1', intent='browse')
+        self.assertIsNone(self.queue().claim(owner='w', capacity=OK))                       # no cell, no run: browsing is a tool of the assistant, not a sandbox of its own
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 1)
+
+    def test_a_paused_request_does_not_wake_a_stopped_cell_and_resuming_it_does(self):
+        self.request('create'); self.worker(wake=True).tick()
+        item = self.submit()
+        self.queue().pause(Principal('a', 'customer-a', 'customer'), item['id'])
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 0)       # holding a task must not start the assistant
+        self.assertEqual(self.worker(wake=True).waiting_accounts(), set())                   # nor keep a running cell from handing the slot over
+        self.queue().resume(Principal('a', 'customer-a', 'customer'), item['id'])
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).enqueue_wakes(), 1)
 
     def test_wake_is_off_by_default(self):
         self.request('create'); self.worker().tick(); self.submit()

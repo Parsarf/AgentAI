@@ -1,0 +1,669 @@
+
+===== identity =====
+srv2054170
+Thu Oct 29 21:09:50 UTC 2026
+ 21:09:50 up 12 days, 11:58,  2 users,  load average: 0.12, 0.14, 0.12
+PRETTY_NAME="Ubuntu 26.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="26.04"
+
+===== units =====
+UNIT FILE                         STATE   PRESET
+agentai-billing-worker.service    static  -
+agentai-browse.service            enabled enabled
+agentai-cell-bridge.service       enabled enabled
+agentai-cells-docker.service      enabled enabled
+agentai-cells-firewall.service    enabled enabled
+agentai-lifecycle-worker.service  enabled enabled
+agentai-model-proxy.service       enabled enabled
+agentai-ops-backup.service        static  -
+agentai-ops-monitor.service       static  -
+agentai-platform-app.service      enabled enabled
+agentai-platform-mail.service     static  -
+agentai-request-worker.service    enabled enabled
+agentai-supervisor-native.service enabled enabled
+agentai-tool-relay.service        enabled enabled
+caddy.service                     enabled enabled
+fail2ban.service                  enabled enabled
+openclaw-dashboard.service        enabled enabled
+openclaw-ops-backup.service       static  -
+agentai-billing-worker.timer      enabled enabled
+agentai-ops-backup.timer          enabled enabled
+agentai-ops-monitor.timer         enabled enabled
+agentai-platform-mail.timer       enabled enabled
+openclaw-ops-backup.timer         enabled enabled
+
+23 unit files listed.
+
+===== enabled =====
+not-found
+not-found
+enabled
+enabled
+enabled
+
+===== dropins =====
+/etc/systemd/system/agentai-browse.service.d/:
+total 12
+drwxr-xr-x  2 root root 4096 Oct 16 00:58 .
+drwxr-xr-x 28 root root 4096 Oct 26 20:22 ..
+-rw-r--r--  1 root root  104 Oct 16 00:58 jev.conf
+
+/etc/systemd/system/openclaw-dashboard.service.d/:
+total 12
+drwxr-xr-x  2 root root 4096 Oct 14 20:08 .
+drwxr-xr-x 28 root root 4096 Oct 26 20:22 ..
+-rw-r--r--  1 root root   67 Oct 26 20:25 feature-switches.conf
+
+===== timers =====
+Thu 2026-10-29 21:09:57 UTC       7s Thu 2026-10-29 21:09:22 UTC      27s ago agentai-billing-worker.timer   agentai-billing-worker.service
+Thu 2026-10-29 21:10:02 UTC      12s Thu 2026-10-29 21:08:57 UTC      52s ago agentai-platform-mail.timer    agentai-platform-mail.service
+Thu 2026-10-29 21:13:06 UTC 3min 16s Thu 2026-10-29 21:08:03 UTC 1min 46s ago agentai-ops-monitor.timer      agentai-ops-monitor.service
+Fri 2026-10-30 03:17:32 UTC       6h Thu 2026-10-29 03:20:45 UTC      17h ago openclaw-ops-backup.timer      openclaw-ops-backup.service
+Fri 2026-10-30 03:41:41 UTC       6h Thu 2026-10-29 03:41:27 UTC      17h ago agentai-ops-backup.timer       agentai-ops-backup.service
+
+===== failed =====
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+
+===== listeners =====
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess                                                             
+LISTEN 0      64         10.77.0.1:4000       0.0.0.0:*    users:(("python3",pid=1478906,fd=6))                               
+LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*    users:(("sshd",pid=1478947,fd=3),("systemd",pid=1,fd=172))         
+LISTEN 0      5          10.77.0.1:4100       0.0.0.0:*    users:(("python",pid=2879694,fd=3))                                
+LISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*    users:(("systemd-resolve",pid=1478939,fd=18))                      
+LISTEN 0      4096       127.0.0.1:2019       0.0.0.0:*    users:(("caddy",pid=1037,fd=14))                                   
+LISTEN 0      5          127.0.0.1:18795      0.0.0.0:*    users:(("python3",pid=2342726,fd=3))                               
+LISTEN 0      4096       127.0.0.1:18789      0.0.0.0:*    users:(("docker-proxy",pid=1748,fd=8))                             
+LISTEN 0      4096       127.0.0.1:18790      0.0.0.0:*    users:(("docker-proxy",pid=1783,fd=8))                             
+LISTEN 0      16         127.0.0.1:18800      0.0.0.0:*    users:(("gunicorn",pid=2925627,fd=3),("gunicorn",pid=2879674,fd=3))
+LISTEN 0      32         127.0.0.1:18801      0.0.0.0:*    users:(("python3",pid=2905784,fd=3))                               
+LISTEN 0      4096      127.0.0.54:53         0.0.0.0:*    users:(("systemd-resolve",pid=1478939,fd=20))                      
+LISTEN 0      4096       127.0.0.1:4000       0.0.0.0:*    users:(("docker-proxy",pid=789898,fd=8))                           
+LISTEN 0      4096       127.0.0.1:3978       0.0.0.0:*    users:(("docker-proxy",pid=1726,fd=8))                             
+LISTEN 0      4096            [::]:22            [::]:*    users:(("sshd",pid=1478947,fd=4),("systemd",pid=1,fd=173))         
+LISTEN 0      4096               *:80               *:*    users:(("caddy",pid=1037,fd=17))                                   
+LISTEN 0      4096               *:443              *:*    users:(("caddy",pid=1037,fd=15))                                   
+
+===== public =====
+LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*    users:(("sshd",pid=1478947,fd=3),("systemd",pid=1,fd=172))         
+LISTEN 0      4096            [::]:22            [::]:*    users:(("sshd",pid=1478947,fd=4),("systemd",pid=1,fd=173))         
+LISTEN 0      4096               *:80               *:*    users:(("caddy",pid=1037,fd=17))                                   
+LISTEN 0      4096               *:443              *:*    users:(("caddy",pid=1037,fd=15))                                   
+
+===== ufw =====
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), deny (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere                  
+80/tcp                     ALLOW IN    Anywhere                  
+443/tcp                    ALLOW IN    Anywhere                  
+10.77.0.1 4000/tcp         ALLOW IN    10.78.0.0/16               # agentai cells model relay
+10.77.0.1 4000/tcp         ALLOW IN    10.77.0.0/16               # agentai cells model relay (default bridge)
+10.77.0.1 4100/tcp         ALLOW IN    10.78.0.0/16               # agentai cells tool relay
+10.77.0.1 4100/tcp         ALLOW IN    10.77.0.0/16               # agentai cells tool relay (default bridge)
+22/tcp (v6)                ALLOW IN    Anywhere (v6)             
+80/tcp (v6)                ALLOW IN    Anywhere (v6)             
+443/tcp (v6)               ALLOW IN    Anywhere (v6)             
+
+Anywhere                   ALLOW FWD   10.78.0.0/16               # agentai cells forward
+Anywhere                   ALLOW FWD   10.77.0.0/16               # agentai cells default bridge forward
+
+
+===== nft =====
+table inet agentai_cells {
+	set cell_sources {
+		type ipv4_addr
+		flags interval
+		elements = { 10.77.0.0/16, 10.78.0.0/16 }
+	}
+
+	set private_ranges {
+		type ipv4_addr
+		flags interval
+		elements = { 0.0.0.0/8, 10.0.0.0/8,
+			     100.64.0.0/10, 127.0.0.0/8,
+			     169.254.0.0/16, 172.16.0.0/12,
+			     192.0.0.0/24, 192.168.0.0/16,
+			     198.18.0.0/15, 224.0.0.0/4,
+			     240.0.0.0/4 }
+	}
+
+	set quarantined {
+		type ipv4_addr
+		flags interval
+		elements = { 10.78.2.0/24, 10.78.3.0/24 }
+	}
+
+	chain input {
+		type filter hook input priority filter - 5; policy accept;
+		ip saddr != @cell_sources return
+		ct state established,related return
+		ip daddr 10.77.0.1 tcp dport 4000 return
+		ip daddr 10.77.0.1 tcp dport 4100 return
+		counter packets 3531 bytes 254244 drop comment "cell to host services"
+	}
+
+	chain forward {
+		type filter hook forward priority filter - 5; policy accept;
+		ip saddr != @cell_sources return
+		ip saddr @quarantined counter packets 0 bytes 0 drop comment "quarantined cell egress"
+		ip daddr @private_ranges counter packets 0 bytes 0 drop comment "cell to private/metadata"
+	}
+
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr @cell_sources ip daddr != @cell_sources masquerade
+	}
+}
+
+===== sshd =====
+permitrootlogin yes
+pubkeyauthentication yes
+passwordauthentication yes
+
+===== fail2ban =====
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed:	0
+|  |- Total failed:	20
+|  `- Journal matches:	_SYSTEMD_UNIT=ssh.service + _COMM=sshd
+`- Actions
+   |- Currently banned:	0
+   |- Total banned:	3
+   `- Banned IP list:	
+
+===== lastlog =====
+
+===== authkeys =====
+bash: line 17: last: command not found
+256 SHA256:X1GGObCxsNfRqMQ3r6fXa6Sl6nMbpEw1/qfUkU1hMJg lumina-prod-2026-10-29 (ED25519)
+
+===== caddy =====
+{"level":"info","ts":1793308190.7102005,"logger":"http","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
+{"level":"info","ts":1793308190.7148232,"logger":"tls.cache.maintenance","msg":"stopped background certificate maintenance","cache":"0xc000357260"}
+Valid configuration
+/etc/caddy:
+total 32
+drwxr-xr-x   2 root root 4096 Oct 23 21:36 .
+drwxr-xr-x 105 root root 4096 Oct 27 06:49 ..
+-rw-r--r--   1 root root 1416 Oct 23 21:36 Caddyfile
+-rw-r--r--   1 root root  541 Oct 12 21:50 Caddyfile.bak-live1
+-rw-r--r--   1 root root  989 Oct 14 02:47 Caddyfile.bak-scenes-20261023T213546Z
+-rw-r--r--   1 root root 1380 Oct 23 21:35 Caddyfile.bak-scenes2-20261023T213630Z
+-rw-r--r--   1 root root  769 Oct  1 00:23 Caddyfile.before-agentai
+-rw-r--r--   1 root root  529 Oct 12 21:50 Caddyfile.before-app
+
+/var/www/lumina-scenes:
+total 12
+drwxr-xr-x 3 root root 4096 Oct 23 21:36 .
+drwxr-xr-x 3 root root 4096 Oct 23 21:36 ..
+drwxr-xr-x 4 root root 4096 Oct 25 22:12 app
+d93b66913944ed73f2838a1d30b8e26e70c9735336350fd7dfa2736888d3b1f2  /etc/caddy/Caddyfile
+
+===== envnames =====
+AGENTAI_ARTIFACT_SIGNING_KEY
+AGENTAI_BILLING_API_VERSION
+AGENTAI_BILLING_PLAN_FILE
+AGENTAI_BILLING_PRICE_ID
+AGENTAI_BILLING_SECRET_KEY_FILE
+AGENTAI_BILLING_WEBHOOK_SECRET_FILE
+AGENTAI_CARD_IMAGES
+AGENTAI_FROM_EMAIL
+AGENTAI_LIVE_SECRET_FILE
+AGENTAI_MAIL_ENABLED
+AGENTAI_PUBLIC_ORIGIN
+AGENTAI_SAFETY_OWNER_ACCOUNT
+AGENTAI_SESSION_SECRET
+AGENTAI_SMTP_HOST
+AGENTAI_SMTP_PASSWORD
+AGENTAI_SMTP_USER
+AGENTAI_STATE_DIR
+AGENTAI_STORAGE_DIR
+AGENTAI_SWITCHES_FILE
+AGENTAI_SWITCH_FACTS_FILE
+
+===== modes =====
+root:root 600 /etc/agentai-platform/accounts.env
+root:agentai-platform 640 /etc/agentai-platform/live.secret
+root:root 644 /etc/agentai-supervisor/browse-engine.json
+root:root 600 /etc/agentai-supervisor/fleet-custody.json
+root:root 644 /etc/agentai-supervisor/native-wiring.json
+agentai-platform:agentai-platform 700 /var/lib/agentai-platform
+agentai-platform:agentai-platform 600 /var/lib/agentai-platform/platform.sqlite3
+root:root 700 /var/lib/agentai-supervisor-secrets
+root:root 700 /var/backups/agentai
+root:root 750 /var/lib/agentai-ops
+root:root 700 /opt/openclaw-production/secrets
+root:root 600 /opt/openclaw-production/dashboard/owner-secret
+
+===== typesafe =====
+agentai-platform:agentai-platform 600 /var/lib/agentai-platform/routing/typesafe.key
+root:root 600 /var/lib/agentai-supervisor-secrets/_shared/typesafe-key
+
+===== wiring =====
+['bridge_gateway', 'cell_pool', 'cell_state_root', 'firewall_rules', 'firewall_state', 'fleet_custody', 'litellm_env', 'model_proxy_port', 'native_browser', 'safety_file', 'search_key_file', 'secrets_dir', 'tool_relay_port', 'volume_images']
+
+===== engines =====
+{
+  "default": "runner",
+  "native": []
+}
+
+===== switches =====
+{
+ "switches": {
+  "browse_tasks": {
+   "changed_at": 1791861923,
+   "changed_by": "owner (requested in chat 2026-10-12)",
+   "confirmations": {
+    "browse_cost": {
+     "at": 1791861923,
+     "by": "owner (requested in chat 2026-10-12)"
+    }
+   },
+   "on": true
+  },
+  "customer_execution": {
+   "changed_at": 1791832386,
+   "changed_by": "claude-code-test-run",
+   "confirmations": {
+    "execution_cost": {
+     "at": 1791832386,
+     "by": "claude-code-test-run"
+    }
+   },
+   "on": true
+  },
+  "jev_routing": {
+   "changed_at": 1791914878,
+   "changed_by": "owner privacy priority (set by assistant, 2026-10-13)",
+   "confirmations": {
+    "data_handling": {
+     "at": 1791861998,
+     "by": "owner (requested in chat 2026-10-12)"
+    }
+   },
+   "on": false
+  },
+  "jev_services": {
+   "changed_at": 1792008501,
+   "changed_by": "owner (confirmed in chat 2026-10-14)",
+   "confirmations": {
+    "browse_cost": {
+     "at": 1792008501,
+     "by": "owner (confirmed in chat 2026-10-14)"
+    },
+    "data_handling": {
+     "at": 1792008501,
+     "by": "owner (confirmed in chat 2026-10-14)"
+    }
+   },
+   "on": true
+  },
+  "open_access": {
+   "changed_at": 1791769044,
+   "changed_by": "owner (requested in chat 2026-10-12)",
+   "confirmations": {
+    "cost_accepted": {
+     "at": 1791769044,
+     "by": "owner (requested in chat 2026-10-12)"
+    }
+   },
+   "on": true
+  }
+ },
+ "version": 1
+}
+===== releases =====
+/opt/agentai-platform/releases/20261028T212308Z-tool-origin-v2
+/opt/agentai-supervisor/releases/20261028T212308Z-tool-origin-v2
+/opt/agentai-platform/releases:
+20260930T212713Z
+20261001T004622Z-csrf
+20261001T005331Z-activation
+20261005T181500Z-chat
+20261005T185900Z-chat
+20261005T191500Z-ui
+20261005T194500Z-ui
+20261005T200500Z-ui
+20261006T073000Z-telegram
+20261008T091500Z-files
+20261008T115500Z-events
+20261012T0230Z-billing
+20261012T1830Z-ops
+20261012T1930Z-ops2
+20261012T2000Z-ops3
+20261012T2045Z-ops4
+20261012T2230Z-exec
+20261012T2300Z-exec2
+20261012T2330Z-exec3
+20261013T0000Z-exec4
+20261013T0030Z-exec5
+20261013T0100Z-exec6
+20261013T0110-browse
+20261013T0125-browse2
+20261013T0130Z-exec7
+20261013T0200-cards
+20261013T0200Z-exec8
+20261013T0230Z-exec9
+20261013T0300Z-exec10
+20261013T0330Z-exec11
+20261013T0500Z-routing
+20261013T0600Z-routing2
+20261013T0700Z-login
+20261013T0730Z-chatopen
+20261013T0800Z-archive
+20261013T0900Z-uishell
+20261013T1000Z-lumina
+20261013T1100Z-orphanfix
+20261013T1300Z-genui
+20261013T1400Z-chatux
+20261013T1500Z-planrun
+20261027T110435Z-genui-10efb73
+20261027T114539Z-cancel-e700e33
+20261028T014523Z-hardening-ef2a8ac
+20261028T212308Z-tool-origin-v2
+act1
+files1
+launch1
+live1
+live10
+live11
+live12
+live13
+live14
+live15
+live16
+live18
+live19
+live2
+live20
+live21
+live23
+live25
+live3
+live4
+live9
+native1
+native2
+native3
+native4
+p15a
+p15b
+privacy1
+safety1
+signup1
+
+/opt/agentai-supervisor/releases:
+20261027T110435Z-genui-10efb73
+20261027T114539Z-cancel-e700e33
+20261028T014523Z-hardening-ef2a8ac
+20261028T212308Z-tool-origin-v2
+live1
+live10
+live11
+live12
+live13
+live14
+live15
+live16
+live17
+live18
+live19
+live2
+live20
+live21
+live23
+live24
+live3
+live4
+live5
+live6
+live7
+live8
+live9
+native1
+native2
+native3
+native4
+p14-ops
+p14-ops2
+p15-a
+p15-b
+p15-c
+p15-d
+p15-e
+p15-f
+p15-g
+p15-h
+p16-a
+p16-b
+p16-c
+p16-d
+p16-e
+p16-f
+p16-g
+p16-h
+p16-i
+p16-j
+p16-k
+p16-l
+p16-n
+p16-o
+p16-p
+p16-q
+p16-r
+p4-20261011
+p4-b-20261011
+p4-c-20261011
+p4-d-20261011
+p4-e-20261011
+p4-f-20261011
+p4-g-20261011
+safety1
+
+===== runner =====
+b20b425063359a3409587540f5d4334fb682abe0003d8364f77c0b44ee9ee643  /opt/agentai-browse/runner/runner.mjs
+total 136
+drwxr-xr-x 3 root root  4096 Oct 26 20:24 .
+drwxr-xr-x 4 root root  4096 Oct 28 22:53 ..
+drwxr-xr-x 4 root root  4096 Oct 13 00:42 node_modules
+-rw-r--r-- 1 root root   696 Oct 13 00:42 package-lock.json
+-rw-r--r-- 1 root root   207 Oct 13 00:42 package.json
+-rw-r--r-- 1 root root 28042 Oct 26 20:24 runner.mjs
+-rw-r--r-- 1 root root 10263 Oct 13 00:52 runner.mjs.bak-live1
+-rw-r--r-- 1 root root 12189 Oct 14 02:47 runner.mjs.bak-live5
+-rw-r--r-- 1 root root 12626 Oct 14 21:26 runner.mjs.bak-live7
+-rw-r--r-- 1 root root 18233 Oct 16 00:58 runner.mjs.bak-live9
+-rw-r--r-- 1 root root 27137 Oct 20 06:14 runner.mjs.bak-native1
+
+===== ui =====
+total 268
+drwxr-xr-x  4 root             agentai-platform   4096 Oct 28 21:33 .
+drwx------ 11 agentai-platform agentai-platform   4096 Oct 28 22:30 ..
+-rw-r--r--  1 root             agentai-platform    373 Oct 28 21:33 EARTH-LICENSE.txt
+drwxr-xr-x  2 root             agentai-platform  12288 Oct 28 21:33 assets
+-rw-r--r--  1 root             agentai-platform 238676 Oct 28 21:33 earth.jpg
+-rw-r--r--  1 root             agentai-platform    495 Oct 28 21:33 index.html
+drwxr-xr-x  3 root             agentai-platform   4096 Oct 28 22:30 openmoji
+
+===== migrations =====
+Error: in prepare, no such column: name
+  select max(name) from schema_migrations
+             ^--- error here
+
+===== compose =====
+openclaw-production-litellm-1 87f34979b9f8 127.0.0.1:4000->4000/tcp
+openclaw-production-openclaw-gateway-1 openclaw-gateway:2026.9.6-sdk-peer 127.0.0.1:3978->3978/tcp, 127.0.0.1:18789-18790->18789-18790/tcp
+openclaw-production-postgres-1 38471f330eb8 5432/tcp
+
+===== cells =====
+
+===== cellinspect =====
+
+===== jobs =====
+700 /var/lib/agentai-browse/jobs
+0
+
+===== backups =====
+● agentai-ops-backup.timer - Nightly AgentAI backup set (after the owner archive at 03:17 UTC)
+     Loaded: loaded (/etc/systemd/system/agentai-ops-backup.timer; enabled; preset: enabled)
+     Active: active (waiting) since Tue 2026-10-27 11:46:46 UTC; 2 days ago
+ Invocation: 183987bc95d94d98822ef2f21d50d492
+    Trigger: Fri 2026-10-30 03:41:41 UTC; 6h left
+   Triggers: ● agentai-ops-backup.service
+
+Oct 27 11:46:46 srv2054170 systemd[1]: Started agentai-ops-backup.timer - Nightly AgentAI backup set (after the owner archive at 03:17 UTC).
+
+● openclaw-ops-backup.timer - Daily OpenClaw operator backup at 03:17 UTC
+     Loaded: loaded (/etc/systemd/system/openclaw-ops-backup.timer; enabled; preset: enabled)
+     Active: active (waiting) since Sat 2026-10-17 09:11:46 UTC; 1 week 5 days ago
+ Invocation: 3559387c77b0423fac0155716a325cd5
+    Trigger: Fri 2026-10-30 03:17:32 UTC; 6h left
+   Triggers: ● openclaw-ops-backup.service
+
+Notice: journal has been rotated since unit was started, output may be incomplete.
+drwx------  2 root root 4096 Oct 20 03:41 20261020T034118Z
+drwx------  2 root root 4096 Oct 21 03:41 20261021T034146Z
+drwx------  2 root root 4096 Oct 22 03:41 20261022T034144Z
+drwx------  2 root root 4096 Oct 23 03:41 20261023T034057Z
+drwx------  2 root root 4096 Oct 24 03:42 20261024T034205Z
+drwx------  2 root root 4096 Oct 25 03:41 20261025T034131Z
+drwx------  2 root root 4096 Oct 26 03:41 20261026T034157Z
+drwx------  2 root root 4096 Oct 27 03:41 20261027T034157Z
+drwx------  2 root root 4096 Oct 28 03:41 20261028T034057Z
+drwx------  2 root root 4096 Oct 29 03:41 20261029T034127Z
+
+===== backupcfg =====
+['age_recipients', 'alerts', 'destinations'] ['local:False']
+
+===== identity_on_host =====
+
+===== cron =====
+no crontab for root
+docker-builder-prune
+docker-image-prune
+e2scrub_all
+
+===== baks =====
+-rw------- 1 root root    1006 Oct 13 18:29 /etc/agentai-platform/accounts.env.bak-live1
+-rw------- 1 root root    1087 Oct 20 11:52 /etc/agentai-platform/accounts.env.bak-safety1
+-rw-r--r-- 1 root root     541 Oct 12 21:50 /etc/caddy/Caddyfile.bak-live1
+-rw-r--r-- 1 root root     989 Oct 14 02:47 /etc/caddy/Caddyfile.bak-scenes-20261023T213546Z
+-rw-r--r-- 1 root root    1380 Oct 23 21:35 /etc/caddy/Caddyfile.bak-scenes2-20261023T213630Z
+-rw-r--r-- 1 root root   10263 Oct 13 00:52 /opt/agentai-browse/runner/runner.mjs.bak-live1
+-rw-r--r-- 1 root root   12189 Oct 14 02:47 /opt/agentai-browse/runner/runner.mjs.bak-live5
+-rw-r--r-- 1 root root   12626 Oct 14 21:26 /opt/agentai-browse/runner/runner.mjs.bak-live7
+-rw-r--r-- 1 root root   18233 Oct 16 00:58 /opt/agentai-browse/runner/runner.mjs.bak-live9
+-rw-r--r-- 1 root root   27137 Oct 20 06:14 /opt/agentai-browse/runner/runner.mjs.bak-native1
+-rw-r--r-- 1 root root    1044 Oct 13 18:07 /opt/openclaw-production/feature-switches/switches.json.bak-20261014T200821Z
+-rw------- 1 root root 5179459 Oct 14 20:52 /root/agentai-code-backup-20261014-1347.bundle
+-rw------- 1 root root 5190035 Oct 14 21:27 /root/agentai-code-backup-20261014-1427.bundle
+-rw-r--r-- 1 root root 2025686 Oct 13 01:06 /root/browse-runner.tgz
+-rw-r--r-- 1 root root   25345 Oct 14 04:07 /root/browser-goal-fixes.tgz
+-rw-r--r-- 1 root root  233710 Oct 12 17:51 /root/drillB.tgz
+-rw-r--r-- 1 root root  233670 Oct 12 17:51 /root/drillC.tgz
+-rw-r--r-- 1 root root    8543 Oct 28 22:53 /root/jev-full-page-experiment.tgz
+-rw-r--r-- 1 root root   10193 Oct 28 23:01 /root/jev-full-page-update.tgz
+-rw-r--r-- 1 root root  256039 Oct 20 09:33 /root/live10-supervisor.tgz
+-rw-r--r-- 1 root root  602998 Oct 20 09:33 /root/live10-web.tgz
+-rw-r--r-- 1 root root  256538 Oct 20 10:22 /root/live11-supervisor.tgz
+-rw-r--r-- 1 root root  604313 Oct 20 10:22 /root/live11-web.tgz
+-rw-r--r-- 1 root root  257515 Oct 20 10:46 /root/live12-supervisor.tgz
+-rw-r--r-- 1 root root  606252 Oct 20 10:46 /root/live12-web.tgz
+-rw-r--r-- 1 root root  266477 Oct 20 11:21 /root/live13-supervisor.tgz
+-rw-r--r-- 1 root root  627029 Oct 20 11:21 /root/live13-web.tgz
+-rw-r--r-- 1 root root  266612 Oct 20 11:50 /root/live14-supervisor.tgz
+-rw-r--r-- 1 root root  627191 Oct 20 11:50 /root/live14-web.tgz
+-rw-r--r-- 1 root root  268296 Oct 20 12:53 /root/live15-supervisor.tgz
+-rw-r--r-- 1 root root  632625 Oct 20 12:53 /root/live15-web.tgz
+-rw-r--r-- 1 root root  269511 Oct 20 13:21 /root/live16-supervisor.tgz
+-rw-r--r-- 1 root root  635052 Oct 20 13:21 /root/live16-web.tgz
+-rw-r--r-- 1 root root  269606 Oct 20 13:24 /root/live17-supervisor.tgz
+-rw-r--r-- 1 root root  635185 Oct 20 13:24 /root/live17-web.tgz
+-rw-r--r-- 1 root root  705699 Oct 21 00:51 /root/live18-platform.tgz
+-rw-r--r-- 1 root root  301089 Oct 21 00:55 /root/live18-supervisor.tgz
+-rw-r--r-- 1 root root  706859 Oct 21 01:25 /root/live19-platform.tgz
+-rw-r--r-- 1 root root  301573 Oct 21 01:25 /root/live19-supervisor.tgz
+-rw-r--r-- 1 root root  708832 Oct 21 01:39 /root/live20-platform.tgz
+-rw-r--r-- 1 root root  302687 Oct 21 01:39 /root/live20-supervisor.tgz
+-rw-r--r-- 1 root root 4649878 Oct 21 01:39 /root/live20-ui.tgz
+-rw-r--r-- 1 root root  719523 Oct 21 02:01 /root/live21-platform.tgz
+-rw-r--r-- 1 root root  308049 Oct 21 02:01 /root/live21-supervisor.tgz
+-rw-r--r-- 1 root root 4653254 Oct 21 02:01 /root/live21-ui.tgz
+-rw-r--r-- 1 root root 4650889 Oct 21 02:10 /root/live22-ui.tgz
+-rw-r--r-- 1 root root  720769 Oct 21 02:56 /root/live23-platform.tgz
+-rw-r--r-- 1 root root  308872 Oct 21 02:56 /root/live23-supervisor.tgz
+-rw-r--r-- 1 root root  731929 Oct 23 21:33 /root/live25.tgz
+-rw-r--r-- 1 root root  228818 Oct 16 00:56 /root/live7-supervisor.tgz
+-rw-r--r-- 1 root root  229477 Oct 16 01:40 /root/live8-supervisor.tgz
+-rw-r--r-- 1 root root  245150 Oct 20 05:45 /root/live9-supervisor.tgz
+-rw-r--r-- 1 root root  572336 Oct 20 05:45 /root/live9-web.tgz
+-rw-r--r-- 1 root root  568885 Oct 27 23:50 /root/lumina-browser-fix-canary.tgz
+-rw-r--r-- 1 root root  560695 Oct 27 11:02 /root/lumina-platform-10efb73.tgz
+-rw-r--r-- 1 root root  561289 Oct 27 11:45 /root/lumina-platform-e700e33.tgz
+-rw-r--r-- 1 root root  564927 Oct 28 01:45 /root/lumina-platform-ef2a8ac.tgz
+-rw-r--r-- 1 root root  394594 Oct 28 01:45 /root/lumina-supervisor-ef2a8ac.tgz
+-rw-r--r-- 1 root root  400346 Oct 28 21:26 /root/lumina-tool-origin-v2-supervisor.tgz
+-rw-r--r-- 1 root root  571746 Oct 28 21:24 /root/lumina-tool-origin-v2.tgz
+-rw-r--r-- 1 root root 6277384 Oct 28 22:30 /root/lumina-ui-03662de.tgz
+-rw-r--r-- 1 root root 4866090 Oct 27 11:02 /root/lumina-ui-10efb73.tgz
+-rw-r--r-- 1 root root 4866090 Oct 27 11:45 /root/lumina-ui-e700e33.tgz
+-rw-r--r-- 1 root root 6272437 Oct 28 01:45 /root/lumina-ui-ef2a8ac.tgz
+-rw-r--r-- 1 root root  565354 Oct 27 23:02 /root/lumina-ui-launch-canary.tgz
+-rw-r--r-- 1 root root 3264172 Oct 27 06:46 /root/lumina-ui.tgz
+-rw-r--r-- 1 root root  705954 Oct 26 20:08 /root/native1.tgz
+-rw-r--r-- 1 root root  202425 Oct 12 01:36 /root/p13-release.tgz
+-rw-r--r-- 1 root root  233395 Oct 12 17:46 /root/p14-release.tgz
+-rw-r--r-- 1 root root  135465 Oct 12 17:48 /root/p14-supervisor.tgz
+-rw-r--r-- 1 root root  136813 Oct 12 18:04 /root/p14-supervisor2.tgz
+-rw-r--r-- 1 root root  235280 Oct 12 17:59 /root/p14b-release.tgz
+-rw-r--r-- 1 root root  235630 Oct 12 18:04 /root/p14c-release.tgz
+-rw-r--r-- 1 root root  235733 Oct 12 18:07 /root/p14d-release.tgz
+-rw-r--r-- 1 root root  338998 Oct 13 20:28 /root/p15-release.tgz
+-rw-r--r-- 1 root root  137221 Oct 12 18:38 /root/p15-supervisor.tgz
+-rw-r--r-- 1 root root  204398 Oct 13 03:18 /root/p16-l.tgz
+-rw-r--r-- 1 root root  205416 Oct 13 17:33 /root/p16-n.tgz
+-rw-r--r-- 1 root root  208094 Oct 13 17:55 /root/p16-o.tgz
+-rw-r--r-- 1 root root  209298 Oct 13 18:06 /root/p16-p.tgz
+-rw-r--r-- 1 root root  211244 Oct 13 19:34 /root/p16-q.tgz
+-rw-r--r-- 1 root root  212200 Oct 13 20:29 /root/p16-r.tgz
+-rw-r--r-- 1 root root   95867 Oct 12 00:16 /root/p4-platform.tgz
+-rw-r--r-- 1 root root  756947 Oct 27 06:40 /root/safety1.tgz
+-rw-r--r-- 1 root root  303061 Oct 26 20:10 /root/sup-native1.tgz
+-rw-r--r-- 1 root root  198397 Oct 13 01:06 /root/sup-p16-i.tgz
+-rw-r--r-- 1 root root  198472 Oct 13 01:11 /root/sup-p16-j.tgz
+-rw-r--r-- 1 root root  202151 Oct 13 02:03 /root/sup-p16-k.tgz
+-rw-r--r-- 1 root root  181991 Oct 13 00:33 /root/sup.tgz
+-rw-r--r-- 1 root root    2823 Oct 12 21:49 /root/ui.tgz
+
+===== loosemodes =====
+
+===== upgrades =====
+Listing...
+bpftool/resolute-updates 7.7.0+7.0.0-42.42 amd64 [upgradable from: 7.7.0+7.0.0-38.38]
+cloud-init-base/resolute-updates 26.2-0ubuntu1~26.04.1 all [upgradable from: 26.1-0ubuntu3~26.04.1]
+cloud-init/resolute-updates 26.2-0ubuntu1~26.04.1 all [upgradable from: 26.1-0ubuntu3~26.04.1]
+containerd.io/resolute 2.4.2-3~ubuntu.26.04~resolute amd64 [upgradable from: 2.4.1-2~ubuntu.26.04~resolute]
+docker-buildx-plugin/resolute 0.38.1-1~ubuntu.26.04~resolute amd64 [upgradable from: 0.38.0-1~ubuntu.26.04~resolute]
+docker-ce-cli/resolute 5:29.9.2-1~ubuntu.26.04~resolute amd64 [upgradable from: 5:29.9.0-1~ubuntu.26.04~resolute]
+docker-ce-rootless-extras/resolute 5:29.9.2-1~ubuntu.26.04~resolute amd64 [upgradable from: 5:29.9.0-1~ubuntu.26.04~resolute]
+docker-ce/resolute 5:29.9.2-1~ubuntu.26.04~resolute amd64 [upgradable from: 5:29.9.0-1~ubuntu.26.04~resolute]
+docker-compose-plugin/resolute 5.6.1-1~ubuntu.26.04~resolute amd64 [upgradable from: 5.6.0-1~ubuntu.26.04~resolute]
+libnss-systemd/resolute-updates 259.9-0ubuntu0.1 amd64 [upgradable from: 259.5-0ubuntu3.4]
+libpam-systemd/resolute-updates 259.9-0ubuntu0.1 amd64 [upgradable from: 259.5-0ubuntu3.4]
+libsystemd-shared/resolute-updates 259.9-0ubuntu0.1 amd64 [upgradable from: 259.5-0ubuntu3.4]
+libsystemd0/resolute-updates 259.9-0ubuntu0.1 amd64 [upgradable from: 259.5-0ubuntu3.4]
+libudev1/resolute-updates 259.9-0ubuntu0.1 amd64 [upgradable from: 259.5-0ubuntu3.4]
+linux-image-virtual/resolute-updates 7.0.0-42.42 amd64 [upgradable from: 7.0.0-38.38]
+linux-libc-dev/resolute-updates 7.0.0-42.42 amd64 [upgradable from: 7.0.0-38.38]
+linux-perf/resolute-updates 7.0.0-42.42 amd64 [upgradable from: 7.0.0-38.38]
+python3-distupgrade/resolute-updates 1:26.04.27 all [upgradable from: 1:26.04.23]
+qemu-guest-agent/resolute-updates 1:10.2.1+ds-1ubuntu3.3 amd64 [upgradable from: 1:10.2.1+ds-1ubuntu3.2]
+Archived and active journals take up 133.7M in the file system.

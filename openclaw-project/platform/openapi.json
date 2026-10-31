@@ -2,8 +2,8 @@
  "openapi": "3.1.0",
  "info": {
   "title": "AgentAI private account API",
-  "version": "0.5.0",
-  "description": "Invite-only account API. Everything a replacement front end needs: /v1/csrf, /auth/*, /v1/app, then the resource endpoints. See UI_CONTRACT.md. Customer execution is live when features.execution is true."
+  "version": "0.8.0",
+  "description": "Account API (invite-only, or self-sign-up with owner approval when the owner opens it). Everything a replacement front end needs: /v1/csrf, /auth/*, /v1/app, then the resource endpoints. See UI_CONTRACT.md. Customer execution is live when features.execution is true."
  },
  "servers": [
   {
@@ -1075,10 +1075,10 @@
   },
   "/v1/conversations": {
    "get": {
-    "summary": "List own conversations (optionally by project)",
+    "summary": "Search own conversation titles and message contents, with recent-first pagination and archived view",
     "responses": {
      "200": {
-      "description": "Conversation list"
+      "description": "Conversations with title, preview, last_activity, active, archived_epoch; has_more and next_offset"
      },
      "401": {
       "description": "Identity required"
@@ -1086,7 +1086,56 @@
      "404": {
       "description": "Unavailable"
      }
-    }
+    },
+    "parameters": [
+     {
+      "name": "project_id",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "maxLength": 200
+      }
+     },
+     {
+      "name": "archived",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "0",
+        "1"
+       ],
+       "default": "0"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 500,
+       "default": 100
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 100000,
+       "default": 0
+      }
+     }
+    ]
    },
    "post": {
     "summary": "Create a conversation in an own project (10 per project)",
@@ -1905,6 +1954,117 @@
     }
    }
   },
+  "/v1/requests/{request_id}/pause": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Hold a task that has not started: it keeps its place and budget reservation but is never started until resumed",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Paused; the request now has paused=true and no queue position"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     }
+    }
+   }
+  },
+  "/v1/requests/{request_id}/resume": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Let a paused task take its turn again",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Resumed; the request shows how many tasks are ahead of it"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     }
+    }
+   }
+  },
+  "/v1/requests/{request_id}/retry": {
+   "parameters": [
+    {
+     "name": "request_id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "format": "uuid"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Run a failed or cancelled task again as a new task in the same conversation (idempotent: one retry per task)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "The retry, queued and admitted afresh; retry_of names the original"
+     },
+     "403": {
+      "description": "CSRF denied"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "402": {
+      "description": "Plan allowance or task budget cannot fund the retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
   "/v1/conversations/{id}/messages": {
    "get": {
     "summary": "Bounded transcript with id cursor",
@@ -1924,11 +2084,21 @@
        "type": "integer",
        "minimum": 0
       }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 100,
+       "default": 100
+      }
      }
     ],
     "responses": {
      "200": {
-      "description": "Messages and conversation task states; execution_enabled false"
+      "description": "Messages, conversation task states, execution_enabled, has_more and next_after. Follow next_after while has_more is true."
      },
      "401": {
       "description": "Identity required"
@@ -1944,7 +2114,7 @@
   },
   "/v1/conversations/{id}/send": {
    "post": {
-    "summary": "Submit one actionable chat request (Phase 5 admission; idempotent by key)",
+    "summary": "Submit one actionable chat request (idempotent by key). While a task of the conversation is running, a plain message joins that run (steered: the response says steered=true and names the running task)",
     "parameters": [
      {
       "name": "id",
@@ -1967,6 +2137,24 @@
          },
          "key": {
           "type": "string"
+         },
+         "mode": {
+          "type": "string",
+          "enum": [
+           "auto",
+           "text",
+           "plan",
+           "browse"
+          ],
+          "description": "auto lets the assistant decide, text forces a plain answer, plan drafts a plan, browse asks it to use the browser"
+         },
+         "goal": {
+          "type": "string",
+          "enum": [
+           "true",
+           "false"
+          ],
+          "description": "\"true\" = keep working until complete: the message becomes the objective of a session goal, and each turn is admitted and funded as its own task"
          }
         },
         "required": [
@@ -2690,6 +2878,1862 @@
      }
     },
     "security": []
+   }
+  },
+  "/v1/conversations/{id}/blocks": {
+   "get": {
+    "summary": "Interactive blocks (forms, task plans) of a conversation, with their saved state",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/state": {
+   "post": {
+    "summary": "Autosave edits to a draft block (optimistic version check; validated against its specification)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer"
+         },
+         "state": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "state"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/submit": {
+   "post": {
+    "summary": "Submit a requirements form: queues a plan request using the answers (idempotent per version)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "required": [
+         "version"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/launch": {
+   "post": {
+    "summary": "Approve and launch a task plan: stores the approved revision and queues the execution request (idempotent)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid specification or state"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict: reload and retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         }
+        },
+        "required": [
+         "version"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/live": {
+   "post": {
+    "summary": "Edit phases of a running plan that have not started (started or finished phases are locked)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "version": {
+          "type": "integer"
+         },
+         "plan": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "plan"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/phase": {
+   "post": {
+    "summary": "Approve, skip or retry one phase of a running plan",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "phase_id": {
+          "type": "string"
+         },
+         "action": {
+          "type": "string",
+          "enum": [
+           "approve",
+           "skip",
+           "retry"
+          ]
+         }
+        },
+        "required": [
+         "phase_id",
+         "action"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/stop": {
+   "post": {
+    "summary": "Stop a running plan: pending phases are cancelled and the running phase is cancelled",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/rename": {
+   "post": {
+    "summary": "Rename a chat",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string",
+          "maxLength": 90
+         }
+        },
+        "required": [
+         "title"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/browse": {
+   "get": {
+    "summary": "Your recent browser runs",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}": {
+   "get": {
+    "summary": "One browser run: status, steps, result, and whether you can take over (use ?since=n for new steps)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}/shot/{name}": {
+   "get": {
+    "summary": "A screenshot (JPEG) from a run",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "name",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}/control": {
+   "post": {
+    "summary": "Take over after a hand-off: click at x,y / type / key / scroll (only while the take-over window is open)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "action": {
+          "type": "string",
+          "enum": [
+           "click",
+           "type",
+           "key",
+           "scroll"
+          ]
+         },
+         "x": {
+          "type": "number"
+         },
+         "y": {
+          "type": "number"
+         },
+         "text": {
+          "type": "string",
+          "maxLength": 500
+         }
+        },
+        "required": [
+         "action"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}/release": {
+   "post": {
+    "summary": "Give the browser back (closes the take-over window)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}/pause": {
+   "post": {
+    "summary": "Hop in: Lumina finishes its current step, then waits while you drive the browser",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}/resume": {
+   "post": {
+    "summary": "Hand the browser back to Lumina",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}/answer": {
+   "post": {
+    "summary": "Answer a question the browser stopped to ask: pick an option, or continue after choosing on the page (optionally remember the choice)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/saved": {
+   "get": {
+    "summary": "Choices you asked Lumina to remember (size, usual drink)",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/saved/{field}/forget": {
+   "post": {
+    "summary": "Forget one remembered choice",
+    "parameters": [
+     {
+      "name": "field",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/vault": {
+   "get": {
+    "summary": "Your saved logins and cards (no secrets are ever returned) and whether saving is set up",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/vault/add": {
+   "post": {
+    "summary": "Save a login or card, encrypted, after you accept the notice (the card security code is never saved)",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/vault/{item_id}/delete": {
+   "post": {
+    "summary": "Delete one saved login or card",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/browse/{id}/live": {
+   "post": {
+    "summary": "Short-lived view-only ticket for the live frame gateway",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ticket, gateway path and seconds until it expires"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/restore": {
+   "post": {
+    "summary": "Restore an archived conversation without losing its transcript or native session. Idempotent.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "409": {
+      "description": "Active conversation quota reached"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/signup": {
+   "post": {
+    "summary": "Create a waiting account (email + password). The email is confirmed by a link; the owner then approves. Public; only when the owner switch open_signups is on.",
+    "responses": {
+     "202": {
+      "description": "Accepted (the same answer whether or not the address is already registered)"
+     },
+     "400": {
+      "description": "Invalid email or weak password"
+     },
+     "403": {
+      "description": "Sign-ups are closed, or CSRF failed"
+     },
+     "429": {
+      "description": "Rate limit (per address and per source)"
+     },
+     "503": {
+      "description": "Too many sign-ups are waiting"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "email": {
+          "type": "string",
+          "maxLength": 512
+         },
+         "password": {
+          "type": "string",
+          "maxLength": 512,
+          "writeOnly": true
+         },
+         "website": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Honeypot: leave empty"
+         }
+        },
+        "required": [
+         "email",
+         "password"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/auth/signup/verify": {
+   "post": {
+    "summary": "Confirm the email with the single-use code from the emailed link. The account then waits for owner approval. Public.",
+    "responses": {
+     "200": {
+      "description": "{state: pending}"
+     },
+     "404": {
+      "description": "Code unknown, expired or already used"
+     },
+     "403": {
+      "description": "CSRF failed"
+     },
+     "429": {
+      "description": "Rate limit"
+     }
+    },
+    "security": [
+     {
+      "csrfHeader": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "string",
+          "maxLength": 128
+         }
+        },
+        "required": [
+         "code"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/signup/config": {
+   "get": {
+    "summary": "Whether new sign-ups are open ({open: boolean}). Public.",
+    "responses": {
+     "200": {
+      "description": "Successful result"
+     }
+    },
+    "security": []
+   }
+  },
+  "/v1/media/{image_id}": {
+   "get": {
+    "summary": "A picture on a comparison card, kept by Lumina so the browser never contacts the original site",
+    "parameters": [
+     {
+      "name": "image_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "The picture itself (image/jpeg, image/png or image/webp), sandboxed and never sniffed"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/goal": {
+   "post": {
+    "summary": "Control the conversation's \"keep working until complete\" goal: resume (admitted and funded like a task) or clear it",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "action": {
+          "type": "string",
+          "enum": [
+           "resume",
+           "clear"
+          ]
+         },
+         "key": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "action",
+         "key"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Resume admitted (request) or goal cleared (goal null)"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "402": {
+      "description": "budget_denied with category"
+     },
+     "404": {
+      "description": "Not found or not owned"
+     },
+     "409": {
+      "description": "There is no goal, or a task is still running"
+     }
+    }
+   }
+  },
+  "/v1/safety": {
+   "get": {
+    "summary": "The owner's Safety menu: every safety switch for your account (?scope=mine, the default) or, for the owner only, the default for all users (?scope=all). 404 for any account without access",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/safety/change": {
+   "post": {
+    "summary": "Change safety switches for your account (scope mine) or, owner only, for all users (scope all); needs your password; shared, core and (for all users) privacy switches are refused",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/safety/access": {
+   "get": {
+    "summary": "Owner only: the accounts that may open the Safety menu",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/safety/access/change": {
+   "post": {
+    "summary": "Owner only: grant or revoke an account's access to the Safety menu by email; needs your password; revoking also drops the settings that account made",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/genui/registry": {
+   "get": {
+    "summary": "Discover the registry; ?component=id returns its schema, requirements and examples",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/state": {
+   "post": {
+    "summary": "Save local artifact state using independent document and state revisions",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "state_revision": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "state": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "state_revision",
+         "state"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/events": {
+   "post": {
+    "summary": "Submit a stored node action; persist account, actor, conversation and task association; replay identical ids idempotently",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "node_id": {
+          "type": "string"
+         },
+         "action_id": {
+          "type": "string"
+         },
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "values": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "id",
+         "node_id",
+         "action_id",
+         "version",
+         "values"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/update": {
+   "post": {
+    "summary": "Validate and replace a document atomically, preserving compatible node state",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "document": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "version",
+         "document"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/asset": {
+   "get": {
+    "summary": "Resolve only file references present in this stored document, within the authorized conversation project",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "path",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "download",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "1"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "/v1/assistant/presence": {
+   "get": {
+    "summary": "Read observable assistant presence",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Version conflict or event is pending; reload before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/genui/artifacts/{id}/diagnostics": {
+   "post": {
+    "summary": "Record scoped operational metadata without document contents or submitted values",
+    "responses": {
+     "400": {
+      "description": "Invalid data; detail identifies the corrective validation error"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required on writes"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Conflict; retain local edits, fetch saved revisions and resolve before retry"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "202": {
+      "description": "Diagnostic recorded"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "version": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "kind": {
+          "type": "string",
+          "enum": [
+           "render_failed",
+           "save_failed",
+           "submit_failed",
+           "invalid_document"
+          ]
+         },
+         "category": {
+          "type": "string",
+          "enum": [
+           "renderer",
+           "validation",
+           "session",
+           "admission",
+           "permission",
+           "unavailable",
+           "conflict",
+           "rate_limit",
+           "server",
+           "network"
+          ]
+         }
+        },
+        "required": [
+         "version",
+         "kind",
+         "category"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/devices": {
+   "get": {
+    "summary": "Your paired computers, whether \"use my own browser\" is on, whether one is connected now, and whether the feature is available at all",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/devices/pair": {
+   "post": {
+    "summary": "Get a one-time pairing code (valid ten minutes) to type into, or hand to, the Lumina extension",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available for this account yet"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
+  },
+  "/v1/devices/{device_id}/revoke": {
+   "post": {
+    "summary": "Remove a paired computer; its connection is dropped within seconds",
+    "parameters": [
+     {
+      "name": "device_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/devices/use": {
+   "post": {
+    "summary": "Switch on or off \"use my own browser\" for browser tasks (takes effect while the Lumina extension is on and connected)",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available (switched off for everyone)"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
    }
   }
  },

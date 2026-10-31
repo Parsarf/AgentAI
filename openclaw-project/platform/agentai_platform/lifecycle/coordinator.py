@@ -14,6 +14,7 @@ import uuid
 from agentai_platform.security import NotFound, Principal
 from agentai_platform.store import Store
 from agentai_platform.capacity import CapacityResult
+from .capacity import max_cells
 from .supervisor import SupervisorBusy
 from .types import KINDS, Claim, Receipt, Conflict
 
@@ -90,7 +91,7 @@ class Coordinator:
                 ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.account_id=?''',(account,)).fetchone()
             if kind=='create':
                 if cell: raise Conflict('account already bound')
-                if con.execute("SELECT count(*) FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE d.state!='deleted'").fetchone()[0]>=2:
+                if con.execute("SELECT count(*) FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE d.state!='deleted'").fetchone()[0]>=max_cells():
                     raise Conflict('trial account capacity reached')
                 deployment = uuid.uuid4().hex
                 con.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES (?,?,1,'pending')",(account,deployment))
@@ -136,7 +137,7 @@ class Coordinator:
                 if existing['request_hash']!=digest: raise Conflict('idempotency payload changed')
                 return self._public(con,account,existing['id'])
             if con.execute('SELECT 1 FROM lifecycle_cells WHERE account_id=?',(account,)).fetchone(): raise Conflict('account already bound')
-            if con.execute("SELECT count(*) FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE d.state!='deleted'").fetchone()[0]>=2:
+            if con.execute("SELECT count(*) FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE d.state!='deleted'").fetchone()[0]>=max_cells():
                 raise Conflict('trial account capacity reached')
             deployment=uuid.uuid4().hex
             con.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES (?,?,1,'pending')",(account,deployment))
@@ -173,7 +174,7 @@ class Coordinator:
             if not cell: raise NotFound()
             if cell['generation']!=generation: raise Conflict('stale generation')
             if cell['observed_state']!={'stop':'running','backup':'stopped','start':'stopped'}[kind]: raise Conflict('cell is not in the required state')
-            if kind=='start' and not con.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting'",(account,)).fetchone():
+            if kind=='start' and not con.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting' AND paused=0",(account,)).fetchone():
                 raise Conflict('no waiting request needs this cell')
             if con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')",(account,)).fetchone():
                 raise Conflict('account operation unresolved')

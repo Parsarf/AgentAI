@@ -1,0 +1,68 @@
+/** Stable public capabilities. Aliases share a schema and implementation, with explicit defaults. */
+export const ALIASES = {
+  markdown: ['text', { format: 'markdown' }], rich_text: ['text', { format: 'markdown' }],
+  copyable_snippet: ['code_block', { copyable: true }],
+  comparison_card: ['card_grid', {}], profile_card: ['info_card', {}], product_card: ['info_card', {}], business_card: ['info_card', {}], summary_card: ['info_card', {}], action_card: ['info_card', {}],
+  progress_card: ['progress', {}], media_card: ['image', {}], recommendation_card: ['info_card', {}],
+  result_collection: ['card_grid', {}], sortable_table: ['table', { sortable: true }], filterable_table: ['table', { searchable: true }], searchable_table: ['table', { searchable: true }],
+  paginated_table: ['table', {}], comparison_matrix: ['table', {}], leaderboard: ['table', {}], spreadsheet_preview: ['table', {}], database_result: ['table', {}],
+  stacked_bar_chart: ['bar_chart', { stacked: true }], donut_chart: ['pie_chart', { donut: true }], histogram: ['histogram_chart', {}], progress_chart: ['progress', {}],
+  button: ['button_group', {}], icon_button: ['button_group', {}],
+  text_input: ['form', {}], textarea: ['form', {}], checkbox: ['form', {}], radio: ['form', {}], select: ['form', {}], segmented_control: ['form', {}], slider: ['form', {}], switch: ['form', {}], date_picker: ['form', {}], time_picker: ['form', {}], number_stepper: ['form', {}],
+  grouped_form: ['form', {}], conditional_form: ['form', {}], questionnaire: ['form', {}], parameter_configurator: ['form', {}],
+  timeline_chart: ['timeline', {}], stepper: ['timeline', {}], project_timeline: ['timeline', {}], milestones: ['timeline', {}],
+  task_progress: ['execution_timeline', {}], live_activity: ['execution_timeline', {}], evidence_viewer: ['citation_list', {}], logs: ['execution_timeline', {}],
+  recommendation_selector: ['follow_up', {}], pull_request_diff: ['diff_viewer', {}],
+} as const;
+export const FAMILIES = {
+  expandable_text: 'content', syntax_highlighting: 'code', source_preview: 'content', math: 'content',
+  file_attachment: 'file', file_preview: 'file', file_card: 'file', image_card: 'file',
+  expandable_card: 'container', tabbed_card: 'container', flip_card: 'container',
+  editable_table: 'grid', pivot_table: 'grid', data_grid: 'grid', tree_table: 'grid',
+  bubble_chart: 'chart', heatmap: 'chart', radar_chart: 'chart', funnel_chart: 'chart', waterfall_chart: 'chart', candlestick_chart: 'chart', box_plot: 'chart', treemap: 'chart', sankey: 'graph', network_graph: 'graph', gantt: 'schedule',
+  multiselect: 'control', range_slider: 'control', date_range: 'control', search_input: 'control', color_picker: 'control', rating: 'control', tags: 'control', autocomplete: 'control', upload: 'upload', confirmation: 'confirm',
+  collapsible: 'container', popover: 'container', tooltip: 'content', modal: 'container', drawer: 'container', carousel: 'container', split_view: 'container', resizable_panels: 'container',
+  pagination: 'pager', breadcrumb: 'links', tree_navigation: 'tree', command_palette: 'menu', context_menu: 'menu', dropdown_menu: 'menu',
+  image_carousel: 'media', image_comparison: 'media', video: 'media', audio: 'media', waveform: 'media', pdf_viewer: 'media', document_preview: 'media', annotation: 'media', zoom: 'media', '3d_model': 'media',
+  interactive_diagram: 'graph', mermaid: 'graph', flowchart: 'graph', mind_map: 'graph',
+  map: 'map', pins: 'map', clustering: 'map', route: 'map', itinerary: 'map', geo_heatmap: 'map', region_comparison: 'map', distance: 'map', map_layers: 'map', location_search: 'map', street_imagery: 'map',
+  plan_editor: 'runtime', execution_tree: 'runtime', subagent_panel: 'runtime', dependency_graph: 'runtime', checkpoints: 'runtime', token_cost_monitor: 'runtime', human_prompt: 'prompt',
+  calculator: 'decision', scenario_simulator: 'decision', scenario_comparison: 'decision', decision_matrix: 'decision', weighted_scoring: 'decision', budget_allocator: 'decision', filter_builder: 'decision', rule_builder: 'decision', wizard: 'wizard',
+  checklist: 'checklist',
+  calendar: 'schedule', agenda: 'schedule', event: 'schedule', availability_grid: 'schedule', kanban: 'schedule', reminder: 'schedule', recurring_schedule: 'recurrence', time_tracker: 'timer',
+  weather: 'domain', sports: 'domain', stocks: 'domain', financial_statement: 'domain', currency_conversion: 'conversion', unit_conversion: 'conversion', shopping_comparison: 'domain', restaurants: 'domain', reservations: 'domain', travel_itinerary: 'schedule', health_trends: 'domain', repository_tree: 'tree', api_inspector: 'inspect',
+} as const;
+export type AliasId = keyof typeof ALIASES;
+export type ExtendedId = keyof typeof FAMILIES;
+export type Family = typeof FAMILIES[ExtendedId];
+
+/** Guidance is shared by discovery, schemas, server prompts and the developer inventory. */
+export const FAMILY_GUIDANCE: Record<Family, { category: string; purpose: string; useWhen: string; requirements: string; actions: string[] }> = {
+  content: { category: 'Text and content', purpose: 'Readable content with optional expansion and attribution', useWhen: 'supporting detail should remain available without interrupting the main answer', requirements: 'content, optional source', actions: ['local.expand'] },
+  code: { category: 'Text and content', purpose: 'Code with safe token highlighting and copy', useWhen: 'the reader will inspect or copy code', requirements: 'code and optional language; code is never executed', actions: [] },
+  file: { category: 'Media and documents', purpose: 'Preview or download an authorized file', useWhen: 'the answer refers to a file in this conversation project', requirements: 'file reference and accessible label', actions: ['file.download'] },
+  container: { category: 'Navigation and layout', purpose: 'Compose registered child blocks into views', useWhen: 'related content needs an alternate view, disclosure or bounded layout', requirements: 'child blocks and optional view labels', actions: ['local.select', 'local.expand'] },
+  grid: { category: 'Tables and data', purpose: 'Exact comparisons, local edits, grouping or hierarchy', useWhen: 'the reader needs exact cell values, pivot sums or a tree of rows', requirements: 'typed columns and rows; pivot group/value keys; tree rows use id and parent', actions: ['local.sort', 'local.filter', 'local.update'] },
+  chart: { category: 'Charts and analytics', purpose: 'Visualize numeric patterns with a data-table alternative', useWhen: 'a pattern is easier to see than read; candle/box plots require ordered numeric fields', requirements: 'data, labelKey, valueKey; inspect schema for specialized measures', actions: ['local.select'] },
+  graph: { category: 'Charts and analytics', purpose: 'Show relationships, flows and structured diagrams', useWhen: 'connections or flow magnitudes matter', requirements: 'unique nodes and edges referencing those nodes; no executable directives', actions: ['local.select'] },
+  control: { category: 'Inputs and forms', purpose: 'Collect a local value or selection', useWhen: 'a parameter should be adjustable; use the matching form field to submit values', requirements: 'label, bounds or options, optional initial value', actions: ['local.update'] },
+  upload: { category: 'Inputs and forms', purpose: 'Enter the existing scanned file-upload flow', useWhen: 'the user needs to attach a file', requirements: 'Files upload capability must be enabled for the account', actions: ['navigate.internal'] },
+  confirm: { category: 'Inputs and forms', purpose: 'Confirm a stored action through the native dialog', useWhen: 'an action has consequences the person should review', requirements: 'message, label and allowlisted action; never grants approval by rendering', actions: ['agent.request', 'agent.approve', 'agent.deny', 'agent.retry'] },
+  pager: { category: 'Navigation and layout', purpose: 'Choose a bounded page index', useWhen: 'a composed view has several pages', requirements: 'total count and page size', actions: ['local.select'] },
+  links: { category: 'Navigation and layout', purpose: 'Breadcrumb links to approved application routes', useWhen: 'the reader needs context and navigation', requirements: 'labels and internal paths', actions: ['navigate.internal'] },
+  tree: { category: 'Navigation and layout', purpose: 'Explore a nested repository or item hierarchy', useWhen: 'parent/child structure helps locate an item', requirements: 'unique node ids, labels and optional parent ids', actions: ['local.expand', 'local.filter'] },
+  menu: { category: 'Navigation and layout', purpose: 'Find and trigger stored actions from a keyboard-accessible menu', useWhen: 'several secondary actions share one surface', requirements: 'action items; command palette supports local search', actions: ['agent.request', 'navigate.internal', 'local.update'] },
+  media: { category: 'Media and documents', purpose: 'Inspect authorized images, documents, audio, video or embedded GLB models', useWhen: 'the task requires media inspection rather than a caption', requirements: 'project file references; supported MIME and size; external resources blocked', actions: ['local.select', 'local.update', 'file.download'] },
+  map: { category: 'Maps and location', purpose: 'Explore supplied coordinates, routes, distance and geographic measures', useWhen: 'location or geographic relationships matter', requirements: 'validated latitude/longitude; tiles, geocoding and street imagery require a provider', actions: ['local.filter', 'local.select', 'local.update'] },
+  runtime: { category: 'Agent-native', purpose: 'Inspect authoritative task, plan and usage records', useWhen: 'the user needs execution details, dependencies, checkpoints or provider receipts', requirements: 'request or plan in this conversation; missing telemetry stays unavailable', actions: ['local.expand'] },
+  prompt: { category: 'Agent-native', purpose: 'Pause for a user response and continue the task', useWhen: 'a human answer is required to proceed', requirements: 'question and stored submit action', actions: ['agent.request'] },
+  decision: { category: 'Decision tools', purpose: 'Recalculate bounded scenarios using named operations', useWhen: 'adjusting inputs, weights, budgets or conditions improves a decision', requirements: 'finite inputs, named operation, optional weights/scenarios/rules; no code', actions: ['local.update'] },
+  wizard: { category: 'Decision tools', purpose: 'Collect related inputs over several validated steps', useWhen: 'a long questionnaire benefits from staged input', requirements: 'ordered steps, field definitions and stored submit action', actions: ['local.update', 'agent.request'] },
+  schedule: { category: 'Scheduling and productivity', purpose: 'Inspect dated items, availability or project status', useWhen: 'dates, dependencies or status columns organize the task', requirements: 'dated items; Gantt uses start/end; Kanban uses column ids', actions: ['local.select', 'local.update'] },
+  recurrence: { category: 'Scheduling and productivity', purpose: 'Edit a recurring schedule draft', useWhen: 'the person needs to choose a recurrence', requirements: 'frequency, interval and start; publishing a scheduled job requires an integration', actions: ['local.update'] },
+  timer: { category: 'Scheduling and productivity', purpose: 'Start, pause and reset a local elapsed-time tracker', useWhen: 'the person explicitly wants to track their own time', requirements: 'optional elapsed seconds; does not represent agent progress', actions: ['local.update'] },
+  domain: { category: 'Domain adapters', purpose: 'Present sourced specialized results with explicit provider state', useWhen: 'verified weather, sport, finance, health, shopping or venue results are available', requirements: 'typed rows, provider status, source and observation time; reservations select but never book', actions: ['local.select', 'local.filter'] },
+  conversion: { category: 'Domain adapters', purpose: 'Recalculate a unit or currency conversion from a supplied rate', useWhen: 'the reader needs to change the amount being converted', requirements: 'value, units, verified rate, optional offset and rate source/time', actions: ['local.update'] },
+  inspect: { category: 'Domain adapters', purpose: 'Inspect an already-fetched API response', useWhen: 'status, headers and response body matter', requirements: 'status code, headers and body; never issues a request itself', actions: [] },
+  checklist: { category: 'Scheduling and productivity', purpose: 'Check and uncheck task items with saved local state', useWhen: 'the reader needs to track their own checklist', requirements: 'unique items with labels and optional initial checked state', actions: ['local.update'] },
+};

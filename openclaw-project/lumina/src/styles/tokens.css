@@ -1,16 +1,103 @@
-/* Design tokens: the only place colours, radii and spacing are defined. ~92% of the UI is monochrome; neon is for
-   branding, capability icons, active states, progress and the primary action. */
+/* Lumina design tokens: the one place visual values are defined (see DESIGN.md).
+   Components use the semantic roles below. The short legacy names at the bottom are aliases kept so older rules keep working;
+   do not use them in new code. Dark is the only theme. */
 :root {
   color-scheme: dark;
-  --bg: #050505; --bg-2: #0b0c0f; --card: #101115; --elevated: #16171c;
-  --ink: #f5f5f7; --ink-2: #9698a2; --ink-3: #646772;
-  --line: rgba(255, 255, 255, .08); --line-2: rgba(255, 255, 255, .13);
-  --neon: #6865ff; --neon-2: #a855f7; --ok: #2dd4bf; --warn: #f5b942; --bad: #ef6060;
-  --r-sm: 10px; --r: 16px; --r-lg: 22px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, .35);
-  --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --gap: 16px; --pad: 20px; --ease: cubic-bezier(.2, .7, .2, 1);
+
+  /* Surfaces, darkest to lightest. Each step is a clear but quiet change in lightness. */
+  --surface-base: #060608;        /* the page */
+  --surface-sidebar: #0a0a0d;     /* navigation column */
+  --surface: #0e0f13;             /* cards, panels, composer */
+  --surface-raised: #15161b;      /* hovered rows, inputs, selected items */
+  --surface-overlay: #191a20;     /* menus, dialogs, popovers: always opaque */
+  --surface-inset: #07080b;       /* terminals and previews sunk into a card */
+
+  /* Neutral fills laid over any surface (hover, pressed, selected). */
+  --fill-hover: rgb(255 255 255 / .05);
+  --fill-pressed: rgb(255 255 255 / .09);
+  --fill-subtle: rgb(255 255 255 / .03);
+
+  /* Text. All three read at 4.5:1 or better on every surface above. */
+  --text-primary: #f2f2f5;
+  --text-secondary: #a3a5af;
+  --text-muted: #868995;
+  --text-disabled: #5d606b;
+
+  /* Borders */
+  --border-subtle: rgb(255 255 255 / .07);
+  --border-default: rgb(255 255 255 / .12);
+  --border-strong: rgb(255 255 255 / .22);
+
+  /* Accent: one electric violet. Brand mark, primary action, focus, selected and active states only. */
+  --accent-rgb: 116 85 255;
+  --accent: #7455ff;
+  --accent-hover: #9079ff;
+  --accent-pressed: #6140ee;
+  --accent-text: #b9abff;          /* violet text on dark surfaces */
+  --accent-soft: rgb(var(--accent-rgb) / .14);
+  --accent-line: rgb(var(--accent-rgb) / .5);
+  --on-accent: #ffffff;
+  --accent-2: #a78bfa;             /* the lighter violet used by the second icon colour */
+  --glow-accent: 0 0 18px rgb(var(--accent-rgb) / .38);   /* brand mark and the primary action only */
+  --focus-ring: 0 0 0 2px var(--surface-base), 0 0 0 4px var(--accent);
+
+  /* Status */
+  --success: #34d3a0; --success-soft: rgb(52 211 160 / .12);
+  --warning: #f5b942; --warning-soft: rgb(245 185 66 / .1);
+  --danger: #ef6a6a;  --danger-soft: rgb(239 106 106 / .1);
+  --on-danger: #1b0606;
+
+  /* Typography: the platform's own UI font first, bundled Inter as the fallback. Sizes are rem so browser text settings apply. */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', Inter, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  --text-xs: .75rem; --text-sm: .8125rem; --text-base: .875rem; --text-md: 1rem; --text-lg: 1.125rem; --text-xl: 1.375rem; --text-2xl: 1.875rem; --text-3xl: clamp(2rem, 4vw, 2.75rem);
+  --leading-tight: 1.2; --leading-normal: 1.5; --leading-loose: 1.65;
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600;
+
+  /* Shape and size */
+  --radius-xs: 6px; --radius-sm: 10px; --radius-md: 14px; --radius-lg: 20px; --radius-pill: 999px;
+  --control-sm: 30px; --control-md: 38px; --control-lg: 44px;
+  --icon-sm: 16px; --icon-md: 20px; --icon-lg: 28px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --gap: 16px; --pad: 20px;
+
+  /* Depth */
+  --shadow-card: 0 1px 0 rgb(255 255 255 / .03) inset;
+  --shadow-overlay: 0 18px 48px rgb(0 0 0 / .55), 0 0 0 1px var(--border-default);
+
+  /* Motion */
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --dur-fast: 120ms; --dur: 180ms; --dur-slow: 320ms;
+
+  /* Stacking */
+  --z-sticky: 10; --z-nav: 30; --z-drawer: 40; --z-modal: 50; --z-menu: 60;
+
+  /* Legacy aliases (do not use in new code). */
+  --bg: var(--surface-base); --bg-2: var(--surface-sidebar); --card: var(--surface); --elevated: var(--surface-raised);
+  --ink: var(--text-primary); --ink-2: var(--text-secondary); --ink-3: var(--text-muted);
+  --line: var(--border-subtle); --line-2: var(--border-default);
+  --neon: var(--accent); --neon-2: var(--accent-2); --ok: var(--success); --warn: var(--warning); --bad: var(--danger);
+  --r-sm: var(--radius-sm); --r: var(--radius-md); --r-lg: var(--radius-lg); --shadow: var(--shadow-overlay);
 }
 :root[data-compact='true'] { --gap: 10px; --pad: 14px; }
 :root[data-motion='reduced'] *, :root[data-motion='reduced'] *::before { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Generative UI additions (see src/gen and docs/generative-ui/variants-and-properties.md). Data colours for charts: each reads at 3:1 or better on --surface. */
+:root {
+  --chart-1: #7b78ff; --chart-2: #35d0ba; --chart-3: #ffb454; --chart-4: #ff6b8b; --chart-5: #8fb4ff; --chart-6: #b8f27c;
+  --chart-grid: rgb(255 255 255 / .08);
+  --space-0: 2px; --space-7: 48px;
+  --gen-gap-xs: 4px; --gen-gap-sm: 8px; --gen-gap-md: 12px; --gen-gap-lg: 16px; --gen-gap-xl: 24px;
+  --gen-row-compact: 28px; --gen-row-comfortable: 36px; --gen-row-spacious: 46px;
+  --touch-min: 44px;
+}
+
+/* Rich menu (Tools): iOS-style icon tile colours, switch and popover surface. */
+:root {
+  --tile-blue: #0a84ff; --tile-purple: #bf5af2; --tile-gray: #8e8e93; --tile-orange: #ff9f0a; --tile-green: #30d158; --tile-teal: #64d2ff; --tile-red: #ff453a;
+  --on-tile: #fff;
+  --menu-rich-bg: #1c1c1f; --menu-rich-line: rgb(255 255 255 / .1);
+  --menu-row-hover: rgb(255 255 255 / .07); --menu-row-selected: rgb(255 255 255 / .06); --menu-row-active: rgb(255 255 255 / .11);
+  --switch-off: rgb(120 120 128 / .32);
+}

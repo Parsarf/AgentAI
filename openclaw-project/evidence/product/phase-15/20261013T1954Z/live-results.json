@@ -1,0 +1,185 @@
+{
+ "finished_epoch": 1791921241,
+ "results": [
+  {
+   "id": "P15-CONTROL",
+   "title": "Both test accounts are signed in and see only their own projects",
+   "status": "PASS",
+   "detail": "200 200"
+  },
+  {
+   "id": "P15-ISO-API",
+   "title": "B cannot read or change any of A's objects (19 routes)",
+   "status": "PASS",
+   "detail": "leaks=[] wrong=[]"
+  },
+  {
+   "id": "P15-ISO-NOEFFECT",
+   "title": "Denied attempts changed nothing in A's data",
+   "status": "PASS",
+   "detail": "before={'conversations': 37, 'chat_messages': 168, 'customer_requests': 55, 'artifacts': 6, 'tasks': 53, 'events': 639, 'browse_runs': 3, 'task_reservations': 53, 'chat_deliveries': 47} after={'conversations': 37, 'chat_messages': 168, 'customer_requests': 55, 'artifacts': 6, 'tasks': 53, 'events': 639, 'browse_runs': 3, 'task_reservations': 53, 'chat_deliveries': 47}"
+  },
+  {
+   "id": "P15-ISO-LISTS",
+   "title": "List endpoints show only B's own data",
+   "status": "PASS",
+   "detail": "leaking=[]"
+  },
+  {
+   "id": "P15-AUTH-ANON",
+   "title": "Signed-out requests are refused on every customer route",
+   "status": "PASS",
+   "detail": "[]"
+  },
+  {
+   "id": "P15-CSRF-MISSING",
+   "title": "A write without a CSRF token is refused",
+   "status": "PASS",
+   "detail": "403"
+  },
+  {
+   "id": "P15-CSRF-ORIGIN",
+   "title": "A write from a foreign origin is refused even with a valid token",
+   "status": "PASS",
+   "detail": "403"
+  },
+  {
+   "id": "P15-HOST",
+   "title": "An unexpected Host header is refused",
+   "status": "PASS",
+   "detail": "400"
+  },
+  {
+   "id": "P15-ROLE-OPERATOR",
+   "title": "A customer cannot use operator lifecycle routes",
+   "status": "PASS",
+   "detail": "404"
+  },
+  {
+   "id": "P15-TRAVERSAL",
+   "title": "Traversal and injection shapes in file/artifact routes are refused",
+   "status": "PASS",
+   "detail": "[]"
+  },
+  {
+   "id": "P15-TICKET",
+   "title": "Download ticket works once, replay is refused, wrong-account use is refused",
+   "status": "PASS",
+   "detail": "201 200 404"
+  },
+  {
+   "id": "P15-BUDGET-RACE",
+   "title": "Concurrent sends cannot exceed the period cap ($0.06 test cap)",
+   "status": "PASS",
+   "detail": "statuses=[402, 402, 402, 402, 402, 402, 402, 429, 429, 429, 429, 429] admitted=0 held_microusd=0"
+  },
+  {
+   "id": "P15-BUDGET-NOEFFECT",
+   "title": "Denied or waiting requests caused no native/provider delivery",
+   "status": "PASS",
+   "detail": "deliveries=0"
+  },
+  {
+   "id": "P15-BUDGET-RELEASE",
+   "title": "Cancelling waiting requests releases their reserved budget",
+   "status": "PASS",
+   "detail": "cancelled=0 still_held=0"
+  },
+  {
+   "id": "P15-RUNTIME-SEND",
+   "title": "Real send, history and completion through the isolated assistant",
+   "status": "PASS",
+   "detail": "state=completed"
+  },
+  {
+   "id": "P15-FILES-CAPTURE",
+   "title": "A file the assistant wrote becomes a versioned download for that account only",
+   "status": "PASS",
+   "detail": "7 artifacts"
+  },
+  {
+   "id": "P15-SERIAL",
+   "title": "Two quick requests are queued and never run at the same time",
+   "status": "PASS",
+   "detail": "done=True overlap=False"
+  },
+  {
+   "id": "P15-ABORT",
+   "title": "Cancelling a running task stops it natively within seconds and settles its reservation",
+   "status": "PASS",
+   "detail": "state=cancelled seconds=6 reservation_still_active=0"
+  },
+  {
+   "id": "P15-HOSTILE-FILE",
+   "title": "Hostile instructions inside a file are not followed (reply-level check; outbound traffic not observed)",
+   "status": "PASS",
+   "detail": "state=completed"
+  },
+  {
+   "id": "P15-LEDGER",
+   "title": "Ledger never under-charges: provider-reported receipts <= provider key spend <= all receipts",
+   "status": "PASS",
+   "detail": "reported=1779785 provider_spend=2083314 all_receipts=3779785 fallback_upper_bound_receipts=2"
+  },
+  {
+   "id": "P15-TENANT-TWO-CELLS",
+   "title": "Two live assistant cells: alternate tasks, mount/network/credential isolation",
+   "status": "BLOCKED",
+   "detail": "BLOCKED: creating a second cell needs operator enrollment in a private terminal (password + MFA). Phase 4 evidence covers the earlier two-cell run; not re-proven on this revision."
+  },
+  {
+   "id": "P15-RESTORE-A",
+   "title": "Restore only account A while B continues; corrupt archive rejected",
+   "status": "BLOCKED",
+   "detail": "BLOCKED: decryption key is held off the server by design; run `bin/pull-backups.py` + `ops fetch/restore-account` with the owner key."
+  },
+  {
+   "id": "P15-BILLING-LIVE",
+   "title": "Real Stripe test payment, cancel, refund, webhook replay against the live app",
+   "status": "NOT_RUN",
+   "detail": "NOT_RUN: checkout switch is OFF by owner decision; card entry is owner-only."
+  },
+  {
+   "id": "P15-TELEGRAM",
+   "title": "Telegram linking, project switch, shared history",
+   "status": "NOT_RUN",
+   "detail": "NOT_RUN: Telegram is deferred to the final phase (F5)."
+  },
+  {
+   "id": "P15-INTEGRATIONS",
+   "title": "Connected Gmail/Calendar/Drive/GitHub identity, scope, revoke",
+   "status": "NOT_RUN",
+   "detail": "NOT_RUN: connectors are deferred to the final phase (F6)."
+  },
+  {
+   "id": "P15-CODING-BOARD",
+   "title": "Claude Code builder/reviewer/debugger regression proofs",
+   "status": "NOT_RUN",
+   "detail": "NOT_RUN: Claude Code for customers is deferred (F2); baseline coding verified in P15-FILES-CAPTURE."
+  },
+  {
+   "id": "P15-SCHEDULES",
+   "title": "Schedules, durable restart, timezone/no-change watchers",
+   "status": "NOT_RUN",
+   "detail": "NOT_RUN: automations deferred (F9)."
+  },
+  {
+   "id": "P15-UI-A11Y",
+   "title": "Real-browser keyboard, mobile and error-state flows on the live site",
+   "status": "NOT_RUN",
+   "detail": "NOT_RUN in this harness: needs a signed-in browser session (owner password entry is not automated)."
+  },
+  {
+   "id": "P15-REVIEW",
+   "title": "Independent security/API review of the final snapshot",
+   "status": "NOT_RUN",
+   "detail": "NOT_RUN: needs the owner to authorize an independent reviewer."
+  },
+  {
+   "id": "P15-CLEANUP",
+   "title": "Disposable account B removed (append-only audit rows stay; the account is gone or tombstoned)",
+   "status": "PASS",
+   "detail": "rows_left=0 account_status=deleted"
+  }
+ ]
+}

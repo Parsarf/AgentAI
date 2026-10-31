@@ -1,0 +1,16 @@
+{
+  "release": "20261027T114539Z-cancel-e700e33",
+  "commit": "e700e33",
+  "result": "released",
+  "root_cause": "Assistant container OOM-killed during embedded Chromium startup; cancellation recovery waited for unreachable runtime.",
+  "mitigation": "Affected account uses existing separate sandbox browser runner. Native override backed up on host and removed; default remains runner.",
+  "request_repair": {
+    "state": "cancelled",
+    "slot_released": true,
+    "usage_reconciled": true,
+    "shopping_not_resumed": true
+  },
+  "regression_tests": 102,
+  "browser_check": "Separate sandbox opened the affected public site and returned a page snapshot; no shopping action or live model prompt was run.",
+  "binary_rollback_compatible": true
+}

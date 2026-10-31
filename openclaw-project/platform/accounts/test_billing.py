@@ -126,6 +126,21 @@ class BillingHTTPChecks(TestCase):
         with connection.cursor() as c:
             c.execute('SELECT count(*) FROM billing_inbox'); self.assertEqual(c.fetchone()[0], 0)
 
+    def test_webhook_accepts_a_signed_event_above_the_default_boundary_cap(self):
+        self.configure(switch=False)
+        event = self.events.make('customer.created', {'id': 'cus_zzzzzz', 'metadata': {'pad': 'x' * 9000}})
+        self.assertGreater(len(self.events.body(event)), 8192)
+        response = self.webhook(event)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        self.assertEqual(self.webhook(event, secret='whsec_' + 'z' * 32).status_code, 400)
+
+    def test_large_bodies_on_other_paths_keep_the_default_boundary_cap(self):
+        for path in ('/auth/login', '/v1/billing/webhook/'):
+            response = self.new_client().post(path, b'x' * 9000, content_type='application/json', secure=True)
+            self.assertEqual(response.status_code, 413)
+            self.assertEqual(response.json()['error'], 'request_too_large')
+
     def test_worker_requires_configuration_and_reports_counts_only(self):
         out = io.StringIO(); call_command('billing_worker', '--check', stdout=out)
         self.assertEqual(json.loads(out.getvalue())['provider_configured'], False)

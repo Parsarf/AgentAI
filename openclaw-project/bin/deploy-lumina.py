@@ -52,6 +52,16 @@ chown -R root:agentai-platform ui.new; chmod -R go-w,a+rX ui.new
 test -f ui.new/index.html
 [ -d ui ] && mv ui ui.prev
 mv ui.new ui
+# The chat film is served by Caddy from its own public folder (the state directory is private); keep that copy in step.
+if [ -d ui/scenes ]; then
+  install -d -m 755 /var/www/lumina-scenes/app
+  rm -rf /var/www/lumina-scenes/app/scenes.new
+  cp -r ui/scenes /var/www/lumina-scenes/app/scenes.new
+  chown -R root:root /var/www/lumina-scenes/app/scenes.new; chmod -R u=rwX,go=rX /var/www/lumina-scenes/app/scenes.new
+  rm -rf /var/www/lumina-scenes/app/scenes.old
+  [ -d /var/www/lumina-scenes/app/scenes ] && mv /var/www/lumina-scenes/app/scenes /var/www/lumina-scenes/app/scenes.old
+  mv /var/www/lumina-scenes/app/scenes.new /var/www/lumina-scenes/app/scenes
+fi
 ls ui | head -5'''
     print(run([sys.executable, str(HERE / 'ssh-server'), script]))
     print('Installed. Open /app/ on your site.')

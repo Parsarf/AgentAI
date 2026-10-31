@@ -1,0 +1,112 @@
+{
+  "renderer": "Installed mermaid browser bundle and local Chrome via Playwright; all network requests blocked",
+  "mermaid_version": "12.2.0",
+  "diagrams": [
+    {
+      "source": "system-overview.md",
+      "block": 1,
+      "svg": "svg/system-overview-1.svg",
+      "mermaid_sha256": "944eafe86e4a74093a068390d97320ad369a1c54da7f52bb17333335b7d7e99f",
+      "svg_sha256": "617749cec6520cd12d27eb987657a39d3db2d89f70bf126e5cbfbdcc449d7627",
+      "viewBox": "4 4 788.5 760.429931640625",
+      "width": 788.5,
+      "height": 760.421875,
+      "textNodes": 16,
+      "labelNodes": 16,
+      "foreignObjects": 0
+    },
+    {
+      "source": "system-overview.md",
+      "block": 2,
+      "svg": "svg/system-overview-2.svg",
+      "mermaid_sha256": "39d032f7b5dc9e9e0290482818f017f19b4bad42413db89889efe1f44f131c89",
+      "svg_sha256": "5465a046edf60a65d0d69ecde84e71d279d026b81b26ad618f2b175a2c436a33",
+      "viewBox": "4 4 1896 182.1796875",
+      "width": 1896,
+      "height": 182.171875,
+      "textNodes": 11,
+      "labelNodes": 11,
+      "foreignObjects": 0
+    },
+    {
+      "source": "native-execution.md",
+      "block": 1,
+      "svg": "svg/native-execution-1.svg",
+      "mermaid_sha256": "ff0c6447cebfa9586703428f9a228d86dbadacb0069e7133b23db6dc2d3db30c",
+      "svg_sha256": "55502dc5b787526436e7bce2928d68055974909ec436e8ed4bbdb675455f1602",
+      "viewBox": "-50 -10 1835.5 941",
+      "width": 1835.5,
+      "height": 911,
+      "textNodes": 26,
+      "labelNodes": 26,
+      "foreignObjects": 0
+    },
+    {
+      "source": "native-execution.md",
+      "block": 2,
+      "svg": "svg/native-execution-2.svg",
+      "mermaid_sha256": "3ed9f79bc7670535ba14af90b22b1df45b814eb21ba03b73f8cceaed741dc743",
+      "svg_sha256": "e7716af2f5285a151f4a1a6850a33c51ae9662fcb3d85815eeaaca51dfc546de",
+      "viewBox": "-50 -10 1697.5 575",
+      "width": 1697.5,
+      "height": 545,
+      "textNodes": 17,
+      "labelNodes": 17,
+      "foreignObjects": 0
+    },
+    {
+      "source": "native-execution.md",
+      "block": 3,
+      "svg": "svg/native-execution-3.svg",
+      "mermaid_sha256": "3c8d257b4c1e91949c4ee4277c14ff617212f6a4846ca06f186028efc57e2ac5",
+      "svg_sha256": "a752fcf215ed31ab5d1be6f557b73a5222c0b202ead84e81da364a0bac015be3",
+      "viewBox": "4 4 565.3585815429688 1292.020263671875",
+      "width": 565.34375,
+      "height": 1292.015625,
+      "textNodes": 17,
+      "labelNodes": 17,
+      "foreignObjects": 0
+    },
+    {
+      "source": "state-and-recovery.md",
+      "block": 1,
+      "svg": "svg/state-and-recovery-1.svg",
+      "mermaid_sha256": "4085c94fe5b7529178c110ebbbbc2b37c78804a95658acce612b44be4cf9054d",
+      "svg_sha256": "b889ae19b558261e959bf1a628bab4e160cdf9c8fc4e97addd73d31124e6c546",
+      "viewBox": "4 4 552 738.0609130859375",
+      "width": 552,
+      "height": 738.046875,
+      "textNodes": 11,
+      "labelNodes": 11,
+      "foreignObjects": 0
+    },
+    {
+      "source": "state-and-recovery.md",
+      "block": 2,
+      "svg": "svg/state-and-recovery-2.svg",
+      "mermaid_sha256": "72cb581e5b70c0400a971cd18dae7790da7b78ba86e44c43dfa0dc5c99131bfb",
+      "svg_sha256": "a092ab2626af8febe783a0695d95b46621a44bd609e48ad744a7abc96ac4950a",
+      "viewBox": "4 4 1305.7239990234375 880.2281494140625",
+      "width": 1305.71875,
+      "height": 880.21875,
+      "textNodes": 24,
+      "labelNodes": 24,
+      "foreignObjects": 0
+    }
+  ],
+  "validation": {
+    "current_documents": 5,
+    "local_links_checked": 98,
+    "mermaid_blocks_parsed_and_rendered": 7,
+    "svg_hashes_checked": 7,
+    "restored_evidence_hashes_checked": 4,
+    "batch_d_unchanged": 14,
+    "application_source_changes": 0,
+    "sql_migrations": 30,
+    "effective_goal_limit_wiring_rechecked": true,
+    "superseded_files_removed": 21,
+    "validation_stage": "after approved cleanup commits",
+    "local_links_including_cleanup_records": 115
+  },
+  "visual_qa": "All seven SVG exports inspected as local rendered PNG previews; no application or production screenshots captured."
+}

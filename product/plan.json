@@ -5,7 +5,7 @@
   "plan_name": "Builder",
   "monthly_price_usd": "79.00",
   "included_provider_cost_usd": "25.00",
-  "daily_provider_cost_usd": "5.00",
+  "daily_provider_cost_usd": "15.00",
   "max_task_cost_usd": "5.00",
   "max_running_tasks": 1,
   "max_queued_tasks": 3,

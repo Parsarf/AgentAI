@@ -1,6 +1,7 @@
 runtime/
 app/
 state/
+!lumina/src/state/
 workspace/
 tmp/
 backups/

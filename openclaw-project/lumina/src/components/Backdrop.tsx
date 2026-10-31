@@ -25,12 +25,11 @@ export default function Backdrop() {
   const fallback = <div className="globe-fallback" />;
   return (
     <div className="globe" aria-hidden>
-      {fallback}
-      {ready && (
-        <Guard fallback={null}>
-          <Suspense fallback={null}><Globe animate={!reducedMotion} lowPower={lowPowerDevice()} /></Suspense>
+      {ready && !reducedMotion ? (
+        <Guard fallback={fallback}>
+          <Suspense fallback={fallback}><Globe animate lowPower={lowPowerDevice()} /></Suspense>
         </Guard>
-      )}
+      ) : fallback}
     </div>
   );
 }

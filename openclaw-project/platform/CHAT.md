@@ -39,38 +39,29 @@ the Phase 5 fence and the global serial slot.
 
 ## Native adapter contract (`agentai_platform/gateway.py`)
 
-Recorded from the official session-control documentation for the chat
-execution family (`chat.send`, `chat.history`, `chat.abort`), protocol
-version 3. Reconfirm against the installed Gateway at activation:
+OpenClaw owns the run. The contract below was checked against the installed runtime (2026.9.6, protocol 4), not against newer documentation; `docs/architecture/native-execution.md`
+has the full table and the end-to-end evidence.
 
-- `chat.send` acknowledges admission separately from transcript persistence:
-  `runStarted:true` does not prove a transcript row and `messageSeq` may be
-  absent while input is in pending custody. Reconcile by submission identity,
-  never by predicted positions.
-- `chat.history` paginates with the opaque `deltaCursor`; `{kind:"delta"}`
-  catch-up replays like live events, `{kind:"reset"}` requires a fresh tail
-  fetch. `sessionInfo.hasActiveRun` is the activity fact used to detect
-  quiescence.
-- `chat.abort` takes the session key plus the scoped `runId`; abort stops
-  generation without undoing external effects, so a customer-visible
-  cancellation still requires the driver's terminal receipt and settlement.
-- Compatibility negotiation (`negotiate`) fails closed on any other protocol
-  version or an unprobed adapter. `HttpGateway` requires a host-resolved
-  `GatewayBinding`; request data can never supply origin, token, RPC name or
-  session key. `SyntheticGateway` is a deterministic fixture and is never
-  installed in a worker entry point.
+- `chat.send` is idempotent per `idempotencyKey`, and the key IS the run id. A repeat answers `in_flight` or `ok` and starts nothing. `queueMode: "steer"` injects the message into
+  the active run; the steered input's own `agent.wait` reads `ok` with no reply, and its answer arrives in the active run's transcript under a run id the runtime makes up.
+- `agent.wait` reports the end of one run (`ok` with `terminalReply` and the tools that ran, or `error`, `error: "aborted"` after `chat.abort`). `timeout`/`pending` mean "not over";
+  an unknown run id reads the same, which is why a lost input is presented again by its key.
+- `chat.history` rows carry the key of the input they follow (`after`), which is how a reply is tied to its request (never by position or run id alone).
+- A goal is session state started with `chat.send` + `intent: session-goal-start` and controlled with `sessions.goal.update` / `clear` (operation ids make retries safe). The runtime
+  does not start the next turn by itself.
+- After a hard restart an accepted-but-unstarted input is `interrupted` in `pendingInputs`: inert, and refused under its old key. The same text under a new key runs once.
+- `ask_user` fails in this deployment's connection model, so cells deny it (and the runtime's own `browser`); see `lifecycle/cell_config.py`.
+- `negotiate` fails closed on any other protocol version or an unprobed adapter. The cell bridge multiplexes calls, so a long `agent.wait` never holds up Stop. A refused call
+  comes back under `__error__`; payload fields such as a run's own `error` are results, not refusals.
 
-## Driver sequence (`ChatDriver`, trusted host path)
+## Driver sequence (`ChatDriver` in `chat_driver.py`, trusted host path)
 
-Preflight probes capabilities. After the serial claim it rechecks membership,
-requires the active reservation and task state before any native effect,
-records the delivery attempt, resolves or creates the native session, sends,
-and records the acknowledgement. Transcript pages absorb by native message
-identity. Cancellation intent aborts the scoped run (unsupported abort stays
-recorded as intent and leaves the task uncertain rather than pretending).
-Settlement (`effects_quiesced`, all routes reconciled) happens before the
-global slot hands over. Unknown outcomes reconcile by receipts and never
-resend; `reconcile` completes only from a terminal, cursor-free history read.
+Preflight probes capabilities. After the claim it rechecks membership, requires the active reservation and task state, and resolves who owns the session's run (a run nobody owns is
+stopped; one a live request owns defers this request). It records a delivery (`chat_deliveries`: one row per input, with its kind, key and deadline) and hands the message over. It then
+asks the runtime when the run ended in short slices, looking after Stop, the lease, the spending limit, the per-run time limit and people the run waits for. A run waiting on a person
+parks the request (it gives up `request_slot`, not its cell or reservation). A cell that goes away for a moment is waited for, then every live input is presented again by its key.
+When no run is owed (`close_gate`, which also refuses late steers) the driver mirrors the replies of its runs, saves files and cards, judges the outcome (`outcome.py`) and settles
+the spend before the slot hands over. `reconcile` after a crash is a recovery, not a guess: supervision carries on from the stored deliveries.
 
 ## Conversation resume
 
@@ -88,3 +79,47 @@ waiting/starting/running/uncertain tasks.
 
 Checks: `PYTHONPATH=. python -m unittest tests.test_chat tests.test_gateway`
 and the `accounts.test_chat` HTTP flow inside `manage.py test accounts`.
+
+## The assistant reads every message first (native tools)
+
+Nothing guesses what a message means. `ChatService.send` makes a message plain chat unless the customer picked Plan or Browse mode. The assistant gets the message (plus a short
+context block with what the customer asked Lumina to remember: names only, never a secret) and decides for itself, with the runtime's own tools: web search and fetch, files,
+commands, `lumina_browser`, and `lumina_task_update`. Straightforward requests execute directly. The assistant decides when dependencies, uncertainty or verification warrant a concise 2-6 phase plan, with a concrete checkpoint per phase, and proceeds through it without stopping to offer Plan mode. Explicit Plan mode still drafts an editable plan for the customer to launch.
+
+`lumina_task_update` is served over the same authenticated MCP relay, independently of the browser switch. It writes display-only `task_steps` snapshots to the current request's durable event stream: direct work is appended as it happens; planned work preserves a compact ordered phase list. Each update names a task belonging to the authenticated active cell, a revision and an idempotency key. Completion of a planned phase requires a checkpoint result. Unknown, stale, cancelled and foreign-request writes are refused. Calling the tool with `{}` reads the current task/revision, including for native goals whose objective remains the customer's raw message. These reports never launch work, settle a request, or grant approval.
+
+The Active Task widget follows the stream by cursor and shows actual running work ahead of queued requests. It uses reported statuses, keeps failed/blocked work visible, and retains the latest finished checklist. Without explicit reports it folds tool calls by reference and uses their real completion events. It never marks every earlier event done just because a new event appeared. On a finished run, missing checkpoint completion remains labeled as unreported.
+
+There is no JEV tool choice or follow-up message carrying a tool result; the runtime does tool-result continuation.
+
+## The browser as a native tool
+
+`lumina_browser` is served to a cell over MCP by `tool_relay.py` (app user, bound to the cells' bridge address, one firewall port). The cell proves who it is with its own model key,
+checked by the root bridge (`cell.identify`). A call is only served inside the calling account's running, funded request (`browse/adapter.py`), spends only the browsing share
+(60%) of that request's reservation, is stopped when the request is stopped or the caller goes away, and returns Lumina's own wording of how the job ended. Several calls in one
+run are several jobs of the same request (`browse_sessions`). The browse service, its code rules (no payment, no password typing, human-check hand-off), the saved-login consent
+and the Live view stay in Lumina's hands. Who decides each browser step is JEV first and then the assistant itself: when JEV cannot take a step (it calls the page too complex, misses twice,
+the run loops, or a choice is open) the job hands the page to the assistant, which answers with the second tool, `lumina_browser_step` (see `docs/architecture/native-execution.md`). There are no
+Haiku or Sonnet tiers any more. With the cell's native browser enabled (`browse-engine.json`) the hands are the cell's own browser; otherwise the host's Docker stage.
+
+## Steering, Stop, goals and outcomes
+
+- **Steer.** A plain message sent while a task of the conversation runs joins that run (`ChatService.steer`): same request, same reservation, a `steer` delivery the worker waits for.
+- **Stop.** Aborts every run of the session, waits for the runtime to confirm, pauses the goal so nothing resumes it, and closes the request as cancelled.
+- **Keep working until complete.** The message becomes a native goal. `goals.GoalChain` admits each next turn as its own request while the goal is `active`, within the allowance,
+  the account's membership and `GOAL_CHAIN_LIMIT`. Paused, blocked, budget-limited and complete goals are never continued. Resume and Clear are `POST /v1/conversations/{id}/goal`.
+- **Outcomes.** `customer_requests.state` says the run is over. `outcome` (completed, partial, blocked, failed, cancelled), `outcome_note` and `verification` (verified,
+  unverified, not_applicable) say what that means, from evidence Lumina holds itself (`outcome.py`): the browser's end state and steps, saved files, the goal state. The assistant's
+  own words are never evidence.
+
+## Registry-driven answers
+
+Composed answers use one versioned `lumina-doc` document protocol. The generated registry covers content, cards, tables, charts, inputs, navigation, media, location, execution monitoring, decisions, scheduling and specialized results. Detailed schemas/examples and a local validator are deployed to `lumina-ui/` inside the cell workspace; the compact capability index is supplied only when the chosen answer style permits structured UI.
+
+Server extraction validates documents and stores them as anchored `document` blocks. User events carry artifact/node/action identities, document version, submitted values and an idempotency key; the server resolves the stored binding, validates values, and resumes the correct conversation through normal budget admission. Continuations can update the same artifact by version while preserving compatible input and local state. Approval/retry controls use the actual native phase/request authority.
+
+The former `lumina` card producer, renderer and automatic remote picture fetching have been retired. Historical cards migrate through the registry renderer or remain readable text/code. Stored conversations, artifacts and account-owned pictures are preserved. New media references resolve only authorized project files, using scanned uploads and generated-artifact tickets.
+
+JEV remains an optional advisory fallback for structured prose; its hints can affect presentation but never provide facts, execute actions or grant approval. Partial-document parsing mounts complete validated blocks. Live token streaming requires drafts/deltas from the upstream gateway; the application does not simulate them.
+
+See `docs/generative-ui/protocol.md`, `component-catalog.md`, `selection-policy.md`, `security.md`, and `testing.md` for the current contracts and verification workflow.

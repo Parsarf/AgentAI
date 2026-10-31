@@ -98,6 +98,9 @@ def sources(cfg, clock=time.time):
            latest_file_source('owner-state', cfg['owner_backup_dir'], 'oc-ops-*.tar.gz', 'tar', day, clock, asset='owner-state'),
            latest_file_source('litellm', cfg['owner_backup_dir'], 'litellm-2*.sql', 'pgdump', day, clock, asset='litellm'),
            versions_source(cfg, release)]
+    storage = Path(cfg.get('storage_dir', '/var/lib/agentai-platform/storage'))
+    if storage.is_dir():                                   # present once file storage is enabled
+        out.append(files_source('customer-files', [storage], asset='customer-files'))
     for account, tenant in tenants(cfg):
         out.append(latest_file_source(f'cell-{tenant[3:11]}', Path(cfg['cell_backup_root']) / account, '*.tgz', 'tar', 36 * 3600, clock,
                                       asset='tenant-cells', tenant=tenant))
@@ -113,7 +116,7 @@ def retention_days(cfg):
 
 def backup_job(cfg):
     srcs, release = sources(cfg)
-    expected = [a for a in BACKED_UP if a != 'tenant-cells']
+    expected = [a for a in BACKED_UP if a != 'tenant-cells' and (a != 'customer-files' or any(x.asset == 'customer-files' for x in srcs))]
     return BackupJob(srcs, AgeCrypto(cfg['age_recipients']), destinations(cfg), work_root=cfg['work_root'], status_path=cfg['backup_status'],
                      alert=lambda kind, report: router(cfg).send(kind, 'crit', f"backup set {report['set_id']} incomplete: " + ', '.join(f['source'] for f in report['failures']) + ' ' + ', '.join(report['missing_assets']),
                                                                correlation_id=report['set_id']),

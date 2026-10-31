@@ -553,31 +553,62 @@ def esc(v) -> str:
     return html.escape(redact(v), quote=True)
 
 
-def page(title: str, body: str, rec: dict | None, flash: str = "") -> str:
-    nav = logout = ""
-    if rec:
-        nav = ("<nav><a href=/>Overview</a><a href=/live>Live</a>"
-               "<a href=/sessions>Sessions</a><a href=/files>Files</a>"
-               "<a href=/approvals>Approvals</a><a href=/schedules>Schedules</a>"
-               "<a href=/memory>Memory</a><a href=/integrations>Integrations</a>"
-               "<a href=/switches>Feature switches</a><a href=/routing>Routing</a>"
-               "<a href=/costs>Costs</a><a href=/audit>Audit</a></nav>")
-        logout = (f"<form method=post action=/logout class=inline>"
-                  f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
-                  f"<button type=submit>Logout</button>"
-                  f"</form><form method=post action=/revoke-all class=inline>"
-                  f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
-                  f"<button type=submit>Revoke sessions</button></form>")
-    fl = f"<p class=warn>{esc(flash)}</p>" if flash else ""
-    return (f"<!doctype html><html><head><meta charset=utf-8>"
+def _svg(d: str) -> str:
+    return (f"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' "
+            f"stroke-linejoin='round' aria-hidden='true'>{d}</svg>")
+
+
+ICONS = {
+    "home": _svg("<path d='M3 11l9-8 9 8'/><path d='M5 10v10h14V10'/>"),
+    "users": _svg("<circle cx='9' cy='8' r='3.5'/><path d='M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5'/><path d='M16 4.6a3.5 3.5 0 010 6.8M18 14.8c2 .6 3.2 2.3 3.5 5.2'/>"),
+    "toggle": _svg("<rect x='2.5' y='7' width='19' height='10' rx='5'/><circle cx='16' cy='12' r='2.6'/>"),
+    "wallet": _svg("<path d='M3 7.5A2.5 2.5 0 015.5 5H19v3'/><path d='M3 7.5V18a2 2 0 002 2h15V8H5.5A2.5 2.5 0 013 7.5z'/><circle cx='16.5' cy='14' r='1.2'/>"),
+    "pulse": _svg("<path d='M3 12h4l2.5-6 4 12 2.5-6H21'/>"),
+    "log": _svg("<path d='M6 3h9l4 4v14H6z'/><path d='M14 3v5h5M9 13h7M9 17h7'/>"),
+    "dots": _svg("<circle cx='5' cy='12' r='1.5'/><circle cx='12' cy='12' r='1.5'/><circle cx='19' cy='12' r='1.5'/>"),
+    "spark": _svg("<path d='M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z'/>"),
+    "link": _svg("<path d='M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1'/><path d='M14 10a4 4 0 00-5.7 0l-3 3A4 4 0 0011 18.7l1-1'/>"),
+}
+NAV = [
+    ("", [("Overview", "/", "home"), ("Customers", "/customers", "users"), ("Features", "/switches", "toggle"), ("Money", "/costs", "wallet")]),
+    ("Activity", [("Live", "/live", "pulse"), ("Audit log", "/audit", "log")]),
+    ("Advanced", [("Sessions", "/sessions", "dots"), ("Files", "/files", "dots"), ("Approvals", "/approvals", "dots"), ("Schedules", "/schedules", "dots"),
+                  ("Memory", "/memory", "dots"), ("Integrations", "/integrations", "dots"), ("Routing", "/routing", "dots"), ("System details", "/system", "dots")]),
+]
+
+
+def waiting_badge() -> int:
+    ov = overview_data()
+    try:
+        return int((ov or {}).get("customers", {}).get("pending", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def page(title: str, body: str, rec: dict | None, flash: str = "", sub: str = "") -> str:
+    fl = f"<div class=flash role=status>{esc(flash)}</div>" if flash else ""
+    head = (f"<!doctype html><html lang=en><head><meta charset=utf-8>"
             f"<meta name=viewport content='width=device-width, initial-scale=1'>"
-            f"<title>{esc(title)} — OpenClaw ops</title>"
-            f"<link rel=stylesheet href=/static/app.css>"
-            f"</head><body><header>"
-            f"<h1><span class=dot></span>OpenClaw ops</h1>{nav}"
-            f"<button id=theme-toggle type=button class=small>Theme</button>{logout}"
-            f"</header><main>{fl}{body}</main>"
-            f"<script src=/static/app.js></script></body></html>")
+            f"<title>{esc(title)} — Lumina owner</title><link rel=stylesheet href=/static/app.css></head>")
+    if not rec:                                   # signed-out pages: no navigation, no data
+        return head + f"<body><main class='content solo'>{fl}{body}</main><script src=/static/app.js></script></body></html>"
+    badge = waiting_badge()
+    groups = ""
+    for group, links in NAV:
+        groups += f"<div class=navgroup>{esc(group)}</div>" if group else ""
+        groups += "<nav class=sidenav>" + "".join(
+            f"<a href='{href}'>{ICONS[icon]}<span>{esc(label)}</span>"
+            + (f"<span class=badge title='Waiting for your approval'>{badge}</span>" if href == "/customers" and badge else "") + "</a>"
+            for label, href, icon in links) + "</nav>"
+    side = (f"<aside class=side id=side><div class=brand><span class=logo>{ICONS['spark']}</span><span>LUMINA<small>Owner dashboard</small></span></div>{groups}"
+            f"<div class=sidefoot><a href='http://127.0.0.1:18790/' title='Switch between every owner view'>{ICONS['link']} Owner console</a>"
+            f"<a href='https://getlumina.pro/app/' target=_blank rel=noopener>Open the Lumina app ↗</a>"
+            f"<div><button id=theme-toggle type=button class=small>Theme</button> "
+            f"<form method=post action=/logout class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'><button type=submit class=small>Log out</button></form> "
+            f"<form method=post action=/revoke-all class=inline title='Sign out everywhere'><input type=hidden name=csrf value='{esc(rec['csrf'])}'><button type=submit class='small danger'>Revoke all</button></form></div></div></aside>")
+    top = (f"<div class=topbar><button class=menu-btn id=menu-btn type=button aria-label='Menu'>{ICONS['dots']}</button>"
+           f"<div><h1>{esc(title[:1].upper() + title[1:])}</h1>{f'<p class=sub>{esc(sub)}</p>' if sub else ''}</div><div class=sp></div></div>")
+    return head + f"<body><div class=shell>{side}<main class=content>{top}{fl}{body}</main></div><script src=/static/app.js></script></body></html>"
 
 
 def pill(state: str) -> str:
@@ -727,60 +758,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirect("/login")
 
         if path == "/":
-            items = [gw_health(), gw_version(), postgres(), spend(), backups(),
-                     containers()]
-            strip = now_running()
-            ap = approvals_data()
-            cards = "".join(
-                f"<div class=card><h3>{esc(o['label'])}</h3>{pill(o['state'])}"
-                f"<div class=small style=margin-top:.35rem>"
-                f"{esc(o['detail'] if not isinstance(o['detail'], list) else chr(10).join(str(x) for x in o['detail']))}"
-                f"</div><div class=ts>{esc(o['ts'])}</div></div>"
-                for o in items)
-            spend_card = next((o for o in items if o["label"].startswith("spend")), None)
-            spend_html = ("<div class='card' style='grid-column:1/-1'><h3>Spend vs "
-                          "configured caps</h3>" +
-                          (spend_bars(spend_card["detail"])
-                           if spend_card and spend_card["state"] != "unknown" else
-                           "<p class=unknown>spend unavailable</p>") + "</div>")
-            strip_html = ("<h2>Now running</h2>" + ("<div class=strip>" + "".join(
-                f"<span class=chip><span class=live>●</span> {esc(x)}</span>" for x in strip)
-                + "</div>" if strip else "<p class=empty>nothing running right now</p>"))
-            sb = sandbox_browser_enabled()
-            jev_on = jev_research_enabled()
-            controls = ("<h2>Controls</h2><div class=grid>" +
-                        toggle_row("jev_research", "Jev research layer", jev_on, False,
-                                   "managed on the Feature switches page") +
-                        toggle_row("sandbox_browser", "Sandbox browser",
-                                   sb, True, "per-session browser containers for "
-                                   "browser-worker (pinned image)") +
-                        toggle_row("web_search", "Native web search", False, False,
-                                   "off — no supported provider credential; Brave MCP "
-                                   "search stays available to the researcher") +
-                        "</div><p><a href=/switches>All feature switches →</a></p>")
-            gates = ("<h2>Fixed boundaries</h2>" +
-                     gate("session cancel: no owner-scoped native abort verified on "
-                          "this build — use the Control UI") +
-                     gate("approval resolution: read-only here; resolve via "
-                          "Telegram/Control UI (native policy authoritative)") +
-                     gate("new chat: Control UI / Telegram"))
-            body = ("<h2>Health</h2><div class=grid>" + cards + "</div>" +
-                    spend_html + strip_html +
-                    f"<h2>Pending approvals</h2>" +
-                    (f"<div class=card><span class='pill warn'>{ap.get('count', 0)} "
-                     f"pending</span> <a href=/approvals>review</a></div>"
-                     if ap.get("count") else
-                     "<p class=ok>no pending approvals</p>") +
-                    controls + gates)
-            return self._send(200, page("overview", body, rec))
+            flash = q.get("msg", [""])[0][:200]
+            return self._send(200, page("Overview", home_page(rec), rec, flash, "How Lumina is doing right now"))
+        if path == "/system":
+            return self._send(200, page("System details", system_page(), rec, "", "The underlying runtime"))
 
         if path == "/switches":
             flash = q.get("msg", [""])[0][:200]
-            return self._send(200, page("feature switches", switches_page(rec), rec, flash))
+            return self._send(200, page("Features", switches_page(rec), rec, flash, "Turn parts of Lumina on or off, in plain words"))
 
         if path == "/routing":
             flash = q.get("msg", [""])[0][:200]
-            return self._send(200, page("routing", routing_page(rec), rec, flash))
+            return self._send(200, page("Routing", routing_page(rec), rec, flash, "Smart routing (JEV) settings and what it recommended"))
+
+        if path == "/customers":
+            flash = q.get("msg", [""])[0][:200]
+            return self._send(200, page("Customers", customers_page(rec), rec, flash, "Approve sign-ups, pause customers, set how many the server can carry"))
 
         if path == "/sessions":
             s = sessions_data()
@@ -1051,7 +1044,9 @@ class Handler(BaseHTTPRequestHandler):
             if value not in ("on", "off"):
                 return self._deny(400, "bad value")
             ok, message = apply_switch(name, value == "on")
-            return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+            back = form.get("back", "/switches")
+            back = back if back in BACK_PATHS else "/switches"
+            return self._redirect(back + "?msg=" + urllib.parse.quote(message))
         if path == "/switch-confirm":
             name, cid = form.get("name", ""), form.get("id", "")
             try:
@@ -1093,6 +1088,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(400, "unsupported layer or value")
             ok, message = apply_switch("research_optimization", value == "on")
             return self._redirect("/switches?msg=" + urllib.parse.quote(message))
+        if path == "/customer-action":
+            ok, message = customer_action(form.get("action", ""), form.get("account", ""))
+            if not audit("customer-" + form.get("action", "?"), form.get("account", "?")[:64], "ok" if ok else "refused"):
+                return self._deny(500, "audit write failed")
+            return self._redirect("/customers?msg=" + urllib.parse.quote(message))
+        if path == "/customer-limit":
+            ok, message = customer_limit(form.get("count", ""))
+            if not audit("customer-limit", form.get("count", "?")[:8], "ok" if ok else "refused"):
+                return self._deny(500, "audit write failed")
+            return self._redirect("/customers?msg=" + urllib.parse.quote(message))
         if path == "/routing-save":
             ok, message = routing_save(form)
             return self._redirect("/routing?msg=" + urllib.parse.quote(message))
@@ -1207,20 +1212,24 @@ def switches_page(rec: dict, flash: str = "") -> str:
         else:
             action = "<span class=muted>Can't be turned on yet — see below</span>"
         todo = (f"<div class='small'><b>Before it can be turned on:</b><ul>{blockers}</ul></div>" if blockers and not d["locked"] else "")
-        cards.append(
-            f"<div class=card><div style='display:flex;justify-content:space-between;gap:1rem;align-items:center'>"
-            f"<div><b>{esc(d['title'])}</b> {pill(status[0]).replace(esc(status[0]) + '</span>', esc(status[1]) + '</span>')}</div>"
-            f"<div>{action}</div></div>"
-            f"<p class=small>{esc(d['plain'])}</p>"
-            f"<div class='small mut'><b>When on:</b> {esc(d['when_on'])}</div>"
-            f"<div class='small mut'><b>Cost:</b> {esc(d['cost_note'])}</div>"
-            f"{confirms}{todo}"
-            + (f"<div class='small mut'>last changed by {esc(d['changed_by'])}</div>" if d["changed_by"] else "")
-            + "</div>")
-    note = ("<p class=muted>These are the only on/off controls for optional features. A switch never overrides a safety check: "
-            "turning one ON only works when its confirmations are ticked and its setup is really finished, and turning one "
-            "OFF always works immediately. Every change is read back and written to the audit log.</p>")
-    return "<h2>Feature switches</h2>" + note + drift + "<div class=grid style='grid-template-columns:1fr'>" + "".join(cards) + "</div>"
+        label = FRIENDLY.get(d["key"], d["title"])
+        cards.append((d["key"],
+            f"<div class='card feature'><div><b style='font-size:1.02rem'>{esc(label)}</b> {pill(status[0]).replace(esc(status[0]) + '</span>', esc(status[1]) + '</span>')}"
+            f"<p style='margin:6px 0 0'>{esc(d['plain'])}</p></div><div style='align-self:start'>{action}</div>"
+            f"<div class=meta><div><b>When on:</b> {esc(d['when_on'])}</div><div><b>Cost:</b> {esc(d['cost_note'])}</div>{confirms}{todo}"
+            + (f"<div>last changed by {esc(d['changed_by'])}</div>" if d["changed_by"] else "") + "</div></div>"))
+    groups = [("Customers and access", ["open_signups", "open_access", "billing_checkout", "customer_execution"]),
+              ("What assistants can do", ["browse_tasks", "credentialed_browsing", "customer_schedules", "connectors"]),
+              ("Smart routing and research", ["jev_routing", "research_optimization"])]
+    used, sections = set(), ""
+    for title, keys in groups + [("More", [])]:
+        members = [h for k, h in cards if (k in keys if keys else k not in {x for _, ks in groups for x in ks})]
+        if members:
+            sections += f"<h2>{esc(title)}</h2>" + "".join(members)
+    note = ("<p class=muted>Each switch is the on/off control for one feature. A switch never overrides a safety check: turning one ON only works "
+            "when its confirmations are ticked and its setup is really finished, and turning one OFF always works immediately. Every change "
+            "is read back and written to the audit log.</p>")
+    return note + drift + sections
 
 
 def routing_load() -> dict:
@@ -1345,6 +1354,317 @@ def routing_page(rec: dict) -> str:
             f"<div class=card><b>Status: {esc(state)}</b><div class=small>Owner switch: {esc(sw['status'])}"
             + ("" if sw["effective_on"] else " — set it on the <a href=/switches>Feature switches</a> page (needs the data-terms tick and the key installed)")
             + f".</div>{form}{rollback}</div><h3>What JEV recommended (last 30 days)</h3>" + stats)
+
+
+def system_page() -> str:
+    """The owner's own OpenClaw runtime (gateway, proxy ledger, containers): the old overview, kept for diagnosis."""
+    items = [gw_health(), gw_version(), postgres(), spend(), backups(),
+             containers()]
+    strip = now_running()
+    ap = approvals_data()
+    cards = "".join(
+        f"<div class=card><h3>{esc(o['label'])}</h3>{pill(o['state'])}"
+        f"<div class=small style=margin-top:.35rem>"
+        f"{esc(o['detail'] if not isinstance(o['detail'], list) else chr(10).join(str(x) for x in o['detail']))}"
+        f"</div><div class=ts>{esc(o['ts'])}</div></div>"
+        for o in items)
+    spend_card = next((o for o in items if o["label"].startswith("spend")), None)
+    spend_html = ("<div class='card' style='grid-column:1/-1'><h3>Spend vs "
+                  "configured caps</h3>" +
+                  (spend_bars(spend_card["detail"])
+                   if spend_card and spend_card["state"] != "unknown" else
+                   "<p class=unknown>spend unavailable</p>") + "</div>")
+    strip_html = ("<h2>Now running</h2>" + ("<div class=strip>" + "".join(
+        f"<span class=chip><span class=live>●</span> {esc(x)}</span>" for x in strip)
+        + "</div>" if strip else "<p class=empty>nothing running right now</p>"))
+    sb = sandbox_browser_enabled()
+    jev_on = jev_research_enabled()
+    controls = ("<h2>Controls</h2><div class=grid>" +
+                toggle_row("jev_research", "Jev research layer", jev_on, False,
+                           "managed on the Feature switches page") +
+                toggle_row("sandbox_browser", "Sandbox browser",
+                           sb, True, "per-session browser containers for "
+                           "browser-worker (pinned image)") +
+                toggle_row("web_search", "Native web search", False, False,
+                           "off — no supported provider credential; Brave MCP "
+                           "search stays available to the researcher") +
+                "</div><p><a href=/switches>All feature switches →</a></p>")
+    gates = ("<h2>Fixed boundaries</h2>" +
+             gate("session cancel: no owner-scoped native abort verified on "
+                  "this build — use the Control UI") +
+             gate("approval resolution: read-only here; resolve via "
+                  "Telegram/Control UI (native policy authoritative)") +
+             gate("new chat: Control UI / Telegram"))
+    body = ("<h2>Health</h2><div class=grid>" + cards + "</div>" +
+            spend_html + strip_html +
+            f"<h2>Pending approvals</h2>" +
+            (f"<div class=card><span class='pill warn'>{ap.get('count', 0)} "
+             f"pending</span> <a href=/approvals>review</a></div>"
+             if ap.get("count") else
+             "<p class=ok>no pending approvals</p>") +
+            controls + gates)
+    return body
+
+
+def overview_data() -> dict | None:
+    """Product numbers from the app (counts, queue, spend). Cached briefly; None when the app cannot be read."""
+    def load():
+        rc, out = signup_admin("overview")
+        if rc != 0:
+            return None
+        for line in reversed(out.splitlines()):
+            try:
+                return json.loads(line)
+            except ValueError:
+                continue
+        return None
+    value, _ = cached("overview", 12, load)
+    return value
+
+
+SERVICES = [("agentai-platform-app", "Customer app"), ("agentai-request-worker", "Task runner"), ("agentai-lifecycle-worker", "Assistant manager"),
+            ("agentai-cell-bridge", "Assistant bridge"), ("agentai-browse", "Browser service"), ("agentai-tool-relay", "Browser tool for assistants"), ("agentai-model-proxy", "Model gateway"),
+            ("agentai-billing-worker.timer", "Billing worker"), ("agentai-ops-backup.timer", "Nightly backup"), ("agentai-ops-monitor.timer", "Health monitor"),
+            ("caddy", "Web front door")]
+
+
+def service_states() -> dict:
+    def load():
+        rc, out = run(["systemctl", "is-active", *[u for u, _ in SERVICES]], timeout=10)
+        lines = out.splitlines()
+        return {u: (lines[i].strip() if i < len(lines) else "unknown") for i, (u, _) in enumerate(SERVICES)}
+    value, _ = cached("services", 15, load)
+    return value
+
+
+def _json_file(path: str) -> dict:
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def ops_status() -> tuple[dict, dict]:
+    cfg = _json_file("/etc/agentai-ops/config.json")
+    backup = _json_file(cfg.get("backup_status", "/var/lib/agentai-ops/backup-status.json"))
+    monitor = _json_file(cfg.get("monitor_status", "/var/lib/agentai-ops/monitor-status.json"))
+    return backup, monitor
+
+
+def ago(epoch) -> str:
+    if not epoch:
+        return "never"
+    secs = max(0, int(time.time() - epoch))
+    return "just now" if secs < 90 else f"{secs // 60} min ago" if secs < 5400 else f"{secs // 3600} h ago" if secs < 172800 else f"{secs // 86400} days ago"
+
+
+def usd(micro) -> str:
+    return f"${(micro or 0) / 1e6:,.2f}"
+
+
+FRIENDLY = {"open_signups": "Open sign-ups", "customer_execution": "Assistants answer customers", "browse_tasks": "Browser tasks",
+            "open_access": "Free access (no payment)", "billing_checkout": "Take payments (Stripe)", "jev_routing": "Smart routing (JEV)",
+            "research_optimization": "Smarter research (JEV)", "credentialed_browsing": "Saved logins for the browser", "customer_schedules": "Scheduled tasks"}
+FRIENDLY_ORDER = ["open_signups", "customer_execution", "browse_tasks", "open_access", "billing_checkout", "jev_routing"]
+BACK_PATHS = ("/", "/switches")
+
+
+def switch_form(rec: dict, name: str, value: str, label: str, back: str = "/", cls: str = "small") -> str:
+    return (f"<form method=post action=/switch class=inline><input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+            f"<input type=hidden name=name value='{esc(name)}'><input type=hidden name=value value='{value}'><input type=hidden name=back value='{esc(back)}'>"
+            f"<button type=submit class='{cls}'>{esc(label)}</button></form>")
+
+
+def home_page(rec: dict) -> str:
+    ov = overview_data()
+    svc = service_states()
+    backup, monitor = ops_status()
+    facts, sw = {}, {}
+    try:
+        facts = live_facts()
+        store = switch_store()
+        store.facts = lambda f=facts: f
+        sw = {d["key"]: d for d in store.all()}
+    except Exception:  # noqa: BLE001
+        pass
+    on = lambda k: bool(sw.get(k, {}).get("recorded_on")) and sw.get(k, {}).get("status") == "on"
+    cust = (ov or {}).get("customers", {})
+    waiting = int(cust.get("pending", 0))
+    active = int(cust.get("active", 0))
+    down = [name for u, name in SERVICES if svc.get(u) not in ("active", "unknown")]
+    offsite = bool(backup.get("offsite_copy"))
+    mon_overall = monitor.get("overall") or monitor.get("state")
+
+    # --- things that need you
+    needs = []
+    if waiting:
+        needs.append(("", f"{waiting} {'person is' if waiting == 1 else 'people are'} waiting for your approval", "They confirmed their email. Nothing works for them until you decide.", "/customers", "Review"))
+    if down:
+        needs.append(("red", "A service is not running: " + ", ".join(down), "Customers may be affected. Check the Live page or ask your assistant to look.", "/live", "Look"))
+    if backup and not offsite:
+        needs.append(("", "Backups are only stored on this server", "A second, off-server copy protects you if the server is lost.", "#launch", "See checklist"))
+    if ov is None:
+        needs.append(("red", "The dashboard could not read customer data from the app", "The numbers below are missing. The app may be restarting.", "/live", "Look"))
+    healthy = not down and ov is not None
+    hero_title = ("Everything is running" if healthy and not waiting else f"{len(needs)} thing{'s' if len(needs) != 1 else ''} need{'s' if len(needs) == 1 else ''} you" if needs else "Everything is running")
+    hero_class = "bad" if down or ov is None else "warn" if needs else ""
+    mode = {"invite_only": "Invite-only", "open": "Free access is on", "paid_required": "Payments are required"}.get((ov or {}).get("billing_mode", ""), "")
+    hero = (f"<div class=hero><div><h2><span class='statusdot {hero_class}'></span>{esc(hero_title)}</h2>"
+            f"<p>{esc(mode + ' · ' if mode else '')}{esc(str((ov or {}).get('assistants', '—')))} of {esc(str((ov or {}).get('limit', '—')))} assistants in use · "
+            f"{esc(str((ov or {}).get('tasks_active', 0)))} task{'s' if (ov or {}).get('tasks_active', 0) != 1 else ''} running or waiting</p></div>"
+            f"<div><a class='pill ok' href=/live>Live view →</a></div></div>")
+    attention = ("<div class=attention>" + "".join(
+        f"<div class='todo {c}'><div class=grow><b>{esc(t)}</b><span>{esc(sub)}</span></div><a href='{href}'><button type=button class=primary>{esc(label)}</button></a></div>"
+        for c, t, sub, href, label in needs) + "</div>") if needs else ""
+
+    # --- numbers
+    tasks7 = sum((ov or {}).get("tasks_7d", {}).values()) if ov else 0
+    kpis = (f"<div class=kpis>"
+            f"<div class=kpi><div class=label>Customers</div><div class=num>{active}<small> active</small></div><div class=note>{waiting} waiting · {cust.get('suspended', 0)} suspended</div></div>"
+            f"<div class=kpi><div class=label>Tasks this week</div><div class=num>{tasks7}</div><div class=note>{(ov or {}).get('tasks_7d', {}).get('failed', 0)} failed · {(ov or {}).get('tasks_7d', {}).get('cancelled', 0)} cancelled</div></div>"
+            f"<div class=kpi><div class=label>Spend (30 days)</div><div class=num>{usd((ov or {}).get('spend_d30'))}</div><div class=note>{usd((ov or {}).get('spend_today'))} today · across all customers</div></div>"
+            f"<div class=kpi><div class=label>Assistants awake</div><div class=num>{(ov or {}).get('cells', {}).get('running', 0)}<small> now</small></div><div class=note>they sleep after 15 minutes idle</div></div></div>")
+
+    # --- launch checklist
+    def item(state, title, note, href=""):
+        ico = {"ok": "✓", "warn": "!", "todo": "○"}[state]
+        link = f"<a href='{href}'>Open →</a>" if href else ""
+        return f"<div class=check><span class='ico {state}'>{ico}</span><div class=t><b>{esc(title)}</b><span>{esc(note)}</span></div>{link}</div>"
+    last_ok = backup.get("last_success_epoch")
+    checks = [
+        item("ok" if healthy else "warn", "Server and services", "All services are running" if healthy else "Something is down: see above", "/live"),
+        item("ok" if facts.get("mail_ready") else "warn", "Email sending", "Sign-up and approval emails can be sent" if facts.get("mail_ready") else "Not set up"),
+        item("ok" if last_ok else "warn", "Nightly backup", f"Last complete backup {ago(last_ok)}" + ("" if offsite else " · stored on this server only")),
+        item("ok" if offsite else "warn", "Off-server backup copy", "A second copy exists elsewhere" if offsite else "Not set up yet (planned: final phase item F1)"),
+        item("ok" if mon_overall in ("ok", "warn") else "warn" if mon_overall else "todo", "Health monitor", f"Overall: {mon_overall or 'no report yet'} (checks every 5 minutes)"),
+        item("ok" if on("open_signups") else "todo", "Sign-ups", "Open: people can create an account and wait for you" if on("open_signups") else "Closed: turn on 'Open sign-ups' when you are ready to launch", "/switches"),
+        item("ok" if facts.get("stripe_test_keys_present") else "todo", "Stripe", ("Test keys installed" + (" · payments are ON" if on("billing_checkout") else " · payments are OFF (free access)")) if facts.get("stripe_test_keys_present") else "Keys not installed", "/switches"),
+        item("todo", "Terms, privacy and refund pages", "Needs your text (not written yet)"),
+        item("todo", "Support email address", "Needs your decision"),
+    ]
+    launch = f"<div class=card id=launch><h3>Launch checklist</h3><div class=checklist>{''.join(checks)}</div></div>"
+
+    # --- features at a glance
+    tiles, seen = [], set()
+    for key in FRIENDLY_ORDER + [k for k in sw if k not in FRIENDLY_ORDER]:
+        d = sw.get(key)
+        if not d or key in seen or d.get("locked"):
+            continue
+        seen.add(key)
+        label = FRIENDLY.get(key, d["title"])
+        state_on = d["status"] == "on"
+        if d["recorded_on"]:
+            ctl = switch_form(rec, key, "off", "Turn off", "/", "small")
+        elif d["can_turn_on"]:
+            ctl = switch_form(rec, key, "on", "Turn on", "/", "small primary")
+        else:
+            ctl = "<a href=/switches><button type=button class=small>Set up</button></a>"
+        tiles.append(f"<div class='tile {'on' if state_on else ''}'><div class=head><b>{esc(label)}</b>{pill('ok' if state_on else 'warn').replace('>ok<', '>ON<').replace('>warn<', '>OFF<')}</div>"
+                     f"<p>{esc(d['plain'])}</p><div>{ctl}</div></div>")
+    features = f"<h2>Features</h2><div class=tiles>{''.join(tiles)}</div><p class=small><a href=/switches>All features and what each one does →</a></p>"
+
+    # --- customers + health
+    top = ((ov or {}).get("top_spenders") or [])
+    spenders = "".join(f"<div class=kv><span>{esc(t['email'])}</span><span>{usd(t['microusd'])}</span></div>" for t in top) or "<p class=empty>No usage yet.</p>"
+    people = f"<div class=card><h3>Top usage (30 days)</h3>{spenders}<p class=small style='margin-top:10px'><a href=/customers>All customers →</a> · <a href=/costs>Money →</a></p></div>"
+    names = {"active": ("ok", "running"), "inactive": ("bad", "stopped"), "failed": ("bad", "failed")}
+    health = "".join(f"<div class=svc><i class='{names.get(svc.get(u, ''), ('warn', ''))[0] if svc.get(u) not in ('active',) else ''}'></i>{esc(name)}</div>" for u, name in SERVICES)
+    return (hero + attention + kpis + f"<div class=two><div>{launch}</div><div>{people}<h2>Services</h2><div class=services>{health}</div></div></div>" + features)
+
+
+APP_ENV = "/etc/agentai-platform/accounts.env"
+APP_DIR = "/opt/agentai-platform/current"
+ACCOUNT_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+CUSTOMER_ACTIONS = ("approve", "decline", "suspend", "resume")
+
+
+def signup_admin(*args: str) -> tuple[int, str]:
+    """Run the host-only `signup_admin` command as the app user. Arguments are fixed words or validated ids, never shell text."""
+    script = ('set -a; . "$1"; set +a; cd "$2" || exit 1; shift 2; '
+              'exec runuser -u agentai-platform -m -- ./.venv/bin/python manage.py signup_admin "$@"')
+    return run(["/bin/sh", "-c", script, "_", APP_ENV, APP_DIR, *args], timeout=90)
+
+
+def customers_data() -> dict | None:
+    rc, out = signup_admin("list")
+    if rc != 0:
+        return None
+    for line in reversed(out.splitlines()):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return None
+
+
+def customer_action(action: str, account: str) -> tuple[bool, str]:
+    if action not in CUSTOMER_ACTIONS or not ACCOUNT_RE.match(account or ""):
+        return False, "unknown action or customer"
+    rc, out = signup_admin(action, "--account", account)
+    tail = redact(out.splitlines()[-1] if out else "")[:160]
+    if rc != 0:
+        return False, f"{action} refused: {tail}"
+    return True, {"approve": "Approved: their assistant is being created and they were emailed.",
+                  "decline": "Declined.", "suspend": "Suspended: they are signed out now.", "resume": "Resumed."}[action]
+
+
+def customer_limit(raw: str) -> tuple[bool, str]:
+    if not raw.isdecimal() or not 1 <= int(raw) <= 200:
+        return False, "the limit must be a whole number from 1 to 200"
+    rc, out = signup_admin("limit", "--count", raw)
+    return (rc == 0, f"Customer limit is now {int(raw)}." if rc == 0 else "could not save the limit")
+
+
+def when(epoch) -> str:
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%d %H:%M") if epoch else "—"
+
+
+def customers_page(rec: dict) -> str:
+    csrf = f"<input type=hidden name=csrf value='{esc(rec['csrf'])}'>"
+    data = customers_data()
+    if data is None:
+        return gate("Could not read the customer list from the app. Nothing was changed.")
+    try:
+        door = switch_store().is_on("open_signups")
+    except Exception:  # noqa: BLE001
+        door = False
+
+    def btn(action, account, label, cls=""):
+        return (f"<form method=post action=/customer-action class=inline>{csrf}<input type=hidden name=account value='{esc(account)}'>"
+                f"<input type=hidden name=action value='{action}'><button type=submit class='small {cls}'>{label}</button></form>")
+    avatar = lambda email: f"<span class=avatar>{esc((email or '?')[:1])}</span>"
+    waiting = [c for c in data["customers"] if c["signup"] == "pending"]
+    full = data["assistants"] >= data["limit"]
+    head = (f"<div class=kpis style='margin-top:6px'>"
+            f"<div class=kpi><div class=label>Sign-ups</div><div class=num style='font-size:1.4rem'>{'Open' if door else 'Closed'}</div>"
+            f"<div class=note><a href=/switches>{'Close them' if door else 'Open them'} on the Features page</a></div></div>"
+            f"<div class=kpi><div class=label>Assistants</div><div class=num>{data['assistants']}<small> of {data['limit']}</small></div>"
+            f"<div class=note>{'The limit is reached: raise it before approving more' if full else 'Room for ' + str(data['limit'] - data['assistants']) + ' more'}</div></div>"
+            f"<div class=kpi><div class=label>Customer limit</div><form method=post action=/customer-limit class=inline style='display:flex;gap:8px;margin-top:8px'>{csrf}"
+            f"<input name=count value='{data['limit']}' size=4 inputmode=numeric aria-label='Customer limit'><button type=submit class=small>Save</button></form>"
+            f"<div class=note>How many assistants this server may carry</div></div></div>")
+    if waiting:
+        cards = "".join(
+            f"<div class=todo><div class='grow who'>{avatar(c['email'])}<div><b>{esc(c['email'])}</b><span>Signed up {esc(when(c['created_epoch']))} UTC</span></div></div>"
+            f"{btn('approve', c['account'], 'Approve', 'primary')} {btn('decline', c['account'], 'Decline', 'danger')}</div>" for c in waiting)
+        wait_html = f"<h2>Waiting for your approval ({len(waiting)})</h2><div class=attention>{cards}</div>"
+    else:
+        wait_html = "<h2>Waiting for your approval</h2><div class=empty-card>Nobody is waiting. New sign-ups appear here after they confirm their email.</div>"
+    rows = []
+    for c in data["customers"]:
+        if c["signup"] == "pending":
+            continue
+        state = {"unverified": "email not confirmed", "declined": "declined"}.get(c["signup"] or "", "")
+        state = state or ("active" if c["status"] == "active" else c["status"])
+        act = (btn("suspend", c["account"], "Suspend", "danger") if c["status"] == "active"
+               else btn("resume", c["account"], "Resume") if c["status"] == "suspended" and c["signup"] in (None, "approved") else "")
+        rows.append([avatar(c["email"]) + esc(c["email"]), f"<span class='pill {'ok' if state == 'active' else 'warn'}'>{esc(state)}</span>",
+                     esc({"ready": "ready", "pending": "starting", "stopped": "asleep"}.get(c["assistant"] or "", c["assistant"] or "—")), esc(when(c["created_epoch"])), act])
+    all_html = ("<h2>All customers</h2><div class=searchbar><input type=search id=filter placeholder='Search by email…' aria-label='Search customers' data-filter-table=cust></div>"
+                + "<div id=cust>" + table(["Customer", "State", "Assistant", "Since (UTC)", ""], rows, "No customers yet.") + "</div>")
+    return head + wait_html + all_html
 
 
 def jev_research_enabled() -> bool | None:

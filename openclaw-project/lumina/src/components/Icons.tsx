@@ -6,6 +6,7 @@ const make = (d: ReactNode) => (p: SVGProps<SVGSVGElement>) => <svg {...base} {.
 export const Home = make(<><path d="M3 11l9-7 9 7" /><path d="M5 10v10h5v-6h4v6h5V10" /></>);
 export const Chat = make(<path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z" />);
 export const Tasks = make(<><path d="M9 6h12M9 12h12M9 18h12" /><circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" /></>);
+export const OwnBrowser = make(<><rect x="3" y="4.5" width="18" height="14" rx="3" /><path d="M3 9h18" /><path d="M13 12.2l5.6 2.2-2.4 1-1 2.4z" fill="currentColor" /></>);
 export const Browser = make(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" /></>);
 export const Files = make(<><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" /></>);
 export const Calendar = make(<><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>);
@@ -26,3 +27,8 @@ export const Check = make(<path d="M5 12.5l4.5 4.5L19 7.5" strokeWidth="2.4" />)
 export const Out = make(<path d="M15 4h5v5M20 4l-9 9M10 6H5v13h13v-5" />);
 export const Spark = (p: SVGProps<SVGSVGElement>) => (
   <svg width="30" height="30" viewBox="0 0 32 32" fill="currentColor" aria-hidden {...p}><path d="M16 1c1 8 3 12 15 15-12 3-14 7-15 15-1-8-3-12-15-15C13 13 15 9 16 1z" /></svg>);
+export const Panel = make(<><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9.5 4.5v15" /></>);
+export const Edit = make(<><path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16v4z" /></>);
+export const ChevronDown = make(<path d="M6 9l6 6 6-6" />);
+export const Grid = make(<><rect x="4" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" /></>);
+export const More = make(<><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></>);

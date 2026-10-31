@@ -1,7 +1,7 @@
 # Lumina — architecture report and status
 
 Source of the design: the reference dashboard screenshot and the Lumina transformation specification (2026-10-13).
-**Status:** Spec phases 1–3 delivered (audit, design system, functional dashboard on live data); phases 4–10 are not built. See "Not built".
+**Status:** Spec phases 1–3 delivered (audit, design system, functional dashboard on live data); phase 4 built but not deployed (2026-10-17); phases 5–10: see "Not built" (that table is older than the code: plan builder, generative UI, browser workspace and JEV browsing have since been built).
 
 ## 1. Audit result (verified against code and the live server, not documentation)
 
@@ -43,7 +43,7 @@ Source of the design: the reference dashboard screenshot and the Lumina transfor
 ## 5. Not built (spec phases 4–10) and what each needs
 | Spec phase | Status | Needs |
 |---|---|---|
-| 4 Task control center (pause/resume/retry, queue view, persistence) | partial: list, detail, cancel, live status | pause/resume safe points in the runtime, retry endpoint |
+| 4 Task control center (pause/resume/retry, queue view, persistence) | **built 2026-10-17, not yet deployed**: list, detail, cancel, live status; queue position ("N ahead"); pause/resume of a task that has not started (held in the queue, keeps its place and budget reservation, never wakes the assistant); retry of a failed or cancelled task as a new task (fresh budget reservation, idempotent); the queue and the held state are durable in the database (migration 0022) | a task that is already running cannot be paused: the assistant has no safe stopping point mid-run (browser tasks keep their own "hop in" pause). Deploy order: web app release first (applies migration 0022), then the supervisor release, then the Lumina bundle |
 | 5 Interactive plan builder | not started | plan + revision tables, dependency validator, LLM plan generation (paid), approval flow |
 | 6 Generative UI | not started | versioned Zod schemas, component registry, renderer, template store, repair loop |
 | 7 JEV cost optimization | shadow classification done (`routing.md`); cost-per-success benchmark not run | owner go for paid runs; canary and escalation |

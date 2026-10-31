@@ -1,0 +1,53 @@
+{
+  "release": "20261027T110435Z-genui-10efb73",
+  "commit": "10efb73",
+  "included_commits": [
+    "07fd6b9",
+    "10efb73"
+  ],
+  "site": "https://getlumina.pro/app/",
+  "result": "released",
+  "platform_release": "/opt/agentai-platform/releases/20261027T110435Z-genui-10efb73",
+  "supervisor_release": "/opt/agentai-supervisor/releases/20261027T110435Z-genui-10efb73",
+  "source_files_verified": 302,
+  "registered_capabilities": 205,
+  "migrations": [
+    "0029_document_blocks.sql",
+    "0030_gen_artifact_events.sql"
+  ],
+  "database_quick_check": "ok",
+  "binary_rollback_compatible": false,
+  "previous_platform_release": "safety1",
+  "previous_supervisor_release": "safety1",
+  "ui_backup": "/var/lib/agentai-platform/ui.before-20261027T110435Z-genui-10efb73",
+  "public_checks": {
+    "/app/": {
+      "status": 200,
+      "expected": 200,
+      "matches_build": true
+    },
+    "/v1/genui/registry": {
+      "status": 401,
+      "expected": 401
+    },
+    "/app/assets/index-D7vG-Att.js": {
+      "status": 200,
+      "expected": 200,
+      "matches_build": true
+    },
+    "/app/assets/rolldown-runtime-COiEfhsA.js": {
+      "status": 200,
+      "expected": 200,
+      "matches_build": true
+    },
+    "/app/assets/index-C_R_xaWv.css": {
+      "status": 200,
+      "expected": 200,
+      "matches_build": true
+    }
+  },
+  "verification_scope": "Production health/readiness, source integrity, migrations, service states and public bundle integrity. No customer prompt or live model run was created.",
+  "database_backup": "/var/lib/agentai-platform/backup-20261027T110610Z-premigrate-20261027T110435Z-genui-10efb73.sqlite3",
+  "services_verified_active": 7,
+  "automatic_restarts": 0
+}

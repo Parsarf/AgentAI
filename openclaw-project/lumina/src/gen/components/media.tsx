@@ -1,0 +1,23 @@
+import { lazy, Suspense, useState } from 'react';
+import { useGen, useLocal } from './context';
+import { Unavailable } from './extended';
+const Model = lazy(() => import('./model'));
+export default function Media({ block: b }: { block: any }) {
+  const g = useGen(), p = b.props; const assets = p.assets ?? [{ assetRef: p.assetRef, alt: p.alt ?? p.label }]; const [l, set] = useLocal(b.id, { index: 0, position: 50, zoom: 1, annotations: [] as Array<{ x: number; y: number; label: string }> }); const [error, setError] = useState(''); const [note, setNote] = useState('');
+  const index = Math.min(Number(l.index), assets.length - 1), asset = assets[index], src = g.assetUrl(asset.assetRef);
+  if (!src) return <Unavailable>{asset.alt}. File access is unavailable.</Unavailable>;
+  const failed = () => setError('This file is unavailable or its format is not supported. Open Files to inspect it.');
+  const pic = <img className="gen-img" src={src} alt={asset.alt} onError={failed} loading="lazy" referrerPolicy="no-referrer" style={{ transform: `scale(${l.zoom})` }} />;
+  return <figure>{error && <p role="alert">{error}</p>}{b.type === 'video' ? <video className="gen-player" controls preload="metadata" src={src} onError={failed} aria-label={asset.alt}><track kind="captions" /></video>
+    : b.type === 'audio' || b.type === 'waveform' ? <><audio className="gen-player" controls preload="metadata" src={src} onError={failed} aria-label={asset.alt} />{b.type === 'waveform' && (p.peaks ? <svg viewBox="0 0 600 100" role="img" aria-label="Provided audio amplitude waveform">{p.peaks.map((v: number, i: number) => <line key={i} x1={i / p.peaks.length * 600} x2={i / p.peaks.length * 600} y1={50 - v * 48} y2={50 + v * 48} stroke="var(--chart-1)" />)}</svg> : <Unavailable>No waveform data supplied.</Unavailable>)}</>
+    : b.type === 'pdf_viewer' || b.type === 'document_preview' || b.type === 'file_preview' ? <iframe className="gen-preview" title={p.label ?? asset.alt} src={src} sandbox="" referrerPolicy="no-referrer" />
+    : b.type === '3d_model' ? <Suspense fallback={<p role="status">Loading model viewer…</p>}><Model src={src} label={asset.alt} /></Suspense>
+    : b.type === 'file_attachment' || b.type === 'file_card' ? <p>{p.label}</p>
+    : b.type === 'image_comparison' ? <><div className="gen-compare"><img className="gen-img" src={g.assetUrl(assets[1]?.assetRef) ?? src} alt={assets[1]?.alt ?? 'After'} onError={failed} /><img className="gen-compare-before" src={src} alt={asset.alt} onError={failed} style={{ clipPath: `inset(0 ${100 - Number(l.position)}% 0 0)` }} /></div><label>Comparison position<input type="range" min={0} max={100} value={Number(l.position)} onChange={e => set({ position: +e.target.value })} /></label></>
+    : <div className="gen-image-stage" onClick={b.type === 'annotation' ? e => { if (!note.trim()) return; const rect = e.currentTarget.getBoundingClientRect(); set({ annotations: [...l.annotations, { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height, label: note.slice(0, 120) }] }); setNote(''); } : undefined}>{pic}{b.type === 'annotation' && l.annotations.map((a: any, i: number) => <span className="gen-image-note" style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%` }} key={i}>{i + 1}</span>)}</div>}
+    {b.type === 'zoom' && <label>Zoom<input type="range" min={1} max={5} step={.1} value={Number(l.zoom)} onChange={e => set({ zoom: +e.target.value })} /></label>}
+    {b.type === 'annotation' && <><label>Annotation text<input className="input" value={note} maxLength={120} onChange={e => setNote(e.target.value)} /></label><p className="faint">Click the image to place the annotation, or add it at the center using the keyboard.</p><button className="btn" disabled={!note.trim()} onClick={() => { set({ annotations: [...l.annotations, { x: .5, y: .5, label: note }] }); setNote(''); }}>Add at center</button><ol>{l.annotations.map((a: any, i: number) => <li key={i}>{a.label} <button className="btn small" onClick={() => set({ annotations: l.annotations.filter((_: any, n: number) => n !== i) })}>Remove annotation {i + 1}</button></li>)}</ol></>}
+    {assets.length > 1 && b.type !== 'image_comparison' && <div className="gen-row"><button className="btn" disabled={!index} onClick={() => { set({ index: index - 1 }); setError(''); }}>Previous</button><span>{index + 1} / {assets.length}</span><button className="btn" disabled={index >= assets.length - 1} onClick={() => { set({ index: index + 1 }); setError(''); }}>Next</button></div>}
+    <figcaption>{p.caption ?? p.label ?? asset.alt}</figcaption><a className="btn small" href={`${src}&download=1`}>Download file</a>
+  </figure>;
+}

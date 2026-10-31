@@ -1,0 +1,107 @@
+{
+  "release": "20261030T022448Z-webhook-0c48ade",
+  "source_commit": "0c48adeb44b3c0b248519fd5ed00da7c0fdda387",
+  "result": "released",
+  "artifact_sha256": "0c16359b42f3259cad54df8d53d58a4f2ed2e0b74889dc3ac5c955ceb0e5f4ae",
+  "previous_platform_release": "20261028T212308Z-tool-origin-v2",
+  "supervisor_release": "20261028T212308Z-tool-origin-v2",
+  "frontend_changed": false,
+  "schema_changes": false,
+  "dry_run": "passed",
+  "binary_rollback_compatible": true,
+  "production_source_diff": [
+    "accounts/middleware.py",
+    "accounts/telegram.py",
+    "accounts/test_billing.py",
+    "accounts/test_telegram.py"
+  ],
+  "runtime_source_changes": [
+    "accounts/middleware.py",
+    "accounts/telegram.py"
+  ],
+  "verification": [
+    {
+      "release": "20261030T022448Z-webhook-0c48ade",
+      "commit": "0c48adeb44b3c0b248519fd5ed00da7c0fdda387",
+      "verified_source_files": 307,
+      "source_mismatches": []
+    },
+    {
+      "database_backup": "backup-20261030T022958Z-premigrate-20261030T022448Z-webhook-0c48ade.sqlite3",
+      "bytes": 7938048,
+      "mode": "0o600",
+      "integrity": "ok"
+    },
+    {
+      "unit": "agentai-platform-app",
+      "state": "active"
+    },
+    {
+      "unit": "agentai-request-worker",
+      "state": "active"
+    },
+    {
+      "unit": "agentai-lifecycle-worker",
+      "state": "active"
+    },
+    {
+      "unit": "agentai-supervisor-native",
+      "state": "active"
+    },
+    {
+      "unit": "agentai-browse",
+      "state": "active"
+    },
+    {
+      "unit": "agentai-billing-worker.timer",
+      "state": "active"
+    },
+    {
+      "probe": "health",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "probe": "ready",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "probe": "public_login",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "probe": "public_auth",
+      "status": 401,
+      "passed": true
+    },
+    {
+      "probe": "billing_9kb",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "probe": "telegram_9kb",
+      "status": 403,
+      "passed": true
+    },
+    {
+      "probe": "billing_300kb",
+      "status": 413,
+      "passed": true
+    },
+    {
+      "probe": "ordinary_9kb",
+      "status": 413,
+      "passed": true
+    }
+  ],
+  "notes": [
+    "Owner requested deployment in this conversation.",
+    "release.py handled canary, final SQLite backup, live switch and probes.",
+    "Verification requests were unsigned synthetic bodies; no valid provider events or customer tasks were submitted.",
+    "No source push, screenshot policy change, budget fix, supervisor rollout or frontend rollout.",
+    "Preexisting unrelated working-tree deletions were excluded from the committed-source archive."
+  ]
+}

@@ -10,7 +10,7 @@ One private agent environment for one individual account. In the proposed
 Builder plan ($79/month), customers work in dashboard conversations or linked
 Telegram DMs, organize up to 10 projects, follow a useful live timeline and
 receive versioned downloadable results. Included provider consumption is
-$25 per billing month, with $5 per rolling 24 hours and $5 maximum per task.
+$25 per billing month, with $15 per rolling 24 hours and $5 maximum per task.
 A limit is provider cost, not a promise of task count. No automatic overage.
 The subscription price is charged by the service; this allowance is neither
 a cash wallet nor authority for the agent to purchase things.
@@ -68,7 +68,7 @@ activation is blocked; do not silently sell a narrower completed product.
 | Limit | Value/unit | Enforcement point / failure |
 |---|---|---|
 | Price / monthly included provider usage | Proposed $79 / $25 USD | Billing/entitlements and usage ledger; exhaustion blocks new admission |
-| Daily/task budget | $5 rolling 24h / $5 per task | Atomic reservation before provider dispatch; insufficient allowance denies without call |
+| Daily/task budget | $15 rolling 24h / $5 per task | Atomic reservation before provider dispatch; insufficient allowance denies without call |
 | Running/queued tasks | 1 / 3 per account | API + task admission; explicit queue-full refusal |
 | Task duration/steps/model/search calls | 60min / 60 steps / 30 model calls / 20 searches | Native adapter/dispatch fences; stop safely, settle liability |
 | Retry | Up to 2 retries for transient errors | Same operation identity; denial/uncertain effect never blind retry |

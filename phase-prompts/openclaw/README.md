@@ -44,6 +44,8 @@ Independent build work may continue while an activation prerequisite is blocked.
 
 | 19 | [Customer-funded purchases — later release](phase-19-optional-purchases.md) | Optional follow-on build/evaluation | Accepted baseline, separate selection/provider/authorization |
 
+| Final | [Final phase — everything deliberately left out of launch](final_phase.md) | Post-launch build/evaluation | Phase 18 launched (F1 off-server backup may be pulled forward) |
+
 Optional phases 12 and 16 may be excluded together; baseline stays available.
 Phase 16 evaluates only selected optimization tracks. Phase 15 can test baseline
 without optimization acceptance. Phase 17 uses only accepted enabled routes.

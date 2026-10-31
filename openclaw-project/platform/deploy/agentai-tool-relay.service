@@ -1,0 +1,35 @@
+[Unit]
+Description=AgentAI tool relay (Lumina's native browser tool for customer cells, MCP over HTTP on the cells bridge address)
+After=agentai-platform-app.service agentai-cell-bridge.service agentai-cells-docker.service agentai-browse.service
+Wants=agentai-cell-bridge.service
+
+[Service]
+User=agentai-platform
+Group=agentai-platform
+WorkingDirectory=/opt/agentai-platform/current
+EnvironmentFile=/etc/agentai-platform/accounts.env
+ExecStart=/opt/agentai-platform/current/.venv/bin/python manage.py tool_relay
+UMask=0077
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/agentai-platform
+ReadOnlyPaths=/etc/agentai-platform
+MemoryMax=192M
+MemorySwapMax=0
+CPUQuota=25%
+TasksMax=64
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

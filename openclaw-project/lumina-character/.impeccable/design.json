@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-20T23:06:22-07:00",
+  "title": "Design System: Lumina Obsidian",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Ivory action"
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Graphite canvas"
+      },
+      "bg-2": {
+        "role": "neutral",
+        "displayName": "Secondary graphite"
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card graphite"
+      },
+      "elevated": {
+        "role": "neutral",
+        "displayName": "Raised graphite"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Warm ivory"
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Secondary ivory"
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Quiet metadata"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Personal greeting",
+        "purpose": "Home greeting; 30px/1.3 at 960px and below."
+      },
+      "headline": {
+        "displayName": "Page heading",
+        "purpose": "Page, history and live workspace headings."
+      },
+      "body": {
+        "displayName": "Workspace body",
+        "purpose": "Default copy; conversation prose uses 15.5px/1.65."
+      },
+      "label": {
+        "displayName": "Utility label",
+        "purpose": "Toolbar and compact controls."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow",
+        "value": "0 12px 36px rgba(0,0,0,.18)",
+        "purpose": "Existing shared shadow token; flat panels and composer override it to none."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.2,.7,.2,1)",
+        "purpose": "Shared easing."
+      },
+      {
+        "name": "control-transition",
+        "value": "160ms",
+        "purpose": "Colour, background and border transitions."
+      },
+      {
+        "name": "orb-state-blend",
+        "value": "600ms",
+        "purpose": "Continuous blend between actual task states; skipped with reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "intermediate-desktop",
+        "value": "1200px"
+      },
+      {
+        "name": "bottom-navigation",
+        "value": "960px"
+      },
+      {
+        "name": "compact-phone",
+        "value": "480px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ivory primary action with dark text.",
+      "html": "<button class=\"ds-primary\">New chat</button>",
+      "css": ".ds-primary{font:14px/1.5 var(--font);cursor:pointer;transition:color 160ms var(--ease),background-color 160ms var(--ease),border-color 160ms var(--ease);padding:9px 16px;min-height:44px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--accent);color:var(--on-accent)}.ds-primary:hover{background:var(--ink)}.ds-primary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Bordered secondary action.",
+      "html": "<button class=\"ds-secondary\">Activity</button>",
+      "css": ".ds-secondary{font:14px/1.5 var(--font);cursor:pointer;transition:color 160ms var(--ease),background-color 160ms var(--ease),border-color 160ms var(--ease);padding:9px 16px;min-height:44px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:rgba(255,255,255,.04);color:var(--ink)}.ds-secondary:hover{background:rgba(255,255,255,.08)}.ds-secondary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}"
+    },
+    {
+      "name": "Composer",
+      "kind": "input",
+      "refersTo": "composer",
+      "description": "Card surface with integrated focus and bounded text entry.",
+      "html": "<div class=\"ds-composer\"><label for=\"ds-message\">Message Lumina</label><textarea id=\"ds-message\" placeholder=\"Ask anything or give Lumina a task\u2026\"></textarea></div>",
+      "css": ".ds-composer{padding:16px 16px 12px;background:var(--card);color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-lg);font:14px/1.5 var(--font)}.ds-composer:focus-within{border-color:var(--accent-line)}.ds-composer label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.ds-composer textarea{width:100%;min-height:112px;max-height:260px;resize:none;font:17px/1.6 var(--font);padding:8px 6px;background:none;border:0;color:var(--ink);caret-color:var(--ink)}.ds-composer textarea::placeholder{color:var(--ink-3)}.ds-composer textarea:focus-visible{outline:0}"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Neutral pressed-state action.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Text</button>",
+      "css": ".ds-chip{font:14px/1.5 var(--font);cursor:pointer;transition:color 160ms var(--ease),background-color 160ms var(--ease),border-color 160ms var(--ease);padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--ink-2)}.ds-chip:hover{color:var(--ink);border-color:var(--line-2)}.ds-chip[aria-pressed=\"true\"]{color:var(--ink);border-color:var(--line-2);background:var(--elevated)}.ds-chip:focus-visible{outline:2px solid var(--accent);outline-offset:3px}"
+    },
+    {
+      "name": "Current navigation",
+      "kind": "nav",
+      "refersTo": "navigation-current",
+      "description": "Quiet route navigation with an elevated current state.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Pages\"><a href=\"#home\" aria-current=\"page\">Home</a><a href=\"#tasks\">Tasks</a></nav>",
+      "css": ".ds-nav{display:grid;gap:2px;font:13px/1.5 var(--font)}.ds-nav a{display:flex;align-items:center;padding:8px 12px;min-height:40px;border:1px solid transparent;border-radius:7px;text-decoration:none;color:var(--ink-2)}.ds-nav a:hover{color:var(--ink);background:rgba(255,255,255,.04)}.ds-nav a[aria-current=\"page\"]{color:var(--ink);background:var(--elevated)}.ds-nav a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat secondary surface used by workspace panels.",
+      "html": "<section class=\"ds-panel\"><h2>Activity</h2><p>Task details appear here.</p></section>",
+      "css": ".ds-panel{padding:24px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg-2);color:var(--ink);box-shadow:none;font:14px/1.5 var(--font)}.ds-panel h2{font-size:15px;font-weight:500;margin:0 0 14px}.ds-panel p{color:var(--ink-2);margin:0}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A quiet working room",
+    "overview": "Obsidian is a quiet working room: neutral near-black layers, warm ivory text, subtle boundaries and useful space. The existing agent workspace stays operational; hierarchy comes from type, spacing and surface tone.\n\nThe composer leads the starting surface. Navigation stays integrated into the edge, and actual task state supplies the detail. This records the approved visual refinement of the existing app; audience and positioning are unspecified.",
+    "keyCharacteristics": [
+      "Neutral surfaces and ivory actions.",
+      "Readable secondary text and restrained metadata.",
+      "Intrinsic message heights with separate transcript and composer areas.",
+      "State-driven orb motion with reduced-motion support."
+    ],
+    "rules": [
+      {
+        "name": "The Neutral Action Rule",
+        "body": "Use ivory for primary actions and focus. Reserve subdued semantic colours for labelled status and data, never capability decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tonal Depth Rule",
+        "body": "Use surface tone and fine borders for everyday depth; reserve shadows for overlays.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do reuse the shared tokens across chat, tasks, history, settings and live tools.",
+      "Do keep ordinary prose wrapping and code or tables scrolling within their own containers.",
+      "Do keep the transcript keyboard-focusable and bounded above the separate composer dock.",
+      "Do preserve real task state, orb lifecycle and both reduced-motion mechanisms."
+    ],
+    "donts": [
+      "Don't restore coloured capability tiles, glows or decorative gradients to the neutral controls.",
+      "Don't stretch messages or thinking rows to fill spare pane height.",
+      "Don't render the decorative globe on active conversation or live routes, or put the fallback beneath a loaded globe.",
+      "Don't invent progress, agent reasoning or production content."
+    ]
+  }
+}

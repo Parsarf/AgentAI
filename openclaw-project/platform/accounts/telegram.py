@@ -99,6 +99,8 @@ def webhook(request):
     if not _secret_ok(request):
         print(json.dumps({'event': 'telegram_webhook', 'category': 'secret_invalid'}), flush=True)
         return JsonResponse({'error': 'unavailable'}, status=403)
+    if int(request.META.get('CONTENT_LENGTH') or 0) > 65536:
+        return JsonResponse({'ok': True})                     # ignore oversized updates without asking Telegram to retry them
     try:
         update = json.loads(request.body or b'{}')
     except (ValueError, UnicodeDecodeError):

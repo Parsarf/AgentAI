@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from agentai_platform.adapters import CapabilityUnavailable
+from agentai_platform.adapters import CapabilityUnavailable, GatewayCapabilities
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.capacity import CapacityResult
-from agentai_platform.chat import ChatDriver, ChatService, FixedRoute, synthetic_gateway_factory
+from agentai_platform.chat import ChatService, FixedRoute
+from agentai_platform.chat_driver import ChatDriver, synthetic_gateway_factory
 from agentai_platform.gateway import SyntheticGateway
 from agentai_platform.request_queue import RequestQueue
 from agentai_platform.request_worker import RequestWorker
@@ -66,7 +67,7 @@ class RequestWorkerChecks(unittest.TestCase):
         state = self.worker._uncertain_claim()
         self.assertIsNotNone(state)
         self.gateway.fail_after_ack = False
-        self.assertEqual(self.worker.tick(), {'reconciled': True})              # recovered from the cell transcript
+        self.assertEqual(self.worker.tick(), {'ran': 1, 'finished': True})      # the run is the runtime's: supervision carried on and closed it
         self.assertIsNone(self.worker._uncertain_claim())
 
 
@@ -86,7 +87,7 @@ class RecoveryChecks(RequestWorkerChecks):
 
     def test_unreachable_runtime_is_abandoned_after_the_grace_period_with_the_reserved_charge(self):
         class Down(SyntheticGateway):
-            def history(self, session, cursor): raise CapabilityUnavailable('down')
+            def capabilities(self): return GatewayCapabilities('unverified', 0, False, False, False, False, False)
         self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1'); self.hold_cell()
         good = self.worker
         self.gateway.fail_after_ack = True
@@ -118,6 +119,50 @@ class RecoveredUsageChecks(RequestWorkerChecks):
             con.execute("INSERT INTO lifecycle_slot VALUES (1,'a','d-a','op1','active')")
         with self.assertRaises(RuntimeError): worker.tick()
         gateway.fail_after_ack = False
-        self.assertEqual(worker.tick(), {'reconciled': True})
+        self.assertEqual(worker.tick(), {'ran': 1, 'finished': True})
         with self.store.connect() as con:
             self.assertEqual([tuple(r) for r in con.execute('SELECT amount_microusd,price_version FROM provider_receipts')], [(700, 'litellm-reported-v1')])
+
+
+class OrphanRequestChecks(RequestWorkerChecks):
+    """2026-10-12: a conversation in the account's SECOND project made admission fail after the request was queued; the
+    request then wedged the single running slot for 100 minutes."""
+
+    def second_project(self):
+        with self.store.connect() as con:
+            con.execute("INSERT INTO projects(account_id,id,name,created_at) VALUES ('a','p-b','Second','2999-01-01T00:00:00Z')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES ('a','p-b','c-b','d-a')")
+
+    def test_request_follows_its_conversations_project_and_is_admitted(self):
+        self.second_project(); self.hold_cell()
+        sent = self.chat.send(self.a, conversation_id='c-b', message='hi', key='k1')
+        self.assertEqual(sent['admission'], 'reserved')
+        with self.store.connect() as con:
+            self.assertEqual(con.execute('SELECT project_id FROM customer_requests WHERE id=?', (sent['id'],)).fetchone()[0], 'p-b')
+        self.assertEqual(self.worker.tick(), {'ran': 1, 'finished': True})
+
+    def test_failed_admission_never_leaves_a_waiting_request(self):
+        self.second_project()
+        class Broken(type(self.ledger)):
+            def admit(s, *a, **k): raise RuntimeError('storage hiccup')
+        self.chat.ledger = Broken(self.store, service_limit_microusd=10**9, clock=lambda: self.now)
+        with self.assertRaises(RuntimeError): self.chat.send(self.a, conversation_id='c-b', message='hi', key='k2')
+        with self.store.connect() as con:
+            self.assertEqual(con.execute("SELECT count(*) FROM customer_requests WHERE state='waiting'").fetchone()[0], 0)
+
+    def test_an_unfunded_request_is_failed_not_wedged_and_a_stuck_one_is_recovered(self):
+        self.hold_cell()
+        with self.store.connect() as con:      # simulate the old bug: a waiting request with no task or reservation
+            con.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch) "
+                        "VALUES ('a','orphan','actor-a','p-a','c-a','kx','h','lost','waiting',?)", (self.now,))
+        self.assertEqual(self.worker.tick(), {'ran': 0, 'failed_unfunded': True})
+        self.assertEqual(self.worker.tick(), {'ran': 0})                         # slot is free again
+        with self.store.connect() as con:
+            self.assertEqual(con.execute("SELECT state FROM customer_requests WHERE id='orphan'").fetchone()[0], 'failed')
+            con.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,fence,lease_owner) "
+                        "VALUES ('a','stuck','actor-a','p-a','c-a','ky','h','lost2','uncertain',?,1,'request-worker')", (self.now,))
+            con.execute("INSERT INTO request_slot VALUES (1,'a','stuck')")
+        self.assertEqual(self.worker.tick(), {'reconciled': True})               # the NotFound loop is gone
+        with self.store.connect() as con:
+            self.assertEqual(con.execute("SELECT state FROM customer_requests WHERE id='stuck'").fetchone()[0], 'failed')
+            self.assertIsNone(con.execute('SELECT 1 FROM request_slot').fetchone())

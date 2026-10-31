@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Lumina Browser",
+  "version": "0.1.0",
+  "description": "Let Lumina do browsing tasks for you in tabs of your own Chrome, only while you switch it on. Stop it any time.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "debugger",
+    "tabGroups",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Lumina",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://getlumina.pro/*"
+    ]
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

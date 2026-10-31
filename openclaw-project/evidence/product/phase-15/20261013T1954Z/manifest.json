@@ -1,0 +1,24 @@
+{
+  "phase": 15,
+  "profile": "existing-VPS serialized trial (one global running task, one live assistant cell)",
+  "revision": "branch product-phases-6-11 at app release p15b + supervisor p16-q, Lumina bundle current",
+  "run_id": "20261013T1954Z",
+  "live_results": "live-results.json (harness: platform/deploy/p15_acceptance.py)",
+  "offline_suites": {"platform_unittest": "566 passed, 2 skipped", "django": "164 passed", "lumina_vitest": "63 passed"},
+  "host_observations": {
+    "backup": "manual run of agentai-ops-backup.service produced set 20261013T195222Z, complete, 0 failures, includes customer-files; nightly timer 03:40 UTC (RPO <= 24h observed by schedule, offsite_copy=false)",
+    "monitor": "ops monitor: ok=20 warn=1 crit=0; the warning is the recorded off-server backup blocker",
+    "rto": "not measured: restore needs the owner's off-server age key"
+  },
+  "cost": "about $0.20 of provider spend on the owner test account (5 short assistant tasks twice, one browse task earlier)",
+  "defects_found_and_fixed": [
+    "SSE stream and file views turned a cross-account denial into an unhandled exception (HTTP 500): now a clean 404 with audit (middleware process_exception)",
+    "File preview with a malformed id raised an unhandled ValueError (HTTP 500): now 400"
+  ],
+  "findings_open": [
+    "Two historic fallback receipts (reservation upper bound, $1 each) inflate the owner test account's period usage; they date from before the metering fixes. Fallback is fail-safe by design.",
+    "Hostile-file case checks the reply only; outbound traffic from the cell was not observed.",
+    "Account B is a 'deleted' tombstone row because audit rows are append-only; the user row and all other data were removed."
+  ],
+  "not_pass": ["BLOCKED P15-TENANT-TWO-CELLS", "BLOCKED P15-RESTORE-A", "NOT_RUN billing live, telegram, integrations, coding board, schedules, UI a11y, independent review, plus P15-RUNTIME marker"]
+}

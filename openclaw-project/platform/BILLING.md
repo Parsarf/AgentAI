@@ -10,7 +10,7 @@ authorizes it (`AGENTAI_BILLING_ALLOW_LIVE=1`, not set anywhere).
 
 | `billing_checkout` ("Require payment") | `open_access` ("Free access") | Result |
 |---|---|---|
-| off | **on** (current setting) | Every active account gets a rolling `open` entitlement with the plan limits ($25/month, $5/day, $5/task, 3 queued; allowance resets each calendar month). Subscribe buttons stay hidden. |
+| off | **on** (current setting) | Every active account gets a rolling `open` entitlement with the plan limits ($25/month, $15/day, $5/task, 3 queued; allowance resets each calendar month). Subscribe buttons stay hidden. |
 | off | off | Invitation-only as before: only trial/paid entitlements grant access. |
 | **on** | any | Payment required: the worker ends every `open` entitlement within one pass (about 30 s); accounts without a paid plan are paused. Payment wins over free access, so there is no state where both apply. |
 
@@ -34,7 +34,7 @@ Free access never overrides paid access or a dispute hold, supersedes an invitat
 | later `invoice.paid` with `active` subscription | `active` again (reactivation only from verified state) | allowed | — |
 
 Receipts are never rewritten: refunds, cancellations and disputes only stop *new admissions*. Period limits
-come from `product/plan.json` ($25 included, $5/day, $5/task, 3 queued, no automatic overage) and the
+come from `product/plan.json` ($25 included, $15/day, $5/task, 3 queued, no automatic overage) and the
 period start moves with each paid period, so the allowance resets on renewal. Time-based ends (period end,
 grace end) take effect from the stored `valid_until` even if a webhook never arrives; `billing_worker`
 re-labels states and `--reconcile` corrects drift from Stripe's canonical objects.
