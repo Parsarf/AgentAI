@@ -23,6 +23,10 @@ restrict,command="/usr/local/sbin/agentai-deploy" ssh-ed25519 AAAA... github-dep
 
 so it can run only that program: no shell, no forwarding, no other command. The program accepts exactly `deploy <40-hex commit>` or `deploy-dry <40-hex commit>`, refuses archives that could write outside their folder, takes a lock so only one deploy runs, and does nothing for a commit that is already deployed. It never touches customer data, secrets or cells. It does run as root, because the releases and services are root's: **anyone who can merge to `main` can change what runs as root**. Keep `main` protected.
 
+## Hand-made releases are never silently undone
+
+`push-release.py` overlays single files on the live server. Before anything else, the deploy program checks the files those manual releases recorded (`source_sha256` in `RELEASE.json`, both trees) against the incoming code. If the server runs a file that the commit does not contain unchanged, the deploy **refuses** (exit 30) and lists them. Fix: commit and merge those files to `main`. Last resort: run the workflow by hand with "overwrite manual changes", which replaces them.
+
 ## Switching it on and off
 
 - Off by default. It deploys only when the repository variable `AUTO_DEPLOY_ENABLED` is `true` (Settings → Secrets and variables → Actions → Variables). Set it to anything else to stop all automatic deploys.
