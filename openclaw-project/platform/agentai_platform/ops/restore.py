@@ -35,7 +35,7 @@ LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships'
         'auth_user', 'auth_user_groups', 'auth_user_user_permissions', 'django_content_type', 'django_migrations', 'django_session',
         'otp_totp_totpdevice', 'schema_migrations',
         'vault_items',          # saved logins and cards: never brought back from a backup, so a deleted card cannot return
-        'safety_overrides', 'safety_access']   # safety switches and who may open the menu: only the owner changes them, never a restore (an old backup must not bring back an old "off")
+        'safety_overrides', 'safety_access', 'mcp_connections', 'mcp_tool_choices', 'mcp_calls']   # safety switches and who may open the menu: only the owner changes them, never a restore (an old backup must not bring back an old "off")
 SCOPE = {**{t: 'restore' for t in RESTORE}, **{t: 'merge' for t in MERGE}, **{t: 'ledger' for t in LEDGER}, **{t: 'live' for t in LIVE}}
 NON_TERMINAL_TASK = ('queued', 'running', 'waiting_for_approval', 'paused')
 NON_TERMINAL_REQUEST = ('waiting', 'starting', 'running', 'uncertain')

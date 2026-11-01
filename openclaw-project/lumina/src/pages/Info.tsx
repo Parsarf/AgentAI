@@ -8,6 +8,7 @@ import { STYLES, STYLE_INFO, useAnswerStyle } from '../lib/answerStyle';
 import Credits from '../components/Credits';
 import YourBrowser from '../components/YourBrowser';
 import OwnModel from '../components/OwnModel';
+import McpConnections from '../components/McpConnections';
 
 function Soon({ name, what, needs }: { name: string; what: string; needs: string }) {
   return (
@@ -23,12 +24,15 @@ export function Integrations() {
   const { app } = useData();
   const [items, setItems] = useState<any[] | null>(null);
   useEffect(() => { api('GET', '/v1/account/connections').then(r => setItems(r.connections ?? [])).catch(() => setItems([])); }, []);
+  const connected = (items ?? []).filter(c => c.state === 'connected');
   return (
     <div className="center"><h1 className="page-title">Integrations</h1>
       <section className="panel card">
         {!app?.features.connectors && <p className="muted">Connecting Gmail, Calendar, Drive and GitHub is switched off for now.</p>}
-        {items && items.length > 0 ? items.map((c, n) => <p key={n}>{String(c.provider ?? c.name ?? 'Connection')} · {String(c.status ?? 'connected')}</p>) : <p className="faint" style={{ marginTop: 8 }}>No services connected.</p>}
-      </section></div>);
+        {/* The API lists every service Lumina knows (Gmail, Calendar, ...) with a `state`; only show the ones that are really connected. */}
+        {connected.length > 0 ? connected.map((c, n) => <p key={n}>{String(c.label ?? c.service ?? 'Service')} · connected{c.identity ? ` as ${String(c.identity)}` : ''}</p>) : <p className="faint" style={{ marginTop: 8 }}>No services connected.</p>}
+      </section>
+      {app?.features.mcp && <McpConnections />}</div>);
 }
 
 export function Settings() {

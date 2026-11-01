@@ -14,6 +14,10 @@ import stat
 import time
 
 TOOLS = {'lumina_browser', 'lumina_browser_step', 'lumina_task_update'}
+def is_tool_name(name):
+    return isinstance(name, str) and (name in TOOLS or name in ('lumina_mcp_discover', 'lumina_mcp_call') or bool(re.fullmatch(r'lumina_mcp_[a-f0-9]{32}_[a-f0-9]{12}', name)))
+
+
 MAX_BYTES = 24_000
 MAX_AGE_SECONDS = 1800
 
@@ -42,7 +46,7 @@ def inspect_origin(root, name, arguments, nonce=None, *, clock=time.time):
     """Consume a proof once; return identity and a fixed, content-free status."""
     def denied(status):
         return {'origin': None, 'status': status}
-    if not isinstance(name, str) or name not in TOOLS or not isinstance(arguments, dict):
+    if not is_tool_name(name) or not isinstance(arguments, dict):
         return denied('invalid_arguments')
     if not isinstance(nonce, str) or not re.fullmatch(r'[a-f0-9]{32}', nonce):
         return denied('proof_missing')
@@ -73,9 +77,20 @@ def inspect_origin(root, name, arguments, nonce=None, *, clock=time.time):
             return denied('proof_invalid')
         if proof.get('arguments') != arguments:
             return denied('argument_mismatch')
-        # Unlink is the atomic claim. Two concurrent requests cannot both
-        # consume the same receipt, including across relay process restarts.
-        os.unlink(filename, dir_fd=directory)
+        # An exclusive create is the atomic claim. unlink() is not: on some
+        # filesystems (observed on macOS/APFS) two concurrent unlinks of one name
+        # can both succeed. The marker stays until the plugin prunes it after the
+        # proof's lifetime, so a slow second caller that already read the proof
+        # still loses; this holds across relay process restarts.
+        try:
+            claim = os.open(nonce + '.claimed', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        except FileExistsError:
+            return denied('proof_missing_or_consumed')
+        os.close(claim)
+        try:
+            os.unlink(filename, dir_fd=directory)
+        except FileNotFoundError:
+            pass
         return {'origin': {k: proof[k] for k in ('session_key', 'run_id', 'call_id')}, 'status': 'verified'}
     except FileNotFoundError:
         return denied('proof_missing_or_consumed')

@@ -48,3 +48,36 @@ test('unrelated tools are untouched and parallel calls have independent proofs',
   assert.equal(fs.existsSync(path.join(directory, two.params._lumina_origin + '.json')), true);
   hooks.after_tool_call(event, otherCtx);
 });
+
+test('remote discovery, wrapper and namespaced tools receive the same one-use proof', t => {
+  const { hooks, directory } = setup(t);
+  const names = ['lumina_mcp_discover', 'lumina_mcp_call', 'lumina_mcp_' + 'a'.repeat(32) + '_' + 'b'.repeat(12)];
+  for (const name of names) {
+    const event = { toolName: 'lumina__' + name, params: { text: 'fixture' } };
+    const result = hooks.before_tool_call(event, ctx);
+    const proof = JSON.parse(fs.readFileSync(path.join(directory, result.params._lumina_origin + '.json')));
+    assert.equal(proof.name, name);
+    assert.deepEqual(proof.arguments, { text: 'fixture' });
+    hooks.after_tool_call(event, ctx);
+    assert.equal(hooks.before_tool_call(event, {}).block, true);
+  }
+  assert.equal(hooks.before_tool_call({ toolName: 'lumina__lumina_mcp_forged', params: {} }, {}), undefined);
+});
+
+test('expired claim markers are pruned, fresh ones kept, and markers never count toward capacity', t => {
+  const { hooks, directory } = setup(t);
+  const old = path.join(directory, 'a'.repeat(32) + '.claimed');
+  const fresh = path.join(directory, 'b'.repeat(32) + '.claimed');
+  const other = path.join(directory, 'notes.claimed');
+  for (const file of [old, fresh, other]) fs.writeFileSync(file, '');
+  const past = new Date(Date.now() - 31 * 60 * 1000);
+  fs.utimesSync(old, past, past);
+  fs.utimesSync(other, past, past);
+  // More markers than the pending-proof limit must not block a new proof.
+  for (let n = 0; n < 70; n++) fs.writeFileSync(path.join(directory, n.toString(16).padStart(32, '0') + '.claimed'), '');
+  const result = hooks.before_tool_call({ toolName: 'lumina__lumina_browser', params: {} }, ctx);
+  assert.match(result.params._lumina_origin, /^[a-f0-9]{32}$/);
+  assert.equal(fs.existsSync(old), false);
+  assert.equal(fs.existsSync(fresh), true);
+  assert.equal(fs.existsSync(other), true);
+});

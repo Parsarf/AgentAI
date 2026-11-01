@@ -4825,6 +4825,298 @@
      }
     }
    }
+  },
+  "/v1/account/mcp": {
+   "get": {
+    "summary": "List this account\u2019s MCP connections, presets, enabled tool definitions and exact calls needing attention; never credentials",
+    "responses": {
+     "200": {
+      "description": "Successful account-scoped result; no stored credentials returned"
+     },
+     "400": {
+      "description": "Invalid payload"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required for mutations"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Connection or authorization state prevents the operation"
+     },
+     "422": {
+      "description": "Invalid endpoint or credentials; fixed-vocabulary error and message"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   },
+   "post": {
+    "summary": "Create an account-owned HTTPS Streamable HTTP connection; creation alone does not imply successful authentication or discovery",
+    "responses": {
+     "200": {
+      "description": "Successful account-scoped result; no stored credentials returned"
+     },
+     "400": {
+      "description": "Invalid payload"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required for mutations"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Connection or authorization state prevents the operation"
+     },
+     "422": {
+      "description": "Invalid endpoint or credentials; fixed-vocabulary error and message"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "201": {
+      "description": "Connection ID; run test to authenticate/discover"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "maxLength": 80
+         },
+         "url": {
+          "type": "string",
+          "maxLength": 1000
+         },
+         "auth_method": {
+          "type": "string",
+          "enum": [
+           "oauth",
+           "bearer",
+           "none"
+          ]
+         },
+         "token": {
+          "type": "string",
+          "maxLength": 4096,
+          "writeOnly": true
+         }
+        },
+        "additionalProperties": false,
+        "required": [
+         "name",
+         "url",
+         "auth_method"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/account/mcp/{connection_id}/{action}": {
+   "post": {
+    "summary": "Rename/change enabled tools, test, reconnect, or disconnect an owned connection. test/reconnect return authorize_url only when OAuth browser sign-in is required. Disconnect deletes local credentials first and reports accepted/failed/not_supported provider revocation.",
+    "responses": {
+     "200": {
+      "description": "Successful account-scoped result; no stored credentials returned"
+     },
+     "400": {
+      "description": "Invalid payload"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required for mutations"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Connection or authorization state prevents the operation"
+     },
+     "422": {
+      "description": "Invalid endpoint or credentials; fixed-vocabulary error and message"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "maxLength": 80
+         },
+         "enabled": {
+          "type": "boolean"
+         },
+         "tools": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "boolean"
+          }
+         },
+         "token": {
+          "type": "string",
+          "maxLength": 4096,
+          "writeOnly": true
+         }
+        },
+        "additionalProperties": false
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "connection_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "action",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "update",
+        "test",
+        "reconnect",
+        "disconnect"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "/v1/account/mcp/callback": {
+   "get": {
+    "summary": "Complete one-use OAuth state/PKCE exchange bound to the dedicated browser cookie and initiating still-valid sign-in. Never returns code/state/tokens; redirects to Integrations with a fixed outcome.",
+    "parameters": [
+     {
+      "name": "state",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "code",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "iss",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "error",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "302": {
+      "description": "Integrations redirect; no-referrer, no-store; callback cookie removed"
+     }
+    }
+   }
+  },
+  "/v1/account/mcp-approvals/{call_id}": {
+   "post": {
+    "summary": "Approve or decline one exact account/connection/tool/payload/schema-bound call. Approval lasts ten minutes and does not itself execute the call.",
+    "responses": {
+     "200": {
+      "description": "Successful account-scoped result; no stored credentials returned"
+     },
+     "400": {
+      "description": "Invalid payload"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required for mutations"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Connection or authorization state prevents the operation"
+     },
+     "422": {
+      "description": "Invalid endpoint or credentials; fixed-vocabulary error and message"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "approved": {
+          "type": "boolean"
+         }
+        },
+        "additionalProperties": false,
+        "required": [
+         "approved"
+        ]
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "call_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
   }
  },
  "components": {

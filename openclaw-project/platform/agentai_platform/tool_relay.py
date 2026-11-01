@@ -65,9 +65,12 @@ class Identity:
 class Relay:
     """The MCP protocol and the tools; no sockets (the handler below owns those)."""
 
-    def __init__(self, tool: BrowserTool, progress=None, *, origin=None):
-        self.tool, self.progress, self.origin = tool, progress, origin
+    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None):
+        self.tool, self.progress, self.origin, self.remote = tool, progress, origin, remote
         self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
+        if remote is not None:
+            from .mcp_connections.relay import DISCOVER, CALL
+            self.tools.update({DISCOVER['name']: DISCOVER, CALL['name']: CALL})
         # The runtime hook overwrites this optional transport field. It is
         # stripped before the browser/progress handler sees user arguments.
         import copy
@@ -89,19 +92,28 @@ class Relay:
         if method == 'ping':
             return self._ok(rid, {})
         if method == 'tools/list':
-            return self._ok(rid, {'tools': list(self.tools.values())})
+            specs = [t for n, t in self.tools.items() if not (self.remote is not None and self.remote.is_generic(n) and not self.remote.enabled(account))]
+            if self.remote is not None and self.remote.enabled(account):
+                import copy
+                for spec in self.remote.specs(account):
+                    spec = copy.deepcopy(spec)
+                    spec['inputSchema'].setdefault('properties', {})['_lumina_origin'] = {'type': 'string', 'description': 'Runtime ownership proof. Leave unset.'}
+                    specs.append(spec)
+            return self._ok(rid, {'tools': specs})
         if method == 'tools/call':
             params = message.get('params') or {}
             name = params.get('name')
-            if name not in self.tools:
+            remote_on = self.remote is not None and self.remote.enabled(account)
+            remote_call = remote_on and self.remote.accepts(name)
+            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call):
                 return self._error(rid, -32602, 'unknown tool')
-            busy_key = (account, 'progress' if name == PROGRESS_NAME else 'browser')
+            busy_key = (account, 'remote' if remote_call else 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:
                 if busy_key in self._busy:
                     return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
                 self._busy.add(busy_key)
             try:
-                handler = self.progress if name == PROGRESS_NAME else self.tool
+                handler = self.remote if remote_call else self.progress if name == PROGRESS_NAME else self.tool
                 arguments = params.get('arguments') or {}
                 bound = {}
                 if self.origin is not None:
@@ -121,10 +133,19 @@ class Relay:
                         return self._ok(rid, self._result('This tool call does not belong to an admitted live task. Nothing was started or changed. Do not retry this call in another task.', True))
                     bound['request_id'] = request_id
                 arguments = {k: v for k, v in arguments.items() if k != '_lumina_origin'}
-                result = handler.call(account, arguments, closed, name=name, **bound)
+                if remote_call and self.origin is not None:
+                    # Continue checking admission while a remote operation is in flight.
+                    def remote_closed():
+                        return closed() or self._owner(account, origin) != request_id
+                    caller_closed = remote_closed
+                else:
+                    caller_closed = closed
+                result = handler.call(account, arguments, caller_closed, name=name, **bound)
             finally:
                 with self._guard:
                     self._busy.discard(busy_key)
+            if remote_call:
+                return self._ok(rid, result)
             text, is_error, *image = result
             return self._ok(rid, self._result(text, is_error, image[0] if image else None))
         return self._error(rid, -32601, 'method not found')

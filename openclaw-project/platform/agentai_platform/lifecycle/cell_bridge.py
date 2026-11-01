@@ -289,9 +289,9 @@ class CellBridge:
                 raise BridgeError('invalid credential')
             return {'credential': credential}
         if method == 'tools.origin':
-            from .tool_origin import TOOLS
+            from .tool_origin import is_tool_name
             name, arguments = params.get('name'), params.get('arguments')
-            if not isinstance(name, str) or name not in TOOLS or not isinstance(arguments, dict) or len(json.dumps(arguments)) > 16000:
+            if not is_tool_name(name) or not isinstance(arguments, dict) or len(json.dumps(arguments)) > 16000:
                 raise BridgeError('invalid tool call')
             return {'name': name, 'arguments': arguments, 'nonce': params.get('nonce')}
         if method == 'workspace.collect':

@@ -23,7 +23,10 @@ def build(store):
         return BridgeRpc(account, settings.CELL_BRIDGE_SOCKET)('tools.origin', {'name': name, 'arguments': arguments, 'nonce': nonce})
     own_models = model_keys.ModelRelay(model_keys.ModelKeyStore(settings.MODEL_KEY_STORE, model_keys.ModelKeyring.derived(settings.SECRET_KEY, settings.MODEL_KEY_FILE or None)),
                                        lambda account: model_keys.enabled_for(model_keys.read_engine(settings.ENGINE_FILE), account))
-    return Relay(tool, progress=TaskProgressTool(store), origin=origin), Identity(identify), own_models
+    from accounts.mcp_connections import service as mcp_service
+    from agentai_platform.mcp_connections.relay import RemoteTools
+    from agentai_platform.mcp_connections import switch as mcp_switch
+    return Relay(tool, progress=TaskProgressTool(store), origin=origin, remote=RemoteTools(mcp_service(store), enabled=lambda account: mcp_switch.enabled(settings.MCP_SWITCH_FILE, account))), Identity(identify), own_models
 
 
 class Command(BaseCommand):

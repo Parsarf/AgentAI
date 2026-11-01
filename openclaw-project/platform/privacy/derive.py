@@ -87,6 +87,7 @@ def extension():
 
 # every host the product's own code names, minus ones that are only examples or documentation links
 IGNORED_HOSTS = {'example.com', 'localhost', 'www.w3.org', 'creativecommons.org', 'openmoji.org', 'github.com', 'docs.openclaw.ai',
+                 'service.example.com', 'developers.asana.com',  # input placeholder and documentation link only
                  'models.example.org',                         # test fixtures
                  'api.openai.com', 'api.groq.com'}             # only suggestions shown beside "Your own model": Lumina contacts an endpoint only if the customer enters it, and the policy names "the company that runs the endpoint you enter"
 
@@ -96,7 +97,7 @@ def hosts():
     roots = [PLATFORM / 'agentai_platform', PLATFORM / 'accounts', EXTENSION / 'src', PROJECT / 'lumina' / 'src']
     for root in roots:
         for path in root.rglob('*'):
-            if not path.is_file() or path.suffix not in ('.py', '.js', '.ts', '.tsx') or re.search(r'(^test_|\.test\.|/tests?/|/vendor/|/gen/|migrations/)', str(path)):
+            if not path.is_file() or path.suffix not in ('.py', '.js', '.ts', '.tsx') or re.search(r'(^test_|/test_|\.test\.|/tests?/|/vendor/|/gen/|migrations/)', str(path)):
                 continue
             for m in re.finditer(r"""(?:https?|wss?)://([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)""", path.read_text(errors='ignore')):
                 host = m.group(1).lower()
@@ -132,6 +133,7 @@ def assistant():
                                for k in value.keys if isinstance(k, ast.Constant)}),
         'tools_switched_off': sorted(constants.get('DENIED_TOOLS', ())),
         'dns_servers': sorted(constants.get('RESOLVERS', ())),
+        'remote_mcp_connections': 'RemoteTools(mcp_service(store)' in _read(PLATFORM / 'accounts' / 'management' / 'commands' / 'tool_relay.py'),
         'own_model_endpoint': "'byok'" in text and 'own_model' in text,       # a customer may point their assistant at a model company of their choosing (their own API key): that company becomes a recipient
     }
 

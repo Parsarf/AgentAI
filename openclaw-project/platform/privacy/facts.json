@@ -55,18 +55,17 @@
    "api.stripe.com",
    "api.telegram.org",
    "api.typesafe.ai",
+   "app.asana.com",
    "backend.getlumina.pro",
-   "billing.stripe.com",
-   "checkout.stripe.com",
    "getlumina.pro",
-   "invoice.stripe.com",
+   "mcp.asana.com",
    "openrouter.ai",
    "t.me",
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "0151bd7e31b7dd8a726fd8f3fca54416dba89b4433ad03ec94e8701efdc3c0cf",
-  "schema_columns": 621,
+  "schema_sha256": "6ec09c49a2563b528be16646a7c432eaaba03e738d8cf84c316af61bbd36cb6e",
+  "schema_columns": 657,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -83,6 +82,7 @@
     "1.1.1.1",
     "9.9.9.9"
    ],
+   "remote_mcp_connections": true,
    "own_model_endpoint": true
   }
  },
@@ -115,24 +115,6 @@
    "customer_data": false,
    "in_policy": "Stripe"
   },
-  "checkout.stripe.com": {
-   "who": "Stripe",
-   "why": "hosted checkout",
-   "customer_data": false,
-   "in_policy": "Stripe"
-  },
-  "billing.stripe.com": {
-   "who": "Stripe",
-   "why": "hosted billing portal",
-   "customer_data": false,
-   "in_policy": "Stripe"
-  },
-  "invoice.stripe.com": {
-   "who": "Stripe",
-   "why": "invoices",
-   "customer_data": false,
-   "in_policy": "Stripe"
-  },
   "api.telegram.org": {
    "who": "Telegram",
    "why": "optional account linking; not configured on the live server (2026-10-31)",
@@ -150,6 +132,18 @@
    "why": "connectors (Gmail, Calendar, Drive); switched off on the live server (2026-10-31)",
    "customer_data": false,
    "in_policy": null
+  },
+  "app.asana.com": {
+   "who": "Asana",
+   "why": "OAuth discovery, sign-in and token exchange for the optional customer-selected Asana MCP connection",
+   "customer_data": true,
+   "in_policy": "Asana"
+  },
+  "mcp.asana.com": {
+   "who": "Asana",
+   "why": "customer-selected Asana MCP tools and their authorized arguments",
+   "customer_data": true,
+   "in_policy": "Asana"
   }
  },
  "recipients_not_visible_in_code": {
@@ -201,7 +195,11 @@
   "This is everything we collect today",
   "own model API key",
   "company that runs the endpoint you enter",
-  "never placed inside your assistant"
+  "never placed inside your assistant",
+  "MCP services you connect",
+  "Asana",
+  "exact arguments",
+  "locally stored credentials"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -252,6 +250,11 @@
    "date": "2026-10-31",
    "by": "own model API key feature",
    "note": "Customers can use their own OpenAI-compatible endpoint and key (model_keys.py, tool relay /byok). New recipient: the company they choose. Policy updated: short version, collect list, recipients, retention row, security, connecting-tools section; Anthropic now 'by default'. Feature stays off (browse-engine.json own_model_keys) until this policy is published."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "user-managed remote MCP implementation, source review only",
+   "note": "Updated policy source alongside per-account encrypted MCP connections, OAuth, enabled tools and exact-call approvals. Discloses user-selected recipients (Asana preset), credentials, arguments/results, callback binding cookie, disconnect/revocation and backup behavior. Not deployed or published; release must publish this policy together with or before enabling this feature. No production configuration changed. Host scanner now excludes account test files correctly; three Stripe example URLs previously found only in tests were removed from the code-derived inventory. Stripe disclosure remains."
   }
  ],
  "assistant_recipients": {
@@ -259,6 +262,7 @@
   "plugin:@openclaw/brave-plugin": "Brave Search",
   "dns:1.1.1.1": "Cloudflare",
   "dns:9.9.9.9": "Quad9",
-  "own_model_endpoint": "company that runs the endpoint you enter"
+  "own_model_endpoint": "company that runs the endpoint you enter",
+  "remote_mcp_connections": "MCP services you connect"
  }
 }
