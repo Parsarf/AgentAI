@@ -125,6 +125,33 @@ class ArtifactLoop(Base):
                 answers(node, {'where': bad})
             self.assertEqual(set(caught.exception.errors), {'where'})
 
+    def test_an_answer_given_in_a_component_reaches_the_assistant_but_is_not_a_chat_bubble_and_the_component_stays_locked(self):
+        artifact, store = self.create()
+        sent = store.event(self.a, artifact['id'], self.event(artifact), self.chat)
+        self.assertIn('Quantity: 4', self.request(sent['id'])['message'])                                    # the assistant gets it
+        rows = self.chat.messages(self.a, 'c-a')['messages']
+        answer = next(m for m in rows if m['request_id'] == sent['id'] and m['provenance'] == 'customer')
+        self.assertTrue(answer['ui_answer']); self.assertIn('Quantity: 4', answer['content'])                # kept, but marked so the chat does not show it
+        self.assertFalse(any(m['ui_answer'] for m in rows if m['provenance'] == 'agent'))
+        listed = self.chat.conversations(self.a)
+        self.assertTrue(all('Quantity: 4' not in (c.get('preview') or '') for c in listed))                  # nor the preview line of the chat list
+        state = self.chat.blocks.list(self.a, 'c-a')[0]['state']['choices']
+        self.assertEqual((state['values'], state['chosen']), ({'quantity': 4}, 'submit')); self.assertTrue(state['answered'])
+        again = dict(self.event(artifact), id='event-2', values={'quantity': 9})
+        with self.assertRaises(Conflict): store.event(self.a, artifact['id'], again, self.chat)              # final: a second answer is refused
+        self.assertEqual(store.event(self.a, artifact['id'], self.event(artifact), self.chat), sent)         # the same event replayed is the same result, not a conflict
+
+    def test_choosing_a_button_locks_the_group_and_remembers_which_one(self):
+        buttons = {'id': 'next', 'type': 'button_group', 'props': {'buttons': [{'id': 'go', 'label': 'Show details', 'action': {'kind': 'agent.request', 'message': 'Show the details'}},
+                                                                               {'id': 'skip', 'label': 'Skip', 'action': {'kind': 'agent.request', 'message': 'Skip it'}}]}}
+        self.run_message('Offer choices', [reply(doc([buttons]))], ui='interactive')
+        artifact = self.chat.blocks.list(self.a, 'c-a')[0]; store = ArtifactStore(self.store, clock=lambda: self.now)
+        sent = store.event(self.a, artifact['id'], dict(id='event-1', node_id='next', action_id='go', version=artifact['version'], values={}), self.chat)
+        state = self.chat.blocks.list(self.a, 'c-a')[0]['state']['next']
+        self.assertEqual(state['chosen'], 'go'); self.assertTrue(state['answered'])
+        with self.assertRaises(Conflict): store.event(self.a, artifact['id'], dict(id='event-2', node_id='next', action_id='skip', version=artifact['version'], values={}), self.chat)
+        self.assertTrue(next(m for m in self.chat.messages(self.a, 'c-a')['messages'] if m['request_id'] == sent['id'] and m['provenance'] == 'customer')['ui_answer'])
+
     def test_failed_admission_can_retry_same_event_without_a_duplicate_request(self):
         from unittest.mock import patch
         from agentai_platform.budget import BudgetDenied

@@ -188,12 +188,17 @@ class ArtifactStore:
                 target = con.execute('SELECT conversation_id FROM customer_requests WHERE account_id=? AND id=?', (principal.account_id, action['requestId'])).fetchone()
                 if not target or target['conversation_id'] != row['conversation_id']:
                     raise NotFound('unavailable')
+            state = json.loads(meta['state_json'])
+            local = dict(state.get(node['id'], {}))
             values, lines = answers(node, payload['values'])
+            if action['kind'] == 'agent.request' and local.get('answered') and local['answered'] != payload['id']:
+                raise Conflict('this was already answered')         # an answer given through a component is final: the component stays locked with it
             state_revision = meta['state_revision']
-            if values:
-                state = json.loads(meta['state_json'])
-                local = dict(state.get(node['id'], {}))
-                local.update({'value': values['response']} if node['type'] == 'human_prompt' else {'values': values})
+            if values or action['kind'] == 'agent.request':
+                if values:
+                    local.update({'value': values['response']} if node['type'] == 'human_prompt' else {'values': values})
+                if action['kind'] == 'agent.request':
+                    local.update({'answered': payload['id'], 'chosen': payload['action_id']})
                 state[node['id']] = local
                 con.execute('UPDATE gen_artifact_state SET state_json=?,state_revision=state_revision+1 WHERE account_id=? AND artifact_id=?', (json.dumps(state), principal.account_id, artifact))
                 state_revision += 1
