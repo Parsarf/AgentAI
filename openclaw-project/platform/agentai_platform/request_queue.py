@@ -104,15 +104,27 @@ class RequestQueue:
                 if not row:raise NotFound()
                 return self._view(c,row)
             return [self._view(c,r) for r in c.execute('SELECT * FROM customer_requests WHERE account_id=? ORDER BY sequence DESC LIMIT 100',(principal.account_id,)).fetchall()]
-    def cancel(self,principal,request):
+    def cancel(self,principal,request,*,admission_failed=False):
         with self.coordinator.transaction() as c:
             self.store._authorize(c,principal)
             row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone()
             if not row:raise NotFound()
-            if row['state']=='waiting':c.execute("UPDATE customer_requests SET state='cancelled',cancel_requested=1 WHERE account_id=? AND id=?",(principal.account_id,request))
+            if row['state']=='waiting':
+                c.execute("UPDATE customer_requests SET state='cancelled',cancel_requested=1 WHERE account_id=? AND id=?",(principal.account_id,request))
+                self._terminal_notice(c, row, 'failed' if admission_failed else 'cancelled', 'This request could not be admitted. Nothing started.')
             elif row['state'] in {'starting','running','uncertain'}:c.execute('UPDATE customer_requests SET cancel_requested=1 WHERE account_id=? AND id=?',(principal.account_id,request))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_cancel','completed')
             return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
+
+    @staticmethod
+    def _terminal_notice(c, row, state, result):
+        """A durable platform notice, once per stopped request; never invent an assistant reply."""
+        if state not in ('cancelled', 'failed', 'partial', 'blocked') or not row['conversation_id']:
+            return
+        note = ('Stopped at your request.' if state == 'cancelled' else 'This task stopped. ' + (result or 'It could not finish.')[:2000])
+        note += ' Send a follow-up to continue or change direction. Lumina will check what was already done before continuing.'
+        c.execute('''INSERT OR IGNORE INTO chat_messages(account_id,conversation_id,request_id,provenance,content,native_message_id)
+            VALUES (?,?,?,'system',?,?)''', (row['account_id'], row['conversation_id'], row['id'], note, 'lumina-terminal-' + row['id']))
     def pause(self,principal,request):
         """Hold a task that has not started: it keeps its place in the account's queue limit and its budget reservation, but is never claimed and never wakes the assistant."""
         return self._hold(principal,request,1)
@@ -207,6 +219,9 @@ class RequestQueue:
             if reservation and reservation[0] in {'active','uncertain'}:raise Conflict('usage must reconcile before handoff')
             c.execute('UPDATE customer_requests SET state=?,result=?,outcome=?,outcome_note=?,verification=?,continue_goal=?,parked_reason=NULL,closing=1 WHERE account_id=? AND id=?',
                       (receipt.state,receipt.public_result,receipt.outcome or receipt.state,receipt.outcome_note[:300] or None,receipt.verification,1 if receipt.continue_goal else 0,claim.account_id,claim.request_id))
+            if not receipt.continue_goal:
+                self._terminal_notice(c, row, receipt.outcome or receipt.state,
+                                      receipt.public_result if receipt.state == 'failed' else receipt.outcome_note or receipt.public_result)
             c.execute('DELETE FROM request_slot WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
             self.coordinator._audit(c,claim.account_id,'worker',claim.request_id,'request_finish','completed')
             return True

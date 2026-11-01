@@ -5,7 +5,7 @@
 Messages and assistant thinking indicators must size to their content. Spare pane height belongs
 between the transcript and composer, never inside message rows. Any grid filling
 the chat pane must pack its rows at the start; nested turns must not stretch their
-children. Never reintroduce a Working card in chat. Pending replies use a left-aligned 48px thinking orb and short state label; Stop and Activity belong in the header.
+children. Never reintroduce a Working card in chat. Pending replies use a left-aligned 48px thinking orb and short state label; Live activity expands inline below the thinking state through Read more. Stop belongs in the composer, replacing Send while a task is active.
 
 Active conversation routes must not render the decorative globe. On screens that
 show it, use the static fallback only while loading, after a rendering failure, or

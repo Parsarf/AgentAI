@@ -8,7 +8,7 @@ vi.mock('../components/Orb', () => ({ default: () => <span data-testid="thinking
 const Switch = () => { const nav = useNavigate(); return <><button onClick={() => nav('/chat/a')}>Open A</button><button onClick={() => nav('/chat/b')}>Open B</button><Chat /></>; };
 const msg = (id: number, content: string, provenance = 'agent') => ({ id, content, provenance, request_id: null, created_at: '' });
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
-beforeEach(() => { sessionStorage.clear(); Element.prototype.scrollIntoView = vi.fn(); });
+beforeEach(() => { sessionStorage.clear(); Element.prototype.scrollIntoView = vi.fn(); Element.prototype.scrollTo = vi.fn(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<MemoryRouter initialEntries={['/chat/a']}><Routes><Route path="/chat/:id" element={<Switch />} /></Routes></MemoryRouter>);
 describe('resuming conversations', () => {
@@ -59,7 +59,7 @@ describe('resuming conversations', () => {
 });
 
 describe('pending assistant reply', () => {
-  it('shows the orb on the assistant side and keeps Stop in the header', async () => {
+  it('shows the orb on the assistant side and keeps Stop in the composer', async () => {
     let cancelled = false;
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/v1/csrf') return ok({ csrf_token: 't' });
@@ -73,10 +73,13 @@ describe('pending assistant reply', () => {
     await screen.findByText('Searching…');
     expect(container.querySelector('.agent-thinking')).toBeTruthy();
     expect(container.querySelector('.taskstrip')).toBeNull();
-    const stop = screen.getByRole('button', { name: /^Stop$/ });
-    expect(stop.closest('.thread-head')).toBeTruthy();
+    const stop = screen.getByRole('button', { name: 'Stop task' });
+    expect(stop.closest('.composer')).toBeTruthy();
+    expect(container.querySelector('.thread-head')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Read more' }));
+    expect(await screen.findByRole('region', { name: 'Live task activity' })).toBeTruthy();
     fireEvent.click(stop);
-    await screen.findByText('Stopped.');
+    await screen.findByText('Stopped. Send a message when you’re ready to continue.');
     expect(screen.queryByTestId('thinking-orb')).toBeNull();
   });
 });

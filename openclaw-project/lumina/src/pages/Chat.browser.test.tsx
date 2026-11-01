@@ -21,12 +21,12 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const at = (path: string) => render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/chat/:id?" element={<Chat />} /></Routes></MemoryRouter>);
 
 describe('the browser icon is on every chat page', () => {
-  it('sits in the header of a conversation, before Activity and the chat menu', async () => {
+  it('sits in the compact tools row without a conversation header', async () => {
     const { container } = at('/chat/a');
     const icon = await screen.findByRole('button', { name: /^Use my own browser/ });
-    const header = container.querySelector('.thread-head')!;
+    const header = container.querySelector('.thread-tools')!;
+    expect(container.querySelector('.thread-head')).toBeNull();
     expect(header.contains(icon)).toBe(true);
-    expect(header.querySelector('h1')!.compareDocumentPosition(icon) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(container.querySelectorAll('.own-browser').length).toBe(1);
   });
 

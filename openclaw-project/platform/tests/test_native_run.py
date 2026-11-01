@@ -471,6 +471,12 @@ class SpendingLimitChecks(Base):
         self.assertIn('spending limit', row['outcome_note'])
         self.assertTrue([c for c in self.gateway.calls if c[0] == 'abort'])
         self.assertEqual(self.rows("SELECT state FROM task_reservations")[0][0], 'settled')
+        notice = self.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='system'", (sent['id'],))
+        self.assertEqual(len(notice), 1)
+        self.assertIn('spending limit', notice[0][0])
+        self.say('what can we do next?', key='after-budget')
+        claim = self.queue.claim(owner='w', capacity=OK)
+        self.assertIn('previous request in this conversation was partial', self.driver._outgoing(claim, self.driver._admit(claim)))
 
 
 class OutgoingChecks(Base):
@@ -561,3 +567,50 @@ class DeadContainerRecoveryChecks(Base):
         state[0] = 'cancelled'
         self.assertTrue(self.worker.tick()['reconciled'])
         self.assertEqual(self.chat.task(self.a, request['id'])['state'], 'cancelled')
+
+
+class TerminationNoticeChecks(Base):
+    def test_waiting_stop_is_durable_idempotent_and_reaches_next_assistant_turn(self):
+        first = self.say()
+        self.queue.cancel(self.a, first['id'])
+        self.queue.cancel(self.a, first['id'])
+        notices = self.rows("SELECT provenance,content FROM chat_messages WHERE request_id=? AND provenance='system'", (first['id'],))
+        self.assertEqual(len(notices), 1)
+        self.assertIn('Stopped at your request', notices[0]['content'])
+        self.assertIn('follow-up', notices[0]['content'])
+        self.assertEqual(self.chat.messages(self.a, 'c-a')['messages'][-1]['provenance'], 'system')
+        self.say('continue carefully', key='next')
+        claim = self.queue.claim(owner='w', capacity=OK)
+        outgoing = self.driver._outgoing(claim, self.driver._admit(claim))
+        self.assertIn('previous request in this conversation was cancelled', outgoing)
+        self.assertIn('effects are not repeated', outgoing)
+        self.assertTrue(outgoing.endswith('continue carefully'))
+        # No account B status leaks into A, and no model call was made to create the notice.
+        self.assertFalse(self.rows("SELECT 1 FROM chat_messages WHERE account_id='b'"))
+        self.assertFalse(self.gateway.calls)
+
+    def test_running_stop_does_not_announce_completion_until_runtime_is_drained(self):
+        first = self.say()
+        self.gateway.polls = 3
+        def stop(run):
+            if run['state'] == 'running':
+                self.chat.cancel(self.a, first['id'])
+                self.assertFalse(self.rows("SELECT 1 FROM chat_messages WHERE provenance='system'"))
+        self.gateway.on_wait = stop
+        self.worker.tick()
+        self.assertEqual(self.request(first['id'])['state'], 'cancelled')
+        notices = self.rows("SELECT content FROM chat_messages WHERE provenance='system'")
+        self.assertEqual(len(notices), 1)
+        self.assertIn('Stopped at your request', notices[0][0])
+
+    def test_failed_request_has_reason_and_next_turn_knows_it_ended(self):
+        first = self.say()
+        claim = self.queue.claim(owner='w', capacity=OK)
+        from agentai_platform.outcome import Verdict
+        receipt = self.driver._close(claim, 'failed', 'The assistant could not be reached.', verdict=Verdict('failed', 'unverified', 'Unavailable', ''))
+        self.queue.finish(claim, receipt)
+        notice = self.rows("SELECT content FROM chat_messages WHERE provenance='system'")[0][0]
+        self.assertIn('could not be reached', notice)
+        self.say('try a different approach', key='next')
+        claim = self.queue.claim(owner='w', capacity=OK)
+        self.assertIn('previous request in this conversation was failed', self.driver._outgoing(claim, self.driver._admit(claim)))
