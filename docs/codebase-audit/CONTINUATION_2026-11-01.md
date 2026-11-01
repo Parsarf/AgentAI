@@ -23,7 +23,7 @@ Written at the end of a long session. Read this first; it supersedes nothing in 
 
 ### Added 2026-10-31 evening: MCP connections release (open to everyone, no gate; owner's choice)
 Done locally, uncommitted: MCP tests green; prompt split in `cell_config.py` fixed; one-use proof claim changed from `unlink` to exclusive-create `<nonce>.claimed` (unlink let two callers both win on macOS), plugin prunes expired markers, new plugin test; UI end-to-end fixture passes at 1440 and 390 px.
-6. **Investigate before release:** Integrations page shows four unnamed "Connection · connected" lines above the MCP panel (seen in the fixture screenshot). Find out whether the old connectors list is picking up MCP connections.
+6. ~~Four unnamed "Connection · connected" lines~~ Fixed: the old Gmail/Calendar/Drive/GitHub list read the wrong field names, so it printed "connected" for services that were not connected (existing bug, not MCP). Now lists only connected services by name; test in `lumina/src/pages/Integrations.test.tsx`.
 7. **Linux check:** confirm the exclusive-create claim on Linux (CI/production); the `unlink` race was only shown on macOS.
 8. Commit on a branch and open a PR (leave out `docs/plan-history/`, `output/reports/`); let CI finish before merging.
 9. Owner runs on the server: `AGENTAI_PUBLIC_ORIGIN`, `ASANA_MCP_CLIENT_ID`, `ASANA_MCP_CLIENT_SECRET` in `/var/lib/agentai-platform` (not `/etc/agentai-supervisor`); Asana MCP app redirect URI exactly `https://getlumina.pro/v1/account/mcp/callback`.

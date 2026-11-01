@@ -24,11 +24,13 @@ export function Integrations() {
   const { app } = useData();
   const [items, setItems] = useState<any[] | null>(null);
   useEffect(() => { api('GET', '/v1/account/connections').then(r => setItems(r.connections ?? [])).catch(() => setItems([])); }, []);
+  const connected = (items ?? []).filter(c => c.state === 'connected');
   return (
     <div className="center"><h1 className="page-title">Integrations</h1>
       <section className="panel card">
         {!app?.features.connectors && <p className="muted">Connecting Gmail, Calendar, Drive and GitHub is switched off for now.</p>}
-        {items && items.length > 0 ? items.map((c, n) => <p key={n}>{String(c.provider ?? c.name ?? 'Connection')} · {String(c.status ?? 'connected')}</p>) : <p className="faint" style={{ marginTop: 8 }}>No services connected.</p>}
+        {/* The API lists every service Lumina knows (Gmail, Calendar, ...) with a `state`; only show the ones that are really connected. */}
+        {connected.length > 0 ? connected.map((c, n) => <p key={n}>{String(c.label ?? c.service ?? 'Service')} · connected{c.identity ? ` as ${String(c.identity)}` : ''}</p>) : <p className="faint" style={{ marginTop: 8 }}>No services connected.</p>}
       </section>
       <McpConnections /></div>);
 }
