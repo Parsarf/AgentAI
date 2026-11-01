@@ -135,3 +135,9 @@ BILLING_PRICE_ID = os.environ.get('AGENTAI_BILLING_PRICE_ID', '')               
 BILLING_PLAN_FILE = os.environ.get('AGENTAI_BILLING_PLAN_FILE', '')                       # product/plan.json copy
 BILLING_PUBLIC_ORIGIN = os.environ.get('AGENTAI_BILLING_PUBLIC_ORIGIN', 'https://getlumina.pro')
 BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'                   # owner-only, off by default
+
+# Remote MCP custody uses the host-only encryption key; no credentials enter cells.
+MCP_KEY_FILE = os.environ.get('AGENTAI_MCP_KEY_FILE', '')
+MCP_OAUTH_CLIENTS_FILE = os.environ.get('AGENTAI_MCP_OAUTH_CLIENTS_FILE', '')
+ASANA_MCP_CLIENT_ID = os.environ.get('ASANA_MCP_CLIENT_ID', '')
+ASANA_MCP_CLIENT_SECRET = os.environ.get('ASANA_MCP_CLIENT_SECRET', '')

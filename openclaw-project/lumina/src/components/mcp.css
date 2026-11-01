@@ -1,0 +1,14 @@
+.mcp-section { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+.mcp-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.mcp-row .input { flex: 1 1 180px; min-width: 0; }
+.mcp-connection { padding-block: var(--space-4); border-top: 1px solid var(--border-default); display: grid; gap: var(--space-3); min-width: 0; }
+.mcp-connection h3 { margin-right: auto; }
+.mcp-url, .mcp-tool, .mcp-section .toggle-label, .mcp-section .toggle-hint { overflow-wrap: anywhere; min-width: 0; }
+.mcp-form { display: grid; gap: var(--space-2); padding-block: var(--space-3); }
+.mcp-form label { margin-top: var(--space-2); }
+.mcp-form .input { width: 100%; min-width: 0; }
+.mcp-tools, .mcp-approvals { display: grid; gap: var(--space-3); min-width: 0; }
+.mcp-tool { padding-block: var(--space-2); border-bottom: 1px solid var(--border-subtle); }
+.mcp-section pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 240px; padding: var(--space-3); background: var(--surface-inset); font: var(--text-xs)/1.5 var(--font-mono); }
+.mcp-section details { margin-top: var(--space-2); }
+.mcp-section summary { cursor: pointer; }

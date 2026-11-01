@@ -45,6 +45,8 @@ class CodeMatchesTheRecord(unittest.TestCase):
         a = FACTS['derived']['assistant']; mapped = FACTS['assistant_recipients']
         needed = [f'search_provider:{a["search_provider"]}'] + [f'plugin:{p}' for p in a['plugins']] + [f'dns:{ip}' for ip in a['dns_servers']]
         self.assertEqual([n for n in needed if n not in mapped], [], 'the assistant reaches something with no named recipient in assistant_recipients.\n' + HOWTO)
+        if a.get('remote_mcp_connections'):
+            self.assertIn('remote_mcp_connections', mapped, 'Customer-selected remote MCP recipients must be disclosed')
         self.assertEqual(a['mcp_servers'], ['lumina'], 'the assistant now has an outside MCP server: its operator would receive what the assistant sends it. Name it in the policy.\n' + HOWTO)
 
     def test_the_experimental_decider_stays_limited_to_the_owner(self):

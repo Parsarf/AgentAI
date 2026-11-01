@@ -35,7 +35,7 @@ class BoundaryMiddleware:
         response['X-Frame-Options']='DENY'
         # The UI shell (/app/) sets its own policy because it must run scripts; every other response gets the strict one.
         response.setdefault('Content-Security-Policy',"default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
-        response['Referrer-Policy']='same-origin'
+        response.setdefault('Referrer-Policy','same-origin')
         response['X-Request-ID']=str(request.request_id)
         # No URL/query/body/cookie/header/exception text in customer logs.
         print(json.dumps({'event':'account_http','request_id':str(request.request_id),'status':response.status_code}),flush=True)

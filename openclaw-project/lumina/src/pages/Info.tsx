@@ -8,6 +8,7 @@ import { STYLES, STYLE_INFO, useAnswerStyle } from '../lib/answerStyle';
 import Credits from '../components/Credits';
 import YourBrowser from '../components/YourBrowser';
 import OwnModel from '../components/OwnModel';
+import McpConnections from '../components/McpConnections';
 
 function Soon({ name, what, needs }: { name: string; what: string; needs: string }) {
   return (
@@ -28,7 +29,8 @@ export function Integrations() {
       <section className="panel card">
         {!app?.features.connectors && <p className="muted">Connecting Gmail, Calendar, Drive and GitHub is switched off for now.</p>}
         {items && items.length > 0 ? items.map((c, n) => <p key={n}>{String(c.provider ?? c.name ?? 'Connection')} · {String(c.status ?? 'connected')}</p>) : <p className="faint" style={{ marginTop: 8 }}>No services connected.</p>}
-      </section></div>);
+      </section>
+      <McpConnections /></div>);
 }
 
 export function Settings() {
