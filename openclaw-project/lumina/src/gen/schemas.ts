@@ -82,7 +82,7 @@ const chartCommon = {
   columns: z.array(column).min(1).max(12).optional(), data: inlineRows.optional(), xKey: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
   series: z.array(series).min(1).max(6), unit: text(12).optional(), caption: text(240).optional(), summary: text(400).optional(),
 };
-const fieldType = z.enum(['select', 'radio', 'segmented', 'toggle', 'checkbox', 'slider', 'number', 'text', 'textarea', 'date', 'time', 'multiselect', 'range', 'date-range', 'search', 'color', 'rating', 'tags', 'autocomplete']);
+const fieldType = z.enum(['select', 'radio', 'segmented', 'toggle', 'checkbox', 'slider', 'number', 'text', 'textarea', 'date', 'time', 'multiselect', 'range', 'date-range', 'search', 'color', 'rating', 'tags', 'autocomplete', 'location']);
 const formField = z.strictObject({
   id: ident, type: fieldType, label: text(120), help: text(240).optional(), group: text(60).optional(),
   options: z.array(z.strictObject({ label: text(80), value: ident })).min(2).max(12).optional(), default: z.union([text(500, 0), num, z.boolean(), z.array(z.union([text(80, 0), num])).max(50)]).optional(),
@@ -158,7 +158,7 @@ const baseBlockSchema = z.discriminatedUnion('type', [
 ]);
 const aliases = Object.entries(ALIASES).map(([id, [base]]) => {
   const original = baseBlockSchema.options.find(o => o.shape.type.value === base)!;
-  const fieldTypes: Record<string, string> = { text_input: 'text', textarea: 'textarea', checkbox: 'checkbox', radio: 'radio', select: 'select', segmented_control: 'segmented', slider: 'slider', switch: 'toggle', date_picker: 'date', time_picker: 'time', number_stepper: 'number' };
+  const fieldTypes: Record<string, string> = { text_input: 'text', textarea: 'textarea', checkbox: 'checkbox', radio: 'radio', select: 'select', segmented_control: 'segmented', slider: 'slider', switch: 'toggle', date_picker: 'date', time_picker: 'time', number_stepper: 'number', location_request: 'location' };
   const props = fieldTypes[id] ? original.shape.props.extend({ fields: z.array(formField.extend({ type: z.literal(fieldTypes[id]) })).length(1) }) : original.shape.props;
   return original.extend({ type: z.literal(id), props });
 });

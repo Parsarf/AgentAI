@@ -35,6 +35,7 @@ const SPEC: Partial<Record<BlockType, Spec>> = {
   histogram_chart: ['Distribution of one numeric measure', 'how values are spread across 20 or more items', 'few values or categories (use a bar)', 'valueKey and data'],
   gauge: ['One value against a range, with optional zones', 'a measured value with a meaningful scale (score, utilisation)', 'a count or an unbounded number (use metric_card)', 'value, min, max'],
   form: ['Fields the reader changes, then sends', 'you need several choices before you can continue', 'a single question (ask in text)', 'fields and a submit label', ['agent.request', ...LOCAL]],
+  location_request: ['Asks where the reader is: a Share my location button, or a typed ZIP code, city or address', 'the task needs where they are (near me, local weather or shops, delivery, travel from here) and you do not already know it', 'a place they already told you or that the request names; never ask just in case', 'one location field (type location) and a submit label', ['agent.request', ...LOCAL]],
   button_group: ['2 to 6 actions', 'clear next steps that map to real capabilities', 'decoration or actions you cannot perform', 'buttons with actions', ['agent.request', 'navigate.internal', 'agent.retry']],
   follow_up: ['Suggested next requests', 'the reader is likely to ask these next', 'filler suggestions', 'suggestions', ['agent.request']],
   tabs: ['Alternative views of one thing', 'two to eight parallel views', 'sequential content', 'tabs with blocks'],
@@ -72,7 +73,7 @@ export function isRenderable(type: string): type is BlockType { return Object.ha
 /** Answer styles. basic: plain text only. medium: static blocks (nothing that sends or changes anything). interactive: everything offered. */
 export const TIERS = ['basic', 'medium', 'interactive'] as const;
 export type Tier = (typeof TIERS)[number];
-export const INTERACTIVE_ONLY: ReadonlySet<BlockType> = new Set<BlockType>(['form', 'button_group', 'follow_up', 'approval_request', 'error_retry', 'agent_status', 'execution_timeline', 'tool_call_inspector', 'plan_viewer', 'completion_summary']);
+export const INTERACTIVE_ONLY: ReadonlySet<BlockType> = new Set<BlockType>(['form', 'location_request', 'button_group', 'follow_up', 'approval_request', 'error_retry', 'agent_status', 'execution_timeline', 'tool_call_inspector', 'plan_viewer', 'completion_summary']);
 /** Types a tier may use (basic: none). Medium cards may not carry action buttons either; the server checks that too. */
 export function tierTypes(tier: Tier): BlockType[] { return tier === 'basic' ? [] : tier === 'medium' ? OFFERED.filter(t => !INTERACTIVE_ONLY.has(t) && !['control', 'upload', 'confirm', 'menu', 'prompt', 'wizard', 'runtime'].includes((FAMILIES as Record<string, string>)[t]) && !INTERACTIVE_ONLY.has((ALIASES as any)[t]?.[0])) : OFFERED; }
 /** Types the model may write and the server accepts. */

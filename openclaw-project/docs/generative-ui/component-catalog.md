@@ -2,7 +2,7 @@
 
 _Generated from `lumina/src/gen/manifest.ts` by `GEN_WRITE=1 npx vitest run src/gen/export.test.ts`. Do not edit by hand; a test fails when this file drifts._
 
-**205 entries: 205 implemented, 0 adapter, 0 planned, 0 unsupported.**
+**206 entries: 206 implemented, 0 adapter, 0 planned, 0 unsupported.**
 
 - **implemented**: a renderer exists, either directly or *via* another implemented component with specific props or a variant. Only these are ever shown to the model.
 - **adapter**: code exists (a renderer or a bridge) but a host capability or provider is missing, so it is not offered. The reason is in the Purpose column.
@@ -182,6 +182,7 @@ Kind: primitive (one control or text element), composite (built from primitives)
 | `switch` | Switch | primitive | implemented | `switch` (inspect the registered schema) | An on/off setting. | field definitions | local edit, submit as an agent request | plain text asking for the values | no |
 | `date_picker` | Date picker | primitive | implemented | `date_picker` (inspect the registered schema) | A calendar date (the browser control). | field definitions | local edit, submit as an agent request | plain text asking for the values | no |
 | `time_picker` | Time picker | primitive | implemented | `time_picker` (inspect the registered schema) | A time of day (the browser control). | field definitions | local edit, submit as an agent request | plain text asking for the values | no |
+| `location_request` | Location request | composite | implemented | `location_request` (inspect the registered schema) | Asks where the reader is: a Share my location button (the browser asks permission first) or a typed ZIP code, city or address. | field definitions | local edit, submit as an agent request | plain text asking for the values | no |
 | `date_range` | Date range | composite | implemented | `date_range` (inspect the registered schema) | Collect a local value or selection | label, bounds or options, optional initial value | local.update | plain text asking for the values | no |
 | `number_stepper` | Number stepper | primitive | implemented | `number_stepper` (inspect the registered schema) | A number with steps. | field definitions | local edit, submit as an agent request | plain text asking for the values | no |
 | `search_input` | Search input | primitive | implemented | `search_input` (inspect the registered schema) | Collect a local value or selection | label, bounds or options, optional initial value | local.update | plain text asking for the values | no |

@@ -1938,6 +1938,27 @@
      }
     },
     {
+     "id": "fixture_location_request",
+     "type": "location_request",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "sample",
+        "label": "location request",
+        "type": "location"
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
+    {
      "id": "fixture_number_stepper",
      "type": "number_stepper",
      "props": {
@@ -1961,68 +1982,6 @@
     {
      "id": "fixture_grouped_form",
      "type": "grouped_form",
-     "props": {
-      "title": "Form",
-      "fields": [
-       {
-        "id": "kind",
-        "type": "segmented",
-        "label": "Kind",
-        "group": "Basics",
-        "required": true,
-        "default": "a",
-        "options": [
-         {
-          "label": "A",
-          "value": "a"
-         },
-         {
-          "label": "B",
-          "value": "b"
-         }
-        ]
-       },
-       {
-        "id": "budget",
-        "type": "slider",
-        "label": "Budget",
-        "group": "Basics",
-        "min": 0,
-        "max": 500,
-        "step": 10,
-        "default": 100,
-        "unit": "USD"
-       },
-       {
-        "id": "extras",
-        "type": "toggle",
-        "label": "Include extras",
-        "group": "Options",
-        "default": false
-       },
-       {
-        "id": "when",
-        "type": "date",
-        "label": "Date",
-        "group": "Options",
-        "showIf": {
-         "field": "extras",
-         "equals": true
-        }
-       }
-      ],
-      "submit": {
-       "label": "Send choices",
-       "action": {
-        "kind": "agent.request",
-        "message": "Here are my choices:"
-       }
-      }
-     }
-    },
-    {
-     "id": "fixture_conditional_form",
-     "type": "conditional_form",
      "props": {
       "title": "Form",
       "fields": [
@@ -2191,6 +2150,68 @@
     }
    },
    "blocks": [
+    {
+     "id": "fixture_conditional_form",
+     "type": "conditional_form",
+     "props": {
+      "title": "Form",
+      "fields": [
+       {
+        "id": "kind",
+        "type": "segmented",
+        "label": "Kind",
+        "group": "Basics",
+        "required": true,
+        "default": "a",
+        "options": [
+         {
+          "label": "A",
+          "value": "a"
+         },
+         {
+          "label": "B",
+          "value": "b"
+         }
+        ]
+       },
+       {
+        "id": "budget",
+        "type": "slider",
+        "label": "Budget",
+        "group": "Basics",
+        "min": 0,
+        "max": 500,
+        "step": 10,
+        "default": 100,
+        "unit": "USD"
+       },
+       {
+        "id": "extras",
+        "type": "toggle",
+        "label": "Include extras",
+        "group": "Options",
+        "default": false
+       },
+       {
+        "id": "when",
+        "type": "date",
+        "label": "Date",
+        "group": "Options",
+        "showIf": {
+         "field": "extras",
+         "equals": true
+        }
+       }
+      ],
+      "submit": {
+       "label": "Send choices",
+       "action": {
+        "kind": "agent.request",
+        "message": "Here are my choices:"
+       }
+      }
+     }
+    },
     {
      "id": "fixture_questionnaire",
      "type": "questionnaire",
@@ -2536,16 +2557,6 @@
       "label": "Sample image",
       "alt": "Developer fixture; no live file attached"
      }
-    },
-    {
-     "id": "fixture_image_card",
-     "type": "image_card",
-     "props": {
-      "title": "image card (sample)",
-      "assetRef": "file:sample.png",
-      "label": "Sample image",
-      "alt": "Developer fixture; no live file attached"
-     }
     }
    ]
   },
@@ -2656,6 +2667,16 @@
     }
    },
    "blocks": [
+    {
+     "id": "fixture_image_card",
+     "type": "image_card",
+     "props": {
+      "title": "image card (sample)",
+      "assetRef": "file:sample.png",
+      "label": "Sample image",
+      "alt": "Developer fixture; no live file attached"
+     }
+    },
     {
      "id": "fixture_expandable_card",
      "type": "expandable_card",
@@ -3377,26 +3398,6 @@
       "min": 0,
       "max": 5
      }
-    },
-    {
-     "id": "fixture_range_slider",
-     "type": "range_slider",
-     "props": {
-      "title": "range slider (sample)",
-      "label": "Sample selection",
-      "options": [
-       {
-        "id": "alpha",
-        "label": "Alpha"
-       },
-       {
-        "id": "beta",
-        "label": "Beta"
-       }
-      ],
-      "min": 0,
-      "max": 5
-     }
     }
    ]
   },
@@ -3507,6 +3508,26 @@
     }
    },
    "blocks": [
+    {
+     "id": "fixture_range_slider",
+     "type": "range_slider",
+     "props": {
+      "title": "range slider (sample)",
+      "label": "Sample selection",
+      "options": [
+       {
+        "id": "alpha",
+        "label": "Alpha"
+       },
+       {
+        "id": "beta",
+        "label": "Beta"
+       }
+      ],
+      "min": 0,
+      "max": 5
+     }
+    },
     {
      "id": "fixture_date_range",
      "type": "date_range",
@@ -3861,23 +3882,6 @@
        }
       ]
      }
-    },
-    {
-     "id": "fixture_command_palette",
-     "type": "command_palette",
-     "props": {
-      "title": "command palette (sample)",
-      "items": [
-       {
-        "id": "explain",
-        "label": "Explain the selected option",
-        "action": {
-         "kind": "agent.request",
-         "message": "Use my selected settings"
-        }
-       }
-      ]
-     }
     }
    ]
   },
@@ -3988,6 +3992,23 @@
     }
    },
    "blocks": [
+    {
+     "id": "fixture_command_palette",
+     "type": "command_palette",
+     "props": {
+      "title": "command palette (sample)",
+      "items": [
+       {
+        "id": "explain",
+        "label": "Explain the selected option",
+        "action": {
+         "kind": "agent.request",
+         "message": "Use my selected settings"
+        }
+       }
+      ]
+     }
+    },
     {
      "id": "fixture_context_menu",
      "type": "context_menu",
@@ -4467,27 +4488,6 @@
        }
       ]
      }
-    },
-    {
-     "id": "fixture_route",
-     "type": "route",
-     "props": {
-      "title": "route (sample)",
-      "points": [
-       {
-        "id": "sf",
-        "label": "San Francisco (sample)",
-        "lat": 37.77,
-        "lon": -122.42
-       },
-       {
-        "id": "la",
-        "label": "Los Angeles (sample)",
-        "lat": 34.05,
-        "lon": -118.24
-       }
-      ]
-     }
     }
    ]
   },
@@ -4598,6 +4598,27 @@
     }
    },
    "blocks": [
+    {
+     "id": "fixture_route",
+     "type": "route",
+     "props": {
+      "title": "route (sample)",
+      "points": [
+       {
+        "id": "sf",
+        "label": "San Francisco (sample)",
+        "lat": 37.77,
+        "lon": -122.42
+       },
+       {
+        "id": "la",
+        "label": "Los Angeles (sample)",
+        "lat": 34.05,
+        "lon": -118.24
+       }
+      ]
+     }
+    },
     {
      "id": "fixture_itinerary",
      "type": "itinerary",
@@ -4985,39 +5006,6 @@
        }
       ]
      }
-    },
-    {
-     "id": "fixture_budget_allocator",
-     "type": "budget_allocator",
-     "props": {
-      "title": "budget allocator (sample)",
-      "inputs": [
-       {
-        "id": "price",
-        "label": "Price",
-        "value": 100,
-        "min": 0,
-        "max": 1000
-       },
-       {
-        "id": "count",
-        "label": "Quantity",
-        "value": 3,
-        "min": 0,
-        "max": 100
-       }
-      ],
-      "operation": "budget",
-      "scenarios": [
-       {
-        "label": "One extra",
-        "values": {
-         "count": 4
-        }
-       }
-      ],
-      "budget": 500
-     }
     }
    ]
   },
@@ -5128,6 +5116,39 @@
     }
    },
    "blocks": [
+    {
+     "id": "fixture_budget_allocator",
+     "type": "budget_allocator",
+     "props": {
+      "title": "budget allocator (sample)",
+      "inputs": [
+       {
+        "id": "price",
+        "label": "Price",
+        "value": 100,
+        "min": 0,
+        "max": 1000
+       },
+       {
+        "id": "count",
+        "label": "Quantity",
+        "value": 3,
+        "min": 0,
+        "max": 100
+       }
+      ],
+      "operation": "budget",
+      "scenarios": [
+       {
+        "label": "One extra",
+        "values": {
+         "count": 4
+        }
+       }
+      ],
+      "budget": 500
+     }
+    },
     {
      "id": "fixture_filter_builder",
      "type": "filter_builder",
@@ -5635,49 +5656,6 @@
       },
       "observedAt": "2026-10-27"
      }
-    },
-    {
-     "id": "fixture_restaurants",
-     "type": "restaurants",
-     "props": {
-      "title": "restaurants (sample)",
-      "columns": [
-       {
-        "id": "name",
-        "label": "name",
-        "type": "text"
-       },
-       {
-        "id": "cuisine",
-        "label": "cuisine",
-        "type": "text"
-       },
-       {
-        "id": "rating",
-        "label": "rating",
-        "type": "number"
-       },
-       {
-        "id": "price",
-        "label": "price",
-        "type": "text"
-       }
-      ],
-      "rows": [
-       {
-        "name": "Example cafe (sample)",
-        "cuisine": "Cafe",
-        "rating": 4.2,
-        "price": "$$"
-       }
-      ],
-      "source": "Developer fixture; illustrative values",
-      "provider": {
-       "id": "fixture",
-       "status": "provided"
-      },
-      "observedAt": "2026-10-27"
-     }
     }
    ]
   },
@@ -5788,6 +5766,49 @@
     }
    },
    "blocks": [
+    {
+     "id": "fixture_restaurants",
+     "type": "restaurants",
+     "props": {
+      "title": "restaurants (sample)",
+      "columns": [
+       {
+        "id": "name",
+        "label": "name",
+        "type": "text"
+       },
+       {
+        "id": "cuisine",
+        "label": "cuisine",
+        "type": "text"
+       },
+       {
+        "id": "rating",
+        "label": "rating",
+        "type": "number"
+       },
+       {
+        "id": "price",
+        "label": "price",
+        "type": "text"
+       }
+      ],
+      "rows": [
+       {
+        "name": "Example cafe (sample)",
+        "cuisine": "Cafe",
+        "rating": 4.2,
+        "price": "$$"
+       }
+      ],
+      "source": "Developer fixture; illustrative values",
+      "provider": {
+       "id": "fixture",
+       "status": "provided"
+      },
+      "observedAt": "2026-10-27"
+     }
+    },
     {
      "id": "fixture_reservations",
      "type": "reservations",

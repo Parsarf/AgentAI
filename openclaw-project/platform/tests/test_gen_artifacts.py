@@ -113,6 +113,18 @@ class ArtifactLoop(Base):
         with self.assertRaises(FieldErrors): answers(node, {})
         self.assertEqual(answers(node, {'show': False})[0], {'show': False})
 
+    def test_a_location_answer_is_a_short_plain_text_and_a_required_one_cannot_be_left_empty(self):
+        from agentai_platform.genui.artifacts import answers, FieldErrors
+        node = {'type': 'location_request', 'props': {'fields': [{'id': 'where', 'label': 'Your location', 'type': 'location', 'required': True}]}}
+        out, lines = answers(node, {'where': '94110'})
+        self.assertEqual((out, lines), ({'where': '94110'}, ['- Your location: 94110']))
+        out, _ = answers(node, {'where': 'Shared from my device, approximate (about 1 km): 37.77, -122.42'})
+        self.assertIn('37.77', out['where'])
+        for bad in ('', 'x' * 501, 'a\x00b'):
+            with self.subTest(bad=bad[:5]), self.assertRaises(FieldErrors) as caught:
+                answers(node, {'where': bad})
+            self.assertEqual(set(caught.exception.errors), {'where'})
+
     def test_failed_admission_can_retry_same_event_without_a_duplicate_request(self):
         from unittest.mock import patch
         from agentai_platform.budget import BudgetDenied

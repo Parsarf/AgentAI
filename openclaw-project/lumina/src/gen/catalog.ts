@@ -8,7 +8,7 @@ export const ALIASES = {
   paginated_table: ['table', {}], comparison_matrix: ['table', {}], leaderboard: ['table', {}], spreadsheet_preview: ['table', {}], database_result: ['table', {}],
   stacked_bar_chart: ['bar_chart', { stacked: true }], donut_chart: ['pie_chart', { donut: true }], histogram: ['histogram_chart', {}], progress_chart: ['progress', {}],
   button: ['button_group', {}], icon_button: ['button_group', {}],
-  text_input: ['form', {}], textarea: ['form', {}], checkbox: ['form', {}], radio: ['form', {}], select: ['form', {}], segmented_control: ['form', {}], slider: ['form', {}], switch: ['form', {}], date_picker: ['form', {}], time_picker: ['form', {}], number_stepper: ['form', {}],
+  text_input: ['form', {}], textarea: ['form', {}], checkbox: ['form', {}], radio: ['form', {}], select: ['form', {}], segmented_control: ['form', {}], slider: ['form', {}], switch: ['form', {}], date_picker: ['form', {}], time_picker: ['form', {}], location_request: ['form', {}], number_stepper: ['form', {}],
   grouped_form: ['form', {}], conditional_form: ['form', {}], questionnaire: ['form', {}], parameter_configurator: ['form', {}],
   timeline_chart: ['timeline', {}], stepper: ['timeline', {}], project_timeline: ['timeline', {}], milestones: ['timeline', {}],
   task_progress: ['execution_timeline', {}], live_activity: ['execution_timeline', {}], evidence_viewer: ['citation_list', {}], logs: ['execution_timeline', {}],

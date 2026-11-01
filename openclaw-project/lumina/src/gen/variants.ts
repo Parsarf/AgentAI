@@ -89,7 +89,7 @@ export interface Combination {
 const FULL_SCREEN_OK = new Set<string>(['table', 'line_chart', 'area_chart', 'bar_chart', 'scatter_chart', 'image', 'gallery', 'code_block', 'diff_viewer', 'json_viewer', 'terminal_output', 'execution_timeline']);
 const EXPANDABLE = new Set<string>(['text', 'info_card', 'card_grid', 'code_block', 'json_viewer', 'terminal_output', 'diff_viewer', 'accordion', 'citation_list', 'plan_viewer', 'execution_timeline', 'tool_call_inspector']);
 const EDITABLE = new Set<string>(['form']);
-const ACTIONABLE = new Set<string>(['form', 'button_group', 'follow_up', 'approval_request', 'error_retry', 'info_card', 'card_grid', 'table']);
+const ACTIONABLE = new Set<string>(['form', 'location_request', 'button_group', 'follow_up', 'approval_request', 'error_retry', 'info_card', 'card_grid', 'table']);
 
 export function checkCombination(c: Combination): string | null {
   const allowed = (COMPONENT_VARIANTS as Record<string, readonly string[]>)[c.type];
