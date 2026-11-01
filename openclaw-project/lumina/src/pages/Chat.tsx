@@ -6,6 +6,8 @@ import BrowserToggle from '../components/BrowserToggle';
 import { loadMessages, type Message as Msg } from '../lib/conversations';
 import type { ChatSummary } from '../lib/chats';
 import AgentResponse from '../components/response/AgentResponse';
+import WorkTrail from '../components/response/WorkTrail';
+import { foldTrail } from '../lib/trail';
 import ActivityPanel from '../components/ActivityPanel';
 import AgentThinking, { type ThreadTask } from '../components/AgentThinking';
 import BlockView from '../components/genui/BlockView';
@@ -79,6 +81,7 @@ export default function Chat() {
   const [renaming, setRenaming] = useState(false);
   const rename = async (title: string) => { setRenaming(false); const t = title.trim(); if (t && t !== current?.title && id) { try { await api('POST', `/v1/conversations/${id}/rename`, { title: t }); await loadList(); } catch { /* keep old name */ } } };
   const byRequest = new Map(tasks.map(t => [t.id, t]));
+  const trail = useMemo(() => foldTrail(msgs, rid => { const t = byRequest.get(rid); return !!t && !isActive(t); }, m => blocks.some(b => b.anchor_message_id === m.id) || made.some(a => a.task_id === m.request_id)), [msgs, tasks, blocks, made]);   // eslint-disable-line react-hooks/exhaustive-deps
   const current = chats.find(c => c.id === id) ?? detail;
 
   const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text', ui: getAnswerStyle() }); } finally { reload(); } };
@@ -98,7 +101,7 @@ export default function Chat() {
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}
-          {msgs.map(m => (
+          {msgs.map(m => trail.skip.has(m.id) ? (trail.hidden.has(m.id) ? <div key={m.id} className="turn"><WorkTrail messages={trail.hidden.get(m.id)!} /></div> : null) : (
             <div key={m.id} className="turn">
               <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : <Emojified text={m.content} />}</div>
               {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <AgentThinking task={byRequest.get(m.request_id)!} />}

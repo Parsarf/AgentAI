@@ -88,6 +88,30 @@ class ChatChecks(unittest.TestCase):
         self.assertEqual(str(caught.exception), 'account allowance exhausted')
         self.assertEqual(self.rows("SELECT state FROM customer_requests WHERE idempotency_key='second'")[0][0], 'cancelled')
 
+    def test_an_account_on_its_own_model_key_goes_through_when_its_lumina_allowance_is_used_up(self):
+        with self.store.connect() as con:
+            limits = dict(LIMITS, period_microusd=600, daily_microusd=600, task_microusd=600)
+            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id IN ('a','b')", (json.dumps(limits),))
+        self.send(key='first')
+        with self.assertRaises(BudgetDenied): self.send(key='second')                       # a is out of allowance...
+        self.service.unmetered = lambda account: account == 'a'                              # ...until it runs on its own key
+        sent = self.send(key='third')
+        self.assertEqual((sent['admission'], sent['price_version'], sent['execution_enabled']), ('reserved', 'own-key-v1', True))
+        row = self.rows("SELECT budget_microusd FROM tasks WHERE account_id='a' AND id=?", (sent['id'],))[0]
+        self.assertEqual(row[0], 1)                                                          # a nominal reservation: nothing near the price of the message
+        self.send(principal=self.b, key='b1')
+        with self.assertRaises(BudgetDenied): self.send(principal=self.b, key='b2')         # b did not switch it on: its limits still apply
+
+    def test_the_own_key_exemption_also_covers_requests_a_block_button_starts(self):
+        with self.store.connect() as con:
+            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(dict(LIMITS, period_microusd=1, daily_microusd=1)),))
+        result = self.service.queue.submit(self.a, message='go', key='sp1', conversation_id='c-a', intent='chat')
+        with self.assertRaises(BudgetDenied): self.service._admit(self.a, result, 'c-a', 'sp1', 'go')
+        self.service.unmetered = lambda account: True
+        result2 = self.service.queue.submit(self.a, message='go again', key='sp2', conversation_id='c-a', intent='chat')
+        amount, version, _ = self.service._admit(self.a, result2, 'c-a', 'sp2', 'go again')
+        self.assertEqual((amount, version), (1, 'own-key-v1'))
+
     def test_queue_ceiling_denial_cancels_request(self):
         with self.store.connect() as con:
             limits = dict(LIMITS, max_queued_tasks=1)

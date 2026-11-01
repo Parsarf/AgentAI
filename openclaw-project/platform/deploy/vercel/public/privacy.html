@@ -41,6 +41,7 @@
   <li>We collect what we need to run your account and to do the tasks you ask for.</li>
   <li>We do not sell your data and we do not show ads.</li>
   <li>The extension works only in tabs it opens itself, only while you have switched it on, and you can stop it at any moment.</li>
+  <li>If you choose to use your own model API key, your messages go to the company you chose instead of Anthropic.</li>
   <li>Pictures and traces from browser tasks are deleted 24 hours after the task ends.</li>
   <li>Everything else we hold about you stays until you ask us to delete it.</li>
 </ul>
@@ -58,6 +59,7 @@
 <ul>
   <li>The messages you send, the assistant’s replies, your tasks and their results, and activity records that show what the assistant did.</li>
   <li>Logins and cards you choose to save are stored encrypted.</li>
+  <li>If you choose to use your own model, the address of the model service you entered, the model name, and your API key for it. The key is stored encrypted and is never shown again, apart from its last four characters.</li>
 </ul>
 <h3>Browser tasks</h3>
 <p>When Lumina does something in a web browser for you, we handle what you asked for, the addresses and titles of the pages it visits, a list of the controls on each page (buttons, links, fields), the page’s text, pictures of the page, the steps taken and the result. Password fields, and card fields that the page marks as card fields, are listed by type only; what is typed into them is not read as text. Pictures show what is on the screen, so they can show anything the page displays.</p>
@@ -97,7 +99,8 @@
 
 <h2>Who receives it</h2>
 <ul>
-  <li><strong>Anthropic</strong> provides the assistant’s model. It receives your messages and, during a browser task, the page content the assistant is asked to work with.</li>
+  <li><strong>Anthropic</strong> provides the assistant’s model by default. It receives your messages and, during a browser task, the page content the assistant is asked to work with.</li>
+  <li><strong>The company that runs the endpoint you enter</strong>, only if you choose to use your own model API key (Settings, Your own model). While it is on, it receives what Anthropic would otherwise receive: your messages, the assistant’s working notes, and the content of web pages and results the assistant reads for you. Its handling of that data is governed by its own terms, not this policy. Lumina does not charge you for that use and does not limit it by spend; you pay that company directly. The browser steps decided by TypeSafe (below) do not use your key.</li>
   <li><strong>TypeSafe</strong> provides the model that decides each step of a browser task. It receives a picture of the page and your task description. Before the text is sent we remove email addresses, phone numbers, card and ID numbers, street addresses, IP addresses and long keys from it. Pictures cannot be cleaned that way, so what is visible on a page is visible to them.</li>
   <li><strong>Brave Search</strong> receives the search terms when the assistant searches the web for you.</li>
   <li>Two public <strong>DNS services</strong>, Cloudflare (1.1.1.1) and Quad9 (9.9.9.9), turn website names into addresses whenever the assistant opens a page. They see the names of the sites it looks up, not what is on them.</li>
@@ -116,6 +119,7 @@
     <tr><td>Technical server logs</td><td>7 days.</td></tr>
     <tr><td>Encrypted backups of our systems</td><td>Up to 30 days. Something you ask us to delete can therefore remain in a backup for up to 30 days before the backup expires.</td></tr>
     <tr><td>Copies of our database made just before software updates</td><td>Removed automatically after at most 30 days.</td></tr>
+    <tr><td>Your own model key, if you add one</td><td>Until you remove it in Settings, or ask us to delete your account. Removing it deletes it from our server.</td></tr>
     <tr><td>Your account details, chats, tasks, results, activity records, security records and saved items</td><td>Kept until you ask us to delete them. We do not currently delete these automatically.</td></tr>
   </tbody>
 </table>
@@ -128,10 +132,10 @@
 </ul>
 
 <h2>Security</h2>
-<p>Connections to Lumina are encrypted. Passwords are stored only as salted hashes, browser tokens only as hashes, and saved logins and cards encrypted. Each customer’s assistant runs in its own isolated environment. No service can promise perfect security, but we design for it and we fix problems when we find them.</p>
+<p>Connections to Lumina are encrypted. Passwords are stored only as salted hashes, browser tokens only as hashes, and saved logins, cards and your own model key encrypted. Your model key is used only by our server to forward your requests; it is never placed inside your assistant’s environment. We accept only secure (https) addresses on the public internet for it, and we refuse addresses that point inside our own network. Each customer’s assistant runs in its own isolated environment. No service can promise perfect security, but we design for it and we fix problems when we find them.</p>
 
 <h2>Connecting other services and tools</h2>
-<p>Today you cannot connect other services or tools to Lumina, such as email, calendars, files or outside tool servers. If we add that, we will tell you what we collect from each one before you connect it, and we will update this policy before the feature is available to you.</p>
+<p>Apart from choosing your own model (described above), you cannot connect other services or tools to Lumina today, such as email, calendars, files or outside tool servers. If we add that, we will tell you what we collect from each one before you connect it, and we will update this policy before the feature is available to you.</p>
 
 <h2>Changes to this policy</h2>
 <p>We update this page when what we collect, share or keep changes, and we change the date at the top when we do. A new feature that collects something new comes with an updated policy, not after it.</p>

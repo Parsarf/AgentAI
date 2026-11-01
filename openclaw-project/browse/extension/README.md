@@ -25,6 +25,9 @@ Tests (from `browse/`): `node --test test/extension-*.test.mjs`
 - `extension-bridge`: the dev WebSocket server.
 - `extension-worker`: `background.js` against a fake `chrome` API.
 
+## Loading the folder in Chrome ("Load unpacked")
+Chrome refuses a folder that contains any file or folder whose name starts with `_` (it says "Filenames starting with "_" are reserved"). The usual culprit is Python's `__pycache__`. If you see that error, delete it: it is only a cache. Tests here run Python with `-B` so they no longer create it, and `test/extension-package.test.mjs` fails if one appears. A cleaner alternative is to unzip `dist/lumina-browser-<version>.zip` (made by `python3 package.py`) and load that: it holds only what the extension needs.
+
 ## Try it by hand
 Branded Chrome (137+) ignores `--load-extension`, so load it from the page:
 1. `node extension/dev/drive.mjs` (starts the mock shop and the bridge on `ws://127.0.0.1:8765/device`).
@@ -37,6 +40,9 @@ The platform side (device gateway, pairing, the `local` engine) is in `platform/
 `dev/device-sim.mjs` plays this extension (the real executor in headless Chrome) for `platform/tests/e2e/test_device_extension.py`.
 Pairing: Lumina → Settings → Your browser → Connect gives a code; type it in the extension's popup (or, with the Web Store build, the page hands it over itself: `chrome.runtime.sendMessage(<extension id>, { type: 'pair', code })`, accepted only from `https://getlumina.pro`, and it carries nothing but the code). The extension always connects to production (`src/config.js`); a stored address is honoured only if it is this computer, so no page can point it elsewhere.
 An unknown, revoked or replaced device (close codes 4401 / 4403 / 4409) switches the extension off with a red "!" instead of retrying forever.
+
+## Privacy
+The store listing's privacy policy is `platform/deploy/vercel/public/privacy.html`. What this extension is allowed to do and keep (`manifest.json` permissions, the storage keys, the servers it reaches, the page-text and control limits) is pinned in `platform/privacy/facts.json`; a change here fails `platform/tests/test_privacy_policy.py` until the policy has been reviewed. See `platform/privacy/README.md`.
 
 ## Not done yet (later steps)
 - Per-site consent with an expiry.

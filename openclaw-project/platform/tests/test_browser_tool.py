@@ -197,6 +197,14 @@ class ToolChecks(Base):
         self.assertTrue(any('Add to cart' in t for t in timeline))
         self.assertTrue(any('"status": "done"' in t for t in timeline))
 
+    def test_a_task_on_the_customers_own_model_key_still_gets_a_real_browsing_budget(self):
+        request_id, claim = self.running_request()
+        with self.store.connect() as con:                                                 # what an own-key request reserves: one micro-dollar, because their model is not Lumina's cost
+            con.execute("UPDATE task_reservations SET amount_microusd=1 WHERE task_id=?", (claim.request_id,))
+        self.rpc.script = [{'state': 'done', 'answer': 'ok', 'events': [], 'cost_microusd': 3000, 'url': 'https://x/'}]
+        self.tool.call('a', self.ARGS)
+        self.assertEqual(self.rpc.calls[0][1]['max_cost_microusd'], 600000)               # the browser's steps are paid by Lumina: 60% of the $1 browsing reserve, not 60% of one micro-dollar (0)
+
     def test_a_second_call_in_one_run_is_a_job_of_its_own_and_the_budget_is_shared(self):
         request_id, claim = self.running_request()
         self.rpc.script = [done(cost=300000)]

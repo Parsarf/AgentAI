@@ -37,7 +37,7 @@ def run(raw):
 
 class ModelProxyChecks(unittest.TestCase):
     def test_completions_pass_through_with_body_and_stream(self):
-        body = b'{"model":"claude-haiku-4-5","messages":[]}'
+        body = b'{"model":"claude-haiku-5-5","messages":[]}'
         data, seen = run(b'POST /chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer k\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s' % (len(body), body))
         self.assertIn(b'200 OK', data); self.assertIn(b'data: two', data)
         self.assertEqual(seen[0][1], body); self.assertIn(b'Authorization: Bearer k', seen[0][0]); self.assertIn(b'Connection: close', seen[0][0])

@@ -82,7 +82,8 @@
    "dns_servers": [
     "1.1.1.1",
     "9.9.9.9"
-   ]
+   ],
+   "own_model_endpoint": true
   }
  },
  "hosts_explained": {
@@ -197,7 +198,10 @@
   "Cloudflare",
   "Quad9",
   "Connecting other services and tools",
-  "This is everything we collect today"
+  "This is everything we collect today",
+  "own model API key",
+  "company that runs the endpoint you enter",
+  "never placed inside your assistant"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -233,12 +237,28 @@
    "date": "2026-10-31",
    "by": "publication of the corrected policy",
    "note": "Corrected policy (Brave Search, Cloudflare/Quad9 DNS, public-website access, 'everything we collect today', 'Connecting other services and tools') published as Vercel production deployment dpl_45fb7R4i7mYxmV3HQmCj7vCa6BVt. The five existing paths I compared (/, /app/, /robots.txt, /v1/devices, /auth/login) were identical before and after. Previous production deployment (first policy draft): dpl_EQQqt89GP3DsnSdE4n2kYCWpjyq1; before that dpl_3H9wwD4aEmrFTncKcede8BPhigYc (2026-10-12, no /privacy). Still not committed to Git."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "test release for the owner",
+   "note": "Customer's-own-Chrome feature released for a trial: server release 20261031T221756Z-a498d29 (both trees), website redeployed (browser icon in every chat), browse-engine.json lists ONE account under local (the owner's), so nobody else can pair or switch it on. Policy text already covers it. Pending: the /v1/device route in /etc/caddy/Caddyfile (staged and validated as Caddyfile.new, backup Caddyfile.bak-device-20261031T221954Z); until it is installed the extension cannot connect from outside. Before opening it to everyone: extension published, policy re-read, then remove the local list from browse-engine.json."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "route installed by the owner",
+   "note": "Owner installed the /v1/device route in /etc/caddy/Caddyfile (backup Caddyfile.bak-device-20261031T221954Z). Verified: websocket handshake with an extension origin 101, no origin 403, web-page origin 403, plain GET 426; the other 7 routes compared before/after were unchanged. The owner's extension (Chrome, mac) paired and connected within minutes."
+  },
+  {
+   "date": "2026-10-31",
+   "by": "own model API key feature",
+   "note": "Customers can use their own OpenAI-compatible endpoint and key (model_keys.py, tool relay /byok). New recipient: the company they choose. Policy updated: short version, collect list, recipients, retention row, security, connecting-tools section; Anthropic now 'by default'. Feature stays off (browse-engine.json own_model_keys) until this policy is published."
   }
  ],
  "assistant_recipients": {
   "search_provider:brave": "Brave Search",
   "plugin:@openclaw/brave-plugin": "Brave Search",
   "dns:1.1.1.1": "Cloudflare",
-  "dns:9.9.9.9": "Quad9"
+  "dns:9.9.9.9": "Quad9",
+  "own_model_endpoint": "company that runs the endpoint you enter"
  }
 }

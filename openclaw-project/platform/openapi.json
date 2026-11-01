@@ -4735,6 +4735,96 @@
      }
     }
    }
+  },
+  "/v1/model-key": {
+   "get": {
+    "summary": "Whether you may use your own model API key, and which one is saved (host, model name and the last four characters only; the key is never returned)",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/model-key/save": {
+   "post": {
+    "summary": "Test and save your own model API key, endpoint address and model name; the assistant uses them from its next start",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available for this account"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "422": {
+      "description": "The address, key or model name was refused; the message says what to fix"
+     }
+    }
+   }
+  },
+  "/v1/model-key/remove": {
+   "post": {
+    "summary": "Delete your saved model API key; the assistant goes back to Lumina's models from its next start",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
   }
  },
  "components": {

@@ -122,6 +122,9 @@ LIVE_PATH = os.environ.get('AGENTAI_LIVE_PATH', '/v1/live')
 SAFETY_SNAPSHOT_FILE = os.environ.get('AGENTAI_SAFETY_SNAPSHOT', str(STATE_DIR / 'safety-switches.json'))   # the switch settings other processes read (the browse service, the supervisor); written by the app on every change
 SAFETY_OWNER_ACCOUNT = os.environ.get('AGENTAI_SAFETY_OWNER_ACCOUNT', '')   # the one account that may see and change its own safety switches; empty = nobody
 VAULT_KEY_FILE = os.environ.get('AGENTAI_VAULT_KEY_FILE', '')          # saved logins and cards; without this root-only key file the vault is off
+MODEL_KEY_STORE = os.environ.get('AGENTAI_MODEL_KEY_STORE', str(STATE_DIR / 'model-keys.json'))     # customers' own model keys, encrypted (agentai_platform/model_keys.py)
+MODEL_KEY_FILE = os.environ.get('AGENTAI_MODEL_KEY_FILE', '')            # optional dedicated encryption key for them; without it a key derived from the app secret is used
+ENGINE_FILE = os.environ.get('AGENTAI_ENGINE_FILE', '/var/lib/agentai-platform/own-model-keys.json')   # who may use their own model key: {"own_model_keys": true | [account ids]}
 CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
 
 # Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.

@@ -8,7 +8,9 @@ import { join, posix } from 'node:path';
 import { chromium } from 'playwright-core';
 
 const EXT = new URL('../extension/', import.meta.url).pathname;
-const build = out => { const r = spawnSync('python3', [join(EXT, 'package.py'), '--out', out], { encoding: 'utf8' }); return { ...r, zip: join(out, 'lumina-browser-0.1.0.zip') }; };
+// Python must never write its bytecode cache (__pycache__) next to the files it reads: Chrome refuses to load an extension folder that contains a name starting with an underscore.
+const python = (args, options = {}) => spawnSync('python3', ['-B', ...args], { encoding: 'utf8', ...options, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+const build = out => { const r = python([join(EXT, 'package.py'), '--out', out]); return { ...r, zip: join(out, 'lumina-browser-0.1.0.zip') }; };
 const list = zip => spawnSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).sort();
 const file = (zip, name) => spawnSync('unzip', ['-p', zip, name], { encoding: 'buffer' }).stdout;
 const tmp = () => mkdtempSync(join(tmpdir(), 'lumina-zip-'));
@@ -59,7 +61,7 @@ assert p.check(m) == [], p.check(m)
 def bad(**kw): n = {**m, **kw}; return p.check(n)
 print(json.dumps({'dev': bad(name='Lumina (development build)'), 'long': bad(description='x'*133), 'host': bad(host_permissions=['<all_urls>']), 'perm': bad(permissions=['debugger','tabGroups','storage','tabs']),
   'v2': bad(manifest_version=2), 'noicon': bad(icons={'16': m['icons']['16']}), 'missing': bad(icons={**m['icons'], '128': 'icons/nope.png'}), 'ver': bad(version='one')}))`;
-  const r = spawnSync('python3', ['-c', py], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr);
+  const r = python(['-c', py]); assert.equal(r.status, 0, r.stderr);
   const out = JSON.parse(r.stdout);
   for (const [name, problems] of Object.entries(out)) assert.ok(problems.length > 0, `${name} should be refused`);
 });
@@ -110,4 +112,10 @@ test('the store screenshots are what the store accepts: one to five JPEGs of exa
   assert.ok(shots.length >= 1 && shots.length <= 5, `${shots.length} screenshots`);
   for (const name of shots) assert.deepEqual(jpegSize(readFileSync(join(dir, name))), { w: 1280, h: 800 }, name);
   assert.ok(!list(build(tmp()).zip).some(n => n.startsWith('store/') || n.endsWith('.jpg')));
+});
+
+test('the extension folder holds nothing Chrome would refuse to load (no name starting with an underscore, such as Python\'s __pycache__)', () => {
+  const found = [];
+  (function walk(dir) { for (const e of readdirSync(dir, { withFileTypes: true })) { if (e.name.startsWith('_')) found.push(join(dir, e.name).replace(EXT, '')); if (e.isDirectory()) walk(join(dir, e.name)); } })(EXT);
+  assert.deepEqual(found, [], `Chrome reserves names starting with "_" and will not load the folder while these exist: ${found.join(', ')}. Delete them (they are only caches) and find what wrote them.`);
 });

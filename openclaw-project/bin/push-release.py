@@ -7,7 +7,7 @@
 Files are paths under openclaw-project/platform/. By default the supervisor tree (/opt/agentai-supervisor: browse service, workers) is released; add
 `--trees supervisor,app` when the web app (/opt/agentai-platform) uses the file too. Without --apply it only shows the plan (nothing is changed).
 A release is a timestamped folder copied from the current one with the files laid over; `current` is switched atomically and the old folder is kept.
-`--rollback` points `current` back at the previous folders and restarts the same services. Tests named with --tests run first (default: none).
+`--rollback` points `current` back at the previous folders and restarts the same services. Tests named with --tests run first (default: none). The privacy-policy check (platform/privacy/) always runs unless --skip-privacy-check is given.
 """
 import argparse
 import hashlib
@@ -90,6 +90,7 @@ def main():
     p.add_argument('--restart', nargs='*', default=[])
     p.add_argument('--trees', default='supervisor')
     p.add_argument('--tests', nargs='*', default=[])
+    p.add_argument('--skip-privacy-check', action='store_true', help='ship without checking that the privacy policy still matches the code (say why in --why; fix the policy soon)')
     p.add_argument('--why', default='')
     p.add_argument('--apply', action='store_true')
     p.add_argument('--rollback', action='store_true')
@@ -108,6 +109,11 @@ def main():
     if a.tests:
         run([sys.executable, '-m', 'unittest', *a.tests], cwd=PLATFORM)
         print('Tests passed.')
+    if a.skip_privacy_check:
+        print('WARNING: the privacy policy check was skipped. Run it, and review the policy, before the next release (platform/privacy/README.md).')
+    else:
+        run([sys.executable, '-m', 'unittest', 'tests.test_privacy_policy'], cwd=PLATFORM)       # fails when the code has moved away from what the privacy policy says
+        print('Privacy policy still matches the code.')
     dirty = run(['git', 'status', '--porcelain', '--', *[f'platform/{r}' for r in a.files]], cwd=PROJECT).strip()
     head = run(['git', 'rev-parse', 'HEAD'], cwd=PROJECT).strip()
     name = f'{time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())}-{head[:7]}'

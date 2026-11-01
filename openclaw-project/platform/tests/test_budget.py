@@ -88,6 +88,26 @@ class BudgetChecks(unittest.TestCase):
         self.ledger.service_limit=None
         with self.assertRaises(BudgetDenied):self.admit()
         with self.store.connect() as con:self.assertEqual(con.execute('SELECT count(*) FROM tasks').fetchone()[0],0)
+    def test_an_account_on_its_own_model_key_is_not_held_to_lumina_spending_limits(self):
+        """No task, daily, period or service allowance applies; the task still gets a reservation row (the browser tool looks for one); the queue ceiling still does."""
+        self.admit('t1', amount=100)                                                     # uses the whole daily and period allowance of 100
+        with self.assertRaises(BudgetDenied): self.admit('t2', amount=1)                 # a metered account is now out of allowance
+        row = self.admit('t2', amount=1, unmetered=True)                                 # an own-key account is not
+        self.assertEqual((row['state'], row['amount_microusd'] if 'amount_microusd' in row else 1), ('active', 1))
+        with self.assertRaises(BudgetDenied): self.admit('t3', amount=101)               # still refused: over the task allowance
+        self.admit('t3', amount=101, unmetered=True)                                     # not for an own-key account
+        with self.store.connect() as con:
+            states = {r['task_id']: r['state'] for r in con.execute('SELECT task_id,state FROM task_reservations WHERE account_id=?', ('a',))}
+        self.assertEqual(states, {'t1': 'active', 't2': 'active', 't3': 'active'})
+        with self.assertRaises(BudgetDenied) as ctx: self.admit('t4', amount=1, unmetered=True)  # the queue holds 3: the ceiling protects the servers and stays
+        self.assertIn('queue', str(ctx.exception))
+        self.admit('other', principal=self.b, amount=60)                                  # and another account is unaffected either way
+
+    def test_unmetered_still_needs_a_verified_bound_a_real_conversation_and_stays_idempotent(self):
+        with self.assertRaises(ValueError): self.admit('t1', amount=0, unmetered=True)
+        with self.assertRaises(NotFound): self.ledger.admit(self.a, task='t9', project='p-a', conversation='c-b', key='t9', amount_microusd=1, upper_bound_verified=True, unmetered=True)
+        first = self.admit('t5', amount=1, unmetered=True); self.assertEqual(first, self.admit('t5', amount=1, unmetered=True))
+
     def test_period_daily_expiry_and_queue_ceiling(self):
         with self.store.connect() as con:
             limits={'period_start_epoch':self.now-100000,'period_microusd':100,'daily_microusd':30,'task_microusd':20,'max_queued_tasks':3}

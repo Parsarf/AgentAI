@@ -15,6 +15,9 @@ from agentai_platform.lifecycle.coordinator import Coordinator, identifier
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import NotFound
 
+OWN_KEY_AMOUNT = 1                    # micro-dollars: the nominal reservation of a task that runs on the customer's own model key (nothing about their model is limited or charged here)
+OWN_KEY_BROWSE_RESERVE = 1_000_000    # but the browser's step decider (JEV) is paid by Lumina, so a task on the customer's key still gets a real browsing budget: $1 per request
+
 class BudgetDenied(Exception): pass
 
 class BudgetLedger:
@@ -59,7 +62,10 @@ class BudgetLedger:
         return con.execute(sql,args).fetchone()[0]
 
     def admit(self, principal, *, task, project, conversation, key, amount_microusd,
-              upper_bound_verified=False, currency='USD'):
+              upper_bound_verified=False, currency='USD', unmetered=False):
+        """`unmetered`: the account runs on the customer's OWN model key, so none of Lumina's spending limits apply to it (the task, daily, period and service allowances are not
+        checked). The task still gets its reservation row, because the rest of the platform (the browser tool among it) looks for one; the amount is a nominal one. The limit on
+        how many tasks may wait in the queue stays: it protects Lumina's servers, not a budget."""
         for value in [task,project,conversation,key]:identifier(value)
         if currency!='USD' or type(amount_microusd) is not int or amount_microusd<=0:
             raise ValueError('invalid allocation')
@@ -73,15 +79,15 @@ class BudgetLedger:
                 if existing['request_hash']!=digest:raise Conflict('allocation payload changed')
                 return dict(existing)
             entitlement,limits=self._limits(con,account)
-            if amount_microusd>limits['task_microusd']:raise BudgetDenied('task allowance exhausted')
+            if not unmetered and amount_microusd>limits['task_microusd']:raise BudgetDenied('task allowance exhausted')
             if not con.execute('SELECT 1 FROM conversations WHERE account_id=? AND project_id=? AND id=?',(account,project,conversation)).fetchone():
                 raise NotFound()
             queued=con.execute("SELECT count(*) FROM tasks WHERE account_id=? AND state='queued'",(account,)).fetchone()[0]
             if queued>=limits['max_queued_tasks'] and safety.is_on(con,account,'queue_limit'):raise BudgetDenied('queue full')       # the plan's queue limit is the same `queue_limit` switch as the queue's own
             holds=self._holds(con,account)
-            for bound,since in [('period_microusd',limits['period_start_epoch']),('daily_microusd',self.clock()-86400)]:
+            for bound,since in ([] if unmetered else [('period_microusd',limits['period_start_epoch']),('daily_microusd',self.clock()-86400)]):
                 if self._spend(con,account,since)+holds+amount_microusd>limits[bound]:raise BudgetDenied('account allowance exhausted')
-            if self._spend(con)+self._holds(con)+amount_microusd>self.service_limit:raise BudgetDenied('service allocation exhausted')
+            if not unmetered and self._spend(con)+self._holds(con)+amount_microusd>self.service_limit:raise BudgetDenied('service allocation exhausted')
             con.execute('''INSERT INTO tasks(account_id,project_id,conversation_id,id,state,budget_microusd)
                 VALUES (?,?,?,?,'queued',?)''',(account,project,conversation,task,amount_microusd))
             con.execute("INSERT INTO task_reservations VALUES (?,?,?,?,?,?,'active',?)",
