@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const NAMES = new Map(['lumina_browser', 'lumina_browser_step', 'lumina_task_update'].map(n => ['lumina__' + n, n]));
+const NAMES = new Map(['lumina_browser', 'lumina_browser_step', 'lumina_task_update', 'lumina_mcp_discover', 'lumina_mcp_call'].map(n => ['lumina__' + n, n]));
 const MAX_BYTES = 24000;
 const MAX_PENDING = 64;
 const MAX_AGE_MS = 30 * 60 * 1000;
@@ -20,7 +20,7 @@ export default {
     fs.writeFileSync(path.join(directory, 'protocol.json'), '{"version":2}\n', { mode: 0o600, flag: 'w' });
 
     api.on('before_tool_call', (event, ctx) => {
-      const name = NAMES.get(event.toolName);
+      const name = NAMES.get(event.toolName) || (/^lumina__lumina_mcp_[a-f0-9]{32}_[a-f0-9]{12}$/.test(event.toolName) ? event.toolName.slice('lumina__'.length) : null);
       if (!name) return;
       if (![ctx.sessionKey, ctx.runId, ctx.toolCallId].every(v => typeof v === 'string' && v.length > 0 && v.length < 512)) {
         return { block: true, blockReason: 'Lumina could not verify the runtime tool identity. Nothing was started.' };
@@ -28,7 +28,8 @@ export default {
       const now = Date.now();
       try {
         for (const entry of fs.readdirSync(directory)) {
-          if (!/^[a-f0-9]{32}\.json$/.test(entry)) continue;
+          // Also prune claim markers: they only matter while their proof could still be read.
+          if (!/^[a-f0-9]{32}\.(json|claimed)$/.test(entry)) continue;
           const target = path.join(directory, entry);
           if (now - fs.lstatSync(target).mtimeMs > MAX_AGE_MS) fs.unlinkSync(target);
         }

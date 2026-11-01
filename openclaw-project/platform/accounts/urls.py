@@ -81,3 +81,9 @@ from . import billing as bl
 urlpatterns += [path('v1/account/billing',bl.billing),path('v1/account/billing/checkout',bl.checkout),
  path('v1/account/billing/portal',bl.portal),path('v1/billing/webhook',bl.webhook)]
 urlpatterns.insert(0,path('account/billing/',bl.billing,{'page':True}))
+
+from . import mcp_connections as mcp
+urlpatterns += [path('v1/account/mcp', mcp.connections),
+                path('v1/account/mcp/callback', mcp.callback),
+                path('v1/account/mcp/<str:connection_id>/<str:action>', mcp.change),
+                path('v1/account/mcp-approvals/<str:call_id>', mcp.approve)]

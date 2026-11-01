@@ -24,3 +24,5 @@ test_request_worker
 test_chat_history
 test_task_progress
 test_tool_origin
+test_mcp_network
+test_mcp_connections

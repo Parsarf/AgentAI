@@ -23,6 +23,7 @@ def features(request):
     from .billing import access_mode
     from .chat import browse_on, execution_on
     from .connections import switch_on as connectors_on
+    from .mcp_connections import available as mcp_on
     storage = bool(settings.STORAGE_DIR) and settings.STORAGE_READY
     return {
         'chat': True,
@@ -32,6 +33,7 @@ def features(request):
         'uploads': storage and settings.UPLOADS_ENABLED,
         'telegram': bool(settings.TELEGRAM_ENABLED),
         'connectors': connectors_on(),
+        'mcp': mcp_on(getattr(request, 'account_id', None)),           # remote MCP connections (the owner's mcp-connections.json); off until turned on
         'billing_mode': access_mode(),                    # invite_only | open | paid_required
         'requests': True,
         'usage': True,
