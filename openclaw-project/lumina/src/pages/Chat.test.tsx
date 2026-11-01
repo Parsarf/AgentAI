@@ -11,6 +11,19 @@ const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }
 beforeEach(() => { sessionStorage.clear(); Element.prototype.scrollIntoView = vi.fn(); Element.prototype.scrollTo = vi.fn(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<MemoryRouter initialEntries={['/chat/a']}><Routes><Route path="/chat/:id" element={<Switch />} /></Routes></MemoryRouter>);
+describe('messages typed in the side chat', () => {
+  it('say where they were sent from, and ordinary messages do not', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/blocks')) return ok({ blocks: [] });
+      if (url.includes('/messages')) return ok({ messages: [{ ...msg(1, 'only the red ones', 'customer'), surface: 'panel' }, msg(2, 'From the web', 'customer'), msg(3, 'Looking now')], tasks: [] });
+      return ok({ conversation: { id: 'a', title: 'Saved chat' } });
+    }));
+    mount(); await screen.findByText('only the red ones');
+    expect(screen.getAllByText('Sent from the side chat in your browser')).toHaveLength(1);
+    expect(screen.getByText('only the red ones').parentElement?.textContent).toContain('Sent from the side chat in your browser');
+    expect(screen.getByText('From the web').parentElement?.textContent).not.toContain('Sent from the side chat');
+  });
+});
 describe('resuming conversations', () => {
   it('loads more than 100 messages and sends follow-ups into the same chat', async () => {
     const calls: string[] = []; let sent = false;

@@ -13,6 +13,7 @@ from . import model_key as mkv
 from . import vault as vt
 from . import safety as sfy
 from . import signup as su
+from . import panel as pnl
 urlpatterns=[
  path('healthz',v.health),path('readyz',v.ready),path('',v.account_page),path('account/',v.account_page),
  path('account/ui',v.assets),path('account/ui/',v.assets),path('account/chat/',ch.chat_page),path('account/<str:page>/',v.account_page),path('auth/login',v.signin),path('auth/logout',v.signout),
@@ -87,3 +88,4 @@ urlpatterns += [path('v1/account/mcp', mcp.connections),
                 path('v1/account/mcp/callback', mcp.callback),
                 path('v1/account/mcp/<str:connection_id>/<str:action>', mcp.change),
                 path('v1/account/mcp-approvals/<str:call_id>', mcp.approve)]
+urlpatterns += [path('v1/panel/state', pnl.state), path('v1/panel/events', pnl.events), path('v1/panel/send', pnl.send), path('v1/panel/stop', pnl.stop)]

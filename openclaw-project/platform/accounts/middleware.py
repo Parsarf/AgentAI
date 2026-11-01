@@ -54,7 +54,7 @@ class AccountMiddleware:
             elif identity.role=='customer':
                 try: request.account_id=customer_scope(request.user,request.session.get('epoch'))
                 except Denied: logout(request)
-        if not request.user.is_authenticated and request.path not in PUBLIC_UNMETERED:
+        if not request.user.is_authenticated and request.path not in PUBLIC_UNMETERED and not request.path.startswith('/v1/panel/'):      # the panel meters itself (by address, then by account)
             # Ingress limit for anonymous traffic by source address; provider webhooks meter themselves.
             try: rate('ingress.anonymous',request.client_ip,120,60)
             except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'60'})

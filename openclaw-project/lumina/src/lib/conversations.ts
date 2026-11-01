@@ -1,6 +1,6 @@
 import { api } from './api';
 import type { ThreadTask } from '../components/AgentThinking';
-export interface Message { id: number; request_id: string | null; provenance: string; content: string; created_at: string }
+export interface Message { id: number; request_id: string | null; provenance: string; content: string; created_at: string; surface?: 'panel' | null }      // surface 'panel': typed in the side chat beside the agent's tab in the customer's own Chrome
 interface Page { messages: Message[]; tasks: ThreadTask[]; has_more?: boolean; next_after?: number }
 /** Read every persisted page; never silently truncate a resumed conversation. */
 export async function loadMessages(id: string, after = 0, stillCurrent: () => boolean = () => true): Promise<Page> {

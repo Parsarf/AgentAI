@@ -18,6 +18,8 @@ role/account/object and uses fixed operations; unknown fields rejected.
 | POST /v1/conversations/{id}/send | Customer own project/conversation/deployment | Phase5 reservation + idempotency key; one task per key, budget denial402 without native call | Implemented Phase6; native dispatch disabled (`route_unconfigured` waits) |
 | GET /v1/conversations/{id}/messages?after= | Customer own conversation | Bounded transcript cursor (≤100), provenance, task chips | Implemented Phase6; reconnect-safe |
 | GET /v1/tasks/{id} | Customer own task/request | Scoped read: request/task/reservation state | Implemented Phase6 |
+| GET /v1/panel/state; GET /v1/panel/events | Side panel in the customer's own Chrome: panel ticket (no cookie), exact extension origin | Ticket bound to account, person, one conversation and one computer; the computer must be connected now; 240 reads/min/account | Implemented; off without `AGENTAI_PANEL_SECRET_FILE` and `AGENTAI_PANEL_ORIGINS` |
+| POST /v1/panel/send; POST /v1/panel/stop | Same ticket; the run must be going | Same `ChatService.send` as the web chat (steers, never starts a task), message labelled `surface=panel`, audit `chat.send.panel`; 30 writes/min/account | Implemented; see deploy/SIDE_PANEL.md |
 | POST /v1/tasks/{id}/cancel | Customer own task | Waiting→cancelled immediate; running→intent until confirmed native abort | Implemented Phase6; native abort proof required at activation |
 | POST /v1/tasks/{id}/pause | Customer own task | Verified exact native control | Phase9, disabled; no native pause contract yet |
 | GET /v1/tasks/{id}/events | Customer own task + revocation during stream | Scoped cursor/replay; ≤3 streams/account, public typed payloads | Phase9, disabled |

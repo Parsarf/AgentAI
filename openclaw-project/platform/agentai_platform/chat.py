@@ -206,7 +206,7 @@ class ChatService:
         return amount, price_version, project_id
 
     def send(self, principal: Principal, *, conversation_id: str, message: str, key: str,
-             provenance: str = 'customer', mode: str = 'auto', goal: bool = False, ui: str = 'basic', ui_event: dict | None = None):
+             provenance: str = 'customer', mode: str = 'auto', goal: bool = False, ui: str = 'basic', ui_event: dict | None = None, surface: str | None = None):
         """One actionable request per send; admission via Phase 5 before any native effect. A repeat with the same key never starts a second task.
 
         While a task of this conversation is still running, a plain message joins that run as a steer (the runtime's own steering) instead of waiting behind it.
@@ -216,6 +216,8 @@ class ChatService:
             raise ValueError('invalid message')
         if mode not in ('auto', 'text', 'plan', 'browse'):
             raise ValueError('invalid mode')
+        if surface not in (None, 'panel'):
+            raise ValueError('invalid surface')
         if ui not in gen_document.TIERS:
             raise ValueError('invalid answer style')
         if type(goal) is not bool or (goal and (mode == 'plan' or provenance != 'customer')):
@@ -226,7 +228,7 @@ class ChatService:
             running = self.queue.open_for_steer(principal, conversation_id)
             if running is not None and running['intent'] in ('chat', 'browse', 'goal_continue', 'goal_resume'):
                 try:
-                    return self.steer(principal, running, message=message, key=key, provenance=provenance)
+                    return self.steer(principal, running, message=message, key=key, provenance=provenance, surface=surface)
                 except Conflict:
                     pass                         # the task finished a moment ago: this becomes a task of its own
         kind = ('plan' if mode == 'plan' else 'browse' if mode == 'browse' and self.browse else 'text') if provenance == 'customer' else 'text'
@@ -246,9 +248,9 @@ class ChatService:
             if not con.execute("""SELECT 1 FROM chat_messages WHERE account_id=? AND conversation_id=?
                 AND request_id=? AND provenance IN ('customer','telegram')""",
                                (principal.account_id, conversation_id, result['id'])).fetchone():
-                con.execute('''INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content)
-                    VALUES (?,?,?,?,?)''', (principal.account_id, conversation_id, result['id'], provenance, message))
-            self.coordinator._audit(con, principal.account_id, principal.actor_id, result['id'], 'chat.send', 'completed')
+                con.execute('''INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content,surface)
+                    VALUES (?,?,?,?,?,?)''', (principal.account_id, conversation_id, result['id'], provenance, message, surface))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, result['id'], 'chat.send.panel' if surface == 'panel' else 'chat.send', 'completed')
         own = self.unmetered(principal.account_id)
         try:
             amount, price_version = (OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION) if own else self.pricer.reservation(message)
@@ -268,7 +270,7 @@ class ChatService:
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,
                 'admission': 'reserved', 'price_version': price_version, 'response_type': kind if kind in ('plan', 'browse') else 'text'}
 
-    def steer(self, principal: Principal, running: dict, *, message: str, key: str, provenance: str = 'customer'):
+    def steer(self, principal: Principal, running: dict, *, message: str, key: str, provenance: str = 'customer', surface: str | None = None):
         """Join a message to the run that is going on, with the runtime's own steering. The message belongs to that request (same reservation, same outcome); the worker, which
         owns the request, waits for the run it starts. Refused (Conflict) once the request has begun to close, so no run is ever started that nobody owns."""
         factory = self.gateway_factory
@@ -287,9 +289,9 @@ class ChatService:
             now = int(self.clock())
             con.execute("""INSERT INTO chat_deliveries(account_id,request_id,attempt,idempotency_key,payload_hash,state,native_operation_id,created_epoch,updated_epoch,kind,payload)
                 VALUES (?,?,?,?,?,'pending',?,?,?,'steer',?)""", (principal.account_id, running['id'], attempt, run_key, hashlib.sha256(message.encode()).hexdigest(), run_key, now, now, message))
-            con.execute('INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content) VALUES (?,?,?,?,?)',
-                        (principal.account_id, row['conversation_id'], running['id'], provenance, message))
-            self.coordinator._audit(con, principal.account_id, principal.actor_id, running['id'], 'chat.steer', 'completed')
+            con.execute('INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content,surface) VALUES (?,?,?,?,?,?)',
+                        (principal.account_id, row['conversation_id'], running['id'], provenance, message, surface))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, running['id'], 'chat.steer.panel' if surface == 'panel' else 'chat.steer', 'completed')
             session = row['native_session_ref']
         try:
             ack = factory(principal.account_id).send(session, run_key, message, queue_mode='steer')
@@ -439,7 +441,7 @@ class ChatService:
         self.conversation(principal, conversation_id)
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            rows = con.execute('''SELECT id,request_id,provenance,content,created_at FROM chat_messages
+            rows = con.execute('''SELECT id,request_id,provenance,content,created_at,surface FROM chat_messages
                 WHERE account_id=? AND conversation_id=? AND id>? ORDER BY id LIMIT ?''',
                 (principal.account_id, conversation_id, after, limit + 1)).fetchall()
             tasks = con.execute('''SELECT r.id,r.state,r.paused,r.cancel_requested,r.result,r.created_epoch,r.outcome,r.outcome_note,r.verification,r.parked_reason,r.goal_mode,r.continues,
@@ -452,6 +454,22 @@ class ChatService:
                     'messages': [dict(row) for row in rows[:limit]], 'has_more': len(rows) > limit,
                     'next_after': rows[min(limit, len(rows)) - 1]['id'] if rows else after, 'tasks': [dict(row) for row in tasks],
                     'execution_enabled': self.execution}
+
+    def panel_view(self, principal: Principal, conversation_id: str, *, limit: int = 30):
+        """What the side panel shows: the last few messages (oldest first), and the newest request of this conversation with whether its run still takes a steered message.
+        Plain fields only; the account, person and conversation come from the verified ticket."""
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise ValueError('invalid limit')
+        self.conversation(principal, conversation_id)
+        live = self.queue.open_for_steer(principal, conversation_id)
+        with self.store.connect() as con:
+            self.store._authorize(con, principal)
+            rows = con.execute('''SELECT id,request_id,provenance,content,created_at,surface FROM chat_messages
+                WHERE account_id=? AND conversation_id=? ORDER BY id DESC LIMIT ?''', (principal.account_id, conversation_id, limit)).fetchall()
+            latest = con.execute('''SELECT id,state,paused,outcome FROM customer_requests WHERE account_id=? AND conversation_id=? ORDER BY sequence DESC LIMIT 1''',
+                                 (principal.account_id, conversation_id)).fetchone()
+        return {'conversation_id': conversation_id, 'messages': [dict(r) for r in reversed(rows)], 'request': dict(latest) if latest else None,
+                'live': live is not None, 'live_request_id': live['id'] if live else None}
 
     def task(self, principal: Principal, request_id: str):
         with self.store.connect() as con:

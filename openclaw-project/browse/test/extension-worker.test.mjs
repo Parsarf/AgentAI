@@ -115,7 +115,7 @@ test('refused, revoked or replaced means switched off with a visible reason, not
 
 test('the popup reports the state, and a bad pairing code is refused without touching anything', async () => {
   const idle = await popup({ type: 'status' });
-  assert.deepEqual(idle, { enabled: false, connected: false, paired: true, pairing: false });
+  assert.deepEqual(idle, { enabled: false, connected: false, paired: true, pairing: false, tabs: [], panel: false });
   const n = sockets.length;
   assert.deepEqual(await popup({ type: 'pair', code: 'nope' }), { ok: false, error: 'bad_code' });
   assert.deepEqual(await popup({ type: 'pair', code: 'ABCD-2340' }), { ok: false, error: 'bad_code' });      // 0 is never in a code

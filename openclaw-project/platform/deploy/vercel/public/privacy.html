@@ -31,7 +31,7 @@
 <main>
 <a class="brand" href="/">LUMINA</a>
 <h1>Lumina Privacy Policy</h1>
-<p class="meta">Last updated 31 October 2026</p>
+<p class="meta">Last updated 1 November 2026</p>
 
 <p>Lumina (“we”, “us”) is operated by Parsa Raouf. This policy covers the Lumina web app at getlumina.pro and the Lumina Browser extension for Chrome. Questions, requests or complaints: <a href="mailto:raouparsa@gmail.com">raouparsa@gmail.com</a>.</p>
 
@@ -82,12 +82,14 @@
 <ul>
   <li><code>debugger</code>: to read and act on the tabs it opened. Chrome shows “Lumina is debugging this browser” on those tabs while it does.</li>
   <li><code>tabGroups</code>: to group its tabs under “Lumina” so you can see which ones they are.</li>
+  <li><code>sidePanel</code>: to show the side chat next to a tab Lumina is working in. The extension switches it on only for those tabs.</li>
   <li><code>storage</code>: to keep the settings listed below on your computer.</li>
 </ul>
 <h3>What it sends to us</h3>
-<p>Only while a task is running, over an encrypted connection to <code>wss://backend.getlumina.pro/v1/device</code>: the address and title of the page, up to 80 controls with their labels, up to 6,000 characters of the page’s text, and pictures of the page. The text typed into password fields, and into card fields that the page marks as card fields, is not sent. It talks to no other server.</p>
+<p>Only while a task is running, over an encrypted connection to <code>wss://backend.getlumina.pro/v1/device</code>: the address and title of the page, up to 80 controls with their labels, up to 6,000 characters of the page’s text, and pictures of the page. The text typed into password fields, and into card fields that the page marks as card fields, is not sent.</p>
+<p>If you open the side chat, the extension also talks, over an encrypted connection, to <code>https://backend.getlumina.pro/v1/panel</code>: it sends the messages you type there, and it receives the messages and the activity list of the task that is running, which it shows you. Those messages join the same chat you see in Lumina and are kept like any other chat message. To do this Lumina hands the extension a short-lived pass (valid for a minute and a half, renewed only while a task is running and your browser is connected); the extension holds it in memory only and never saves it on your computer. Both addresses belong to Lumina, and the extension talks to no other server.</p>
 <h3>What it keeps on your computer</h3>
-<p>A pairing token (a random secret that identifies this browser to Lumina), a pairing code until it has been used, whether the extension is switched on, and two settings that only developers use for testing. Uninstalling the extension removes them.</p>
+<p>A pairing token (a random secret that identifies this browser to Lumina), a pairing code until it has been used, whether the extension is switched on, and three settings that only developers use for testing. Uninstalling the extension removes them.</p>
 <h3>What it does not do</h3>
 <p>It contains no advertising, analytics or trackers, and it loads no code from the internet.</p>
 <h3>How to stop it</h3>

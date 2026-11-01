@@ -1,4 +1,4 @@
-import { describe } from './popup-model.js';
+import { describe, chatTab } from './popup-model.js';
 
 const $ = id => document.getElementById(id);
 const ask = message => chrome.runtime.sendMessage(message);
@@ -9,7 +9,16 @@ async function render() {
   $('status').textContent = view.text; $('status').dataset.tone = view.tone;
   $('pair').hidden = !view.askCode;
   $('toggle').hidden = !view.button; $('toggle').textContent = view.button;
+  $('chat').hidden = !view.chat;
 }
+
+// Chrome opens a side panel only for a click, so it is opened here, straight from the button, beside a tab Lumina is working in.
+$('chat').addEventListener('click', async () => {
+  const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabId = chatTab(await ask({ type: 'status' }), active?.id);
+  if (tabId === null) return;
+  try { await chrome.sidePanel.open({ tabId }); window.close(); } catch { /* the tab went away: nothing to open beside */ }
+});
 
 $('toggle').addEventListener('click', async () => { await ask({ type: 'toggle' }); await render(); });
 $('pair').addEventListener('submit', async e => {

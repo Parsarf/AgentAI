@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Lumina Browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Let Lumina do browsing tasks for you in tabs of your own Chrome, only while you switch it on. Stop it any time.",
   "minimum_chrome_version": "120",
   "permissions": [
     "debugger",
     "tabGroups",
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "background": {
     "service_worker": "src/background.js",
