@@ -17,6 +17,7 @@ from .ladder import JevChooser
 from .native_runner import NativeRunner, NativeTransport
 from .service import BrowseError, BrowseService, serve, stage_argv
 from .session import ProcessTransport
+from .picture_only_brain import PictureOnlyChooser
 from .ultrafast_brain import UltrafastChooser
 
 JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
@@ -130,10 +131,17 @@ def main():
             return UltrafastChooser(JEV_ENDPOINT, key, http_post, read_secret(args.ultrafast_text_key_file), http_post)
         return JevChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
 
+    def picture_only_on(account):
+        """The owner's navigation test (picture_only_brain.py): only for the owner's own account, and only while its `jev_sees_controls` switch is off (with a time limit). Read when a task starts."""
+        owner = read_secret(args.ultrafast_owner_file)
+        return bool(owner) and account == owner and not safety.on(account, 'jev_sees_controls')
+
     def spawn(job_id, out_dir):
         argv = stage_argv(job_id, str(out_dir), str(args.runner_dir), args.image)
         return ProcessTransport(argv, env={**os.environ, 'DOCKER_HOST': docker_host})
 
+        if picture_only_on(account):
+            return PictureOnlyChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
     from ..safety import Reader
     safety = Reader(args.safety_file)
 
