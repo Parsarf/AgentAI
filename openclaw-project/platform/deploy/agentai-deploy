@@ -4,11 +4,12 @@
 GitHub's deploy key in /root/.ssh/authorized_keys is pinned to this program (`restrict,command="/usr/local/sbin/agentai-deploy"`), so that key can run nothing else:
 no shell, no forwarding, no other command. The SSH command it may send is exactly `deploy <40 hex commit>` or `deploy-dry <40 hex commit>`, followed by one tar stream on stdin:
 
-    manifest.json    {"sha": ..., "ui": true|false}
+    manifest.json    {"sha": ..., "ui": true|false, "allow_drift": true|false}
     platform.tgz     the platform tree CI built from that commit (what release.py and the supervisor tree contain, without the virtualenv)
     ui.tgz           the built web app (lumina/dist), when "ui" is true
 
 What it does, in this order, stopping at the first failure:
+  0. refuses (exit 30) when a manual release put files on the server that this commit does not contain unchanged, so hand-made fixes are never silently undone.
   1. the app tree through release.py: builds beside the live release, migrates a COPY of the database, probes a canary, probes the previous release against the migrated copy,
      and only then switches. If the live release fails its probes it rolls back itself (exit 2). `deploy-dry` stops after the canary, changing nothing live.
   2. the supervisor tree: a copy of the live one with the new files laid over, `current` switched atomically.
@@ -81,6 +82,25 @@ def sh(argv, **kw):
     return subprocess.run(argv, capture_output=True, text=True, **kw)
 
 
+def drift(live_trees, plat):
+    """Files a manual release (push-release.py) put on the server that the incoming code does not contain unchanged. Deploying over them would silently undo that work.
+    -> sorted list of 'tree: path' strings. A path the release recorded but the incoming code no longer has counts as a difference too."""
+    import hashlib
+    found = set()
+    for tree in live_trees:
+        try:
+            recorded = json.loads((Path(tree) / 'current' / 'RELEASE.json').read_text()).get('source_sha256') or {}
+        except (OSError, ValueError):
+            continue
+        for rel, digest in recorded.items():
+            if '..' in Path(rel).parts or rel.startswith('/'):
+                continue
+            incoming = Path(plat) / rel
+            if not incoming.is_file() or hashlib.sha256(incoming.read_bytes()).hexdigest() != digest:
+                found.add(f'{Path(tree).name}: {rel}')
+    return sorted(found)
+
+
 def switch(link: Path, target: Path):
     tmp = link.with_name(link.name + '.new')
     tmp.unlink(missing_ok=True)
@@ -122,6 +142,14 @@ def main(argv=None, stdin=None):
                 raise ValueError(f'the platform archive has no {needed}')
         name = f'{time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())}-{sha[:7]}'
         say(f'{mode} {sha[:7]} as {name}')
+
+        # 0. do not silently undo a manual release: files put on the server by push-release.py must be in the incoming code unchanged (commit them to main first).
+        differing = drift([APP, SUP], plat)
+        if differing and not manifest.get('allow_drift'):
+            say(f'refused: the server runs {len(differing)} file(s) that were released by hand and are not in this commit (commit and merge them to main first, or run the workflow by hand with "overwrite manual changes"):\n  ' + '\n  '.join(differing[:40]))
+            return 30
+        if differing:
+            say(f'WARNING: overwriting {len(differing)} manually released file(s), as asked: ' + ', '.join(differing[:40]))
 
         # 1. the app tree: canary, migration of a copy, probes, automatic rollback (release.py).
         release_tgz = work / 'release.tgz'

@@ -56,6 +56,29 @@ class Archive(unittest.TestCase):
             deploy.read_stream(io.BytesIO(b'0' * (deploy.MAX_BYTES + 1)))
 
 
+class Drift(unittest.TestCase):
+    def tree(self, root, name, recorded):
+        d = Path(root) / name / 'current'; d.mkdir(parents=True)
+        import json
+        (d / 'RELEASE.json').write_text(json.dumps({'source_sha256': recorded}))
+        return Path(root) / name
+
+    def test_files_released_by_hand_must_be_in_the_incoming_code_unchanged(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as root:
+            plat = Path(root) / 'plat'; (plat / 'a').mkdir(parents=True)
+            (plat / 'a/same.py').write_text('1'); (plat / 'a/changed.py').write_text('NEW')
+            h = lambda t: hashlib.sha256(t.encode()).hexdigest()
+            app = self.tree(root, 'app', {'a/same.py': h('1'), 'a/changed.py': h('OLD'), 'a/gone.py': h('x'), '../evil': h('x')})
+            sup = self.tree(root, 'sup', {'a/same.py': h('1')})
+            self.assertEqual(deploy.drift([app, sup], plat), ['app: a/changed.py', 'app: a/gone.py'])
+            self.assertEqual(deploy.drift([sup], plat), [])
+
+    def test_a_tree_without_a_record_has_no_drift(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(deploy.drift([Path(root) / 'nothing'], root), [])
+
+
 class Layout(unittest.TestCase):
     def test_the_required_paths_exist_in_the_repository(self):
         platform = Path(__file__).resolve().parents[1]

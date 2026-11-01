@@ -13,6 +13,10 @@ on:
         description: 'Dry run: build, canary and probes, then stop. Nothing live changes.'
         type: boolean
         default: true
+      overwrite_manual_changes:
+        description: 'Deploy even though files released by hand (push-release.py) are not in this commit. They will be replaced. Normally commit them to main instead.'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,6 +35,7 @@ jobs:
     environment: production
     env:
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      ALLOW_DRIFT: ${{ (github.event_name == 'workflow_dispatch' && inputs.overwrite_manual_changes) && 'true' || 'false' }}
       MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && 'deploy-dry' || 'deploy' }}
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +74,7 @@ jobs:
               RELEASE.json accounts agentai_platform deploy manage.py migrations openapi.json requirements.lock runtime.lock.json config.example.json
           rm RELEASE.json
           tar -czf "$out/ui.tgz" -C ../lumina/dist .
-          printf '{"sha": "%s", "ui": true}\n' "$SHA" > "$out/manifest.json"
+          printf '{"sha": "%s", "ui": true, "allow_drift": %s}\n' "$SHA" "$ALLOW_DRIFT" > "$out/manifest.json"
           tar -czf "$RUNNER_TEMP/upload.tgz" -C "$out" manifest.json platform.tgz ui.tgz
           ls -l "$RUNNER_TEMP/upload.tgz"
       - name: Send it to the server
