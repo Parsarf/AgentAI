@@ -1,3 +1,12 @@
+# Side panel chat in the customer's own Chrome (1 Nov 2026, not yet deployed; branch `side-panel-chat`)
+
+Read `platform/deploy/SIDE_PANEL.md` and `platform/THREAT_MODEL.md` ("Side panel").
+
+- **New:** a mini chat and the run's activity in Chrome's side panel, beside the tab the assistant works in (extension 0.2.0, permission `sidePanel`, still no host permissions). Messages steer the running task through the same `ChatService.send` as the web chat and show there, labelled "sent from this panel". Stop works from the panel.
+- **How it is authorised:** a 90-second ticket (HMAC, bound to account, person, conversation and one connected computer) minted only by the request worker and relayed to the extension through the browse service (`device_push`, fixed shape, opaque string). No cookie, no device token; the app re-checks the origin, membership, run and connected computer on every call.
+- **Needs:** migration `0032_chat_surface`; `AGENTAI_PANEL_SECRET_FILE` (app user only) and `AGENTAI_PANEL_ORIGINS`; restart app, request worker and browse service. Without the key or origin the feature is off. Switch: the existing `browse_tasks`.
+- **Changed:** `/v1/panel/*` is exempt from the anonymous ingress limit (it meters itself). `ChatService.send` and `steer` take `surface='panel'`; `chat_messages` has a `surface` column; `ChatService.panel_view` is new.
+
 # Safety menu: two scopes, granted access, 16 wired switches, terminal console (27 Oct 2026, deployed as `safety1`)
 
 Read `platform/OPERATIONS.md` ("Safety menu") and `lumina/src/components/safety/README.md`.

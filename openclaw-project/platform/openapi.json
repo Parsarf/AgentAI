@@ -5117,6 +5117,186 @@
      }
     ]
    }
+  },
+  "/v1/panel/state": {
+   "get": {
+    "summary": "Side panel in the customer's own Chrome: the conversation's last messages and whether its run is going. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Panel ticket missing, wrong or expired"
+     },
+     "403": {
+      "description": "Origin is not one of the Lumina extensions"
+     },
+     "404": {
+      "description": "Feature off, or not this ticket's conversation"
+     },
+     "409": {
+      "description": "The computer the ticket names is not connected, or 'use my own browser' is off"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
+  },
+  "/v1/panel/events": {
+   "get": {
+    "summary": "Side panel: the run's activity trail (cursor polling, public fields only). Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
+    "parameters": [
+     {
+      "name": "request",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "after",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 100
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Panel ticket missing, wrong or expired"
+     },
+     "403": {
+      "description": "Origin is not one of the Lumina extensions"
+     },
+     "404": {
+      "description": "Feature off, or not this ticket's conversation"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
+  },
+  "/v1/panel/send": {
+   "post": {
+    "summary": "Side panel: add a message to the run that is going on in this conversation (steers it; never starts a new task). Labelled as sent from the panel. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
+    "parameters": [],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "message": {
+          "type": "string",
+          "maxLength": 16000
+         },
+         "key": {
+          "type": "string",
+          "description": "Idempotency key, 8 to 64 letters, digits, - or _"
+         }
+        },
+        "required": [
+         "message",
+         "key"
+        ],
+        "additionalProperties": false
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "202": {
+      "description": "Message added"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Panel ticket missing, wrong or expired"
+     },
+     "402": {
+      "description": "Budget denied (category given)"
+     },
+     "403": {
+      "description": "Origin is not one of the Lumina extensions"
+     },
+     "404": {
+      "description": "Feature off, or not this ticket's conversation"
+     },
+     "409": {
+      "description": "No active run, the computer is not connected, or the message conflicts"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
+  },
+  "/v1/panel/stop": {
+   "post": {
+    "summary": "Side panel: stop the run that is going on in this conversation. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "202": {
+      "description": "Stop requested"
+     },
+     "401": {
+      "description": "Panel ticket missing, wrong or expired"
+     },
+     "403": {
+      "description": "Origin is not one of the Lumina extensions"
+     },
+     "404": {
+      "description": "Feature off, or not this ticket's conversation"
+     },
+     "409": {
+      "description": "No active run, or the computer is not connected"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
   }
  },
  "components": {

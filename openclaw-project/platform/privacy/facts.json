@@ -4,7 +4,7 @@
  "contact_email": "raouparsa@gmail.com",
  "policy_file": "deploy/vercel/public/privacy.html",
  "policy_url": "https://getlumina.pro/privacy",
- "policy_updated": "2026-10-31",
+ "policy_updated": "2026-11-01",
  "derived": {
   "retention": {
    "browse_pictures_and_trace_hours": 24.0,
@@ -30,6 +30,7 @@
   "extension": {
    "permissions": [
     "debugger",
+    "sidePanel",
     "storage",
     "tabGroups"
    ],
@@ -38,11 +39,13 @@
     "https://getlumina.pro/*"
    ],
    "server": "wss://backend.getlumina.pro/v1/device",
+   "panel_api": "https://backend.getlumina.pro/v1/panel",
    "stored_on_the_computer": [
     "bridge",
     "devAllowLoopback",
     "enabled",
     "pairCode",
+    "panelApi",
     "token"
    ],
    "page_text_limit_chars": 6000,
@@ -64,8 +67,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "6ec09c49a2563b528be16646a7c432eaaba03e738d8cf84c316af61bbd36cb6e",
-  "schema_columns": 657,
+  "schema_sha256": "5a4dcec0d63cf9e1b3af865166083c608cca283901ef3e652a0567a47264b68e",
+  "schema_columns": 658,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -184,7 +187,7 @@
   "tabGroups",
   "storage",
   "wss://backend.getlumina.pro",
-  "31 October 2026",
+  "1 November 2026",
   "6,000",
   "80 controls",
   "until you ask us to delete",
@@ -199,7 +202,10 @@
   "MCP services you connect",
   "Asana",
   "exact arguments",
-  "locally stored credentials"
+  "locally stored credentials",
+  "sidePanel",
+  "https://backend.getlumina.pro/v1/panel",
+  "side chat"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -255,6 +261,11 @@
    "date": "2026-10-31",
    "by": "user-managed remote MCP implementation, source review only",
    "note": "Updated policy source alongside per-account encrypted MCP connections, OAuth, enabled tools and exact-call approvals. Discloses user-selected recipients (Asana preset), credentials, arguments/results, callback binding cookie, disconnect/revocation and backup behavior. Not deployed or published; release must publish this policy together with or before enabling this feature. No production configuration changed. Host scanner now excludes account test files correctly; three Stripe example URLs previously found only in tests were removed from the code-derived inventory. Stripe disclosure remains."
+  },
+  {
+   "date": "2026-11-01",
+   "by": "side-panel chat (written by Claude Code for the owner to review; not yet published)",
+   "note": "The extension gains the sidePanel permission and one HTTPS call to Lumina's own server (https://backend.getlumina.pro/v1/panel, same host as the device link) for the side chat; it keeps the short-lived pass in memory only, plus one more developer-only setting (panelApi). chat_messages gains a nullable surface column holding only the label 'panel' (no personal data; the typed text already lives in the same table as every chat message). Decided the policy must change: permission list, what the extension sends and receives, 'three' developer settings, date. privacy.html, facts.json and derive.py updated together. NOT published: the page must be published (see README) before the 0.2.0 extension is released or the side chat is switched on, because the live policy does not mention them."
   }
  ],
  "assistant_recipients": {

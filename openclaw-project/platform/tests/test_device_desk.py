@@ -43,6 +43,19 @@ class DeskChecks(unittest.TestCase):
         self.assertEqual(rpc('device_revoke', device_id=device['device_id']), {'ok': True})
         self.assertFalse(link.alive); self.assertEqual(link.conn.closed[0], 4403); self.assertEqual(rpc('device_list')['devices'], [])
 
+    def test_the_panel_ticket_goes_through_the_socket_to_the_connected_computer_only(self):
+        path = self.serve(); rpc, other = BrowseRpc('acct', path), BrowseRpc('someone-else', path)
+        sent = []
+        conn = FakeConn(); conn.send_text = lambda text: sent.append(json.loads(text))
+        self.hub.attach('acct', 'a1b2c3d4e5f60718', conn); self.hub.attach('someone-else', 'b' * 16, FakeConn())
+        payload = {'ticket': 'p1.abc.def', 'conversation_id': 'conv_1', 'device_id': 'a1b2c3d4e5f60718', 'expires_in': 90}
+        self.assertEqual(rpc('device_push', payload=payload), {'pushed': True}); self.assertEqual(sent, [{'panel': payload}])
+        self.assertEqual(other('device_push', payload=payload), {'pushed': False})                         # a ticket for another account's computer goes nowhere
+        with self.assertRaises(CapabilityUnavailable): rpc('device_push', payload={**payload, 'ticket': 'nope'})
+        with self.assertRaises(CapabilityUnavailable): rpc('device_push')
+        self.allowed.discard('acct'); self.assertEqual(rpc('device_push', payload=payload), {'pushed': False})   # the feature is closed to this account: nothing is relayed
+        self.assertEqual(len(sent), 1)
+
     def test_the_switch_is_set_per_account_and_only_true_means_on(self):
         rpc, other = BrowseRpc('acct', self.serve()), BrowseRpc('someone-else', os.path.join(self.tmp.name, 'b.sock'))
         self.assertEqual(rpc('device_use', on=True), {'allowed': True, 'use': True}); self.assertTrue(rpc('device_list')['use'])

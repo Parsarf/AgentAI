@@ -3,9 +3,18 @@
 // (the toolbar button), and the "is debugging this browser" bar Chrome shows on those tabs is their stop button.
 import { Executor } from './executor.js';
 import { MAX_PAGES } from './rules.js';
-import { PROD_BRIDGE, LUMINA_ORIGIN, bridgeAllowed, normalisePairCode } from './config.js';
+import { PROD_BRIDGE, LUMINA_ORIGIN, PROD_PANEL_API, bridgeAllowed, panelApiAllowed, normalisePairCode } from './config.js';
+import { createPanelLink } from './panel-link.js';
 
 const PING_MS = 20_000, RETRY_MS = [1000, 2000, 5000, 15000];
+
+// The side panel's ticket and calls (panel-link.js): kept here so the panel page never holds the ticket. The address follows the same rule as the bridge.
+const panelLink = createPanelLink({
+  base: async () => { const { panelApi } = await chrome.storage.local.get('panelApi'); return panelApiAllowed(panelApi) ? panelApi : PROD_PANEL_API; },
+  isOn: () => enabled,
+  onChange: () => { try { chrome.runtime.sendMessage({ type: 'panel:changed' })?.catch?.(() => {}); } catch { /* no panel is open */ } },
+});
+const panelOptions = (tabId, enabledForTab) => { try { return chrome.sidePanel?.setOptions({ tabId, ...(enabledForTab ? { path: 'panel.html', enabled: true } : { enabled: false }) })?.catch?.(() => {}); } catch { /* an older Chrome: no side panel */ } };
 
 let owned = [], group = null, onEvent = () => {}, executor = null, ws = null, enabled = false, attempt = 0, pinger = null, queue = Promise.resolve();
 
@@ -13,6 +22,7 @@ let owned = [], group = null, onEvent = () => {}, executor = null, ws = null, en
 async function adopt(tabId) {
   await chrome.debugger.attach({ tabId }, '1.3');
   owned.push(tabId);
+  panelOptions(tabId, true);      // the side chat exists on the tabs Lumina works in, and nowhere else
   try {
     group = await chrome.tabs.group(group === null ? { tabIds: [tabId] } : { tabIds: [tabId], groupId: group });
     await chrome.tabGroups.update(group, { title: 'Lumina', color: 'purple' });
@@ -20,7 +30,7 @@ async function adopt(tabId) {
   await executor.adopt(tabId);
 }
 
-function forget(tabId) { owned = owned.filter(t => t !== tabId); if (!owned.length) group = null; }
+function forget(tabId) { if (owned.includes(tabId)) panelOptions(tabId, false); owned = owned.filter(t => t !== tabId); if (!owned.length) group = null; }
 
 const host = {
   tabs: () => [...owned],
@@ -63,6 +73,7 @@ async function start() {
 async function stop(reason = 'stopped') {
   if (!enabled && !ws) return;
   enabled = false; clearInterval(pinger);
+  panelLink.clear();      // switched off: the side chat loses its credential at once
   await chrome.storage.local.set({ enabled: false });
   say({ event: 'stopped', reason });
   try { ws?.close(1000, reason); } catch { /* gone */ }
@@ -89,10 +100,15 @@ async function connect() {
     clearInterval(pinger);
     pinger = setInterval(() => say({ ping: Date.now() }), PING_MS);      // traffic on the socket also keeps this worker awake
   };
-  socket.onmessage = e => { queue = queue.then(() => run(e.data)); };      // one command at a time, in order, as the runner does
+  socket.onmessage = e => {
+    let msg; try { msg = JSON.parse(e.data); } catch { msg = null; }
+    if (panelLink.push(msg)) return;      // a side-panel ticket is not a browser command: it must not wait behind one
+    queue = queue.then(() => run(e.data));      // one command at a time, in order, as the runner does
+  };
   socket.onclose = async e => {
     if (ws !== socket) return;
     ws = null; clearInterval(pinger);
+    panelLink.clear();      // the link is gone: so is the side chat's credential (the platform hands a fresh one over once we are back)
     if (!enabled) return;
     // 4401: not (or no longer) a paired device; 4403: revoked; 4409: another computer took over. Trying again would change nothing: switch off and say so.
     if ([4401, 4403, 4409].includes(e?.code)) { await stop(e.reason || 'refused'); badge('!', '#dc2626', `Lumina: ${e.reason || 'refused'}. Pair this browser again.`); return; }
@@ -122,7 +138,7 @@ function badge(text, color, title) { chrome.action.setBadgeText({ text }); chrom
 // ------------------------------------------------------------------------------------------------------------ the toolbar popup and the Lumina page
 async function status() {
   const { token = '', pairCode = '' } = await chrome.storage.local.get(['token', 'pairCode']);
-  return { enabled, connected: !!ws && ws.readyState === 1, paired: !!token, pairing: !!pairCode };
+  return { enabled, connected: !!ws && ws.readyState === 1, paired: !!token, pairing: !!pairCode, tabs: [...owned], panel: panelLink.has() };
 }
 
 /** A pairing code is a fresh, deliberate act of the customer (typed here, or pressed on the Lumina page), so it also switches the extension on. */
@@ -139,6 +155,8 @@ async function onPopup(msg) {
   if (msg?.type === 'status') return status();
   if (msg?.type === 'toggle') { await (enabled ? stop('stopped_by_customer') : start()); return status(); }
   if (msg?.type === 'pair') return pair(msg.code);
+  if (msg?.type === 'panel:state') { const s = await status(); return { enabled: s.enabled, connected: s.connected, hasTicket: s.panel }; }
+  if (msg?.type === 'panel:call') return panelLink.call(msg.endpoint, msg.input);
   return { ok: false, error: 'unknown_message' };
 }
 

@@ -15,11 +15,14 @@ platform (job, consent) --WebSocket--> src/background.js --> src/executor.js --c
 | `src/config.js` | The production address, the Lumina page origin, the pairing-code format. |
 | `src/executor.js` | The runner's commands over the DevTools protocol, behind a small `host` interface (so tests drive it with Playwright). |
 | `src/background.js` | The Chrome side: the tab group, `chrome.debugger`, popups, the WebSocket link, the on/off button. |
+| `panel.html`, `src/panel*.js`, `src/panel.css` | The side chat beside a Lumina tab: activity trail, chat, Send and Stop. `panel-model.js` is the pure part (what to show, what may be sent); `panel-link.js` holds the ticket in the service worker and makes the calls, so the page never sees it. |
 | `src/page.js` | Page-side helpers. `describe`, `hitAt`, `focusActive`, `fingerprint`, `ready` are copied from `../runner.mjs` and a test fails if they drift. |
 | `src/rules.js` | Address policy and limits, checked against `../runner.mjs` by a test. |
 | `dev/ws-server.mjs`, `dev/drive.mjs` | A dependency-free bridge and a scripted demo (no model). |
 
 Tests (from `browse/`): `node --test test/extension-*.test.mjs`
+- `extension-panel`: the side chat's model, ticket link, popup choice of tab and the worker's wiring (fake `chrome`).
+- `extension-panel-page`: `panel.html` in real Chrome with a scripted worker (text stays text, one key per send, Send only while a task runs).
 - `extension-executor`: the executor against real Chrome (Playwright as the host) on the mock shop.
 - `extension-parity`: page helpers, address policy and limits equal the runner's.
 - `extension-bridge`: the dev WebSocket server.

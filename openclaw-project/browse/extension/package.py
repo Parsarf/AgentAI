@@ -17,6 +17,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 RUNTIME = ['manifest.json', 'popup.html', 'src/popup.css', 'src/popup.js', 'src/popup-model.js', 'src/background.js', 'src/config.js', 'src/executor.js', 'src/page.js', 'src/rules.js',
+           'panel.html', 'src/panel.css', 'src/panel.js', 'src/panel-model.js', 'src/panel-link.js',
            'icons/icon-16.png', 'icons/icon-48.png', 'icons/icon-128.png']
 STAMP = (2026, 1, 1, 0, 0, 0)               # fixed, so the same files always give the same zip
 
@@ -37,9 +38,11 @@ def check(manifest):
         problems.append('name is empty or still says development/test')
     if not 1 <= len(manifest.get('description', '')) <= 132:
         problems.append('description must be 1 to 132 characters (the store limit)')
+    if manifest.get('side_panel'):
+        problems.append('no default side panel: it is switched on per tab by the extension, only for the tabs Lumina works in')
     if manifest.get('host_permissions') or manifest.get('optional_host_permissions'):
         problems.append('host permissions are not asked for: the extension acts only on tabs it opens')
-    if set(manifest.get('permissions', [])) != {'debugger', 'tabGroups', 'storage'}:
+    if set(manifest.get('permissions', [])) != {'debugger', 'tabGroups', 'storage', 'sidePanel'}:
         problems.append('permissions changed: update the store justifications, then this check')
     for size in ('16', '48', '128'):
         if size not in manifest.get('icons', {}):

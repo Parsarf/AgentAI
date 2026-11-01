@@ -26,3 +26,5 @@ test_task_progress
 test_tool_origin
 test_mcp_network
 test_mcp_connections
+test_panel
+test_panel_chat

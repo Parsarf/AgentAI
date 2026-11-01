@@ -57,7 +57,8 @@ class ChatDriver:
 
     def __init__(self, store, *, ledger: BudgetLedger, gateway_factory, clock=time.time, events: EventService | None = None, sleep=None, pause=0.25, wait_ms=WAIT_SLICE_MS,
                  run_timeout=RUN_TIMEOUT, usage_wait=45, spend_check_seconds=20, park_limit=PARK_LIMIT, goal_chain_limit=GOAL_CHAIN_LIMIT, outage_limit=OUTAGE_LIMIT, heartbeat=None, genui=None,
-                 artifacts=None, display=None, browse_factory=None, queue=None):
+                 artifacts=None, display=None, browse_factory=None, queue=None, panel=None):
+        self.panel = panel                     # panel.offer.PanelOffer: keeps the customer's own Chrome holding a fresh side-panel ticket while a run goes on (it lapses by itself soon after); None = no panel
         self.browse_factory = browse_factory   # callable(account_id) -> BrowseRpc: only to stop browser jobs when their request ends; the jobs run inside the runtime's tool call
         self.display = display                 # routing.display.DisplayDecider: JEV may choose a layout for a plain-text reply (owner switch jev_display); None = never asked
         self.genui = genui                     # GenUiRuntime: plan/execute prompts and plan-reply handling
@@ -155,6 +156,13 @@ class ChatDriver:
         else:
             self._reassert(claim, gateway, info['session'] or self._session(claim))       # a carried-on request (parked, recovered): make sure the runtime still has its inputs
         return self._supervise(claim, gateway, info)
+
+    def _panel_tick(self, claim):
+        if self.panel is not None:
+            try:
+                self.panel.tick(claim)
+            except Exception:
+                pass                             # a convenience for the customer's browser: it never touches the run
 
     def _session(self, claim):
         with self.store.connect() as con:
@@ -347,6 +355,7 @@ class ChatDriver:
                 return self._stop(claim, gateway, session)
             if self.heartbeat is not None:
                 self.heartbeat(claim)
+            self._panel_tick(claim)
             owed = self._deliveries(claim, states=LIVE_STATES)
             if not owed:
                 if self.queue.close_gate(claim):

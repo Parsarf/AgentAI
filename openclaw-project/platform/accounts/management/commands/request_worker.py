@@ -36,9 +36,12 @@ def build_worker(store):
     # When the assistant answers in plain text, JEV may choose a layout for that text (owner switch jev_display, off by default: it sends the reply text to TypeSafe).
     display = DisplayDecider(config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE, switch_on=lambda: switches.is_on('jev_display'))
     # OpenClaw owns the run. The driver hands a message over, asks the runtime when it ended and settles it; the browser the assistant uses is a native tool (tool_relay).
+    from agentai_platform.panel.offer import PanelOffer, read_secret
+    panel = PanelOffer(lambda: read_secret(settings.PANEL_SECRET_FILE) if settings.PANEL_ORIGINS else b'', lambda account: BrowseRpc(account, settings.BROWSE_SOCKET),
+                       enabled=lambda: switches.is_on('browse_tasks'))      # the side panel only exists for browser tasks, so their owner switch is its switch
     driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store), artifacts=artifacts, sleep=time.sleep, heartbeat=queue.heartbeat,
                         genui=GenUiRuntime(store, BlockStore(store)),
-                        browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET), display=display, queue=queue, goal_chain_limit=settings.GOAL_CHAIN_LIMIT)
+                        browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET), display=display, queue=queue, goal_chain_limit=settings.GOAL_CHAIN_LIMIT, panel=panel)
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))
     from accounts.chat import service

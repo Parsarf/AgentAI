@@ -671,11 +671,12 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
                     out = {'jpeg_b64': base64.b64encode(service.shot(account, rid, req.get('file'))).decode()}
                 elif op == 'control':
                     out = service.control(account, rid, req.get('action'), x=req.get('x'), y=req.get('y'), text=req.get('text'))
-                elif op in ('device_pair', 'device_list', 'device_revoke', 'device_use'):
+                elif op in ('device_pair', 'device_list', 'device_revoke', 'device_use', 'device_push'):
                     if service.devices is None:
                         raise BrowseError('devices off')
                     out = (service.devices.pair(account) if op == 'device_pair' else service.devices.listing(account) if op == 'device_list'
                            else service.devices.use(account, req.get('on') is True) if op == 'device_use'
+                           else service.devices.push_panel(account, req.get('payload')) if op == 'device_push'
                            else service.devices.revoke(account, str(req.get('device_id') or '')[:40]))
                 else:
                     raise BrowseError('unknown operation')

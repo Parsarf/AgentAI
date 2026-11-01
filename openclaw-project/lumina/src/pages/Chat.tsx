@@ -108,7 +108,7 @@ export default function Chat() {
           {id && !loaded && <p className="muted">Loading…</p>}
           {msgs.map(m => trail.skip.has(m.id) ? (trail.hidden.has(m.id) ? <div key={m.id} className="turn"><WorkTrail messages={trail.hidden.get(m.id)!} /></div> : null) : (
             <div key={m.id} className="turn">
-              {!m.ui_answer && <div className={`bubble ${m.provenance === 'agent' || m.provenance === 'system' ? 'agent' : 'you'}`}>{m.provenance === 'agent' || m.provenance === 'system' ? <AgentResponse content={m.content} /> : <Emojified text={m.content} />}</div>}
+              {!m.ui_answer && <div className={`bubble ${m.provenance === 'agent' || m.provenance === 'system' ? 'agent' : 'you'}`}>{m.provenance === 'agent' || m.provenance === 'system' ? <AgentResponse content={m.content} /> : <>{m.surface === 'panel' && <small>Sent from the side chat in your browser</small>}<Emojified text={m.content} /></>}</div>}
               {['customer', 'telegram'].includes(m.provenance) && m.request_id && byRequest.get(m.request_id) && !msgs.some(next => next.id > m.id && next.request_id === m.request_id && ['customer', 'telegram'].includes(next.provenance)) && (
                 <div className="chat-work">
                   <AgentThinking task={{ ...byRequest.get(m.request_id)!, cancel_requested: stopping === m.request_id || byRequest.get(m.request_id)!.cancel_requested }} />

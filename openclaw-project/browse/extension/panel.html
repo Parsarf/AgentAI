@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumina chat</title>
+<link rel="stylesheet" href="src/panel.css">
+</head>
+<body>
+<header>
+  <h1>Lumina</h1>
+  <p id="status" role="status" aria-live="polite" data-tone="wait">Loading…</p>
+  <p id="detail" class="note" hidden></p>
+</header>
+<main>
+  <section aria-labelledby="trail-title" class="trail">
+    <h2 id="trail-title">What it is doing</h2>
+    <ol id="trail" aria-live="off"></ol>
+    <p id="trail-empty" class="note">Nothing yet.</p>
+  </section>
+  <section aria-labelledby="chat-title" class="chat">
+    <h2 id="chat-title">Chat</h2>
+    <ol id="messages" aria-live="polite" aria-relevant="additions"></ol>
+  </section>
+</main>
+<footer>
+  <p id="error" role="alert" hidden></p>
+  <form id="composer" autocomplete="off">
+    <label for="text" class="sr">Message to Lumina</label>
+    <textarea id="text" rows="2" maxlength="16000" placeholder="Tell it what to do differently…" disabled></textarea>
+    <div class="row">
+      <button id="stop" type="button" hidden>Stop</button>
+      <button id="send" type="submit" class="primary" disabled>Send</button>
+    </div>
+  </form>
+  <p class="note">Messages go into the same chat you see in Lumina. Enter sends, Shift+Enter adds a line.</p>
+</footer>
+<script type="module" src="src/panel.js"></script>
+</body>
+</html>

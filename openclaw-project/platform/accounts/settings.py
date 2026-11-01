@@ -119,6 +119,10 @@ GOAL_CHAIN_LIMIT = int(os.environ.get('AGENTAI_GOAL_CHAIN_LIMIT', '20'))      # 
 # Live view: the frame gateway is a separate process; this file holds the secret both sides use to sign and check watch tickets.
 LIVE_SECRET_FILE = os.environ.get('AGENTAI_LIVE_SECRET_FILE', '')
 LIVE_PATH = os.environ.get('AGENTAI_LIVE_PATH', '/v1/live')
+# Side panel in the customer's own Chrome: the key that signs its tickets (app user only, never readable by the browse service; no file = feature off) and the extension
+# origins allowed to call /v1/panel/* (comma separated, each exactly chrome-extension://<32 letters>; none = feature off).
+PANEL_SECRET_FILE = os.environ.get('AGENTAI_PANEL_SECRET_FILE', '')
+PANEL_ORIGINS = [o.strip() for o in os.environ.get('AGENTAI_PANEL_ORIGINS', '').split(',') if o.strip()]
 SAFETY_SNAPSHOT_FILE = os.environ.get('AGENTAI_SAFETY_SNAPSHOT', str(STATE_DIR / 'safety-switches.json'))   # the switch settings other processes read (the browse service, the supervisor); written by the app on every change
 SAFETY_OWNER_ACCOUNT = os.environ.get('AGENTAI_SAFETY_OWNER_ACCOUNT', '')   # the one account that may see and change its own safety switches; empty = nobody
 VAULT_KEY_FILE = os.environ.get('AGENTAI_VAULT_KEY_FILE', '')          # saved logins and cards; without this root-only key file the vault is off

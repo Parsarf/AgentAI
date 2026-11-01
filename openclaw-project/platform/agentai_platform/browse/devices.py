@@ -19,6 +19,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import tempfile
 import threading
@@ -38,6 +39,21 @@ DEFAULT_STORE = '/var/lib/agentai-supervisor/devices.json'
 
 class DeviceError(Exception):
     pass
+
+
+_IDENT = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+_TICKET = re.compile(r'^p1\.[A-Za-z0-9_-]{1,500}\.[A-Za-z0-9_-]{1,100}$')
+
+
+def panel_message(payload):
+    """The only thing the service will push for the panel, with no extra keys: a fresh ticket. -> the clean message, or None."""
+    if not isinstance(payload, dict) or not isinstance(payload.get('conversation_id'), str) or not _IDENT.fullmatch(payload['conversation_id']):
+        return None
+    expires = payload.get('expires_in')
+    if set(payload) != {'ticket', 'conversation_id', 'device_id', 'expires_in'} or not isinstance(payload['ticket'], str) or not _TICKET.fullmatch(payload['ticket']) \
+            or not isinstance(payload['device_id'], str) or not re.fullmatch(r'[a-f0-9]{16}', payload['device_id']) or type(expires) is not int or not 1 <= expires <= 600:
+        return None
+    return {k: payload[k] for k in ('ticket', 'conversation_id', 'device_id', 'expires_in')}
 
 
 def _hash(text: str) -> str:
@@ -280,6 +296,21 @@ class DeviceDesk:
         if done:
             self.hub.kick(account, device_id, 'revoked')
         return {'ok': done}
+
+    def push_panel(self, account, payload):
+        """Hand the side panel's ticket (made by the web app's worker, which alone holds the key) to the connected computer. This process only relays: the message has
+        a fixed shape, the ticket is an opaque string, and it goes to the one computer the ticket names, only while that computer is connected. -> {'pushed': bool}"""
+        message = panel_message(payload)
+        if message is None:
+            raise DeviceError('invalid panel message')
+        link = self.hub.link(account)
+        if not self.allowed(account) or link is None or message['device_id'] != link.device_id:
+            return {'pushed': False}
+        try:
+            link.send({'panel': message})
+        except (BrokenPipeError, OSError):
+            return {'pushed': False}
+        return {'pushed': True}
 
 
 def main(argv=None):

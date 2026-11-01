@@ -55,3 +55,6 @@ Settings → "Your own model" saves endpoint, model and key (`accounts/model_key
 - **Rotating the app `SECRET_KEY`** without `AGENTAI_MODEL_KEY_FILE` makes stored customer keys unreadable.
 - **Offered but never built:** extension speed fixes (drop duplicate screenshot, avoid double settle, stop forcing 1280×800), popup stop reason and recovery after a service-worker restart, "new version available" banner, popup message when the server is unreachable, a clearer label than "Used memory search", a per-account request count for own-key traffic.
 - **The Chat "Show the steps" folding** assumes earlier assistant messages of a finished request are the "thinking trail". Confirm with the owner against a real screenshot.
+
+## Added later on 2026-11-01: merged to `main`, NOT deployed (read before your next deploy)
+Three PRs are in `main` but not on the server (server `1ff1ef5`, `main` `1e8ed54` or later): #8 browser run waits for the customer at sign-in / password / human check and carries on, #9 `location_request` block, #10 UI answers are not chat bubbles and the component stays locked. The owner asked for them to be deployed by whoever deploys next, not now. Full note, files, pre-deploy cautions and after-deploy checks: `openclaw-project/platform/deploy/PENDING_DEPLOY.md` (also printed in the "Deploy to server" run log). Delete that file once deployed.

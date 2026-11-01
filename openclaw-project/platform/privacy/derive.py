@@ -12,6 +12,7 @@ import ast
 import hashlib
 import inspect
 import json
+from urllib.parse import urlparse
 import re
 import sys
 import tempfile
@@ -71,17 +72,22 @@ def extension():
     code = {p.name: _read(p) for p in (EXTENSION / 'src').glob('*.js')}
     keys = sorted(set().union(*(_storage_keys(text) for text in code.values())))
     page = code['page.js']
+    server = re.search(r"PROD_BRIDGE = '([^']+)'", code['config.js']).group(1)
+    panel_api = re.search(r"PROD_PANEL_API = '([^']+)'", code['config.js']).group(1)
+    # The side chat's one HTTPS call (panel-link.js) goes to Lumina's own server: allowed only while it is the same host as the device link; any other file, or another host, still shows up.
+    same_host = urlparse(panel_api).hostname == urlparse(server).hostname
     return {
         'permissions': sorted(manifest.get('permissions', [])),
         'host_permissions': manifest.get('host_permissions', []) + manifest.get('optional_host_permissions', []),
         'page_may_message_it': manifest.get('externally_connectable', {}).get('matches', []),
-        'server': re.search(r"PROD_BRIDGE = '([^']+)'", code['config.js']).group(1),
+        'server': server,
+        'panel_api': panel_api,
         'stored_on_the_computer': keys,
         'page_text_limit_chars': int(re.search(r'\.slice\(0,\s*(\d+)\)\s*,\s*scroll', page.replace('\n', ' ')).group(1)) if re.search(r'\.slice\(0,\s*(\d+)\)\s*,\s*scroll', page.replace('\n', ' ')) else None,
         'max_controls_listed': int(re.search(r'MAX_ELEMENTS = (\d+)', code['rules.js']).group(1)),
         'secret_field_values_withheld': "secret = type === 'password'" in page and 'if (!secret)' in page,
         'loads_remote_code': any(re.search(r'\beval\(|new Function\(|importScripts\(|<script[^>]+src="https?:', text) for text in list(code.values()) + [_read(EXTENSION / 'popup.html')]),
-        'network_calls_other_than_the_server': [name for name, text in code.items() if re.search(r'\bfetch\(|XMLHttpRequest|navigator\.sendBeacon', text)],
+        'network_calls_other_than_the_server': [name for name, text in code.items() if re.search(r'\bfetch\(|XMLHttpRequest|navigator\.sendBeacon', text) and not (name == 'panel-link.js' and same_host)],
     }
 
 

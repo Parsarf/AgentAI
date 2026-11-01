@@ -14,3 +14,8 @@ export const normalisePairCode = raw => {
   const code = String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   return /^[A-HJKMNP-Z2-9]{8}$/.test(code) ? code : '';
 };
+
+// The platform's side-panel API (platform/accounts/panel.py), reached over HTTPS from the service worker with the panel ticket. Same rule as the bridge: production, or this computer.
+export const PROD_PANEL_API = 'https://backend.getlumina.pro/v1/panel';
+const LOOPBACK_HTTP = /^http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?\/v1\/panel$/;
+export const panelApiAllowed = url => typeof url === 'string' && (url === PROD_PANEL_API || LOOPBACK_HTTP.test(url));

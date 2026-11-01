@@ -10,7 +10,7 @@ import { chromium } from 'playwright-core';
 const EXT = new URL('../extension/', import.meta.url).pathname;
 // Python must never write its bytecode cache (__pycache__) next to the files it reads: Chrome refuses to load an extension folder that contains a name starting with an underscore.
 const python = (args, options = {}) => spawnSync('python3', ['-B', ...args], { encoding: 'utf8', ...options, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
-const build = out => { const r = python([join(EXT, 'package.py'), '--out', out]); return { ...r, zip: join(out, 'lumina-browser-0.1.0.zip') }; };
+const build = out => { const r = python([join(EXT, 'package.py'), '--out', out]); return { ...r, zip: join(out, 'lumina-browser-0.2.0.zip') }; };
 const list = zip => spawnSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).sort();
 const file = (zip, name) => spawnSync('unzip', ['-p', zip, name], { encoding: 'buffer' }).stdout;
 const tmp = () => mkdtempSync(join(tmpdir(), 'lumina-zip-'));
@@ -33,7 +33,7 @@ test('it holds exactly what Chrome needs at run time, with the manifest at the t
 
 test('every import in the shipped scripts resolves to a file inside the zip, and none reaches outside it', () => {
   const { zip } = build(tmp()), names = new Set(list(zip));
-  const scripts = [...names].filter(n => n.endsWith('.js')); assert.equal(scripts.length, 7);
+  const scripts = [...names].filter(n => n.endsWith('.js')); assert.equal(scripts.length, 10);
   for (const s of scripts) {
     const code = file(zip, s).toString();
     for (const m of code.matchAll(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)) {
@@ -41,8 +41,10 @@ test('every import in the shipped scripts resolves to a file inside the zip, and
       assert.ok(names.has(posix.normalize(posix.join(posix.dirname(s), m[1]))), `${s} imports ${m[1]}, which is not in the zip`);
     }
   }
-  const html = file(zip, 'popup.html').toString();
-  for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) assert.ok(names.has(m[1]), `popup.html uses ${m[1]}`);
+  for (const page of ['popup.html', 'panel.html']) {
+    const html = file(zip, page).toString();
+    for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) assert.ok(names.has(m[1]), `${page} uses ${m[1]}`);
+  }
 });
 
 test('the icons are real PNGs of the sizes the manifest says', () => {
@@ -59,7 +61,7 @@ test('the builder refuses a manifest that is not ready for the store', () => {
 m = json.load(open(${JSON.stringify(join(EXT, 'manifest.json'))}))
 assert p.check(m) == [], p.check(m)
 def bad(**kw): n = {**m, **kw}; return p.check(n)
-print(json.dumps({'dev': bad(name='Lumina (development build)'), 'long': bad(description='x'*133), 'host': bad(host_permissions=['<all_urls>']), 'perm': bad(permissions=['debugger','tabGroups','storage','tabs']),
+print(json.dumps({'dev': bad(name='Lumina (development build)'), 'long': bad(description='x'*133), 'host': bad(host_permissions=['<all_urls>']), 'perm': bad(permissions=['debugger','tabGroups','storage','tabs']), 'noside': bad(permissions=['debugger','tabGroups','storage']), 'defaultpanel': bad(side_panel={'default_path': 'panel.html'}),
   'v2': bad(manifest_version=2), 'noicon': bad(icons={'16': m['icons']['16']}), 'missing': bad(icons={**m['icons'], '128': 'icons/nope.png'}), 'ver': bad(version='one')}))`;
   const r = python(['-c', py]); assert.equal(r.status, 0, r.stderr);
   const out = JSON.parse(r.stdout);
@@ -68,7 +70,7 @@ print(json.dumps({'dev': bad(name='Lumina (development build)'), 'long': bad(des
 
 test('the source icon, the manifest and the zip agree on the version', () => {
   const m = JSON.parse(readFileSync(join(EXT, 'manifest.json'), 'utf8'));
-  assert.equal(m.version, '0.1.0'); assert.ok(existsSync(join(EXT, 'icons', 'logo-source.png')), 'the logo the icons are made from is kept with them');
+  assert.equal(m.version, '0.2.0'); assert.ok(existsSync(join(EXT, 'icons', 'logo-source.png')), 'the logo the icons are made from is kept with them');
 });
 
 test('the icons are the Lumina logo on a transparent background: 96 px star centred in the 128 px canvas, 16 px of margin all round', async () => {

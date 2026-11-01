@@ -46,3 +46,22 @@ Phase4 host assessment does not prove single-host runtime isolation. See ADR007
 and the measured report; standard runc is present, gVisor/worker broker/quota
 integration unbuilt, current agent admission0. Public app and customer-owned
 infrastructure are separate concepts; customers need only the shared app origin.
+
+## Side panel in the customer's own Chrome (mini chat beside the agent's tab)
+
+The extension shows the run's activity and a small chat in Chrome's side panel, only on the tabs Lumina works in. Its credential is a **panel ticket**: HMAC-signed, 90 seconds,
+bound to one account, the person it runs for, one conversation and one connected computer. It carries no cookie and no device token.
+
+* **Who can mint:** only the request worker (app user), which alone reads `AGENTAI_PANEL_SECRET_FILE`. The root browse service never has the key; it only relays an opaque string,
+  in a fixed shape, to the one computer the ticket names, and only while that computer is connected (`DeviceDesk.push_panel`). A compromised browse service therefore cannot speak as a customer.
+* **When one exists:** the worker pushes a fresh ticket every 30 seconds while a run of that conversation is going, the customer's "use my own browser" choice is on, and that computer is
+  connected. When the run ends the pushes stop and the last ticket lapses within 90 seconds, just long enough to read how it ended.
+* **What the app re-checks on every call, not just the ticket:** the origin is one of the configured `chrome-extension://` origins (exact match, no credentials mode); the person is still
+  an active member and the conversation is theirs; the named computer is connected now with the choice on (status and writes); the run is still going (send and stop). `send` steers the run through
+  the same `ChatService.send` as the web chat, so budget, size, idempotency and denial categories are identical; it never starts a new task. Rate limits: by address before the ticket is checked
+  (forged-ticket floods), by account after.
+* **Not an expansion of the extension's reach:** no host permissions; the panel is enabled per tab by the extension only for the tabs it owns; the panel page never holds the ticket (the service
+  worker makes the calls); text from the network is shown with `textContent`.
+* **Residual risk:** a ticket stolen from the extension's memory within its 90 seconds can read that conversation and steer its running task; it cannot reach other conversations, start tasks, or
+  work after the computer disconnects. Someone controlling the browser itself controls the panel while a run is going. Page content can still try to steer the agent (prompt injection) exactly as before.
+
