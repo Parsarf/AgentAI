@@ -1,5 +1,7 @@
 # Automatic deploys from GitHub
 
+> **If `PENDING_DEPLOY.md` exists in this folder, read it before you deploy:** it lists what is merged but not yet deployed and what to check afterwards.
+
 A push to `main` that passes **Lumina CI** is deployed to the server by `.github/workflows/deploy.yml`. The website on Vercel deploys itself from `main` as before and is not part of this.
 
 ```
