@@ -90,13 +90,13 @@ class EveryStep(unittest.TestCase):
     def test_the_window_is_taken_on_every_step_and_the_picture_goes_to_the_assistant_when_jev_hands_over(self):
         s = PictureSession({'start': SHOP, 'item': {'url': 'https://shop.example/item', 'snap': '[1] <a> "Add to cart"', 'text': 'x', 'elements': []}}, hits={})
         miss = {'operation': 'click', 'click_target': 'none', 'found': 0.1, 'spot': 0.9}
-        r, jev, events = runner(s, [miss, miss], ['{"action":"click","ref":1}'], max_steps=2)
+        r, jev, events = runner(s, [miss, miss], ['{"action":"click","ref":1}', '{"action":"click","ref":1}'], max_steps=2)
         out = r.run('buy briefs', 'https://shop.example/')
         self.assertGreaterEqual(s.views, 2)                                                       # a picture on each step, not only on a problem
         self.assertTrue(all('assets' in call[0] for call in jev.calls))
         agent = r.ladder.agent
-        self.assertEqual(agent.calls, ['agent']); self.assertIsNotNone(agent.looks[0].shot)       # the assistant's step sees the window too
-        self.assertEqual([h['by'] for h in out.steps], ['rule', 'agent'])
+        self.assertEqual(agent.calls, ['agent', 'agent']); self.assertIsNotNone(agent.looks[0].shot)       # the assistant's step sees the window too, from the first miss on
+        self.assertEqual([h['by'] for h in out.steps], ['agent', 'agent'])
 
     def test_a_runner_that_cannot_show_the_window_stays_on_the_text_request(self):
         s = FpSession(FLAT, iter(range(1, 99)))
