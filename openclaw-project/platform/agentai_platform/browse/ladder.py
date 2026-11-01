@@ -553,12 +553,17 @@ def _why(exc):
     return out
 
 
+# Why a miss goes straight to the assistant (for this step only) instead of being tried again; the words are what the assistant is told.
+MISS_TAKEOVER = {'error': "its service did not answer", 'timeout': "its service did not answer in time", 'no_spot': "it could not find where to click in the picture"}
+
+
 @dataclass
 class _Step:
     decision: Decision | None = None
     signal: str = ''               # '' | 'miss' | 'too_complex' | 'ask' | 'done' | 'text'
     cost: int = 0
     cand: dict | None = None       # for 'text': the field JEV chose
+    why: str = ''                  # for 'miss': 'error' | 'timeout' (JEV's service did not answer) | 'no_spot' (nothing to point at) | 'invalid' (an unusable answer)
 
 
 @dataclass
@@ -621,13 +626,14 @@ class Ladder:
             self.trace.emit('jev', outcome='no_spot', mode='sight' if sight else 'picture', op=exc.op, found=round(exc.found, 3), spot=round(exc.spot, 3), min_found=MIN_FOUND, min_spot=MIN_SPOT,
                             heads={k: [c, round(p, 3)] for k, (c, p) in exc.answers.items()}, ms=_ms(started), cost=exc.cost)
             self.spent += exc.cost or 0
-            return _Step(signal='miss', cost=exc.cost)
+            return _Step(signal='miss', cost=exc.cost, why='no_spot')
         except Exception as exc:                                 # timeout, HTTP error, malformed or inconsistent answer
             log.warning('browse: JEV miss: %s', _why(exc))
             raw = getattr(exc, 'raw', None)
-            self.trace.emit('jev', outcome='invalid' if raw is not None else 'timeout' if isinstance(exc, TimeoutError) or 'timed out' in str(exc) else 'error', mode='sight' if sight else 'picture' if picture else 'controls',
+            outcome = 'invalid' if raw is not None else 'timeout' if isinstance(exc, TimeoutError) or 'timed out' in str(exc) else 'error'
+            self.trace.emit('jev', outcome=outcome, mode='sight' if sight else 'picture' if picture else 'controls',
                             ms=_ms(started), why=_why(exc), candidates=len(candidates), raw=None if raw is None else (raw if isinstance(raw, str) else json.dumps(raw))[:400])
-            return _Step(signal='miss')
+            return _Step(signal='miss', why='invalid' if isinstance(exc, ValueError) and outcome == 'error' else outcome)      # a reply JEV gave but we cannot use is not an outage
         cost, op = pick.cost_microusd, pick.operation
         self.spent += cost
         heads = {k: [c, round(p, 3)] for k, (c, p) in pick.answers.items()}
@@ -654,7 +660,7 @@ class Ladder:
         if cand is None or cand['action'] != op:
             log.warning('browse: JEV miss: %s target %s does not fit', op, pick.target)
             self.trace.emit('jev_followup', outcome='bad_target', what=f'{op} target {pick.target} is not a {op} candidate')
-            return _Step(signal='miss', cost=cost)
+            return _Step(signal='miss', cost=cost, why='invalid')
         if op == 'click':
             return _Step(Decision('act', 'jev', 'JEV choice', {'action': 'click', 'ref': cand['ref'], 'value': None, 'label': cand['label']}, confidence=pick.confidence, cost_microusd=cost, meta=meta))
         if op == 'select':
@@ -705,7 +711,11 @@ class Ladder:
             if d.kind == 'act' and d.action and d.action.get('action') == 'type':
                 d.text_src = 'agent'
             return d
-        # a miss: nothing ran. The first one is tried again on a fresh look at the page; the second in a row hands the task over.
+        # a miss: nothing ran. When JEV's service did not answer, or it found nothing to point at, asking again on the same page gets the same result: the assistant takes just this step now,
+        # and JEV is asked again on the next one. An unusable answer is tried once more on a fresh look; the second miss in a row hands the task over for good.
         if jev_misses + 1 >= 2:
             return self._agent(goal, history, page, candidates, Handover('the planner could not choose a step'), look, step.cost, 'miss', miss=True)
+        if step.why in MISS_TAKEOVER and not picture_only:
+            hint = f'A quick planner could not decide this step ({MISS_TAKEOVER[step.why]}). Look at the page and the picture of the window and choose the next step yourself.'
+            return self._agent(goal, history, page, candidates, Handover('the planner could not choose a step', hint, sticky=False), look, step.cost, 'miss', miss=True)
         return Decision('act', 'rule', 'the planner had no answer; looked again', {'action': 'wait', 'ref': None, 'value': None, 'label': ''}, cost_microusd=step.cost, miss=True)

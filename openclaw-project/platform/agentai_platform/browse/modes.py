@@ -9,7 +9,7 @@ COVERED_SHARE, MIN_VISIBLE = 0.4, 3      # a picture when at least this share of
 SCROLL_HINT_AFTER = 3                    # identical scrolls in a row before JEV is reminded that scrolling is not getting anywhere
 SCROLL_CLAUDE_AFTER = 6                  # ... and before Claude takes the page
 REPEAT_AFTER = 2                         # the same JEV step this many times in a row with nothing happening: Claude takes the page
-NOTHING_AFTER = 3                        # this many JEV steps in a row (any steps) that changed nothing or failed: Claude takes the page
+NOTHING_AFTER = 2                        # this many JEV steps in a row (any steps) that changed nothing or failed: Claude takes the page
 PICTURE_FAILS = frozenset({'covered'})   # a runner refusal that means "something is on top of it"
 JEV_FAILS = frozenset({'stale', 'no_option', 'not_a_field', 'action_failed', 'disabled', 'bad_coordinates'})   # JEV's step could not be carried out: Claude looks at this page
 
