@@ -42,6 +42,14 @@ jobs:
         with:
           ref: ${{ env.SHA }}
           fetch-depth: 0
+      - name: Notes left for whoever deploys
+        run: |
+          f=openclaw-project/platform/deploy/PENDING_DEPLOY.md
+          if [ -f "$f" ]; then
+            echo "::notice title=Read PENDING_DEPLOY.md::Something merged but not yet deployed is described in $f"
+            echo '::group::PENDING_DEPLOY.md'; cat "$f"; echo '::endgroup::'
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Skip if main has moved on (the newer commit's own run deploys it)
         id: tip
         run: |
