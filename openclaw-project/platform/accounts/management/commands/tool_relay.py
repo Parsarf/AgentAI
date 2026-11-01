@@ -25,7 +25,8 @@ def build(store):
                                        lambda account: model_keys.enabled_for(model_keys.read_engine(settings.ENGINE_FILE), account))
     from accounts.mcp_connections import service as mcp_service
     from agentai_platform.mcp_connections.relay import RemoteTools
-    return Relay(tool, progress=TaskProgressTool(store), origin=origin, remote=RemoteTools(mcp_service(store))), Identity(identify), own_models
+    from agentai_platform.mcp_connections import switch as mcp_switch
+    return Relay(tool, progress=TaskProgressTool(store), origin=origin, remote=RemoteTools(mcp_service(store), enabled=lambda account: mcp_switch.enabled(settings.MCP_SWITCH_FILE, account))), Identity(identify), own_models
 
 
 class Command(BaseCommand):

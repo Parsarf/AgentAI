@@ -32,7 +32,7 @@ export function Integrations() {
         {/* The API lists every service Lumina knows (Gmail, Calendar, ...) with a `state`; only show the ones that are really connected. */}
         {connected.length > 0 ? connected.map((c, n) => <p key={n}>{String(c.label ?? c.service ?? 'Service')} · connected{c.identity ? ` as ${String(c.identity)}` : ''}</p>) : <p className="faint" style={{ marginTop: 8 }}>No services connected.</p>}
       </section>
-      <McpConnections /></div>);
+      {app?.features.mcp && <McpConnections />}</div>);
 }
 
 export function Settings() {

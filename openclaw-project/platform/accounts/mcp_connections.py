@@ -7,6 +7,7 @@ from django.db import connection
 from django.http import JsonResponse, HttpResponseRedirect
 from agentai_platform.mcp_connections.service import ConnectionService, ASANA_URL
 from agentai_platform.mcp_connections.network import ConnectionError
+from agentai_platform.mcp_connections import switch
 from agentai_platform.model_keys import ModelKeyring
 from agentai_platform.security import Principal, NotFound
 from .lifecycle import AccountStore
@@ -41,6 +42,15 @@ def service(store=None):
                              callback_url=settings.PUBLIC_ORIGIN + '/v1/account/mcp/callback', registrations=registrations)
 
 
+def available(account_id):
+    """The owner's switch (mcp-connections.json), read on every request. Off is the default."""
+    return switch.enabled(settings.MCP_SWITCH_FILE, account_id)
+
+
+def unavailable():
+    return JsonResponse({'error': 'unavailable'}, status=404)
+
+
 def principal(request):
     return Principal(request.account_id, str(request.user.pk), 'customer')
 
@@ -53,6 +63,7 @@ def failure(error):
 def connections(request):
     denied = customer(request)
     if denied: return denied
+    if not available(request.account_id): return unavailable()
     try:
         s, p = service(), principal(request)
         if request.method == 'POST':
@@ -71,6 +82,7 @@ def connections(request):
 def change(request, connection_id, action):
     denied = customer(request)
     if denied: return denied
+    if not available(request.account_id): return unavailable()
     rate('mcp.change', request.account_id, 30, 60)
     try:
         s, p = service(), principal(request)
@@ -115,6 +127,7 @@ def callback(request):
                 or login.get('epoch') != user.identity.epoch or not user.identity.verified):
             raise ConnectionError('oauth_state_invalid', 'The initiating sign-in was revoked. Sign in and reconnect.')
         p = Principal(row['account_id'], str(user.pk), 'customer')
+        if not available(row['account_id']): raise ConnectionError('unavailable', 'Remote connections are switched off.')
         rate('mcp.callback', row['account_id'], 20, 600)
         if request.GET.get('error'):
             with s.coordinator.transaction() as con:
@@ -137,6 +150,7 @@ def callback(request):
 def approve(request, call_id):
     denied = customer(request)
     if denied: return denied
+    if not available(request.account_id): return unavailable()
     rate('mcp.approve', request.account_id, 30, 60)
     try:
         if set(request.input) != {'approved'} or type(request.input['approved']) is not bool: raise ValueError('invalid decision')

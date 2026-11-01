@@ -92,8 +92,8 @@ class Relay:
         if method == 'ping':
             return self._ok(rid, {})
         if method == 'tools/list':
-            specs = list(self.tools.values())
-            if self.remote is not None:
+            specs = [t for n, t in self.tools.items() if not (self.remote is not None and self.remote.is_generic(n) and not self.remote.enabled(account))]
+            if self.remote is not None and self.remote.enabled(account):
                 import copy
                 for spec in self.remote.specs(account):
                     spec = copy.deepcopy(spec)
@@ -103,8 +103,9 @@ class Relay:
         if method == 'tools/call':
             params = message.get('params') or {}
             name = params.get('name')
-            remote_call = self.remote is not None and self.remote.accepts(name)
-            if name not in self.tools and not remote_call:
+            remote_on = self.remote is not None and self.remote.enabled(account)
+            remote_call = remote_on and self.remote.accepts(name)
+            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call):
                 return self._error(rid, -32602, 'unknown tool')
             busy_key = (account, 'remote' if remote_call else 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:

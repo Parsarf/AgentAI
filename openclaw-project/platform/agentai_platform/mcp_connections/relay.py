@@ -13,13 +13,18 @@ CALL = {'name': 'lumina_mcp_call',
 
 
 class RemoteTools:
-    def __init__(self, service): self.service = service
+    def __init__(self, service, enabled=lambda account: True):
+        self.service, self.enabled = service, enabled          # `enabled(account)`: the owner's switch, asked on every call, so switching off withdraws the tools at once
 
     def specs(self, account):
+        if not self.enabled(account): return []
         try: return self.service.catalog(account)
         except NotFound: return []
 
     def accepts(self, name): return name in (DISCOVER['name'], CALL['name']) or bool(NAMESPACE.fullmatch(name or ''))
+
+    @staticmethod
+    def is_generic(name): return name in (DISCOVER['name'], CALL['name'])
 
     def call(self, account, arguments, closed, *, name, request_id=None):
         try:

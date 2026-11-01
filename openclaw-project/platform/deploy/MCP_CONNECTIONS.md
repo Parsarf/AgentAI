@@ -13,6 +13,18 @@ implementation:
 - [MCP authorization specification](https://modelcontextprotocol.io/specification/latest/basic/authorization)
 - [Asana's MCP integration requirements](https://developers.asana.com/docs/integrating-with-asanas-mcp-server)
 
+## The owner's switch (off until turned on)
+
+Remote connections are **off for everyone** until the owner turns them on. The switch is the file `/var/lib/agentai-platform/mcp-connections.json` (owned by `agentai-platform`, mode 640; override the path with `AGENTAI_MCP_SWITCH_FILE`), read on every request:
+
+```
+{"mcp_connections": true}                    every account
+{"mcp_connections": ["<account id>", ...]}   only those accounts (try it on the owner's own account first)
+anything else, or no file                    nobody
+```
+
+What "off" does: the Integrations page does not show the section (`features.mcp` is false in `GET /v1/app`), every `/v1/account/mcp*` route answers `404 unavailable`, an OAuth callback that arrives is turned away, and the relay stops listing or running `lumina_mcp_discover`, `lumina_mcp_call` and the namespaced remote tools. Turning it off takes effect on the next request; connections, tools and approvals already stored are kept, not deleted. Tests: `tests/test_mcp_switch.py`, `accounts/test_mcp_connections.py`.
+
 ## Configuration before release
 
 No production configuration was changed during implementation. Run the normal
