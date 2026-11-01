@@ -131,6 +131,7 @@ plan(F, 'primitive', 'range_slider', 'Range slider');
 impl(F, 'primitive', 'switch', 'Switch', 'An on/off setting.', 'form', 'field type toggle');
 impl(F, 'primitive', 'date_picker', 'Date picker', 'A calendar date (the browser control).', 'form', 'field type date');
 impl(F, 'primitive', 'time_picker', 'Time picker', 'A time of day (the browser control).', 'form', 'field type time');
+impl(F, 'composite', 'location_request', 'Location request', 'Asks where the reader is: a Share my location button (the browser asks permission first) or a typed ZIP code, city or address.', 'form', 'field type location');
 plan(F, 'composite', 'date_range', 'Date range');
 impl(F, 'primitive', 'number_stepper', 'Number stepper', 'A number with steps.', 'form', 'field type number');
 plan(F, 'primitive', 'search_input', 'Search input');

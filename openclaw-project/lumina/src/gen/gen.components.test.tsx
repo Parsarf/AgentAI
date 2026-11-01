@@ -140,6 +140,32 @@ describe('forms', () => {
   it('visibleFields hides unmet conditions', () => { const f = [{ id: 'a', type: 'text', label: 'A' }, { id: 'b', type: 'text', label: 'B', showIf: { field: 'a', equals: 'x' } }] as any; expect(visibleFields(f, { a: 'y' })).toHaveLength(1); expect(visibleFields(f, { a: 'x' })).toHaveLength(2); });
 });
 
+describe('location request', () => {
+  const ask = { version: '1.0', responseId: 'r', blocks: [{ id: 'loc', type: 'location_request', props: { title: 'Where are you?', fields: [{ id: 'where', type: 'location', label: 'Your location', required: true }], submit: { label: 'Send', action: { kind: 'agent.request', message: 'My location:' } } } }] };
+  const geo = (impl: unknown) => Object.defineProperty(navigator, 'geolocation', { value: impl, configurable: true });
+  afterEach(() => { Reflect.deleteProperty(navigator, 'geolocation'); });
+  it('never asks the browser until the button is pressed', () => {
+    const getCurrentPosition = vi.fn(); geo({ getCurrentPosition }); setup(ask);
+    expect(screen.getByText('Share my location')).toBeTruthy(); expect(getCurrentPosition).not.toHaveBeenCalled();
+  });
+  it('sends an approximate device position straight away, rounded to about 1 km', async () => {
+    geo({ getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 37.774929, longitude: -122.419418 } }) }); const { host } = setup(ask);
+    fireEvent.click(screen.getByText('Share my location'));
+    await waitFor(() => expect(host.send).toHaveBeenCalledWith('My location:\n- Your location: Shared from my device, approximate (about 1 km): 37.77, -122.42', expect.any(String)));
+    expect(JSON.stringify((host.send as any).mock.calls)).not.toContain('37.7749'); expect((screen.getByPlaceholderText('ZIP code, city or address') as HTMLInputElement).value).toBe('');
+  });
+  it('explains a blocked permission and still accepts a typed ZIP, city or address', async () => {
+    geo({ getCurrentPosition: (_: unknown, bad: (e: { code: number }) => void) => bad({ code: 1 }) }); const { host } = setup(ask);
+    fireEvent.click(screen.getByText('Share my location')); expect(await screen.findByText(/did not allow location access/)).toBeTruthy(); expect(host.send).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByPlaceholderText('ZIP code, city or address'), { target: { value: '94110' } }); fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(host.send).toHaveBeenCalledWith('My location:\n- Your location: 94110', expect.any(String)));
+  });
+  it('asks for a typed location when the browser has no location support, and requires an answer', async () => {
+    const { host } = setup(ask); expect(screen.queryByText('Share my location')).toBeNull();
+    fireEvent.click(screen.getByText('Send')); expect(await screen.findByText('Enter a value.')).toBeTruthy(); expect(host.send).not.toHaveBeenCalled();
+  });
+});
+
 describe('agent actions end to end', () => {
   it('approval: confirm dialog first, then exactly one host call, then done', async () => {
     const { host } = setup(SAMPLE_CONVERSATION);
