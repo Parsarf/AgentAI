@@ -105,10 +105,16 @@ export const HELP: Record<string, Help> = {
     off: "Only for the owner's own account, from the next task, until the time limit ends: the ultrafast decider chooses the steps and a small fast model writes field text that the request does not give. The payment and sign-in stops and all limits still apply.",
   },
   jev_sees_controls: {
-    does: "Chooses what the browser model (JEV) is shown: the page's controls and text plus a picture of the window (ON), or only the picture (OFF, your own account only).",
+    does: "Chooses what the standard browser model (JEV) is shown: the page's controls and text plus a picture of the window (ON), or only the picture (OFF, your own account only). The ultrafast decider has its own switch.",
     why: 'To test how well JEV navigates entirely on its own. Both run in the same sandboxed browser with the same stops, limits and clean profile.',
     on: "JEV is given the page's controls and text as well as the picture.",
     off: "Only for the owner's own account, from the next task, until the time limit ends: JEV sees only the picture of the window and points at where to click. Nobody else takes a step, so the task stops with a reason if JEV gets stuck. The payment and sign-in stops and all limits still apply.",
+  },
+  ultrafast_sees_controls: {
+    does: "Chooses what the experimental ultrafast decider is shown: the page's controls and text plus a picture of the window (ON), or only the picture (OFF, your own account only).",
+    why: 'To test how well the ultrafast decider navigates entirely on its own. It only matters while the ultrafast decider is on ("Use the standard Lumina browser" OFF).',
+    on: "The ultrafast decider is given the page's controls and text as well as the picture.",
+    off: "Only for the owner's own account, from the next ultrafast task, until the time limit ends: it sees only the picture of the window and points at where to click, and the fast text writer is not used. Nobody else takes a step, so the task stops with a reason if it gets stuck. The payment and sign-in stops and all limits still apply.",
   },
   // -- Prompt-injection defenses
   untrusted_page_text: {
