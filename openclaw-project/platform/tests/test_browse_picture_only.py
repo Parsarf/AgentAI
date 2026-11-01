@@ -2,7 +2,7 @@ import json
 import unittest
 
 from agentai_platform.browse.ladder import JevChooser, Ladder, Look, RUNNER_V2
-from agentai_platform.browse.picture_only_brain import PictureOnlyChooser
+from agentai_platform.browse.picture_only_brain import PictureOnlyChooser, UltrafastPictureOnlyChooser
 from tests.test_browse import CANDS, MODEL, PAGE, jev_answer, scripted_llm
 
 SHOT = {'data': 'AAAA', 'width': 1280, 'height': 800, 'view': {'w': 1280, 'h': 800}}
@@ -71,3 +71,22 @@ class PictureOnly(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class UltrafastPictureOnly(unittest.TestCase):
+    def test_the_ultrafast_decider_in_picture_only_mode_gets_the_picture_alone_and_the_text_writer_is_not_used(self):
+        bodies, writer = [], []
+
+        def transport(endpoint, body, credential, deadline, headers=None):
+            bodies.append(body)
+            return jev_answer(body, {'operation': 'click'}, 1.0, model='jev-1.14.0')
+        jev = UltrafastPictureOnlyChooser('https://x', 'k', transport, 'text-key', lambda *a, **k: writer.append(a) or '{}')
+        ladder = Ladder(agent=scripted_llm([]), jev=jev)
+        d = ladder.decide('buy a paddle', [], SECRET_PAGE, CANDS, caps=RUNNER_V2, look=Look(shot=SHOT, why='test'))
+        sent = json.dumps(bodies[0])
+        self.assertNotIn('ZZ-PAGE-TEXT-ZZ', sent)
+        self.assertNotIn('ZZ-TITLE-ZZ', sent)
+        self.assertEqual(bodies[0]['model'], 'jev-latest')
+        self.assertEqual((d.kind, d.by, d.action['action']), ('act', 'jev', 'clickat'))
+        self.assertEqual(writer, [])
+        self.assertEqual(ladder.agent.calls, [])

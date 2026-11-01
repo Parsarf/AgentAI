@@ -49,6 +49,7 @@ FEATURES: dict[str, Feature] = {f.key: f for f in (
     Feature('budget_caps', 'platform', 'Spending caps', 'The per-task, daily and monthly limits and the money reservation before a task starts.', True),
     Feature('standard_browser', 'browser', 'Use the standard Lumina browser', 'Browser tasks are decided the standard way. Switch OFF (your own account, with a time limit) and the next task is decided the experimental ultrafast way instead, on the same sandboxed browser with the same stops and limits.', True),
     Feature('jev_sees_controls', 'browser', 'Show JEV the page controls and text', 'Browser tasks give JEV the page\'s controls and text as well as a picture of the window. Switch OFF (your own account, with a time limit) and the next task is a navigation test: JEV is shown only the picture, finds its own way, and the task stops if it gets stuck. Same sandboxed browser, same stops and limits.', True),
+    Feature('ultrafast_sees_controls', 'browser', 'Show the ultrafast decider the page controls and text', 'When the experimental ultrafast decider is on (the "Use the standard Lumina browser" switch OFF), it is given the page\'s controls and text as well as a picture of the window. Switch OFF (your own account, with a time limit) and the next ultrafast task is a navigation test: it is shown only the picture, finds its own way, and the task stops if it gets stuck. Same sandboxed browser, same stops and limits.', True),
     Feature('queue_limit', 'platform', 'Queue limit', 'At most 3 tasks waiting per account; a fourth is refused until one starts.', True),
     Feature('rate_limits', 'platform', 'Request rate limits', 'Per-account limits on how often routes can be called.', True),
     Feature('routing_policy', 'platform', 'Routing policy gates', 'Rules that can refuse or reshape how a request runs. Not in the live request path yet, so nothing reads this switch.'),
@@ -92,7 +93,7 @@ FEATURES: dict[str, Feature] = {f.key: f for f in (
 SHARED = {'login_limits', 'csrf_protection', 'operator_mfa', 'unit_sandboxing', 'cell_container_isolation', 'proxy_rules', 'provider_backstops',
           'message_length_limit', 'cell_limits', 'bridge_restrictions', 'cell_key_limits', 'cell_firewall'}
 CORE = {'tenant_isolation', 'vault_encryption', 'audit_log', 'session_epochs', 'block_validation'}
-PRIVACY = {'personal_data_scrub', 'vault_notice', 'secret_redaction', 'ssrf_guard', 'screenshot_retention', 'standard_browser', 'jev_sees_controls'}
+PRIVACY = {'personal_data_scrub', 'vault_notice', 'secret_redaction', 'ssrf_guard', 'screenshot_retention', 'standard_browser', 'jev_sees_controls', 'ultrafast_sees_controls'}
 FEATURES = {k: replace(f, kind='shared' if k in SHARED else 'core' if k in CORE else 'gate', privacy=k in PRIVACY) for k, f in FEATURES.items()}
 
 

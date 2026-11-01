@@ -7,11 +7,19 @@ limits, budget, Stop and hand-over. The code that reads the page for those rules
   * every click or typed text is a spot in the picture; the loop names what is there (probe) and runs its rules before anything happens, as for any picture step;
   * nobody else decides a step: no take-over by the assistant, and when JEV misses twice, repeats itself or asks for a choice, the task STOPS with the reason, so the result shows how far
     JEV got alone. (When JEV says `done`, the assistant still confirms it and writes the answer, as in the standard path; it does not steer.)
-Switched on only for the owner's own account, with a time limit, from the Safety console (`jev_sees_controls` OFF), and read when a task starts.
+Switched on only for the owner's own account, with a time limit, from the Safety console, and read when a task starts: `jev_sees_controls` OFF for the standard decider,
+`ultrafast_sees_controls` OFF for the experimental ultrafast decider (which then asks for the `jev-latest` alias, as it always does). Each switch applies to its own decider.
 """
 from .ladder import JevChooser
+from .ultrafast_brain import UltrafastChooser
 
 
 class PictureOnlyChooser(JevChooser):
     picture_only = True
     neutral_picture = True        # the picture is all it is given, so it is not told a popup is probably in the way
+
+
+class UltrafastPictureOnlyChooser(UltrafastChooser):
+    """The ultrafast decider, shown only the picture. It lists no controls, so the fast text writer has no field to write for: every typed text is a spot in the picture."""
+    picture_only = True
+    neutral_picture = True

@@ -17,7 +17,7 @@ from .ladder import JevChooser
 from .native_runner import NativeRunner, NativeTransport
 from .service import BrowseError, BrowseService, serve, stage_argv
 from .session import ProcessTransport
-from .picture_only_brain import PictureOnlyChooser
+from .picture_only_brain import PictureOnlyChooser, UltrafastPictureOnlyChooser
 from .ultrafast_brain import UltrafastChooser
 
 JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
@@ -131,19 +131,23 @@ def main():
         owner = read_secret(args.ultrafast_owner_file)
         return bool(owner) and account == owner and not safety.on(account, 'standard_browser')
 
-    def picture_only_on(account):
-        """The owner's navigation test (picture_only_brain.py): only for the owner's own account, and only while its `jev_sees_controls` switch is off (with a time limit). Read when a task starts."""
+    def picture_only_on(account, switch):
+        """The owner's navigation test (picture_only_brain.py): only for the owner's own account, and only while `switch` is off for it (with a time limit). `jev_sees_controls`
+        is for the standard decider, `ultrafast_sees_controls` for the ultrafast one. Read when a task starts."""
         owner = read_secret(args.ultrafast_owner_file)
-        return bool(owner) and account == owner and not safety.on(account, 'jev_sees_controls')
+        return bool(owner) and account == owner and not safety.on(account, switch)
 
     def jev_for(account):
         key = read_secret(args.jev_key_file)
         if not key:
             return None
-        if picture_only_on(account):
-            return PictureOnlyChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
         if ultrafast_on(account):
-            return UltrafastChooser(JEV_ENDPOINT, key, http_post, read_secret(args.ultrafast_text_key_file), http_post)
+            text_key = read_secret(args.ultrafast_text_key_file)
+            if picture_only_on(account, 'ultrafast_sees_controls'):
+                return UltrafastPictureOnlyChooser(JEV_ENDPOINT, key, http_post, text_key, http_post)
+            return UltrafastChooser(JEV_ENDPOINT, key, http_post, text_key, http_post)
+        if picture_only_on(account, 'jev_sees_controls'):
+            return PictureOnlyChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
         return JevChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
 
     def spawn(job_id, out_dir):
