@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""The server end of automatic deploys from GitHub. Installed at /usr/local/sbin/agentai-deploy (root:root 0755); see AUTO_DEPLOY.md.
+
+GitHub's deploy key in /root/.ssh/authorized_keys is pinned to this program (`restrict,command="/usr/local/sbin/agentai-deploy"`), so that key can run nothing else:
+no shell, no forwarding, no other command. The SSH command it may send is exactly `deploy <40 hex commit>` or `deploy-dry <40 hex commit>`, followed by one tar stream on stdin:
+
+    manifest.json    {"sha": ..., "ui": true|false}
+    platform.tgz     the platform tree CI built from that commit (what release.py and the supervisor tree contain, without the virtualenv)
+    ui.tgz           the built web app (lumina/dist), when "ui" is true
+
+What it does, in this order, stopping at the first failure:
+  1. the app tree through release.py: builds beside the live release, migrates a COPY of the database, probes a canary, probes the previous release against the migrated copy,
+     and only then switches. If the live release fails its probes it rolls back itself (exit 2). `deploy-dry` stops after the canary, changing nothing live.
+  2. the supervisor tree: a copy of the live one with the new files laid over, `current` switched atomically.
+  3. the web app bundle (/var/lib/agentai-platform/ui), the previous one kept as ui.prev.
+  4. a restart of the services that run this code, then a check that each is active. If one is not, the supervisor tree goes back to its previous release.
+It never touches customer data, secrets or the cells. One deploy at a time (a lock), and a commit that was already deployed is a no-op. Everything is appended to LOG.
+"""
+import io
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+from pathlib import Path
+
+BASE = Path('/var/lib/agentai-deploy')
+LOG = BASE / 'deploys.log'
+LAST = BASE / 'last'
+LOCK = BASE / 'lock'
+APP = Path('/opt/agentai-platform')
+SUP = Path('/opt/agentai-supervisor')
+UI_PARENT = Path('/var/lib/agentai-platform')
+RELEASE_PY = 'deploy/release.py'
+UNITS = ['agentai-cell-bridge', 'agentai-browse', 'agentai-tool-relay', 'agentai-request-worker']       # restarted after the app tree switches (OPERATIONS.md: full release)
+MAX_BYTES = 400 * 1024 * 1024
+COMMAND = re.compile(r'^(deploy|deploy-dry) ([0-9a-f]{40})$')
+REQUIRED = ('accounts', 'agentai_platform', 'deploy', 'manage.py', 'migrations', 'requirements.lock')
+
+
+def say(message):
+    print(message, flush=True)
+    try:
+        with open(LOG, 'a') as handle:
+            handle.write(json.dumps({'at': int(time.time()), 'message': message[:500]}) + '\n')
+    except OSError:
+        pass
+
+
+def parse_command(text):
+    """-> (mode, sha), or None when the SSH command is anything but the two exact forms."""
+    match = COMMAND.match(text or '')
+    return (match.group(1), match.group(2)) if match else None
+
+
+def safe_extract(archive_bytes, dest):
+    """Unpack a tar.gz into `dest`, refusing anything that could land outside it: absolute names, `..`, links, devices."""
+    dest = Path(dest).resolve()
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode='r:gz') as tar:
+        for member in tar.getmembers():
+            name = member.name
+            target = (dest / name).resolve()
+            if name.startswith('/') or '..' in Path(name).parts or not (target == dest or dest in target.parents):
+                raise ValueError(f'unsafe path in archive: {name!r}')
+            if not (member.isfile() or member.isdir()):
+                raise ValueError(f'unsupported entry in archive: {name!r}')
+        tar.extractall(dest, filter='data')
+
+
+def read_stream(stream):
+    data = stream.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise ValueError('upload is too large')
+    return data
+
+
+def sh(argv, **kw):
+    return subprocess.run(argv, capture_output=True, text=True, **kw)
+
+
+def switch(link: Path, target: Path):
+    tmp = link.with_name(link.name + '.new')
+    tmp.unlink(missing_ok=True)
+    os.symlink(target, tmp)
+    os.replace(tmp, link)
+
+
+def main(argv=None, stdin=None):
+    parsed = parse_command(os.environ.get('SSH_ORIGINAL_COMMAND', ''))
+    if parsed is None:
+        print('refused: the only commands are "deploy <commit>" and "deploy-dry <commit>"', file=sys.stderr)
+        return 2
+    mode, sha = parsed
+    BASE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    import fcntl
+    lock = open(LOCK, 'w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        say('refused: another deploy is running')
+        return 3
+    if mode == 'deploy' and LAST.exists() and LAST.read_text().strip() == sha:
+        say(f'{sha[:7]} is already the deployed commit; nothing to do')
+        return 0
+    work = BASE / f'incoming-{sha[:12]}'
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(mode=0o700)
+    try:
+        outer = (stdin or sys.stdin.buffer)
+        safe_extract(read_stream(outer), work)
+        manifest = json.loads((work / 'manifest.json').read_text())
+        if manifest.get('sha') != sha:
+            raise ValueError('the upload is for a different commit than the one named')
+        plat = work / 'platform'
+        plat.mkdir()
+        safe_extract((work / 'platform.tgz').read_bytes(), plat)
+        for needed in REQUIRED:
+            if not (plat / needed).exists():
+                raise ValueError(f'the platform archive has no {needed}')
+        name = f'{time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())}-{sha[:7]}'
+        say(f'{mode} {sha[:7]} as {name}')
+
+        # 1. the app tree: canary, migration of a copy, probes, automatic rollback (release.py).
+        release_tgz = work / 'release.tgz'
+        with tarfile.open(release_tgz, 'w:gz') as tar:
+            for entry in sorted(plat.iterdir()):
+                tar.add(entry, arcname=entry.name)
+        old_app = os.path.realpath(APP / 'current')
+        old_sup = os.path.realpath(SUP / 'current')
+        run = sh([sys.executable, str(plat / RELEASE_PY), '--tarball', str(release_tgz), '--id', name] + (['--dry-run'] if mode == 'deploy-dry' else []))
+        say((run.stdout + run.stderr)[-1500:])
+        if run.returncode != 0:
+            say(f'app release failed or rolled back (exit {run.returncode}); nothing else was changed')
+            return 10 + run.returncode
+        if mode == 'deploy-dry':
+            say('dry run passed: the canary release is healthy and nothing live was changed')
+            return 0
+
+        # 2. the supervisor tree: copy of the live one, new files over it, atomic switch.
+        new_sup = SUP / 'releases' / name
+        shutil.rmtree(new_sup, ignore_errors=True)
+        sh(['cp', '-a', old_sup, str(new_sup)], check=True)
+        for entry in ('accounts', 'agentai_platform', 'deploy', 'migrations'):
+            shutil.rmtree(new_sup / entry, ignore_errors=True)
+            shutil.copytree(plat / entry, new_sup / entry)
+        sh(['chown', '-R', 'root:root', str(new_sup / 'agentai_platform'), str(new_sup / 'accounts'), str(new_sup / 'deploy'), str(new_sup / 'migrations')], check=True)
+        sh(['chmod', '-R', 'go-w,a+rX', str(new_sup)], check=True)
+        meta_path = new_sup / 'RELEASE.json'
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        meta.update(commit=sha, release=name, purpose='automatic deploy from GitHub')
+        meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+        switch(SUP / 'current', new_sup)
+
+        # 3. the web app bundle.
+        if manifest.get('ui') and (work / 'ui.tgz').exists():
+            ui_new, ui, ui_prev = UI_PARENT / 'ui.new', UI_PARENT / 'ui', UI_PARENT / 'ui.prev'
+            shutil.rmtree(ui_new, ignore_errors=True)
+            ui_new.mkdir(mode=0o755)
+            safe_extract((work / 'ui.tgz').read_bytes(), ui_new)
+            if not (ui_new / 'index.html').is_file():
+                raise ValueError('the web app bundle has no index.html')
+            sh(['chown', '-R', 'root:agentai-platform', str(ui_new)], check=True)
+            sh(['chmod', '-R', 'go-w,a+rX', str(ui_new)], check=True)
+            shutil.rmtree(ui_prev, ignore_errors=True)
+            if ui.exists():
+                os.rename(ui, ui_prev)
+            os.rename(ui_new, ui)
+            scenes = ui / 'scenes'
+            if scenes.is_dir():                                  # Caddy serves the chat film from its own public folder (see deploy-lumina.py)
+                public = Path('/var/www/lumina-scenes/app')
+                public.mkdir(parents=True, exist_ok=True)
+                shutil.rmtree(public / 'scenes.new', ignore_errors=True)
+                shutil.copytree(scenes, public / 'scenes.new')
+                shutil.rmtree(public / 'scenes.old', ignore_errors=True)
+                if (public / 'scenes').exists():
+                    os.rename(public / 'scenes', public / 'scenes.old')
+                os.rename(public / 'scenes.new', public / 'scenes')
+
+        # 4. restart what runs this code, and check it came back.
+        sh(['systemctl', 'restart', *UNITS])
+        time.sleep(3)
+        down = [u for u in UNITS if sh(['systemctl', 'is-active', u]).stdout.strip() != 'active']
+        if down:
+            say(f'these did not come back: {", ".join(down)}; putting the supervisor tree back')
+            switch(SUP / 'current', Path(old_sup))
+            sh(['systemctl', 'restart', *UNITS])
+            return 20
+        LAST.write_text(sha + '\n')
+        say(f'deployed {sha[:7]} as {name}. Undo the supervisor tree: ln -sfn {old_sup} {SUP}/current && systemctl restart {" ".join(UNITS)}; the app tree: see OPERATIONS.md (release.py)')
+        return 0
+    except Exception as exc:
+        say(f'failed: {type(exc).__name__}: {exc}')
+        return 1
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
