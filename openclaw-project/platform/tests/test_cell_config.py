@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
-from agentai_platform.lifecycle.cell_config import CellProvisioner, patch
+from agentai_platform.lifecycle.cell_config import MODELS, CellProvisioner, patch
 from agentai_platform.lifecycle.litellm_admin import LiteLLMAdmin
 from agentai_platform.lifecycle.secrets_custody import ProviderKeys, SecretStore
 
@@ -29,7 +29,11 @@ class CellConfigChecks(unittest.TestCase):
         self.assertEqual(provider['apiKey']['id'], 'LITELLM_API_KEY')               # the key is never written into the file
         self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5')            # the assistant that plans and answers
         ids = {m['id']: m for m in provider['models']}
-        self.assertEqual(set(ids), {'claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-sonnet-4-6'}); self.assertFalse(ids['claude-sonnet-5-5']['reasoning'])      # no hidden thinking tokens
+        self.assertEqual(set(ids), {'claude-sonnet-5-5', 'claude-haiku-5-5'}); self.assertFalse(ids['claude-sonnet-5-5']['reasoning'])      # no hidden thinking tokens
+        self.assertFalse(ids['claude-haiku-5-5']['reasoning'])
+        self.assertNotIn('claude-sonnet-4-6', ids); self.assertNotIn('claude-haiku-4-5', ids)                                                      # removed 2026-10-31
+        self.assertEqual(ids['claude-haiku-5-5']['contextWindow'], 100000)    # the gateway prices Haiku 5.5's cheap tier (prompts up to 100,000 tokens) only: never let a prompt run past it
+        self.assertEqual(MODELS, ('claude-sonnet-5-5', 'claude-haiku-5-5'))
         self.assertEqual(cfg['gateway'], {'mode': 'local'})
 
     def test_the_cells_own_browser_is_switched_on_only_when_asked_and_stays_out_of_the_assistants_reach(self):
@@ -55,18 +59,60 @@ class CellConfigChecks(unittest.TestCase):
         self.assertEqual(prov.prepare(binding), ['--env', 'LITELLM_API_KEY=sk-testkey-0123456789abcdef'])
         self.assertEqual(prov.prepare(binding), ['--env', 'LITELLM_API_KEY=sk-testkey-0123456789abcdef'])   # retry reuses the key
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][2]['max_budget'], 25); self.assertEqual(calls[0][2]['models'], ['claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-sonnet-4-6'])
+        self.assertEqual(calls[0][2]['max_budget'], 25); self.assertEqual(calls[0][2]['models'], ['claude-sonnet-5-5', 'claude-haiku-5-5'])
         prov.finish(binding)
         cfg = json.loads((cells / TENANT / 'openclaw.json').read_text())
         self.assertIn('litellm', cfg['models']['providers']); self.assertEqual(set(owners), {(1000, 1000)})
         self.assertNotIn('sk-testkey', json.dumps(cfg))
+
+    def test_an_assistant_with_its_own_model_calls_the_relay_with_its_own_lumina_credential_and_never_holds_the_customers_key(self):
+        tools = ('http://10.77.0.1:4100/mcp', 'lumina-cell-credential-0001')
+        cfg = patch({'gateway': {'mode': 'local'}}, tools=tools, own_model={'model': 'gpt-4o-mini'})
+        byok = cfg['models']['providers']['byok']
+        self.assertEqual(byok['baseUrl'], 'http://10.77.0.1:4100/byok/v1'); self.assertEqual(byok['apiKey'], {'source': 'env', 'provider': 'default', 'id': 'LITELLM_API_KEY'})
+        self.assertEqual([m['id'] for m in byok['models']], ['gpt-4o-mini']); self.assertEqual(byok['models'][0]['input'], ['text']); self.assertFalse(byok['models'][0]['reasoning'])
+        self.assertEqual(cfg['agents']['defaults']['model'], {'primary': 'byok/gpt-4o-mini'})
+        self.assertIn('litellm', cfg['models']['providers'])                                  # Lumina's own models are still configured beside it
+        self.assertNotIn('sk-', json.dumps(cfg))                                              # no secret of any kind is written into the assistant's config
+
+    def test_no_own_model_a_bad_name_or_no_relay_leaves_the_assistant_on_lumina_models(self):
+        tools = ('http://10.77.0.1:4100/mcp', 'lumina-cell-credential-0001')
+        for kwargs in ({'tools': tools}, {'tools': tools, 'own_model': None}, {'tools': tools, 'own_model': {'model': 'bad name;x'}}, {'tools': tools, 'own_model': {}}, {'tools': tools, 'own_model': 'gpt'},
+                       {'own_model': {'model': 'gpt-4o'}}):                                  # the last: there is no relay to call
+            cfg = patch({'gateway': {'mode': 'local'}}, **kwargs)
+            self.assertNotIn('byok', cfg['models']['providers'], kwargs); self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5')
+
+    def test_removing_the_own_model_puts_the_assistant_back_on_lumina_models_at_its_next_start(self):
+        tools = ('http://10.77.0.1:4100/mcp', 'lumina-cell-credential-0001')
+        had = patch({'gateway': {'port': 1}}, tools=tools, own_model={'model': 'gpt-4o'})
+        back = patch(had, tools=tools)
+        self.assertNotIn('byok', back['models']['providers']); self.assertEqual(back['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5')
+
+    def test_the_provisioner_reads_only_the_facts_and_a_failure_changes_nothing(self):
+        secrets = SecretStore(self.root / 'sec'); prov = CellProvisioner(ProviderKeys(lambda *a: (200, {}), secrets), secrets, self.root / 'cells', own_model=lambda account: {'model': 'm1'}, chown=lambda *a: None)
+        self.assertEqual(prov._own_model(SimpleNamespace(account_id='a')), {'model': 'm1'})
+        def boom(account): raise OSError('unreadable')
+        prov.own_model = boom; self.assertIsNone(prov._own_model(SimpleNamespace(account_id='a')))
+        self.assertIsNone(CellProvisioner(ProviderKeys(lambda *a: (200, {}), secrets), secrets, self.root / 'cells')._own_model(SimpleNamespace(account_id='a')))
+
+    def test_the_reader_needs_the_feature_on_for_the_account_and_a_saved_model(self):
+        from agentai_platform import model_keys as mk
+        from agentai_platform.lifecycle.cell_config import own_model_reader
+        store = mk.ModelKeyStore(self.root / 'mk.json', mk.ModelKeyring.derived('s' * 60)); store.put('acct', mk.parse_endpoint('https://models.example.org/v1'), 'gpt-4o', 'sk-aaaaaaaaaaaaaaaa')
+        engine = self.root / 'engine.json'
+        read = own_model_reader(self.root / 'mk.json', engine)
+        self.assertIsNone(read('acct'))                                                       # saved, but the feature is not switched on: still Lumina's models
+        engine.write_text(json.dumps({'own_model_keys': ['acct']})); self.assertEqual(read('acct'), {'model': 'gpt-4o'}); self.assertIsNone(read('other'))
+        engine.write_text(json.dumps({'own_model_keys': True})); self.assertEqual(read('acct'), {'model': 'gpt-4o'}); self.assertIsNone(read('nobody-saved'))
+        store.delete('acct'); self.assertIsNone(read('acct'))
 
     def test_an_existing_assistant_is_brought_up_to_date_before_each_start(self):
         calls = []
         def http(method, path, body=None):
             calls.append((method, path, body)); return 200, {'key': 'sk-testkey-0123456789abcdef'}
         secrets = SecretStore(self.root / 'sec'); cells = self.root / 'cells'; (cells / TENANT).mkdir(parents=True)
-        old = patch({'gateway': {'port': 1}}, default_model='litellm/claude-haiku-4-5'); old['models']['providers']['litellm']['models'] = old['models']['providers']['litellm']['models'][1:]   # created under the old setup
+        old = patch({'gateway': {'port': 1}}, default_model='litellm/claude-sonnet-4-6')
+        old['models']['providers']['litellm']['models'] = [{'id': 'claude-haiku-4-5', 'name': 'Claude Haiku 4.5'}, {'id': 'claude-sonnet-4-6', 'name': 'Claude Sonnet 4.6'}]   # created under the old setup
         (cells / TENANT / 'openclaw.json').write_text(json.dumps(old))
         prov = CellProvisioner(ProviderKeys(http, secrets), secrets, cells, chown=lambda p, u, g: None)
         binding = SimpleNamespace(tenant_ref=TENANT, account_id='acct')
@@ -74,7 +120,8 @@ class CellConfigChecks(unittest.TestCase):
         prov.before_start(binding)
         cfg = json.loads((cells / TENANT / 'openclaw.json').read_text())
         self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5'); self.assertEqual(cfg['gateway'], {'port': 1})       # only the model setup changed
-        self.assertEqual([(m, path, body['models']) for m, path, body in calls], [('POST', '/key/update', ['claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-sonnet-4-6'])])
+        self.assertEqual([m['id'] for m in cfg['models']['providers']['litellm']['models']], ['claude-sonnet-5-5', 'claude-haiku-5-5'])         # the removed models are gone from an assistant that had them
+        self.assertEqual([(m, path, body['models']) for m, path, body in calls], [('POST', '/key/update', ['claude-sonnet-5-5', 'claude-haiku-5-5'])])
         before = (cells / TENANT / 'openclaw.json').read_text(); prov.before_start(binding)
         self.assertEqual((cells / TENANT / 'openclaw.json').read_text(), before)                                                                         # idempotent
 
@@ -84,7 +131,7 @@ class CellConfigChecks(unittest.TestCase):
         secrets.store_provider_key(TENANT, 'sk-testkey-0123456789abcdef')
         (cells / TENANT / 'openclaw.json').write_text('not json')
         CellProvisioner(ProviderKeys(http, secrets), secrets, cells, chown=lambda p, u, g: None).before_start(SimpleNamespace(tenant_ref=TENANT, account_id='a'))   # no exception
-        old = patch({'gateway': {'port': 1}}, default_model='litellm/claude-haiku-4-5'); (cells / TENANT / 'openclaw.json').write_text(json.dumps(old))
+        old = patch({'gateway': {'port': 1}}, default_model='litellm/claude-sonnet-4-6'); (cells / TENANT / 'openclaw.json').write_text(json.dumps(old))
         CellProvisioner(ProviderKeys(http, secrets), secrets, cells, chown=lambda p, u, g: None).before_start(SimpleNamespace(tenant_ref=TENANT, account_id='a'))
         self.assertEqual(json.loads((cells / TENANT / 'openclaw.json').read_text()), old)                      # the key update failed, so the assistant keeps the model it can use
         self.assertEqual(ProviderKeys(lambda *a: (200, {}), secrets).ensure_models(TENANT.replace(TENANT[-1], '0'), ['x']), False)       # a tenant with no key is left alone

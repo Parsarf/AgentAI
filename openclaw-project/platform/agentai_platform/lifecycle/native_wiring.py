@@ -10,7 +10,7 @@ import urllib.request
 
 from .fleet_driver import FleetCliDriver, FleetCustody, HeadroomAdmission, linux_mem_available
 from .maintenance import HostIsolation
-from .cell_config import CellProvisioner
+from .cell_config import CellProvisioner, own_model_reader
 from ..safety import Reader
 from .litellm_admin import LiteLLMAdmin
 from .netpolicy import NetPolicy
@@ -61,7 +61,8 @@ def build_native_backend(wiring_path):
             raise ValueError('wiring paths must be absolute')
         provisioner = CellProvisioner(ProviderKeys(LiteLLMAdmin(wiring['litellm_env']).http, secrets), secrets, wiring['cell_state_root'], run=isolation_run,
                                       search_key_file=wiring.get('search_key_file'), tool_relay_url=tool_url, native_browser=wiring.get('native_browser') is True,
-                                      safety=Reader(wiring['safety_file']) if isinstance(wiring.get('safety_file'), str) and Path(wiring['safety_file']).is_absolute() else None)
+                                      safety=Reader(wiring['safety_file']) if isinstance(wiring.get('safety_file'), str) and Path(wiring['safety_file']).is_absolute() else None,
+                                      own_model=own_model_reader())
     driver = FleetCliDriver(
         custody,
         secrets=secrets,

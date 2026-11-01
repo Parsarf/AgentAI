@@ -43,6 +43,11 @@ def browse_on():
 from agentai_platform.events import EventService
 
 
+def own_key_active(account_id):
+    from .model_key import active
+    return active(account_id)
+
+
 def service():
     from django.conf import settings
     from agentai_platform.chat import FixedRoute
@@ -55,7 +60,7 @@ def service():
     from agentai_platform.gateway import NativeGateway
     gateway = (lambda account: NativeGateway(BridgeRpc(account, settings.CELL_BRIDGE_SOCKET))) if live else None      # steering and goal controls talk to the customer's own cell
     return ChatService(store, queue=RequestQueue(store, require_cell=live), ledger=BudgetLedger(store, service_limit_microusd=settings.SERVICE_ALLOCATION_MICROUSD if live else None),
-                       execution=live, browse=browse, events=EventService(store), gateway_factory=gateway, **kwargs)
+                       execution=live, browse=browse, events=EventService(store), gateway_factory=gateway, unmetered=own_key_active, **kwargs)
 
 
 def principal(request):

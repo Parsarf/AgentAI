@@ -11,7 +11,7 @@ import json
 import time
 import uuid
 from .adapters import CapabilityUnavailable
-from .budget import BudgetDenied, BudgetLedger
+from .budget import OWN_KEY_AMOUNT, BudgetDenied, BudgetLedger
 from .events import EventService
 from . import safety
 from .genui import document as gen_document, prompts as gen_prompts, schema as gen_schema
@@ -43,6 +43,9 @@ class UnmeasuredRoute:
         raise CapabilityUnavailable('provider route not measured')
 
 
+OWN_KEY_PRICE_VERSION = 'own-key-v1'       # an own-key task reserves OWN_KEY_AMOUNT, one micro-dollar (no limit is checked on the customer's model)
+
+
 class FixedRoute:
     """Test/diagnostic route yielding a verified per-message upper bound."""
 
@@ -65,7 +68,8 @@ def denial_category(error: BudgetDenied) -> str:
 
 class ChatService:
     def __init__(self, store, *, queue: RequestQueue, ledger: BudgetLedger, pricer=UnmeasuredRoute(),
-                 clock=time.time, max_conversations_per_project=MAX_CONVERSATIONS_PER_PROJECT, execution=False, browse=False, events=None, gateway_factory=None):
+                 clock=time.time, max_conversations_per_project=MAX_CONVERSATIONS_PER_PROJECT, execution=False, browse=False, events=None, gateway_factory=None, unmetered=None):
+        self.unmetered = unmetered or (lambda account_id: False)   # callable(account_id) -> True when the account runs on its own model key: Lumina's spending limits do not apply
         self.events = events   # EventService: the timeline starts the moment a message is received, not when a worker picks it up
         self.browse = bool(browse)   # owner switch browse_tasks: Browse mode and the browser tool are offered
         self.gateway_factory = gateway_factory   # callable(account_id) -> gateway: lets a message join a running task (steering) and a goal be resumed or cleared; None = always queue
@@ -188,13 +192,14 @@ class ChatService:
             budget_on = safety.is_on(con, principal.account_id, 'budget_caps')
         if not budget_on:                       # the account's own `budget_caps` safety switch: no reservation, same path as an unpriced route
             return None, None, project_id
+        own = self.unmetered(principal.account_id)
         try:
-            amount, price_version = self.pricer.reservation(message_for_cost)
+            amount, price_version = (OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION) if own else self.pricer.reservation(message_for_cost)
         except CapabilityUnavailable:
             return None, None, project_id
         try:
             self.ledger.admit(principal, task=result['id'], project=project_id, conversation=conversation_id,
-                              key=key, amount_microusd=amount, upper_bound_verified=True)
+                              key=key, amount_microusd=amount, upper_bound_verified=True, unmetered=own)
         except Exception:
             self.queue.cancel(principal, result['id'])
             raise
@@ -244,15 +249,16 @@ class ChatService:
                 con.execute('''INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content)
                     VALUES (?,?,?,?,?)''', (principal.account_id, conversation_id, result['id'], provenance, message))
             self.coordinator._audit(con, principal.account_id, principal.actor_id, result['id'], 'chat.send', 'completed')
+        own = self.unmetered(principal.account_id)
         try:
-            amount, price_version = self.pricer.reservation(message)
+            amount, price_version = (OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION) if own else self.pricer.reservation(message)
         except CapabilityUnavailable:
             # No verified route: the request waits unfunded, execution stays off.
             return {**result, 'conversation_id': conversation_id, 'execution_enabled': False,
                     'admission': 'route_unconfigured', 'price_version': None, 'response_type': kind if kind in ('plan', 'browse') else 'text'}
         try:
             self.ledger.admit(principal, task=result['id'], project=project_id, conversation=conversation_id,
-                              key=key, amount_microusd=amount, upper_bound_verified=True)
+                              key=key, amount_microusd=amount, upper_bound_verified=True, unmetered=own)
         except Exception:
             # Whatever stopped admission (budget, mismatch, storage), the request must not stay queued without a reservation:
             # it would be claimed and wedge the serial slot.

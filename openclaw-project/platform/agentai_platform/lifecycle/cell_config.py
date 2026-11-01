@@ -12,9 +12,13 @@ import re
 from secrets import token_hex
 import time
 
-# The assistant that reads, plans and answers is Sonnet 5.5; Haiku 4.5 stays available as a cheaper choice (the browser's steps no longer use it: JEV decides them, and the assistant when JEV cannot) and Sonnet 4.6 stays allowed so a
-# rollback is a one-line change. Thinking stays off by default: the 5.5 entry is not marked as a reasoning model, so no hidden thinking tokens are bought.
-MODELS = ('claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-sonnet-4-6')
+# The assistant that reads, plans and answers is Sonnet 5.5; Haiku 5.5 is the cheaper choice (the browser's steps do not use it: JEV decides them, and the assistant when JEV cannot). Sonnet 4.6 and Haiku 4.5 were removed on
+# 2026-10-31. Thinking stays off by default: the 5.5 entries are not marked as reasoning models, so no hidden thinking tokens are bought.
+# Haiku 5.5 is priced in two tiers (prompts up to 100,000 tokens $0.10 / $0.50 per million, longer prompts $0.50 / $2.50) and the gateway's price table only has the first, so its context window is capped at the
+# 100,000 tokens where that table is right; raise it only together with a tiered price in the gateway's config.
+HAIKU_CONTEXT_WINDOW = 100000
+OWN_MODEL_CONTEXT, OWN_MODEL_MAX_OUTPUT = 128000, 8192      # what Lumina assumes of a customer's own model (text only: a picture sent to a model that cannot read one is an error)
+MODELS = ('claude-sonnet-5-5', 'claude-haiku-5-5')
 DEFAULT_MODEL = 'litellm/claude-sonnet-5-5'
 CELL_UID = CELL_GID = 1000
 # The runtime's own limit on one run is a backstop beyond Lumina's per-run limit (900 s): a run whose supervisor is gone must not run for the default 48 hours.
@@ -34,9 +38,11 @@ NATIVE_BROWSER = {'enabled': True, 'headless': True, 'noSandbox': True, 'default
                   'extraArgs': ['--disable-dev-shm-usage', '--disable-background-networking']}
 
 
-def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL, tools=None, native_browser=False, switch=None, tool_origin_path=None):
+def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL, tools=None, native_browser=False, switch=None, tool_origin_path=None, own_model=None):
     """`tools` = (url, credential) of Lumina's tool relay: the cell's assistant then has the browser as a native tool, authenticated by the cell's own model key.
     `native_browser`: the cell's own browser is on (for the hands of Lumina's browser jobs); the assistant still cannot call it.
+    `own_model` = {'model': name} when the customer uses their own API key: the assistant then calls Lumina's relay (served by the tool relay at /byok/v1, so it needs `tools`) with its OWN
+    Lumina credential and uses their model by default. The customer's key is not here and never is: it is opened inside the relay for the length of one call.
     `switch(key) -> bool`: the account's safety switches (agentai_platform/safety.py), on unless the owner turned one off. Two of them shape the cell's config, and take effect the
     next time the cell starts: `tool_ceilings` (the assistant may not use the browser tool itself) and `ssrf_guard` (the cell's browser may not reach private addresses)."""
     on = switch or (lambda key: True)
@@ -47,8 +53,7 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL,
         'request': {'allowPrivateNetwork': True},
         'models': [
             {'id': 'claude-sonnet-5-5', 'name': 'Claude Sonnet 5.5', 'reasoning': False, 'input': ['text', 'image'], 'contextWindow': 200000, 'maxTokens': 8192},
-            {'id': 'claude-sonnet-4-6', 'name': 'Claude Sonnet 4.6', 'reasoning': True, 'input': ['text', 'image'], 'contextWindow': 200000, 'maxTokens': 4096},
-            {'id': 'claude-haiku-4-5', 'name': 'Claude Haiku 4.5', 'reasoning': False, 'input': ['text', 'image'], 'contextWindow': 200000, 'maxTokens': 4096}]}}}
+            {'id': 'claude-haiku-5-5', 'name': 'Claude Haiku 5.5', 'reasoning': False, 'input': ['text', 'image'], 'contextWindow': HAIKU_CONTEXT_WINDOW, 'maxTokens': 4096}]}}}
     config['agents'] = {'defaults': {'model': {'primary': default_model}, 'workspace': '/home/node/.openclaw/workspace',
                                      'sandbox': {'mode': 'off'}, 'heartbeat': {'every': '0m'}, 'timeoutSeconds': RUN_BACKSTOP_SECONDS}}
     deny = set((config.get('tools') or {}).get('deny') or []) | set(DENIED_TOOLS)
@@ -65,6 +70,16 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL,
         url, credential = tools
         config['mcp'] = {**(config.get('mcp') or {}), 'servers': {'lumina': {'url': url, 'transport': 'streamable-http', 'enabled': True, 'headers': {'Authorization': 'Bearer ' + credential},
                                                                            'connectionTimeoutMs': 5000, 'requestTimeoutMs': BROWSER_TOOL_TIMEOUT_MS}}}
+        if isinstance(own_model, dict):
+            from ..model_keys import MODEL, RELAY_PREFIX
+            model = own_model.get('model')
+            if isinstance(model, str) and MODEL.fullmatch(model):
+                config['models']['providers']['byok'] = {
+                    'baseUrl': url.rsplit('/mcp', 1)[0] + RELAY_PREFIX, 'api': 'openai-completions',
+                    'apiKey': {'source': 'env', 'provider': 'default', 'id': 'LITELLM_API_KEY'},      # the assistant's own Lumina credential, which the relay checks; never the customer's key
+                    'request': {'allowPrivateNetwork': True},
+                    'models': [{'id': model, 'name': model, 'reasoning': False, 'input': ['text'], 'contextWindow': OWN_MODEL_CONTEXT, 'maxTokens': OWN_MODEL_MAX_OUTPUT}]}
+                config['agents']['defaults']['model'] = {'primary': f'byok/{model}'}
     return config
 
 
@@ -123,16 +138,23 @@ class CellProvisioner:
     after_start(binding) gives the running cell working DNS."""
 
     def __init__(self, keys, secrets, cell_state_root, *, max_budget_usd=25, duration_days=35, chown=os.chown, run=None, search_key_file=None,
-                 sleep=time.sleep, tool_relay_url=None, native_browser=False, safety=None):
+                 sleep=time.sleep, tool_relay_url=None, native_browser=False, safety=None, own_model=None):
         self.tool_relay_url = tool_relay_url      # http://<bridge address>:<port>/mcp; None = cells get no Lumina tools
         self.native_browser = native_browser      # True: the cell's own browser is switched on (the hands of Lumina's browser jobs)
         self.safety = safety                      # agentai_platform.safety.Reader, or None: the account's safety switches (all on without it)
+        self.own_model = own_model                # account id -> {'model': name} for a customer who uses their own API key, else None (see own_model_reader)
         self.keys, self.secrets, self.root = keys, secrets, Path(cell_state_root)
         self.max_budget_usd, self.duration_days, self.chown, self.run = max_budget_usd, duration_days, chown, run
         self.search_key_file, self.sleep = (Path(search_key_file) if search_key_file else None), sleep
 
     def _switch(self, binding):
         return self.safety.for_account(binding.account_id) if self.safety is not None else None
+
+    def _own_model(self, binding):
+        try:
+            return self.own_model(binding.account_id) if self.own_model is not None else None
+        except Exception:
+            return None                          # unreadable: the assistant keeps Lumina's own model rather than a half-configured one
 
     def ensure_tool_origin(self, binding):
         if self.tool_relay_url:
@@ -193,7 +215,7 @@ class CellProvisioner:
         path = self.root / binding.tenant_ref / 'openclaw.json'
         try:
             current = json.loads(path.read_text())
-            wanted = patch(current, tools=self._tools(binding), native_browser=self.native_browser, switch=self._switch(binding))
+            wanted = patch(current, tools=self._tools(binding), native_browser=self.native_browser, switch=self._switch(binding), own_model=self._own_model(binding))
             if wanted != current:
                 tmp = path.with_suffix('.tmp')
                 tmp.write_text(json.dumps(wanted, indent=2))
@@ -309,9 +331,24 @@ class CellProvisioner:
         self.ensure_tool_origin(binding)
         self.ensure_browser_relay_secret(binding)
         path = self.root / binding.tenant_ref / 'openclaw.json'
-        config = patch(json.loads(path.read_text()), tools=self._tools(binding), native_browser=self.native_browser, switch=self._switch(binding))
+        config = patch(json.loads(path.read_text()), tools=self._tools(binding), native_browser=self.native_browser, switch=self._switch(binding), own_model=self._own_model(binding))
         tmp = path.with_suffix('.tmp')
         tmp.write_text(json.dumps(config, indent=2))
         os.chmod(tmp, 0o600)
         self.chown(tmp, CELL_UID, CELL_GID)
         os.replace(tmp, path)
+
+
+def own_model_reader(store_path=None, engine_path=None):
+    """account id -> {'model': name} when the account has saved its own model AND the feature is on for it, else None. Reads only the non-secret facts: no key, no decryption.
+    Called before every start of an assistant, so a change reaches it the next time it wakes."""
+    from .. import model_keys
+    store_path = store_path or model_keys.DEFAULT_STORE
+    engine_path = engine_path or model_keys.DEFAULT_ENGINE_FILE
+
+    def read(account_id):
+        if not model_keys.enabled_for(model_keys.read_engine(engine_path), account_id):
+            return None
+        facts = model_keys.public_facts(store_path, account_id)
+        return {'model': facts['model']} if facts else None
+    return read

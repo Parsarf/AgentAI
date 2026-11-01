@@ -428,3 +428,17 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .own-browser .dot { top: 5px; right: 5px; width: 7px; height: 7px; }
 .own-browser .dot.live { background: var(--success); }
 .own-browser .dot.waiting { background: none; border: 1.5px solid var(--text-muted); box-shadow: none; width: 6px; height: 6px; }
+
+/* Settings → Your own model */
+.own-model-field { display: grid; gap: var(--space-1); font-size: var(--text-sm); color: var(--text-secondary); }
+.own-model-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* A turn skips paint outside its box (content-visibility above), which cropped glows and markers that reach past its left edge. Give it room at the sides and take the room back
+   with a negative margin, so the text stays exactly where it was. */
+.chatpage { --turn-bleed: 20px; }
+.chatpage .turn { padding-inline: var(--turn-bleed); margin-inline: calc(var(--turn-bleed) * -1); max-width: calc(100% + var(--turn-bleed) * 2); }
+@media (max-width: 640px) { .chatpage { --turn-bleed: 12px; } }   /* the page margin is about 18px here: the bleed must stay inside it or the page scrolls sideways */
+
+/* The assistant's earlier messages for a finished answer, folded under a button */
+.work-trail { display: grid; gap: var(--space-2); justify-items: start; }
+.work-trail-body { display: grid; gap: var(--space-3); padding-left: var(--space-3); border-left: 2px solid var(--border-subtle); color: var(--text-secondary); width: 100%; }

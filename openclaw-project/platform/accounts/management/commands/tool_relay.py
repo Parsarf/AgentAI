@@ -9,6 +9,7 @@ from agentai_platform.events import EventService
 from agentai_platform.task_progress import TaskProgressTool
 from agentai_platform.switches import SwitchStore
 from agentai_platform.tool_relay import Identity, Relay, serve
+from agentai_platform import model_keys
 from accounts.lifecycle import AccountStore
 
 
@@ -20,7 +21,9 @@ def build(store):
         arguments = dict(arguments)
         nonce = arguments.pop('_lumina_origin', None)
         return BridgeRpc(account, settings.CELL_BRIDGE_SOCKET)('tools.origin', {'name': name, 'arguments': arguments, 'nonce': nonce})
-    return Relay(tool, progress=TaskProgressTool(store), origin=origin), Identity(identify)
+    own_models = model_keys.ModelRelay(model_keys.ModelKeyStore(settings.MODEL_KEY_STORE, model_keys.ModelKeyring.derived(settings.SECRET_KEY, settings.MODEL_KEY_FILE or None)),
+                                       lambda account: model_keys.enabled_for(model_keys.read_engine(settings.ENGINE_FILE), account))
+    return Relay(tool, progress=TaskProgressTool(store), origin=origin), Identity(identify), own_models
 
 
 class Command(BaseCommand):
@@ -31,7 +34,7 @@ class Command(BaseCommand):
         parser.add_argument('--port', type=int, default=settings.TOOL_RELAY_PORT)
 
     def handle(self, *args, **options):
-        relay, identity = build(AccountStore(connection.settings_dict['NAME']))
-        server = serve(relay, identity, options['bind'], options['port'])
+        relay, identity, own_models = build(AccountStore(connection.settings_dict['NAME']))
+        server = serve(relay, identity, options['bind'], options['port'], byok=own_models)
         print(f'tool relay on {options["bind"]}:{options["port"]}', flush=True)
         server.serve_forever()

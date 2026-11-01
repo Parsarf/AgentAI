@@ -24,18 +24,26 @@ JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
 JEV_MODEL = 'jev-1.14.0'            # box questions and pictures need 1.14; the same model decides controls steps and picture steps
 
 
-def local_enabled(config):
-    """The customer's-own-Chrome engine is available to everyone unless browse-engine.json says `"local": false`."""
-    return not (isinstance(config, dict) and config.get('local') is False)
+def local_enabled(config, account=None):
+    """Is the customer's-own-Chrome engine available to `account`? To everyone, unless browse-engine.json says `"local": false` (off for all) or `"local": ["<account id>", ...]`
+    (only those accounts: how it is tried out before it is opened to everyone). An empty list means nobody."""
+    if not isinstance(config, dict):
+        return True
+    local = config.get('local')
+    if local is False:
+        return False
+    if isinstance(local, list):
+        return account in local
+    return True
 
 
 def pick_engine(config, account, device_connected, wants_local=False):
     """Which hands a new job for `account` gets, from browse-engine.json: 'local' (the customer's own Chrome) when the customer has switched "use my own browser" on AND
-    their extension is connected right now AND the feature is not switched off for everyone (`"local": false`), else 'native' when listed under "native" (or the file's
+    their extension is connected right now AND the feature is open to that account (see local_enabled), else 'native' when listed under "native" (or the file's
     default is native), else the host stage. A switch that is on while the extension is off quietly means the hosted browser: the icon at the top of the chat says which."""
     if not isinstance(config, dict):
         return 'runner'
-    if wants_local and device_connected and local_enabled(config):
+    if wants_local and device_connected and local_enabled(config, account):
         return 'local'
     listed = config.get('native')
     if isinstance(listed, list) and account in listed:
@@ -123,25 +131,25 @@ def main():
         owner = read_secret(args.ultrafast_owner_file)
         return bool(owner) and account == owner and not safety.on(account, 'standard_browser')
 
-    def jev_for(account):
-        key = read_secret(args.jev_key_file)
-        if not key:
-            return None
-        if ultrafast_on(account):
-            return UltrafastChooser(JEV_ENDPOINT, key, http_post, read_secret(args.ultrafast_text_key_file), http_post)
-        return JevChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
-
     def picture_only_on(account):
         """The owner's navigation test (picture_only_brain.py): only for the owner's own account, and only while its `jev_sees_controls` switch is off (with a time limit). Read when a task starts."""
         owner = read_secret(args.ultrafast_owner_file)
         return bool(owner) and account == owner and not safety.on(account, 'jev_sees_controls')
 
+    def jev_for(account):
+        key = read_secret(args.jev_key_file)
+        if not key:
+            return None
+        if picture_only_on(account):
+            return PictureOnlyChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
+        if ultrafast_on(account):
+            return UltrafastChooser(JEV_ENDPOINT, key, http_post, read_secret(args.ultrafast_text_key_file), http_post)
+        return JevChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
+
     def spawn(job_id, out_dir):
         argv = stage_argv(job_id, str(out_dir), str(args.runner_dir), args.image)
         return ProcessTransport(argv, env={**os.environ, 'DOCKER_HOST': docker_host})
 
-        if picture_only_on(account):
-            return PictureOnlyChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
     from ..safety import Reader
     safety = Reader(args.safety_file)
 
@@ -155,9 +163,9 @@ def main():
     device_store = DeviceStore(args.device_store)
 
     def local_allowed(account):
-        """Is the customer's-own-Chrome engine on at all? Yes unless the engine file says `"local": false` (read each time, like the engine choice itself)."""
+        """Is the customer's-own-Chrome engine open to this account? See local_enabled (read each time, like the engine choice itself)."""
         try:
-            return local_enabled(json.loads(args.engine_file.read_text()))
+            return local_enabled(json.loads(args.engine_file.read_text()), account)
         except (OSError, ValueError):
             return True
 

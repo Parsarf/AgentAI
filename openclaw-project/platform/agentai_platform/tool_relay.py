@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .adapters import CapabilityUnavailable
 from .browse.adapter import STEP, STEP_NAME, TOOL, TOOL_NAME, BrowserTool
+from .model_keys import RELAY_PREFIX
 from .task_progress import TOOL as PROGRESS_TOOL, TOOL_NAME as PROGRESS_NAME
 
 PROTOCOL_VERSIONS = ('2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05')
@@ -158,7 +159,8 @@ class Relay:
         return {'jsonrpc': '2.0', 'id': rid, 'error': {'code': code, 'message': message}}
 
 
-def make_handler(relay: Relay, identity: Identity):
+def make_handler(relay: Relay, identity: Identity, byok=None):
+    """`byok` (model_keys.ModelRelay) adds /byok/v1: the assistant's model calls for a customer who uses their own key. Same caller check as the tools."""
     class Handler(BaseHTTPRequestHandler):
         protocol_version = 'HTTP/1.1'
 
@@ -182,23 +184,76 @@ def make_handler(relay: Relay, identity: Identity):
             except OSError:
                 return True
 
-        def do_GET(self):
-            self._send(405, {'error': 'method not allowed'})          # no server-sent events: replies are plain JSON
-
-        def do_DELETE(self):
-            self._send(200, {})
-
-        def do_POST(self):
-            if self.path.split('?', 1)[0] != '/mcp':
-                return self._send(404, {'error': 'not found'})
+        def _caller(self):
+            """The account behind this request's bearer credential, or None after the refusal has been sent."""
             header = self.headers.get('Authorization', '')
             credential = header[7:].strip() if header.lower().startswith('bearer ') else ''
             try:
                 account = identity.account(credential, self.client_address[0]) if len(credential) >= 8 else None
             except PermissionError:
-                return self._send(429, {'error': 'slow down'})
+                self._send(429, {'error': 'slow down'})
+                return None
             if not account:
-                return self._send(401, {'error': 'unauthorized'})
+                self._send(401, {'error': 'unauthorized'})
+            return account or None
+
+        def _model_error(self, exc):
+            from .model_keys import error_body
+            self._send(exc.status, error_body(exc.message, exc.code))
+
+        def do_GET(self):
+            if byok is not None and self.path.split('?', 1)[0] == RELAY_PREFIX + '/models':
+                account = self._caller()
+                if account:
+                    from .model_keys import RelayError
+                    try:
+                        self._send(200, byok.models(account))
+                    except RelayError as exc:
+                        self._model_error(exc)
+                return
+            self._send(405, {'error': 'method not allowed'})          # no server-sent events: replies are plain JSON
+
+        def do_DELETE(self):
+            self._send(200, {})
+
+        def _byok_chat(self):
+            from .model_keys import MAX_REQUEST_BYTES, RelayError
+            account = self._caller()
+            if not account:
+                return
+            length = self.headers.get('Content-Length', '')
+            if not length.isdecimal() or not 0 < int(length) <= MAX_REQUEST_BYTES:
+                return self._send(413, {'error': 'bad length'})
+            raw = self.rfile.read(int(length))
+            try:
+                up = byok.chat(account, raw)
+            except RelayError as exc:
+                return self._model_error(exc)
+            ctype = up.content_type if up.content_type.split(';')[0].strip().lower() in ('application/json', 'text/event-stream') else 'application/json'
+            self.send_response(up.status)
+            self.send_header('Content-Type', ctype)
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Connection', 'close')                                  # the reply may stream; its end is the end of the connection
+            self.end_headers()
+            self.close_connection = True
+            try:
+                for chunk in up.chunks():
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+            except OSError:
+                pass                                                                  # the assistant hung up: stop reading from the customer's endpoint
+            finally:
+                up.close()
+
+        def do_POST(self):
+            path = self.path.split('?', 1)[0]
+            if byok is not None and path == RELAY_PREFIX + '/chat/completions':
+                return self._byok_chat()
+            if path != '/mcp':
+                return self._send(404, {'error': 'not found'})
+            account = self._caller()
+            if not account:
+                return
             length = self.headers.get('Content-Length', '')
             if not length.isdecimal() or not 0 < int(length) <= MAX_BODY:
                 return self._send(413, {'error': 'bad length'})
@@ -215,7 +270,7 @@ def make_handler(relay: Relay, identity: Identity):
     return Handler
 
 
-def serve(relay: Relay, identity: Identity, host: str, port: int):
-    server = ThreadingHTTPServer((host, port), make_handler(relay, identity))
+def serve(relay: Relay, identity: Identity, host: str, port: int, byok=None):
+    server = ThreadingHTTPServer((host, port), make_handler(relay, identity, byok))
     server.daemon_threads = True
     return server

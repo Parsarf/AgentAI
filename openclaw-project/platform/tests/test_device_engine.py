@@ -50,8 +50,16 @@ class PickEngineChecks(unittest.TestCase):
     def test_one_line_in_the_engine_file_switches_it_off_for_everyone(self):
         self.assertEqual(pick_engine({'local': False}, 'a', True, True), 'runner')
         self.assertEqual(pick_engine({'local': False, 'native': ['a']}, 'a', True, True), 'native')
-        self.assertFalse(local_enabled({'local': False}))
-        for config in ({}, {'local': True}, {'local': ['a']}, {'local': None}, None, [], 'x'): self.assertTrue(local_enabled(config), config)
+        self.assertFalse(local_enabled({'local': False}, 'a'))
+        for config in ({}, {'local': True}, {'local': None}, None, [], 'x'): self.assertTrue(local_enabled(config, 'a'), config)
+
+    def test_a_list_opens_it_to_those_accounts_only_which_is_how_it_is_tried_out_first(self):
+        cfg = {'local': ['a']}
+        self.assertTrue(local_enabled(cfg, 'a')); self.assertFalse(local_enabled(cfg, 'b')); self.assertFalse(local_enabled(cfg))
+        self.assertEqual(pick_engine(cfg, 'a', True, True), 'local')
+        self.assertEqual(pick_engine(cfg, 'b', True, True), 'runner')              # b switched it on and has an extension connected, but is not on the list
+        self.assertEqual(pick_engine(cfg, 'a', False, True), 'runner'); self.assertEqual(pick_engine(cfg, 'a', True, False), 'runner')
+        self.assertFalse(local_enabled({'local': []}, 'a'))                       # an empty list is nobody
 
     def test_the_older_engine_rules_are_unchanged(self):
         self.assertEqual(pick_engine({'native': ['a']}, 'a', False), 'native'); self.assertEqual(pick_engine({'native': ['a']}, 'z', False), 'runner')
