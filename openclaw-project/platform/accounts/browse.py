@@ -57,11 +57,12 @@ def run(request, request_id):
     row = _run(request, request_id)
     since = int(request.GET.get('since', '0')) if request.GET.get('since', '0').isdecimal() else 0
     job, base = _job(request, request_id)                 # a later session is a job of its own; its step numbers continue the request's (base = steps before it)
-    live, events, takeover, question = None, None, False, None
+    live, events, takeover, question, needs_you = None, None, False, None, None
     if row['status'] in LIVE:
         try:
             live = _rpc(request)('poll', request_id=job, since=max(0, since - base))          # the service is authoritative while a job is alive
             events, takeover, question = [{**e, 'n': e['n'] + base} for e in live['events']], bool(live.get('takeover')), live.get('question')
+            needs_you = live.get('needs_you') or None      # the run is waiting for the customer to do something only they can (sign in, a password, a human check)
             row = {**row, 'status': live['state'], 'url': live.get('url') or row['url'], 'answer': live.get('answer') or row['answer'], 'reason': live.get('reason') or row['reason']}
         except CapabilityUnavailable:
             live = None
@@ -70,7 +71,7 @@ def run(request, request_id):
             events = [{'n': r['n'], 'kind': r['kind'], **json.loads(r['data_json'])} for r in con.execute(
                 'SELECT n,kind,data_json FROM browse_steps WHERE account_id=? AND request_id=? AND n>? ORDER BY n LIMIT 200', (request.account_id, request_id, since)).fetchall()]
     pending = json.loads(row['pending_json']) if row.get('pending_json') else None
-    return JsonResponse({**_public(row), 'answer': row['answer'], 'reason': row['reason'], 'takeover': takeover, 'pending_action': pending, 'question': question, 'events': events})
+    return JsonResponse({**_public(row), 'answer': row['answer'], 'reason': row['reason'], 'takeover': takeover, 'needs_you': needs_you, 'pending_action': pending, 'question': question, 'events': events})
 
 
 @endpoint(['GET'])

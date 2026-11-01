@@ -35,6 +35,9 @@ BUDGET_CATEGORIES = (
 )
 
 
+UI_ANSWER_PREFIX = 'ui-answer:'        # see send(): marks the message an answer given through a UI component, so the chat does not show it as a bubble
+
+
 class UnmeasuredRoute:
     """Production default: no verified metered provider route exists, so no
     send can be funded. Requests stay waiting, like the request page."""
@@ -113,7 +116,7 @@ class ChatService:
                 coalesce(c.title,(SELECT substr(m.content,1,90) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id
                     AND m.provenance IN ('customer','telegram') ORDER BY m.id LIMIT 1)) AS title,
                 (SELECT max(m.created_at) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id) AS last_activity,
-                (SELECT substr(m.content,1,240) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) AS preview,
+                (SELECT substr(m.content,1,240) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id AND coalesce(m.native_message_id,'') NOT LIKE 'ui-answer:%' ORDER BY m.id DESC LIMIT 1) AS preview,
                 (SELECT count(*) FROM customer_requests r WHERE r.account_id=c.account_id AND r.conversation_id=c.id
                     AND r.state IN ('waiting','starting','running','uncertain')) AS active
                 FROM conversations c WHERE c.account_id=?"""
@@ -248,8 +251,10 @@ class ChatService:
             if not con.execute("""SELECT 1 FROM chat_messages WHERE account_id=? AND conversation_id=?
                 AND request_id=? AND provenance IN ('customer','telegram')""",
                                (principal.account_id, conversation_id, result['id'])).fetchone():
-                con.execute('''INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content,surface)
-                    VALUES (?,?,?,?,?,?)''', (principal.account_id, conversation_id, result['id'], provenance, message, surface))
+                # An answer given through a UI component is still the person's message (the assistant gets it), but the chat shows the locked component instead of a bubble:
+                # the row carries the marker UI_ANSWER_PREFIX in native_message_id (a nullable column, unique per request), which `messages()` reports as `ui_answer`.
+                con.execute('''INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content,native_message_id,surface)
+                    VALUES (?,?,?,?,?,?,?)''', (principal.account_id, conversation_id, result['id'], provenance, message, UI_ANSWER_PREFIX + result['id'] if ui_event is not None else None, surface))
             self.coordinator._audit(con, principal.account_id, principal.actor_id, result['id'], 'chat.send.panel' if surface == 'panel' else 'chat.send', 'completed')
         own = self.unmetered(principal.account_id)
         try:
@@ -441,7 +446,7 @@ class ChatService:
         self.conversation(principal, conversation_id)
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            rows = con.execute('''SELECT id,request_id,provenance,content,created_at,surface FROM chat_messages
+            rows = con.execute('''SELECT id,request_id,provenance,content,created_at,surface,(coalesce(native_message_id,'') LIKE 'ui-answer:%') AS ui_answer FROM chat_messages
                 WHERE account_id=? AND conversation_id=? AND id>? ORDER BY id LIMIT ?''',
                 (principal.account_id, conversation_id, after, limit + 1)).fetchall()
             tasks = con.execute('''SELECT r.id,r.state,r.paused,r.cancel_requested,r.result,r.created_epoch,r.outcome,r.outcome_note,r.verification,r.parked_reason,r.goal_mode,r.continues,
@@ -465,7 +470,7 @@ class ChatService:
         with self.store.connect() as con:
             self.store._authorize(con, principal)
             rows = con.execute('''SELECT id,request_id,provenance,content,created_at,surface FROM chat_messages
-                WHERE account_id=? AND conversation_id=? ORDER BY id DESC LIMIT ?''', (principal.account_id, conversation_id, limit)).fetchall()
+                WHERE account_id=? AND conversation_id=? AND coalesce(native_message_id,'') NOT LIKE 'ui-answer:%' ORDER BY id DESC LIMIT ?''', (principal.account_id, conversation_id, limit)).fetchall()
             latest = con.execute('''SELECT id,state,paused,outcome FROM customer_requests WHERE account_id=? AND conversation_id=? ORDER BY sequence DESC LIMIT 1''',
                                  (principal.account_id, conversation_id)).fetchone()
         return {'conversation_id': conversation_id, 'messages': [dict(r) for r in reversed(rows)], 'request': dict(latest) if latest else None,

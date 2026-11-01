@@ -90,6 +90,7 @@ class BrowseError(Exception):
     pass
 
 
+HAND_POLL_SECONDS = 2                          # while the customer signs in or passes a check, the page is looked at this often to see whether they are done
 ASK_SECONDS = 300                              # a question waits this long for an answer (each click on the page while choosing renews it)
 AGENT_WAIT_SECONDS = 180                       # how long the loop waits for the assistant's next step before it gives the task up
 AGENT_RETRIES = 3                              # an invalid step is handed back to the assistant to correct this many times in a row
@@ -129,6 +130,7 @@ class Job:
         self.last_shot = 0.0
         self.trace = NULL                           # set when the run starts: the operator's record (trace.py)
         self.pause_req = threading.Event()          # the user asked for the wheel; the loop acknowledges at the next step boundary (state -> 'paused')
+        self.needs = ''                             # while the run waits for the customer to do something only they can (sign in, a password, a human check): what, in words
         self.stats = dict.fromkeys(STAT_KEYS, 0)
         self.observation, self.obs_n = None, 0      # while the assistant is asked for the next step: {'n', 'text'}
         self.agent_box, self.agent_ev = None, threading.Event()
@@ -210,7 +212,7 @@ class BrowseService:
             events = [e for e in job.events if e['n'] > since]
         return {'state': job.state, 'reason': job.reason, 'answer': job.answer, 'url': job.url, 'pending_action': job.pending,
                 'cost_microusd': job.cost, 'events': events, 'takeover': job.state in ('handoff', 'paused', 'asking') and self.clock() < job.takeover_until,
-                'pausing': job.state == 'running' and job.pause_req.is_set(), 'jev': dict(job.stats), 'question': self._public_question(job),
+                'pausing': job.state == 'running' and job.pause_req.is_set(), 'needs_you': job.needs or None, 'jev': dict(job.stats), 'question': self._public_question(job),
                 'observation': job.observation if job.state == 'running' else None}
 
     def cancel(self, account, request_id):
@@ -402,6 +404,42 @@ class BrowseService:
             return self.clock() - began
         return gate
 
+    def _hand_gate(self, job):
+        """The run needs the customer (a sign-in, a password, a human check). It stays alive in the 'paused' state, the customer works in the browser (control), and the run goes on when they
+        press Continue (resume) or, when `still_blocked` is given, when the page has stopped being that kind of page twice in a row (so a page still loading does not count). Idle limit as
+        for any take-over. -> (outcome, seconds waited)."""
+        def gate(reason, probe=None, still_blocked=None):
+            began = self.clock()
+            with job.lock:
+                job.pause_req.set()
+                job.state, job.needs = 'paused', reason
+                job.takeover_until = began + self.takeover_seconds
+            job.add('status', {'state': 'paused', 'reason': reason, 'needs_you': True})
+            outcome, clear, next_poll = 'timeout', 0, began + HAND_POLL_SECONDS
+            while True:
+                if job.cancel.is_set():
+                    outcome = 'cancelled'; break
+                if not job.pause_req.is_set():
+                    outcome = 'resumed'; break
+                if self.clock() >= job.takeover_until:
+                    break
+                if probe is not None and still_blocked is not None and self.clock() >= next_poll:
+                    next_poll = self.clock() + HAND_POLL_SECONDS
+                    with job.lock:                                  # the customer's clicks use the same session: one call at a time
+                        snap = probe()
+                    clear = clear + 1 if snap.get('ok') and not still_blocked(snap) else 0
+                    if clear >= 2:
+                        outcome = 'auto'; break
+                self.sleep(0.05)
+            job.pause_req.clear()
+            with job.lock:
+                if job.state == 'paused':
+                    job.state = 'running'
+                job.needs = ''
+            job.add('status', {'state': 'running', 'reason': 'Lumina continues' if outcome in ('resumed', 'auto') else 'the wait is over'})
+            return outcome, self.clock() - began
+        return gate
+
     def control(self, account, request_id, action, *, x=None, y=None, text=None):
         """Takeover: after a hand-off, or while paused, only while the window is open, one action at a time."""
         job = self._job(account, request_id)
@@ -555,7 +593,7 @@ class BrowseService:
                 live_now.write(out_dir, now_seq[0], by, mode, note)      # who is deciding, for the live view (codes only)
 
             result = BrowseRunner(session, ladder, policy=Policy(read_only=True, switch=self.switch_for(job.account)), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
-                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault).run(job.goal, start)
+                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), hand_gate=self._hand_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
             job.url = result.url or job.url

@@ -39,7 +39,7 @@ export interface AppInfo {
   api_version: string;
   user: { email: string; role: string };
   assistant: { state: string };
-  features: { chat: boolean; execution: boolean; files: boolean; uploads: boolean; telegram: boolean; connectors: boolean; billing_mode: string; requests: boolean; usage: boolean; browse?: boolean };
+  features: { chat: boolean; execution: boolean; files: boolean; uploads: boolean; telegram: boolean; connectors: boolean; mcp?: boolean; billing_mode: string; requests: boolean; usage: boolean; browse?: boolean };
   limits: { max_message_chars: number; max_projects: number; max_conversations_per_project: number };
 }
 /** `outcome` is how the task ended for the customer (completed, partial, blocked, failed, cancelled), apart from `state`, which only says the run is over; `verification` says whether

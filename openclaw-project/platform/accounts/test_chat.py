@@ -269,7 +269,7 @@ class UiContractChecks(ChatHTTPChecks):
         self.assertEqual(anon.get('/v1/app', secure=True).status_code, 401)
         app = self.clients[0].get('/v1/app', secure=True).json()
         self.assertEqual(app['user']['email'], 'chatter@example.invalid')
-        self.assertEqual(set(app['features']), {'chat', 'execution', 'browse', 'files', 'uploads', 'telegram', 'connectors', 'billing_mode', 'requests', 'usage'})
+        self.assertEqual(set(app['features']), {'chat', 'execution', 'browse', 'files', 'uploads', 'telegram', 'connectors', 'mcp', 'billing_mode', 'requests', 'usage'})
         self.assertNotIn('account_id', json.dumps(app))                     # the shell never needs, and is never handed, internal ids
         d = tempfile.mkdtemp()
         with override_settings(UI_BUNDLE_DIR=d):

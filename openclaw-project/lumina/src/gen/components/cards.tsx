@@ -2,19 +2,22 @@ import { useState } from 'react';
 import { formatCell } from '../../lib/genui/data';
 import { safeHttpUrl } from '../safety';
 import { cx, type B, type P } from './types';
-import { useGen, useLocal } from './context';
+import { useGen, useLocal, useNodeId } from './context';
 import { Prose } from './text';
 import type { Action } from '../schemas';
 
 /** A button that runs one allowlisted action and says what happened. */
 export function ActionButton({ label, action, style = 'secondary', disabled, nonce, destructiveStyle }: { label: string; action: Action; style?: string; disabled?: boolean; nonce?: string; destructiveStyle?: boolean }) {
   const g = useGen(); const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle'); const [msg, setMsg] = useState('');
+  // A request sent from a component is a final answer for that component: the rest of it locks, and the button that was pressed stays marked (also after a reload).
+  const nodeId = useNodeId(); const [l, setLocal] = useLocal(nodeId ?? '', {} as { answered?: boolean; chosen?: string });
+  const isRequest = action.kind === 'agent.request'; const answered = isRequest && !!nodeId && !!l.answered; const chosen = answered && !!nonce && l.chosen === nonce;
   const run = async () => {
     setState('busy'); const r = await g.act(action, { nonce, destructiveStyle: destructiveStyle || style === 'destructive' });
-    if (r.ok) { setState('done'); setMsg(''); } else { setState(r.reason === 'declined' ? 'idle' : 'error'); setMsg(r.message); }
+    if (r.ok) { setState('done'); setMsg(''); if (isRequest && nodeId) setLocal({ answered: true, chosen: nonce }); } else { setState(r.reason === 'declined' ? 'idle' : 'error'); setMsg(r.message); }
   };
   const cls = style === 'primary' ? 'btn primary' : style === 'destructive' ? 'btn danger' : style === 'ghost' ? 'btn tertiary' : 'btn';
-  return <span className="gen-act"><button className={cx(cls, 'small')} disabled={disabled || g.readOnly || state === 'busy' || state === 'done'} onClick={run}>{state === 'done' ? `✓ ${label}` : label}</button>
+  return <span className="gen-act"><button className={cx(cls, 'small')} disabled={disabled || g.readOnly || answered || state === 'busy' || state === 'done'} aria-pressed={answered ? chosen : undefined} onClick={run}>{state === 'done' || chosen ? `✓ ${label}` : label}</button>
     <span role="status" className={cx('gen-act-msg', state === 'error' && 'err')}>{state === 'error' ? msg : ''}</span></span>;
 }
 

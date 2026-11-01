@@ -139,7 +139,7 @@ def assistant():
                                for k in value.keys if isinstance(k, ast.Constant)}),
         'tools_switched_off': sorted(constants.get('DENIED_TOOLS', ())),
         'dns_servers': sorted(constants.get('RESOLVERS', ())),
-        'remote_mcp_connections': 'RemoteTools(mcp_service(store))' in _read(PLATFORM / 'accounts' / 'management' / 'commands' / 'tool_relay.py'),
+        'remote_mcp_connections': 'RemoteTools(mcp_service(store)' in _read(PLATFORM / 'accounts' / 'management' / 'commands' / 'tool_relay.py'),
         'own_model_endpoint': "'byok'" in text and 'own_model' in text,       # a customer may point their assistant at a model company of their choosing (their own API key): that company becomes a recipient
     }
 

@@ -1,9 +1,11 @@
 import contextlib
 import io
+import os
+import tempfile
 import time
 import uuid
 from unittest.mock import patch
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import connection
@@ -35,6 +37,28 @@ class McpHTTPChecks(TestCase):
         def factory(store=None):
             return ConnectionService(store or AccountStore(connection.settings_dict['NAME']),ModelKeyring.derived('s'*64),callback_url='https://localhost/v1/account/mcp/callback',remote=InstantRemote())
         p=patch('accounts.mcp_connections.service',factory);p.start();self.addCleanup(p.stop)
+        self.switch=tempfile.NamedTemporaryFile('w',suffix='.json',delete=False);self.addCleanup(os.unlink,self.switch.name)
+        self.switch.write('{"mcp_connections": true}');self.switch.close()
+        s=override_settings(MCP_SWITCH_FILE=self.switch.name);s.enable();self.addCleanup(s.disable)       # the feature is off unless the owner turns it on
+    def test_the_feature_is_off_until_the_owner_turns_it_on_and_off_again_at_once(self):
+        for content in ('{}','{"mcp_connections": false}','{"mcp_connections": []}','not json'):
+            with self.subTest(content=content):
+                open(self.switch.name,'w').write(content)
+                client=self.clients[0]
+                self.assertEqual(client.get('/v1/account/mcp',secure=True).status_code,404)
+                self.assertEqual(self.post(client,'/v1/account/mcp',{'name':'F','url':URL,'auth_method':'none','token':''}).status_code,404)
+                self.assertEqual(self.post(client,'/v1/account/mcp/abc/test',{}).status_code,404)
+                self.assertEqual(self.post(client,'/v1/account/mcp-approvals/abc',{'approved':True}).status_code,404)
+                self.assertIs(client.get('/v1/app',secure=True).json()['features']['mcp'],False)
+        open(self.switch.name,'w').write('{"mcp_connections": true}')
+        self.assertEqual(self.clients[0].get('/v1/account/mcp',secure=True).status_code,200)
+        self.assertIs(self.clients[0].get('/v1/app',secure=True).json()['features']['mcp'],True)
+        cid=self.create()
+        open(self.switch.name,'w').write('{"mcp_connections": false}')                  # switched off again: stored connections stay, but nothing answers
+        self.assertEqual(self.post(self.clients[0],f'/v1/account/mcp/{cid}/disconnect',{}).status_code,404)
+        open(self.switch.name,'w').write('{"mcp_connections": true}')
+        self.assertEqual(self.clients[0].get('/v1/account/mcp',secure=True).json()['connections'][0]['id'],cid)
+
     def create(self,auth='none',token=''):
         r=self.post(self.clients[0],'/v1/account/mcp',{'name':'Fixture','url':URL,'auth_method':auth,'token':token})
         self.assertEqual(r.status_code,201,r.content);return r.json()['id']

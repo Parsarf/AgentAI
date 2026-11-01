@@ -104,8 +104,10 @@ export function LiveRun({ id, inline = false, taskState }: { id: string; inline?
               ? <span className="muted" role="status">Pausing after Lumina’s current step…</span>
               : <><button className="btn primary" onClick={() => act('pause')}>Take control</button><span className="faint">Pause Lumina, then use the browser yourself.</span></>}</div>)}
           {browse && run && driving && (
-            <div className="live-bar col live-assistance" role="region" aria-label="Your assistance is needed"><h3>{run.status === 'paused' ? 'You are in control' : 'Lumina needs your help'}</h3>
-              <p className="muted">{run.status === 'paused'
+            <div className="live-bar col live-assistance" role="region" aria-label="Your assistance is needed"><h3>{run.needs_you || run.status !== 'paused' ? 'Lumina needs your help' : 'You are in control'}</h3>
+              <p className="muted">{run.needs_you
+                ? `${run.needs_you} Lumina waits, and carries on by itself when it sees the page has moved on.`
+                : run.status === 'paused'
                 ? 'You have the wheel. Lumina is waiting. Click the screen to point, type to enter text, scroll with the wheel.'
                 : `${run.pending_action?.label ? `Lumina stopped before: ${run.pending_action.label}. ` : 'Lumina stopped at a step that needs you. '}Complete the remaining steps in the browser below yourself. End the browser session when you are finished.`}</p>
               {mode !== 'screen' ? <button className="btn primary" onClick={() => setPinned('screen')}>Return to browser</button> : <form className="live-type" autoComplete="off" onSubmit={e => { e.preventDefault(); if (text) { flush(); void send({ action: 'type', text }); setText(''); } }}>
@@ -115,7 +117,7 @@ export function LiveRun({ id, inline = false, taskState }: { id: string; inline?
                 <button className="btn" type="button" onClick={() => { flush(); void send({ action: 'key', text: 'Enter' }); }}>Enter</button>
                 <button className="btn" type="button" onClick={() => void send({ action: 'scroll', text: 'up' })}>Scroll up</button>
                 <button className="btn" type="button" onClick={() => void send({ action: 'scroll', text: 'down' })}>Scroll down</button>
-                <button className="btn primary" type="button" onClick={async () => { await flush(); await act(run.status === 'paused' ? 'resume' : 'release'); }}>{run.status === 'paused' ? 'Continue with Lumina' : 'End browser session'}</button>
+                <button className="btn primary" type="button" onClick={async () => { await flush(); await act(run.status === 'paused' ? 'resume' : 'release'); }}>{run.needs_you ? 'I’m done, continue' : run.status === 'paused' ? 'Continue with Lumina' : 'End browser session'}</button>
               </form>}
             </div>)}
           {isBrowse === false && rows.some(r => r.category === 'browse' && r.status === 'failed') && <div className="live-assistance" role="status"><h3>Browser could not start</h3><p>This task did not open an interactive browser session. Its recorded steps are shown below.</p><Link className="btn small" to={request?.conversation_id ? `/chat/${request.conversation_id}` : '/chat'}>Open chat for help</Link></div>}

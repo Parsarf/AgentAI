@@ -142,6 +142,7 @@ BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'        
 
 # Remote MCP custody uses the host-only encryption key; no credentials enter cells.
 MCP_KEY_FILE = os.environ.get('AGENTAI_MCP_KEY_FILE', '')
+MCP_SWITCH_FILE = os.environ.get('AGENTAI_MCP_SWITCH_FILE', '/var/lib/agentai-platform/mcp-connections.json')      # who may use remote MCP connections; off until turned on (agentai_platform/mcp_connections/switch.py)
 MCP_OAUTH_CLIENTS_FILE = os.environ.get('AGENTAI_MCP_OAUTH_CLIENTS_FILE', '')
 ASANA_MCP_CLIENT_ID = os.environ.get('ASANA_MCP_CLIENT_ID', '')
 ASANA_MCP_CLIENT_SECRET = os.environ.get('ASANA_MCP_CLIENT_SECRET', '')

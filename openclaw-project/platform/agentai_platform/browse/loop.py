@@ -15,6 +15,11 @@ from .trace import NULL
 
 LOGIN_REASON = 'this page needs you to sign in; I never type passwords'
 WALL_REASON = 'the site is asking to verify you are human, which I cannot pass for you'
+# What the customer is told while the run waits for them (the run stays alive, and carries on when they are done).
+WAIT_WALL = 'The site is asking you to verify you are human. Do it in the browser below, then press Continue.'
+WAIT_LOGIN = 'This page needs you to sign in. Lumina never types your password. Sign in in the browser below, then press Continue.'
+WAIT_PASSWORD = 'The next step is a password. Lumina never types passwords. Enter it in the browser below, then press Continue.'
+MAX_HANDOFFS = 5        # times one run waits for the customer; after that the same stop ends the run as it always did
 DEFAULT_DENY = re.compile(r'(^|\.)(paypal|venmo|cash\.app|chase|bankofamerica|wellsfargo|citi|capitalone|robinhood|coinbase|binance|fidelity|schwab|vanguard)\.', re.I)
 
 
@@ -84,7 +89,7 @@ class Result:
 class BrowseRunner:
     def __init__(self, session, ladder: Ladder, *, policy: Policy | None = None, on_event=lambda kind, data: None, cancelled=lambda: False,
                  max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0, wait=time.sleep, on_stat=lambda name, n=1: None, trace=NULL,
-                 on_now=lambda by, mode, note: None, ask_gate=None, prefs=None, vault=None):
+                 on_now=lambda by, mode, note: None, ask_gate=None, prefs=None, vault=None, hand_gate=None):
         self.s, self.ladder, self.policy, self.on_event, self.cancelled = session, ladder, policy or Policy(), on_event, cancelled
         self.max_steps, self.max_seconds, self.shots, self.clock = max_steps, max_seconds, shots, clock
         self.trace = trace
@@ -94,6 +99,8 @@ class BrowseRunner:
         self.prefs = {str(k).lower(): str(v) for k, v in (prefs or {}).items() if k and v}      # what the customer told us before, by field (size -> M); never secrets
         self.vault = [i for i in (vault or []) if isinstance(i, dict) and i.get('kind') in ('login', 'card') and isinstance(i.get('id'), str)]      # what the customer keeps (label, site, hint): never the secrets
         self._filled = set()               # sites where a saved login was already used in this run: one try per site
+        self.hand_gate = hand_gate          # hand_gate(reason, probe=, still_blocked=) -> (outcome, seconds waited): keeps the run alive while the customer does what only they can (None = the run ends instead)
+        self._handoffs = 0
         self.on_now, self._now = on_now, None   # on_now(by, mode, note): who is deciding right now ('jev' | 'claude'), from what ('controls' | 'picture'), and a one-word code for a change worth a little notice
 
     def _publish(self, by, mode, note=''):
@@ -170,6 +177,10 @@ class BrowseRunner:
                 snap = again
             if walls and cand.page_is_bot_check(snap.get('title', ''), snap.get('text', '')):
                 self.trace.emit('floor', rule='bot check wall')
+                outcome, waited = self._wait_for_user(WAIT_WALL, lambda s: cand.page_is_bot_check(s.get('title', ''), s.get('text', '')), step, history, snap.get('url', ''))
+                started += waited
+                if outcome != 'timeout':          # they did it (or asked to stop): read the page again
+                    continue
                 return self._end(res, 'handoff', WALL_REASON, history, snap.get('url', ''))
             url = snap.get('url', '')
             if not self.policy.url_ok(url):
@@ -187,9 +198,13 @@ class BrowseRunner:
                 return self._end(res, 'handoff', 'reached a payment step; you take it from here', history, url)
             if walls and cand.page_is_login(snap.get('snapshot', '')):
                 self.trace.emit('floor', rule='sign-in page')
-                outcome, waited = self._offer_fill('login', url, snap, step, history)
+                outcome, waited = self._offer_fill('login', url, snap, step, history) if self._handoffs == 0 else ('none', 0)       # asked once; coming back to the page means they chose to do it themselves
                 started += waited
                 if outcome == 'filled':        # signed in with the saved login: the next step reads the page after it, never this one
+                    continue
+                outcome, waited = self._wait_for_user(WAIT_LOGIN, lambda s: cand.page_is_login(s.get('snapshot', '')), step, history, url)
+                started += waited
+                if outcome != 'timeout':
                     continue
                 return self._end(res, 'handoff', LOGIN_REASON, history, url)       # before any model, so a sign-in page is never sent to a third party
             # Say what the last scroll did, now that the page has been read again: where it is, or that it was already at the bottom.
@@ -247,7 +262,11 @@ class BrowseRunner:
                 res.answer = d.answer
                 return self._end(res, 'done', d.reason, history, url)
             if d.kind == 'handoff':
-                return self._end(res, 'handoff', d.reason, history, url)         # JEV added a hand-off; it can never remove one
+                outcome, waited = self._wait_for_user(d.reason or WAIT_LOGIN, None, step, history, url)       # JEV added a hand-off; it can never remove one. They press Continue when they are done
+                started += waited
+                if outcome != 'timeout':
+                    continue
+                return self._end(res, 'handoff', d.reason, history, url)
             if d.kind == 'stop':
                 return self._end(res, 'stopped', d.reason or 'could not continue', history, url)
             if d.kind == 'ask' and d.question.get('kind') == 'fields':
@@ -284,7 +303,7 @@ class BrowseRunner:
                 probed = self.s.probe(a['x'], a['y'])
                 hit = probed.get('hit') if probed.get('ok') else None
                 a['label'] = (hit or {}).get('label', '')
-                chosen = {'sensitive': bool(hit and hit.get('secret')) or bool(cand.SENSITIVE.search(a['label'])), 'label': a['label']}
+                chosen = {'sensitive': bool(hit and hit.get('secret')) or bool(cand.SENSITIVE.search(a['label'])), 'label': a['label'], 'password': bool(hit and hit.get('secret'))}
                 self.trace.emit('probe', found=hit is not None, tag=(hit or {}).get('tag'), editable=(hit or {}).get('editable'), secret=(hit or {}).get('secret'))
                 if a['action'] == 'typeat' and hit is not None and not hit.get('editable'):
                     entry = {'step': step, 'by': d.by, 'action': 'type', 'label': a['label'], 'result': 'not_a_field', 'changed': None}      # nothing was typed: what JEV pointed at takes no text
@@ -297,6 +316,11 @@ class BrowseRunner:
                     continue
             if self.policy.gate(url, snap.get('snapshot', ''), page['text'], chosen) == 'handoff':
                 self.trace.emit('floor', rule='sensitive control', label=a['label'])
+                if chosen and (chosen.get('input_type') == 'password' or chosen.get('password')):       # a password is the customer's: they enter it, press Continue, and the run goes on
+                    outcome, waited = self._wait_for_user(WAIT_PASSWORD, None, step, history, url)
+                    started += waited
+                    if outcome != 'timeout':
+                        continue
                 res.pending_action = {'action': a['action'], 'label': a['label'], 'url': url}
                 return self._end(res, 'handoff', f'next step is "{a["label"]}", which needs you', history, url)
             # A scroll or key press is the same step only if it is the same move from the same place on the page (the fingerprint includes the scroll position).
@@ -459,6 +483,22 @@ class BrowseRunner:
             return None, 'none', waited
         chosen = next((o for o in question['options'] if o['id'] == answer.get('option')), None)
         return (chosen, 'answered', waited) if chosen else (None, 'page', waited)
+
+    def _wait_for_user(self, reason, still_blocked, step, history, url):
+        """Something only the customer can do (a sign-in, a password, a human check). With a hand gate the run stays alive: they do it in the browser, and Lumina carries on when they
+        press Continue, or by itself once `still_blocked(page)` stops being true. -> ('resumed' | 'auto' | 'cancelled' | 'timeout', seconds waited). 'timeout' also means no gate,
+        or this run already waited MAX_HANDOFFS times: the caller then ends the run as before. Nothing they type is read here: only whether the page is still the same kind of page."""
+        if self.hand_gate is None or self._handoffs >= MAX_HANDOFFS:
+            return 'timeout', 0
+        self._handoffs += 1
+        self.trace.emit('handoff_wait', n=self._handoffs, auto=still_blocked is not None)
+        outcome, waited = self.hand_gate(reason, probe=self.s.snapshot, still_blocked=still_blocked)
+        self.trace.emit('handoff_done', n=self._handoffs, outcome=outcome, waited=int(waited))
+        if outcome in ('resumed', 'auto'):
+            entry = {'step': step, 'by': 'rule', 'action': 'handoff', 'label': 'the customer\'s part', 'result': 'ok', 'changed': None, 'note': 'the customer did it in the browser'}
+            history.append(entry)
+            self.on_event('step', {**entry, 'url': url})
+        return outcome, waited
 
     def _end(self, res, status, reason, history, url=''):
         res.status, res.reason, res.steps, res.url = status, reason, history, url or res.url
