@@ -18,19 +18,21 @@ describe('live view helpers', () => {
     expect(stepText({ n: 3, kind: 'step' })).toBe('Acted on the page');
   });
 
-  it('follows the agent: browser tasks show the screen until real work moves to a command or file', () => {
-    expect(followMode([], true)).toBe('screen');
-    expect(followMode([row('browse'), row('read')], true)).toBe('screen');
-    expect(followMode([row('browse'), row('command')], true)).toBe('terminal');
-    expect(followMode([row('command'), row('browse'), row('note')], true)).toBe('screen');          // notes do not move the view
-    expect(followMode([row('command'), row('file')], false)).toBe('terminal');
-    expect(followMode([row('file')], false)).toBe('files');
-    expect(followMode([], false)).toBe('terminal');
+  it('follows actual running commands, otherwise opens Activity', () => {
+    const running = { ...row('command'), status: 'running' as const };
+    expect(followMode([], true)).toBe('activity');
+    expect(followMode([row('browse'), row('read')], true)).toBe('activity');
+    expect(followMode([running, row('note')], true)).toBe('terminal');
+    expect(followMode([running], false)).toBe('activity');
+    expect(followMode([row('command')], true)).toBe('activity');
+    expect(followMode([row('file')], true)).toBe('activity');
   });
 
-  it('offers the screen only for browser tasks', () => {
-    expect(modesFor(true)).toEqual(['screen', 'terminal', 'files']);
-    expect(modesFor(false)).toEqual(['terminal', 'files']);
+  it('offers Terminal only while in use and Screen only for browser tasks', () => {
+    expect(modesFor(true)).toEqual(['activity', 'screen', 'files']);
+    expect(modesFor(false)).toEqual(['activity', 'files']);
+    expect(modesFor(true, true)).toEqual(['activity', 'screen', 'terminal', 'files']);
+    expect(modesFor(false, true)).toEqual(['activity', 'terminal', 'files']);
   });
 
   it('forwards typing and a few editing keys to the page, but never shortcuts or other keys', () => {

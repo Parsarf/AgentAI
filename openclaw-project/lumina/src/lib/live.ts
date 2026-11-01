@@ -4,8 +4,8 @@ export interface RunRow { request_id: string; goal: string; status: string; url:
 export interface RunEvent { n: number; kind: string; [k: string]: unknown }
 export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; pending_action: { label?: string } | null; events: RunEvent[] }
 
-export type Mode = 'screen' | 'terminal' | 'files';
-export const MODE_LABEL: Record<Mode, string> = { screen: 'Screen', terminal: 'Terminal', files: 'Files' };
+export type Mode = 'activity' | 'screen' | 'terminal' | 'files';
+export const MODE_LABEL: Record<Mode, string> = { activity: 'Activity', screen: 'Screen', terminal: 'Terminal', files: 'Files' };
 
 /** Browser-task states in which the page is still alive: the live picture is worth showing. */
 export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused'];
@@ -25,14 +25,12 @@ export const stepText = (e: RunEvent): string | null => {
   return s ? String(s) : e.kind === 'step' ? 'Acted on the page' : String(e.kind).replace(/_/g, ' ');
 };
 
-/** The mode that follows what Lumina is doing right now. Browser tasks show the screen unless the latest real work was a command or a file. */
-export function followMode(rows: ActivityItem[], browseTask: boolean): Mode {
-  const last = [...rows].reverse().find(r => r.category !== 'note' && r.category !== 'error');
-  if (!browseTask) return last?.category === 'file' && !rows.some(r => r.category === 'command') ? 'files' : 'terminal';
-  return last && (last.category === 'command' || last.category === 'file') ? 'terminal' : 'screen';
+/** Terminal is a live command surface. Finished commands remain in Activity with their recorded output. */
+export function followMode(rows: ActivityItem[], active: boolean): Mode {
+  return active && rows.some(r => r.category === 'command' && r.status === 'running') ? 'terminal' : 'activity';
 }
 
-export const modesFor = (browseTask: boolean): Mode[] => (browseTask ? ['screen', 'terminal', 'files'] : ['terminal', 'files']);
+export const modesFor = (browseTask: boolean, terminalInUse = false): Mode[] => ['activity', ...(browseTask ? ['screen' as const] : []), ...(terminalInUse ? ['terminal' as const] : []), 'files'];
 
 /** Keyboard event -> what to send to the page. Printable text is batched by the caller; shortcuts and unknown keys are never forwarded. */
 export type KeyAction = { kind: 'text'; text: string } | { kind: 'key'; text: string } | null;

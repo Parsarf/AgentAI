@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
-import { ICON } from '../lib/activity';
 import { ago, elapsed, title as clip } from '../lib/format';
 import { LIVE_STATES, MODE_LABEL, STATE_LABEL, followMode, keyAction, modesFor, type Mode, type RunDetail, type RunEvent } from '../lib/live';
 import { isActive, phase } from '../lib/tasks';
 import { useActivity } from '../lib/useActivity';
 import { useData } from '../state/data';
 import LiveScreen from '../components/LiveScreen';
-import { LiveFiles, LiveTerminal } from '../components/LiveTerminal';
+import { LiveActivity, LiveFiles, LiveTerminal } from '../components/LiveTerminal';
 
 
 /** Everything Lumina is doing, in one place: its browser, its terminal and its files, live. Hop in on a browser task at any time. */
@@ -32,7 +31,7 @@ export function LiveRun({ id, inline = false, taskState }: { id: string; inline?
       if (r.events.length) { since.current = Math.max(since.current, ...r.events.map(e => e.n)); setEvents(old => [...old, ...r.events.filter(e => !old.some(o => o.n === e.n))]); setStamp(Date.now()); }
       setRun(r); setIsBrowse(true); setErr('');
     } catch (e) {
-      if (e instanceof ApiError && e.status === 404) setIsBrowse(false);          // not a browser task: terminal and files only
+      if (e instanceof ApiError && e.status === 404) setIsBrowse(false);          // no browser session yet; Activity still follows the task
       else setErr('Could not refresh. Retrying…');
     }
   }, [id, app?.features.browse, requestState]);
@@ -48,7 +47,7 @@ export function LiveRun({ id, inline = false, taskState }: { id: string; inline?
   useEffect(() => () => clearTimeout(flushTimer.current), []);
 
   const browse = isBrowse === true;
-  const modes = modesFor(browse); const followed = followMode(rows, browse);
+  const followed = followMode(rows, taskLive); const modes = modesFor(browse, followed === 'terminal');
   const mode: Mode = pinned && modes.includes(pinned) ? pinned : run?.takeover && (run.status === 'paused' || run.status === 'handoff') ? 'screen' : followed;
   useEffect(() => { if (run?.takeover && (run.status === 'paused' || run.status === 'handoff')) setPinned(null); }, [run?.takeover, run?.status]);
 
@@ -93,10 +92,10 @@ export function LiveRun({ id, inline = false, taskState }: { id: string; inline?
         <div className="live-meta"><span className={`pill${taskLive ? ' live' : ''}`}>{status}</span>{taskLive && started > 0 && <span className="faint">{elapsed(started, now)}</span>}{run?.url && <span className="faint">{new URL(run.url, 'http://x').hostname}</span>}
           {taskLive && !inline && <button className="btn small danger" onClick={stop}>Stop</button>}</div>
       </header>
-      <div className="live-grid">
+      <div className={`live-grid${mode === 'activity' ? ' activity-only' : ''}`}>
         <section className="panel live-main">
           <div className="live-tabs" role="tablist" aria-label="What to watch">
-            {modes.map(m => <button key={m} role="tab" aria-selected={mode === m} className="chip" aria-pressed={mode === m} onClick={() => setPinned(m)}>{m === 'terminal' && !rows.some(r => r.category === 'command') ? 'Activity' : MODE_LABEL[m]}</button>)}
+            {modes.map(m => <button key={m} role="tab" aria-selected={mode === m} className="chip" aria-pressed={mode === m} onClick={() => setPinned(m)}>{MODE_LABEL[m]}</button>)}
             <span className="spacer" />
             <button className="chip small" aria-pressed={pinned === null} onClick={() => setPinned(pinned === null ? mode : null)} title="Switch between screen, terminal and files as Lumina moves between them">Follow Lumina</button>
           </div>
@@ -121,7 +120,8 @@ export function LiveRun({ id, inline = false, taskState }: { id: string; inline?
             </div>)}
           {isBrowse === false && rows.some(r => r.category === 'browse' && r.status === 'failed') && <div className="live-assistance" role="status"><h3>Browser could not start</h3><p>This task did not open an interactive browser session. Its recorded steps are shown below.</p><Link className="btn small" to={request?.conversation_id ? `/chat/${request.conversation_id}` : '/chat'}>Open chat for help</Link></div>}
           <div className="live-stage" tabIndex={driving && mode === 'screen' ? 0 : -1} onKeyDown={onKey} aria-label={driving ? 'The page you are controlling. Click to point, type to enter text.' : undefined}>
-            {mode === 'screen' && <LiveScreen id={id} enabled={browse && browseLive} fallback={fallback} interactive={driving} onPoint={p => { flush(); void send({ action: 'click', ...p }); }} onWheel={dir => void send({ action: 'scroll', text: dir })} />}
+            {mode === 'activity' && <LiveActivity rows={rows} active={taskLive} />}
+            {(mode === 'screen' || (mode === 'activity' && browse)) && <LiveScreen id={id} enabled={browse && browseLive} fallback={fallback} interactive={driving && mode === 'screen'} onPoint={p => { flush(); void send({ action: 'click', ...p }); }} onWheel={dir => void send({ action: 'scroll', text: dir })} />}
             {mode === 'terminal' && <LiveTerminal rows={rows} active={taskLive} />}
             {mode === 'files' && <LiveFiles rows={rows} />}
           </div>
@@ -133,18 +133,10 @@ export function LiveRun({ id, inline = false, taskState }: { id: string; inline?
           {run?.answer && <p className="live-note">{run.answer}</p>}
         </section>
 
-        <aside className="panel card live-side" aria-label="Activity">
+        {mode !== 'activity' && <aside className="panel card live-side" aria-label="Activity">
           <div className="card-h"><h2>Activity</h2><span className="faint">{taskLive ? 'Live' : 'Finished'}</span></div>
-          <ol className="act-list live-list">
-            {rows.length === 0 && <li className="faint act-empty">{taskLive ? 'Waiting for the first step…' : 'No tool use was recorded for this task.'}</li>}
-            {rows.map(r => (
-              <li key={r.key} className={`act-row ${r.category} ${r.status}`}>
-                <span className="act-ico" aria-hidden="true">{ICON[r.category] ?? ICON.other}</span>
-                <div className="act-body"><div className="act-label">{r.label}{taskLive && r.status === 'running' && <span className="dot-s running" aria-label="in progress" />}{r.status === 'failed' && r.category !== 'error' && <span className="act-bad"> · failed</span>}</div>
-                  {r.detail && <code className="act-detail">{r.detail}</code>}</div>
-              </li>))}
-          </ol>
-        </aside>
+          <LiveActivity rows={rows} active={taskLive} />
+        </aside>}
       </div>
     </div>);
 }

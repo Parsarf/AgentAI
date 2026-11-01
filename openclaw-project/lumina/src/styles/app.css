@@ -455,3 +455,10 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .chat-activity .live-meta { padding-top: 0; }
 .chat-activity .live-term { height: 280px; }
 .chat-activity .live-goal { font-size: var(--text-sm); }
+
+/* Activity is the default workspace; Terminal exists only while commands run. */
+.live-grid.activity-only { grid-template-columns: minmax(0, 1fr); }
+.live-activity { padding: var(--space-3); max-height: 420px; min-width: 0; overflow: auto; }
+.live-activity .act-list { padding: 0; }
+.live-activity .act-out { white-space: pre-wrap; overflow-wrap: anywhere; }
+.live-side .live-activity { min-height: 0; }

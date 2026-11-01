@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import Live from './Live';
+import Live, { LiveRun } from './Live';
 import { api, ApiError } from '../lib/api';
 const fixture = vi.hoisted(() => ({ requests: [] as any[], rows: [] as any[], run: null as any }));
 vi.mock('../state/data', () => ({ useData: () => ({ app: { features: { browse: true } }, requests: fixture.requests, refresh: vi.fn() }) }));
@@ -11,7 +11,7 @@ vi.mock('../lib/api', async importOriginal => ({ ...await importOriginal<object>
 const mount = () => render(<MemoryRouter initialEntries={['/live']}><Live /></MemoryRouter>);
 beforeEach(() => {
   fixture.requests = [{ id: 'old', state: 'completed', created_epoch: 200, message: 'Older finished task' }, { id: 'active', state: 'running', created_epoch: 100, message: 'Current task', conversation_id: 'chat-a' }];
-  fixture.rows = [{ key: 'c1', category: 'command', label: 'Ran a command', detail: 'echo hello', output: 'hello', status: 'done', at: '' }];
+  fixture.rows = [{ key: 'c1', category: 'command', label: 'Ran a command', detail: 'echo hello', output: 'hello', status: 'running', at: '' }];
   fixture.run = null;
   Element.prototype.scrollTo = vi.fn();
   vi.mocked(api).mockImplementation(async (method, path) => {
@@ -26,7 +26,7 @@ describe('live workspace', () => {
     mount();
     await screen.findByRole('log', { name: 'Terminal' });
     expect(within(screen.getByRole('log', { name: 'Terminal' })).getByText('echo hello')).toBeTruthy();
-    expect(screen.getByText('hello')).toBeTruthy();
+    expect(within(screen.getByRole('log', { name: 'Terminal' })).getByText('hello')).toBeTruthy();
     expect((screen.getByLabelText('Task') as HTMLSelectElement).value).toBe('active');
     expect(screen.queryByText('Watch Lumina work')).toBeNull();
     expect(screen.getByRole('link', { name: /Give Lumina guidance/ }).getAttribute('href')).toBe('/chat/chat-a');
@@ -109,4 +109,38 @@ it('does not present a failed request as a live queued browser', async () => {
   await screen.findByText('Stopped');
   expect(screen.queryByText('Starting')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
+});
+
+describe.each([false, true])('command visibility (inline=%s)', inline => {
+  const view = () => <MemoryRouter><LiveRun id="active" inline={inline} /></MemoryRouter>;
+  it('opens Activity, reveals real commands while running, then hides Terminal while retaining output', async () => {
+    fixture.rows = [{ key: 'search', category: 'search', label: 'Searching the web', detail: 'example query', status: 'running', output: '' }];
+    const { rerender } = render(view());
+    await screen.findByRole('log', { name: 'Activity log' });
+    expect(screen.getByRole('tab', { name: 'Activity' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByRole('tab', { name: 'Terminal' })).toBeNull();
+    expect(screen.queryByRole('log', { name: 'Terminal' })).toBeNull();
+    fixture.rows = [{ key: 'cmd', category: 'command', label: 'Ran a command', detail: 'python report.py', output: 'Preparing report', status: 'running' }];
+    rerender(view());
+    const terminal = await screen.findByRole('log', { name: 'Terminal' });
+    expect(within(terminal).getByText('python report.py')).toBeTruthy();
+    expect(within(terminal).getByText('Preparing report')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Terminal' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Terminal' })); // even a pinned terminal disappears after completion
+    fixture.rows = [{ ...fixture.rows[0], status: 'done', output: 'Report saved' }];
+    rerender(view());
+    expect(screen.queryByRole('tab', { name: 'Terminal' })).toBeNull();
+    expect(screen.queryByRole('log', { name: 'Terminal' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Activity' }).getAttribute('aria-selected')).toBe('true');
+    const activity = screen.getByRole('log', { name: 'Activity log' });
+    expect(within(activity).getByText('python report.py')).toBeTruthy();
+    expect(within(activity).getByText('Report saved')).toBeTruthy();
+  });
+  it('hides a stale running command once the task has stopped', async () => {
+    fixture.requests = [{ id: 'active', state: 'cancelled', message: 'Stopped task', created_epoch: 100 }];
+    render(view());
+    await screen.findByRole('log', { name: 'Activity log' });
+    expect(screen.queryByRole('tab', { name: 'Terminal' })).toBeNull();
+    expect(screen.queryByLabelText('running')).toBeNull();
+  });
 });

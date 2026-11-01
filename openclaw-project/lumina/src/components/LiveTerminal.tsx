@@ -6,10 +6,9 @@ import { ICON, type ActivityItem } from '../lib/activity';
 export function LiveTerminal({ rows, active }: { rows: ActivityItem[]; active: boolean }) {
   const box = useRef<HTMLDivElement>(null); const stick = useRef(true);
   useEffect(() => { if (stick.current) box.current?.scrollTo({ top: box.current.scrollHeight }); }, [rows.length, rows[rows.length - 1]?.status, rows[rows.length - 1]?.output]);
-  const commands = rows.some(r => r.category === 'command');
-  const lines = commands ? rows.filter(r => ['command', 'note', 'error'].includes(r.category)) : rows;
+  const lines = rows.filter(r => ['command', 'note', 'error'].includes(r.category));
   return (
-    <div className="live-term" ref={box} tabIndex={0} role="log" aria-label={commands ? 'Terminal' : 'Activity log'} aria-live="off"
+    <div className="live-term" ref={box} tabIndex={0} role="log" aria-label="Terminal" aria-live="off"
       onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}>
       {lines.length === 0 && <p className="faint">{active ? 'Waiting for the first tool activity…' : 'No tool activity was recorded for this task.'}</p>}
       {lines.map(r => r.category === 'command'
@@ -18,9 +17,25 @@ export function LiveTerminal({ rows, active }: { rows: ActivityItem[]; active: b
             {r.output && <pre className="term-out">{r.output}</pre>}
           </div>)
         : (<div key={r.key} className={`term-line ${r.category} ${r.status}`}>
-            <span aria-hidden="true">{ICON[r.category] ?? ICON.other}</span> {r.label}{r.detail && <> <code>{r.detail}</code></>}{r.status === 'running' && <span className="term-cursor" aria-label="running" />}
+            <span aria-hidden="true">{ICON[r.category] ?? ICON.other}</span> {r.label}{r.detail && <> <code>{r.detail}</code></>}{active && r.status === 'running' && <span className="term-cursor" aria-label="running" />}
           </div>))}
     </div>);
+}
+
+/** Human-readable activity; commands and reported output remain available after the terminal closes. */
+export function LiveActivity({ rows, active }: { rows: ActivityItem[]; active: boolean }) {
+  return <div className="live-activity" role="log" aria-label="Activity log" tabIndex={0}>
+    <ol className="act-list live-list">
+      {rows.length === 0 && <li className="faint act-empty">{active ? 'Waiting for the first step…' : 'No tool use was recorded for this task.'}</li>}
+      {rows.map(r => <li key={r.key} className={`act-row ${r.category} ${r.status}`}>
+        <span className="act-ico" aria-hidden="true">{ICON[r.category] ?? ICON.other}</span>
+        <div className="act-body"><div className="act-label">{r.label}{active && r.status === 'running' && <span className="dot-s running" aria-label="in progress" />}{r.status === 'failed' && r.category !== 'error' && <span className="act-bad"> · failed</span>}</div>
+          {r.detail && <code className="act-detail">{r.detail}</code>}
+          {r.output && <pre className="act-out">{r.output}</pre>}
+        </div>
+      </li>)}
+    </ol>
+  </div>;
 }
 
 /** Files Lumina read or wrote. Names only: file contents are never shown here; finished files can be downloaded from Files. */
