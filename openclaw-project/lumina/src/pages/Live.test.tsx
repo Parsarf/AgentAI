@@ -48,6 +48,14 @@ describe('live workspace', () => {
     await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/browse/active/control', { action: 'type', text: 'example-input' }));
     expect(input.value).toBe('');
   });
+  it('shows what Lumina is waiting for and a button that lets the run carry on', async () => {
+    fixture.run = { request_id: 'active', goal: 'Current task', status: 'paused', takeover: true, needs_you: 'This page needs you to sign in.', created_epoch: 100, events: [] };
+    mount();
+    await screen.findByText('Lumina needs your help');
+    expect(screen.getByText(/This page needs you to sign in\. Lumina waits, and carries on by itself/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'I’m done, continue' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/browse/active/resume', {}));
+  });
   it('waits for pending typed input before returning browser control', async () => {
     fixture.run = { request_id: 'active', goal: 'Current task', status: 'handoff', takeover: true, created_epoch: 100, events: [] };
     let finish!: () => void;

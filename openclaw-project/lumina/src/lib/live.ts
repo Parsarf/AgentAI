@@ -2,7 +2,7 @@ import type { ActivityItem } from './activity';
 
 export interface RunRow { request_id: string; goal: string; status: string; url: string | null; created_epoch: number }
 export interface RunEvent { n: number; kind: string; [k: string]: unknown }
-export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; pending_action: { label?: string } | null; events: RunEvent[] }
+export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; needs_you?: string | null; pending_action: { label?: string } | null; events: RunEvent[] }
 
 export type Mode = 'activity' | 'screen' | 'terminal' | 'files';
 export const MODE_LABEL: Record<Mode, string> = { activity: 'Activity', screen: 'Screen', terminal: 'Terminal', files: 'Files' };
