@@ -8,7 +8,7 @@ import type { ChatSummary } from '../lib/chats';
 import AgentResponse from '../components/response/AgentResponse';
 import WorkTrail from '../components/response/WorkTrail';
 import { foldTrail } from '../lib/trail';
-import ActivityPanel from '../components/ActivityPanel';
+import { LiveRun } from './Live';
 import AgentThinking, { type ThreadTask } from '../components/AgentThinking';
 import BlockView from '../components/genui/BlockView';
 import type { Bridge } from '../gen/ChatBridge';
@@ -63,11 +63,10 @@ export default function Chat() {
   useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; if (stick.current) bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); else setNewBelow(true); } }, [msgs.length, tasks.length]);
 
   const [activityId, setActivityId] = useState<string | null>(null);
-  const latest = [...tasks].reverse().find(t => isActive(t)) ?? tasks[tasks.length - 1];
+  const latest = tasks.find(t => ['starting', 'running', 'uncertain'].includes(t.state)) ?? [...tasks].reverse().find(t => isActive(t)) ?? tasks[tasks.length - 1];
   const toggleActivity = useCallback(() => setActivityId(cur => (cur ? null : latest?.id ?? null)), [latest?.id]);
   useEffect(() => { setActivityId(null); }, [id]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); toggleActivity(); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [toggleActivity]);
-  const shown = tasks.find(t => t.id === activityId);
   const [made, setMade] = useState<ArtifactRow[]>([]);
   useEffect(() => {                                    // files Lumina wrote during each answer, shown under that answer
     if (!id || !app?.features.files || working || !msgs.length) return; let stop = false;
@@ -77,9 +76,16 @@ export default function Chat() {
     }).catch(() => { /* chips are optional */ });
     return () => { stop = true; };
   }, [id, app?.features.files, working, msgs.length]);
-  const cancel = async (taskId: string) => { try { await api('POST', `/v1/requests/${taskId}/cancel`, {}); } finally { reload(); } };
-  const [renaming, setRenaming] = useState(false);
-  const rename = async (title: string) => { setRenaming(false); const t = title.trim(); if (t && t !== current?.title && id) { try { await api('POST', `/v1/conversations/${id}/rename`, { title: t }); await loadList(); } catch { /* keep old name */ } } };
+  const [stopping, setStopping] = useState<string | null>(null);
+  useEffect(() => { setStopping(null); }, [id]);
+  const cancel = async (taskId: string) => {
+    setStopping(taskId);
+    try {
+      await api('POST', `/v1/requests/${taskId}/cancel`, {});
+      if (threadId.current === id) setTasks(ts => ts.map(t => t.id === taskId ? { ...t, cancel_requested: true } : t));
+    } catch { if (threadId.current === id) setErr('Could not stop this task. Please try again.'); }
+    finally { if (threadId.current === id) { setStopping(null); reload(); } }
+  };
   const byRequest = new Map(tasks.map(t => [t.id, t]));
   const trail = useMemo(() => foldTrail(msgs, rid => { const t = byRequest.get(rid); return !!t && !isActive(t); }, m => blocks.some(b => b.anchor_message_id === m.id) || made.some(a => a.task_id === m.request_id)), [msgs, tasks, blocks, made]);   // eslint-disable-line react-hooks/exhaustive-deps
   const current = chats.find(c => c.id === id) ?? detail;
@@ -96,15 +102,19 @@ export default function Chat() {
   return (
     <div className="chatpage">
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
-        {!(id && !fresh) && <div className="thread-tools"><BrowserToggle /></div>}
-        {id && !fresh && <header className="thread-head">{renaming ? <input className="rename" autoFocus defaultValue={current?.title ?? ''} maxLength={90} aria-label="Chat name" onBlur={e => rename(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false); }} /> : <h1 title="Click to rename" onClick={() => msgs.length > 0 && setRenaming(true)}>{current?.title || 'Chat'}</h1>}<BrowserToggle />{latest && <button className="btn small act-btn" onClick={toggleActivity} title="Ctrl+J">Activity</button>}{latest && isActive(latest.state) && <button className="btn small danger" onClick={() => cancel(latest.id)}>Stop</button>}{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</header>}
+        <div className="thread-tools"><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</div>
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}
           {msgs.map(m => trail.skip.has(m.id) ? (trail.hidden.has(m.id) ? <div key={m.id} className="turn"><WorkTrail messages={trail.hidden.get(m.id)!} /></div> : null) : (
             <div key={m.id} className="turn">
-              <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : <Emojified text={m.content} />}</div>
-              {m.provenance !== 'agent' && m.request_id && byRequest.get(m.request_id) && <AgentThinking task={byRequest.get(m.request_id)!} />}
+              <div className={`bubble ${m.provenance === 'agent' || m.provenance === 'system' ? 'agent' : 'you'}`}>{m.provenance === 'agent' || m.provenance === 'system' ? <AgentResponse content={m.content} /> : <Emojified text={m.content} />}</div>
+              {['customer', 'telegram'].includes(m.provenance) && m.request_id && byRequest.get(m.request_id) && !msgs.some(next => next.id > m.id && next.request_id === m.request_id && ['customer', 'telegram'].includes(next.provenance)) && (
+                <div className="chat-work">
+                  <AgentThinking task={{ ...byRequest.get(m.request_id)!, cancel_requested: stopping === m.request_id || byRequest.get(m.request_id)!.cancel_requested }} />
+                  <button className="btn tertiary small read-more" aria-expanded={activityId === m.request_id} aria-controls={`activity-${m.request_id}`} onClick={() => setActivityId(cur => cur === m.request_id ? null : m.request_id)}>{activityId === m.request_id ? 'Read less' : 'Read more'}</button>
+                  {activityId === m.request_id && <section className="chat-activity" id={`activity-${m.request_id}`} aria-label="Live task activity"><LiveRun key={m.request_id} id={m.request_id} inline taskState={byRequest.get(m.request_id)!.state} /></section>}
+                </div>)}
               {m.provenance === 'agent' && m.request_id && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
                 <div className="filechips" aria-label="Files from this answer">{mine.map(a => <button key={a.display_name} className="chip small" title={humanSize(a.size_bytes)} onClick={() => download(a.id, a.version).catch(() => undefined)}>⬇ {a.display_name}</button>)}</div>); })()}
               {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} bridge={bridge} />)}
@@ -120,8 +130,7 @@ export default function Chat() {
           <div ref={bottom} />
         </div>
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }}>Jump to latest ↓</button>}
-        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="lumina" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} />}</div>
+        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="lumina" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} onStop={latest && isActive(latest) ? () => { void cancel(latest.id); } : undefined} stopping={!!latest && (stopping === latest.id || !!latest.cancel_requested)} />}</div>
       </section>
-    {shown && <ActivityPanel taskId={shown.id} active={isActive(shown)} startedAt={shown.created_epoch} onStop={() => cancel(shown.id)} onClose={() => setActivityId(null)} />}
     </div>);
 }

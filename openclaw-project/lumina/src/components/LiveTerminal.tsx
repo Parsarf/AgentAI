@@ -14,7 +14,7 @@ export function LiveTerminal({ rows, active }: { rows: ActivityItem[]; active: b
       {lines.length === 0 && <p className="faint">{active ? 'Waiting for the first tool activity…' : 'No tool activity was recorded for this task.'}</p>}
       {lines.map(r => r.category === 'command'
         ? (<div key={r.key} className={`term-block ${r.status}`}>
-            <div className="term-cmd"><span className="term-prompt" aria-hidden="true">$</span> <code>{r.detail || r.label}</code>{r.status === 'running' && <span className="term-cursor" aria-label="running" />}{r.status === 'failed' && <span className="act-bad"> · failed</span>}</div>
+            <div className="term-cmd"><span className="term-prompt" aria-hidden="true">$</span> <code>{r.detail || r.label}</code>{active && r.status === 'running' && <span className="term-cursor" aria-label="running" />}{r.status === 'failed' && <span className="act-bad"> · failed</span>}</div>
             {r.output && <pre className="term-out">{r.output}</pre>}
           </div>)
         : (<div key={r.key} className={`term-line ${r.category} ${r.status}`}>

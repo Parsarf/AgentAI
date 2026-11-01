@@ -117,6 +117,24 @@ class ChatHTTPChecks(TestCase):
         self.assertEqual(a.get('/v1/tasks/' + sent['id'], secure=True).json()['task']['state'], 'cancelled')
         self.assertEqual(a.get('/v1/tasks', secure=True).status_code, 503)
 
+    def test_request_cancel_uses_chat_controls_and_persists_one_scoped_notice(self):
+        conversation = self.conversation()
+        a, b = self.clients
+        sent = self.post(a, f'/v1/conversations/{conversation}/send', {'message': 'work', 'key': 'stop-notice'}).json()['request']
+        with patch('accounts.chat.service') as factory:
+            factory.return_value.cancel.return_value = {'id': sent['id'], 'state': 'cancelled'}
+            self.assertEqual(self.post(a, f"/v1/requests/{sent['id']}/cancel", {}).status_code, 202)
+            self.assertEqual(factory.return_value.cancel.call_args.args[1], sent['id'])
+            factory.reset_mock()
+            self.assertEqual(self.post(b, f"/v1/requests/{sent['id']}/cancel", {}).status_code, 404)
+            factory.assert_not_called()
+        for _ in range(2):
+            self.assertEqual(self.post(a, f"/v1/requests/{sent['id']}/cancel", {}).status_code, 202)
+        messages = a.get(f'/v1/conversations/{conversation}/messages', secure=True).json()['messages']
+        notices = [m for m in messages if m['provenance'] == 'system']
+        self.assertEqual(len(notices), 1)
+        self.assertIn('follow-up', notices[0]['content'])
+
     def test_budget_denial_recorded_without_native_call(self):
         conversation = self.conversation()
         store = AccountStore(connection.settings_dict['NAME'])

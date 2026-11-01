@@ -201,7 +201,7 @@ class ChatService:
             self.ledger.admit(principal, task=result['id'], project=project_id, conversation=conversation_id,
                               key=key, amount_microusd=amount, upper_bound_verified=True, unmetered=own)
         except Exception:
-            self.queue.cancel(principal, result['id'])
+            self.queue.cancel(principal, result['id'], admission_failed=True)
             raise
         return amount, price_version, project_id
 
@@ -262,7 +262,7 @@ class ChatService:
         except Exception:
             # Whatever stopped admission (budget, mismatch, storage), the request must not stay queued without a reservation:
             # it would be claimed and wedge the serial slot.
-            self.queue.cancel(principal, result['id'])
+            self.queue.cancel(principal, result['id'], admission_failed=True)
             raise
         self._announce_queued(principal.account_id, result['id'])
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,

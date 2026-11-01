@@ -33,7 +33,16 @@ def requests(request,request_id=None):
 def cancel(request,request_id):
     denied=customer(request)
     if denied:return denied
-    try:return JsonResponse({'request':queue().cancel(principal(request),request_id)},status=202)
+    try:
+        q = queue()
+        p = principal(request)
+        item = q.get(p, request_id)
+        if item['conversation_id']:
+            from .chat import service
+            result = service().cancel(p, request_id)
+        else:
+            result = q.cancel(p, request_id)
+        return JsonResponse({'request': result}, status=202)
     except NotFound:raise Denied()
 
 @endpoint(['GET'])

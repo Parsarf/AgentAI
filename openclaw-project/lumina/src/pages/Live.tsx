@@ -13,9 +13,10 @@ import { LiveFiles, LiveTerminal } from '../components/LiveTerminal';
 
 /** Everything Lumina is doing, in one place: its browser, its terminal and its files, live. Hop in on a browser task at any time. */
 
-function LiveRun({ id }: { id: string }) {
-  const { app, requests, refresh } = useData();
+export function LiveRun({ id, inline = false, taskState }: { id: string; inline?: boolean; taskState?: string }) {
+  const { app, requests = [], refresh } = useData();
   const request = requests.find(r => r.id === id);
+  const requestState = taskState ?? request?.state;
   const [run, setRun] = useState<RunDetail | null>(null); const [isBrowse, setIsBrowse] = useState<boolean | null>(app?.features.browse ? null : false);
   const [events, setEvents] = useState<RunEvent[]>([]); const [err, setErr] = useState(''); const [text, setText] = useState(''); const [stamp, setStamp] = useState(0);
   const [showText, setShowText] = useState(false);
@@ -27,22 +28,22 @@ function LiveRun({ id }: { id: string }) {
     if (!app?.features.browse) return;
     try {
       const r = { ...await api<RunDetail>('GET', `/v1/browse/${id}?since=${since.current}`) };
-      if (request && ['failed', 'cancelled'].includes(request.state) && LIVE_STATES.includes(r.status)) { r.status = request.state; r.takeover = false; }
+      if (requestState && ['failed', 'cancelled', 'completed'].includes(requestState) && LIVE_STATES.includes(r.status)) { r.status = requestState === 'completed' ? 'done' : requestState; r.takeover = false; }
       if (r.events.length) { since.current = Math.max(since.current, ...r.events.map(e => e.n)); setEvents(old => [...old, ...r.events.filter(e => !old.some(o => o.n === e.n))]); setStamp(Date.now()); }
       setRun(r); setIsBrowse(true); setErr('');
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setIsBrowse(false);          // not a browser task: terminal and files only
       else setErr('Could not refresh. Retrying…');
     }
-  }, [id, app?.features.browse, request?.state]);
+  }, [id, app?.features.browse, requestState]);
   useEffect(() => { since.current = 0; setEvents([]); setRun(null); setPinned(null); setErr(''); setIsBrowse(app?.features.browse ? null : false); }, [id, app?.features.browse]);
   useEffect(() => { void load(); }, [load]);
 
   runStatus.current = run?.status;
-  const browseLive = !!run && LIVE_STATES.includes(run.status);
-  const taskLive = isBrowse ? browseLive : !!request && isActive(request);
+  const browseLive = !!run && LIVE_STATES.includes(run.status) && (!requestState || isActive(requestState));
+  const taskLive = requestState ? isActive(requestState) : browseLive;
   const { rows, err: actErr } = useActivity(id, taskLive);
-  useEffect(() => { if (!app?.features.browse || (!browseLive && !(request ? isActive(request) : false))) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' ? 800 : 2000); return () => clearInterval(t); }, [app?.features.browse, request?.state, browseLive, load, run?.pausing, run?.status]);
+  useEffect(() => { if (!app?.features.browse || (!browseLive && !taskLive)) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' ? 800 : 2000); return () => clearInterval(t); }, [app?.features.browse, taskLive, browseLive, load, run?.pausing, run?.status]);
   useEffect(() => { if (!taskLive) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [taskLive]);
   useEffect(() => () => clearTimeout(flushTimer.current), []);
 
@@ -66,7 +67,7 @@ function LiveRun({ id }: { id: string }) {
     await load();
   };
   const flush = useCallback(() => { clearTimeout(flushTimer.current); const t = buffer.current; buffer.current = ''; return t ? send({ action: 'type', text: t.slice(0, 500) }) : controlQueue.current; }, [send]);
-  const driving = !!run?.takeover && (run.status === 'paused' || run.status === 'handoff');
+  const driving = browseLive && !!run?.takeover && (run.status === 'paused' || run.status === 'handoff');
   const onKey = (e: React.KeyboardEvent) => {
     if (!driving || mode !== 'screen' || (e.target as HTMLElement).tagName === 'INPUT') return;
     const a = keyAction(e); if (!a) return; e.preventDefault();
@@ -78,19 +79,19 @@ function LiveRun({ id }: { id: string }) {
   const shots = events.filter(e => e.kind === 'screenshot'); const last = shots[shots.length - 1];
   const fallback = last ? `/v1/browse/${id}/shot/${last.file as string}?t=${stamp}` : null;
   const heading = run?.goal ?? request?.message ?? 'Live view';
-  const status = browse && run ? STATE_LABEL[run.status] ?? run.status : request ? (phase(request.state) === 'running' ? 'Working' : phase(request.state) === 'queued' ? 'Queued' : phase(request.state) === 'completed' ? 'Done' : phase(request.state) === 'failed' ? 'Stopped' : 'Cancelled') : '';
+  const status = requestState && ['failed', 'cancelled', 'completed'].includes(requestState) ? STATE_LABEL[requestState] : browse && run ? STATE_LABEL[run.status] ?? run.status : request ? (phase(request.state) === 'running' ? 'Working' : phase(request.state) === 'queued' ? 'Queued' : phase(request.state) === 'completed' ? 'Done' : phase(request.state) === 'failed' ? 'Stopped' : 'Cancelled') : '';
   const started = run?.created_epoch ?? request?.created_epoch ?? 0;
 
-  if (isBrowse === null && !request) return <div className="livepage"><h1 className="page-title">Live view</h1><p className={err ? 'err' : 'muted'} role={err ? 'alert' : 'status'}>{err || 'Loading…'}</p><p><Link to="/live">All live tasks</Link></p></div>;
-  if (isBrowse === false && !request) return <div className="livepage"><h1 className="page-title">Live view</h1><p className="err" role="alert">That task was not found.</p><p><Link to="/live">All live tasks</Link></p></div>;
+  if (isBrowse === null && !request && !inline) return <div className="livepage"><h1 className="page-title">Live view</h1><p className={err ? 'err' : 'muted'} role={err ? 'alert' : 'status'}>{err || 'Loading…'}</p><p><Link to="/live">All live tasks</Link></p></div>;
+  if (isBrowse === false && !request && !inline) return <div className="livepage"><h1 className="page-title">Live view</h1><p className="err" role="alert">That task was not found.</p><p><Link to="/live">All live tasks</Link></p></div>;
 
   return (
     <div className="livepage">
-      <p className="live-chat-link"><Link to={request?.conversation_id ? `/chat/${request.conversation_id}` : '/chat'}>Open chat · Give Lumina guidance ↗</Link></p>
+      {!inline && <p className="live-chat-link"><Link to={request?.conversation_id ? `/chat/${request.conversation_id}` : '/chat'}>Open chat · Give Lumina guidance ↗</Link></p>}
       <header className="live-head">
         <h2 className="live-goal">{heading}</h2>
         <div className="live-meta"><span className={`pill${taskLive ? ' live' : ''}`}>{status}</span>{taskLive && started > 0 && <span className="faint">{elapsed(started, now)}</span>}{run?.url && <span className="faint">{new URL(run.url, 'http://x').hostname}</span>}
-          {taskLive && <button className="btn small danger" onClick={stop}>Stop</button>}</div>
+          {taskLive && !inline && <button className="btn small danger" onClick={stop}>Stop</button>}</div>
       </header>
       <div className="live-grid">
         <section className="panel live-main">
@@ -99,7 +100,7 @@ function LiveRun({ id }: { id: string }) {
             <span className="spacer" />
             <button className="chip small" aria-pressed={pinned === null} onClick={() => setPinned(pinned === null ? mode : null)} title="Switch between screen, terminal and files as Lumina moves between them">Follow Lumina</button>
           </div>
-          {browse && run && run.status === 'running' && (
+          {browse && run && browseLive && run.status === 'running' && (
             <div className="live-bar">{run.pausing
               ? <span className="muted" role="status">Pausing after Lumina’s current step…</span>
               : <><button className="btn primary" onClick={() => act('pause')}>Take control</button><span className="faint">Pause Lumina, then use the browser yourself.</span></>}</div>)}
@@ -139,7 +140,7 @@ function LiveRun({ id }: { id: string }) {
             {rows.map(r => (
               <li key={r.key} className={`act-row ${r.category} ${r.status}`}>
                 <span className="act-ico" aria-hidden="true">{ICON[r.category] ?? ICON.other}</span>
-                <div className="act-body"><div className="act-label">{r.label}{r.status === 'running' && <span className="dot-s running" aria-label="in progress" />}{r.status === 'failed' && r.category !== 'error' && <span className="act-bad"> · failed</span>}</div>
+                <div className="act-body"><div className="act-label">{r.label}{taskLive && r.status === 'running' && <span className="dot-s running" aria-label="in progress" />}{r.status === 'failed' && r.category !== 'error' && <span className="act-bad"> · failed</span>}</div>
                   {r.detail && <code className="act-detail">{r.detail}</code>}</div>
               </li>))}
           </ol>

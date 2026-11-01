@@ -442,3 +442,16 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 /* The assistant's earlier messages for a finished answer, folded under a button */
 .work-trail { display: grid; gap: var(--space-2); justify-items: start; }
 .work-trail-body { display: grid; gap: var(--space-3); padding-left: var(--space-3); border-left: 2px solid var(--border-subtle); color: var(--text-secondary); width: 100%; }
+
+/* Inline activity shares the live workspace, sized to the conversation. */
+.chat-work { min-width: 0; }
+.chat-work .read-more { color: var(--text-muted); margin-left: 60px; }
+.chat-work .read-more:hover { color: var(--text-primary); }
+.chat-activity { margin-top: var(--space-3); min-width: 0; max-width: 100%; }
+.chat-activity .live-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.chat-activity .live-side { position: static; max-height: 260px; }
+.chat-activity .live-side .act-list { overflow: auto; }
+.chat-activity .live-head { margin-bottom: var(--space-3); }
+.chat-activity .live-meta { padding-top: 0; }
+.chat-activity .live-term { height: 280px; }
+.chat-activity .live-goal { font-size: var(--text-sm); }

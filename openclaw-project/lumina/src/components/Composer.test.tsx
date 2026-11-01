@@ -122,3 +122,20 @@ describe('Composer', () => {
     expect((screen.getByRole('button', { name: /use files/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+it('replaces Send with Stop during work, preserves the draft and disables repeated stop requests', async () => {
+  const calls = mockFetch(); const stop = vi.fn();
+  const { rerender } = setup({ conversationId: 'c9', onStop: stop });
+  const box = await screen.findByLabelText('Message Lumina');
+  fireEvent.change(box, { target: { value: 'Keep this draft' } });
+  expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Stop task' }));
+  expect(stop).toHaveBeenCalledOnce();
+  expect(calls.some(c => c.url.endsWith('/send'))).toBe(false);
+  expect((box as HTMLTextAreaElement).value).toBe('Keep this draft');
+  rerender(<DataProvider><Composer conversationId="c9" onStop={stop} stopping /></DataProvider>);
+  expect((screen.getByRole('button', { name: 'Stopping task' }) as HTMLButtonElement).disabled).toBe(true);
+  rerender(<DataProvider><Composer conversationId="c9" /></DataProvider>);
+  expect(screen.getByRole('button', { name: 'Send message' })).toBeTruthy();
+  expect((screen.getByLabelText('Message Lumina') as HTMLTextAreaElement).value).toBe('Keep this draft');
+});

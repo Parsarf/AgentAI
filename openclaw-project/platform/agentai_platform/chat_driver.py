@@ -241,6 +241,18 @@ class ChatDriver:
         text = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
         if notes:
             text = gen_prompts.progress_prompt(claim.request_id) + ('\nThis request only drafts a plan. Do not execute its phases; the customer launches the editable plan separately.\n' if intent == 'plan' else '\n') + text
+        if not notes:
+            return text  # A new native goal stores this exact text as its objective; goal replacement already clears the old run's goal.
+        with self.store.connect() as con:
+            previous = con.execute('''SELECT state,outcome,continue_goal FROM customer_requests
+                WHERE account_id=? AND conversation_id=? AND sequence <
+                    (SELECT sequence FROM customer_requests WHERE account_id=? AND id=?)
+                ORDER BY sequence DESC LIMIT 1''',
+                (claim.account_id, claim.conversation_id, claim.account_id, claim.request_id)).fetchone()
+        if previous and (previous['state'] in ('cancelled', 'failed') or (previous['outcome'] in ('partial', 'blocked') and not previous['continue_goal'])):
+            text = ('[Lumina task status: the previous request in this conversation was ' + (previous['outcome'] or previous['state']) +
+                    '. It is no longer working. Acknowledge the interruption briefly. Follow the customer’s new direction; '
+                    'continue earlier work only if requested, and first inspect what already completed so external effects are not repeated.]\n\n' + text)
         if intent not in ('chat', 'browse') or not notes:
             return text                                    # plan, execute and phase prompts are complete as they are
         notes = []

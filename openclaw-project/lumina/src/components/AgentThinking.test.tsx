@@ -39,7 +39,7 @@ describe('assistant thinking indicator', () => {
     release({ events: [{ sequence: 1, kind: 'activity', payload: { category: 'search', status: 'running' } }] });
     await waitFor(() => expect(screen.queryByText('Searching…')).toBeNull());
   });
-  it.each([['failed', 'Something went wrong. Open Activity for details.'], ['cancelled', 'Stopped.']])('ends animation for %s', (state, text) => {
+  it.each([['failed', 'Something went wrong. Read more for details.'], ['cancelled', 'Stopped. Send a message when you’re ready to continue.']])('ends animation for %s', (state, text) => {
     render(<AgentThinking task={{ ...task, state }} />);
     expect(screen.getByText(text)).toBeTruthy();
     expect(screen.queryByTestId('orb')).toBeNull();
@@ -50,4 +50,11 @@ it('shows the server explanation for a failed task', () => {
   render(<AgentThinking task={{ ...task, state: 'failed', result: 'The browser task was interrupted. Please try again.' }} />);
   expect(screen.getByText('The browser task was interrupted. Please try again.')).toBeTruthy();
   expect(screen.queryByTestId('orb')).toBeNull();
+});
+
+it('stops animating while cancellation is pending', () => {
+  render(<AgentThinking task={{ ...task, cancel_requested: true }} />);
+  expect(screen.getByRole('status').textContent).toContain('Stopping…');
+  expect(screen.queryByTestId('orb')).toBeNull();
+  expect(api).not.toHaveBeenCalled();
 });

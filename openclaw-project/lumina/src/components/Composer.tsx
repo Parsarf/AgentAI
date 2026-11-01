@@ -25,8 +25,8 @@ export async function createChat(): Promise<string> {
   return (await api<{ conversation: { id: string } }>('POST', '/v1/conversations', {})).conversation.id;
 }
 
-export default function Composer({ conversationId, seed, onSent, autoFocus }: {
-  conversationId?: string | null; seed?: { text: string; n: number } | null; onSent?: (result: any) => void; autoFocus?: boolean;
+export default function Composer({ conversationId, seed, onSent, autoFocus, onStop, stopping = false }: {
+  conversationId?: string | null; seed?: { text: string; n: number } | null; onSent?: (result: any) => void; autoFocus?: boolean; onStop?: () => void; stopping?: boolean;
 }) {
   const { app, refresh } = useData();
   const storageKey = draftKey(app?.user.email ?? '', conversationId);
@@ -106,7 +106,8 @@ export default function Composer({ conversationId, seed, onSent, autoFocus }: {
           {respond !== 'plan' && live && <button type="button" className="chip" aria-pressed={goal} onClick={() => setGoal(g => !g)} title="Lumina keeps working, turn after turn, until the goal is met, you stop it, or your plan limit is reached">Keep working until complete</button>}
           <span className="actions">
           {speech && <button type="button" className="iconbtn" aria-label={listening ? 'Stop dictation' : 'Dictate'} aria-pressed={listening} onClick={toggleVoice}><I.Mic width={18} height={18} /></button>}
-          <button type="submit" className="iconbtn send" disabled={!text.trim() || busy} aria-label="Send message"><I.Up width={20} height={20} /></button>
+          {onStop ? <button type="button" className="iconbtn send" disabled={stopping} aria-label={stopping ? 'Stopping task' : 'Stop task'} aria-busy={stopping} onClick={onStop}><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="4" y="4" width="10" height="10" rx="2" fill="currentColor" /></svg></button>
+            : <button type="submit" className="iconbtn send" disabled={!text.trim() || busy} aria-label="Send message"><I.Up width={20} height={20} /></button>}
           </span>
         </div>
       </form>
