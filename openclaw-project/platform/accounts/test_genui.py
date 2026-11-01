@@ -39,7 +39,8 @@ class RegistryDocumentHTTP(TestCase):
         self.assertEqual(self.post(a, path + '/events', dict(event, id='http-event-3', action_id='forged')).status_code, 400)
         listed = a.get(f'/v1/conversations/{conversation}/blocks', secure=True).json()['blocks'][0]
         self.assertEqual(listed['state']['next']['selected'], 'continue')
-        self.assertEqual(listed['state_revision'], 2)
+        self.assertEqual(listed['state_revision'], 3)           # the answer itself is recorded: which button, and that the component is now locked
+        self.assertEqual((listed['state']['next']['chosen'], bool(listed['state']['next']['answered'])), ('continue', True))
         self.assertEqual(a.post(path + '/events', json.dumps(event), content_type='application/json', secure=True).status_code, 403)
 
     def test_updates_report_validation_errors_and_preserve_original_data(self):

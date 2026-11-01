@@ -33,6 +33,8 @@ interface Ctx { datasets: Record<string, Dataset>; exec: ExecutionProvider; act(
 const GenCtx = createContext<Ctx | null>(null);
 const NodeCtx = createContext<Block | null>(null);
 export const NodeProvider = NodeCtx.Provider;
+/** The id of the block being rendered (its own local state key), or undefined outside a document. */
+export function useNodeId(): string | undefined { return useContext(NodeCtx)?.id; }
 export function useGen(): Ctx {
   const c = useContext(GenCtx); const node = useContext(NodeCtx);
   if (!c) throw new Error('GenProvider missing');

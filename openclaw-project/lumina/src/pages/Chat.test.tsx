@@ -58,6 +58,21 @@ describe('resuming conversations', () => {
   });
 });
 
+describe('answers given through a component', () => {
+  it('are not shown as a message from the person, while the assistant working on them still shows', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/v1/csrf') return ok({ csrf_token: 't' });
+      if (url.endsWith('/blocks')) return ok({ blocks: [] });
+      if (url.includes('/events?')) return ok({ events: [] });
+      if (url.includes('/messages')) return ok({ messages: url.includes('after=') ? [] : [msg(1, 'Which size?', 'agent'), { ...msg(2, '- Size: Large', 'customer'), request_id: 'r', ui_answer: 1 }], tasks: [{ id: 'r', state: 'running', created_epoch: 0 }] });
+      return ok({ conversation: { id: 'a', title: 'Saved' } });
+    }));
+    mount(); await screen.findByText('Which size?');
+    expect(screen.queryByText('- Size: Large')).toBeNull(); expect(screen.queryByText(/Size: Large/)).toBeNull();      // no bubble for the answer
+    expect(await screen.findByTestId('thinking-orb')).toBeTruthy();                                                   // but the assistant's work on it is still shown
+  });
+});
+
 describe('pending assistant reply', () => {
   it('shows the orb on the assistant side and keeps Stop in the composer', async () => {
     let cancelled = false;

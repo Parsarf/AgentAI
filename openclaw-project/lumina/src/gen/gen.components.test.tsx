@@ -152,7 +152,9 @@ describe('location request', () => {
     geo({ getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 37.774929, longitude: -122.419418 } }) }); const { host } = setup(ask);
     fireEvent.click(screen.getByText('Share my location'));
     await waitFor(() => expect(host.send).toHaveBeenCalledWith('My location:\n- Your location: Shared from my device, approximate (about 1 km): 37.77, -122.42', expect.any(String)));
-    expect(JSON.stringify((host.send as any).mock.calls)).not.toContain('37.7749'); expect((screen.getByPlaceholderText('ZIP code, city or address') as HTMLInputElement).value).toBe('');
+    expect(JSON.stringify((host.send as any).mock.calls)).not.toContain('37.7749');                                       // only the rounded point leaves the browser
+    const input = screen.getByPlaceholderText('ZIP code, city or address') as HTMLInputElement;
+    await waitFor(() => expect(input.value).toContain('37.77, -122.42')); expect(input.matches(':disabled')).toBe(true);              // the component stays, locked, with what was sent
   });
   it('explains a blocked permission and still accepts a typed ZIP, city or address', async () => {
     geo({ getCurrentPosition: (_: unknown, bad: (e: { code: number }) => void) => bad({ code: 1 }) }); const { host } = setup(ask);
@@ -163,6 +165,37 @@ describe('location request', () => {
   it('asks for a typed location when the browser has no location support, and requires an answer', async () => {
     const { host } = setup(ask); expect(screen.queryByText('Share my location')).toBeNull();
     fireEvent.click(screen.getByText('Send')); expect(await screen.findByText('Enter a value.')).toBeTruthy(); expect(host.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('an answer given in a component is final', () => {
+  const form = { version: '1.0', responseId: 'r', blocks: [{ id: 'f', type: 'form', props: { title: 'Choices', fields: [
+    { id: 'kind', type: 'select', label: 'Kind', required: true, options: [{ label: 'Shop', value: 'shop' }, { label: 'Blog', value: 'blog' }] }], submit: { label: 'Send', action: { kind: 'agent.request', message: 'My choices:' } } } }] };
+  const buttons = { version: '1.0', responseId: 'r', blocks: [{ id: 'n', type: 'button_group', props: { buttons: [
+    { id: 'go', label: 'Show details', action: { kind: 'agent.request', message: 'Show the details' } }, { id: 'skip', label: 'Skip it', action: { kind: 'agent.request', message: 'Skip it please' } }] } }] };
+  it('a sent form stays on screen, locked, with exactly what was sent', async () => {
+    const { host } = setup(form);
+    fireEvent.change(screen.getByLabelText(/Kind/), { target: { value: 'shop' } }); fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(host.send).toHaveBeenCalledTimes(1));
+    const select = screen.getByLabelText(/Kind/) as HTMLSelectElement;
+    await waitFor(() => expect(select.matches(':disabled')).toBe(true)); expect(select.value).toBe('shop');
+    expect((screen.getByText(/Send/).closest('button') as HTMLButtonElement).disabled).toBe(true); expect(screen.getByText('Sent.')).toBeTruthy();
+  });
+  it('a form that was answered before (a reload, another device) opens locked with the answer', () => {
+    setup(form, { host: { initialState: { f: { values: { kind: 'blog' }, answered: true } } } });
+    const select = screen.getByLabelText(/Kind/) as HTMLSelectElement; expect(select.value).toBe('blog'); expect(select.matches(':disabled')).toBe(true);
+    expect((screen.getByText(/Send/).closest('button') as HTMLButtonElement).disabled).toBe(true); expect(screen.getByText('Answered. This can’t be changed.')).toBeTruthy();
+  });
+  it('pressing one button locks the group and marks which one was pressed', async () => {
+    const { host } = setup(buttons);
+    fireEvent.click(screen.getByText('Show details')); await waitFor(() => expect(host.send).toHaveBeenCalledWith('Show the details', expect.any(String)));
+    await waitFor(() => expect((screen.getByText('Skip it').closest('button') as HTMLButtonElement).disabled).toBe(true));
+    expect(screen.getByText('✓ Show details').closest('button')!.getAttribute('aria-pressed')).toBe('true');
+  });
+  it('a button group answered before opens locked with the chosen button marked', () => {
+    setup(buttons, { host: { initialState: { n: { answered: true, chosen: 'skip' } } } });
+    expect(screen.getByText('✓ Skip it').closest('button')!.getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByText('Show details').closest('button') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

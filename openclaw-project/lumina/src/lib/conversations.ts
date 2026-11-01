@@ -1,6 +1,7 @@
 import { api } from './api';
 import type { ThreadTask } from '../components/AgentThinking';
-export interface Message { id: number; request_id: string | null; provenance: string; content: string; created_at: string }
+/** `ui_answer`: the person's answer given through a component of an earlier answer; the assistant got it, but the chat shows the locked component, not a bubble. */
+export interface Message { id: number; request_id: string | null; provenance: string; content: string; created_at: string; ui_answer?: boolean | number }
 interface Page { messages: Message[]; tasks: ThreadTask[]; has_more?: boolean; next_after?: number }
 /** Read every persisted page; never silently truncate a resumed conversation. */
 export async function loadMessages(id: string, after = 0, stillCurrent: () => boolean = () => true): Promise<Page> {

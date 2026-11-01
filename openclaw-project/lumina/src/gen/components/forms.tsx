@@ -24,7 +24,7 @@ export function describe(f: Field, v: Val | undefined): string {
 export function FormBlock({ block }: P<'form'>) {
   const g = useGen(); const p = block.props; const uid = useId();
   const defaults = Object.fromEntries(p.fields.map(f => [f.id, initialOf(f)])) as Record<string, Val>;
-  const [l, set] = useLocal(block.id, { values: defaults as Record<string, Val> });
+  const [l, set] = useLocal(block.id, { values: defaults as Record<string, Val>, answered: false });
   const values = { ...defaults, ...(l.values as Record<string, Val>) };
   const [status, setStatus] = useState<{ kind: 'idle' | 'busy' | 'done' | 'error'; msg: string }>({ kind: 'idle', msg: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -45,15 +45,17 @@ export function FormBlock({ block }: P<'form'>) {
     setStatus({ kind: 'busy', msg: 'Sending…' }); const r = await (a.kind === 'agent.request' && g.submit ? g.submit('submit', Object.fromEntries(shown.map(f => [f.id, vals[f.id]]))) : g.act(action, { nonce: block.id }));
     if (!r.ok && r.fieldErrors) { setErrors(r.fieldErrors); setTimeout(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0); }
     setStatus(r.ok ? { kind: 'done', msg: 'Sent.' } : { kind: r.reason === 'declined' ? 'idle' : 'error', msg: r.reason === 'declined' ? '' : r.message });
+    if (r.ok) set({ values: vals, answered: true });       // the answer is final: this form stays locked with what was sent, also after a reload
   };
   const submit = (e: React.FormEvent) => { e.preventDefault(); return send(values); };
-  const off = block.disabled || g.readOnly || status.kind === 'done' || status.kind === 'busy';
+  const locked = !!l.answered || status.kind === 'done';
+  const off = block.disabled || g.readOnly || locked || status.kind === 'busy';
   return <form ref={form} aria-busy={status.kind === 'busy'} className={cx('gen-form', block.variant)} onSubmit={submit} noValidate aria-label={p.title ?? 'Form'}>
     {p.title && <h4>{p.title}</h4>}{p.description && <p className="faint">{p.description}</p>}
     {groups.map(gr => <fieldset key={gr} className="gen-group" disabled={off}>{gr && <legend>{gr}</legend>}
       {shown.filter(f => !grouped || (f.group ?? '') === gr).map(f => <FieldView key={f.id} f={f} id={`${uid}-${f.id}`} value={values[f.id]} onChange={v => setV(f.id, v)} onShare={v => send({ ...values, [f.id]: v })} error={errors[f.id]} />)}</fieldset>)}
-    <div className="gen-row"><button className="btn primary" type="submit" disabled={off || status.kind === 'busy'}>{status.kind === 'done' ? '✓ ' : ''}{p.submit.label}</button>
-      <span role="status" className={cx('gen-act-msg', status.kind === 'error' && 'err')}>{status.msg}</span></div></form>;
+    <div className="gen-row"><button className="btn primary" type="submit" disabled={off || status.kind === 'busy'}>{locked ? '✓ ' : ''}{p.submit.label}</button>
+      <span role="status" className={cx('gen-act-msg', status.kind === 'error' && 'err')}>{status.msg || (locked ? 'Answered. This can’t be changed.' : '')}</span></div></form>;
 }
 
 function FieldView({ f, id, value, onChange, onShare, error }: { f: Field; id: string; value: Val | undefined; onChange(v: Val): void; onShare?(v: string): void; error?: string }) {
