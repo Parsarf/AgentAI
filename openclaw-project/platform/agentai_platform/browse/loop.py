@@ -134,6 +134,7 @@ class BrowseRunner:
         jev_misses = 0       # JEV was asked and someone else took the step, in a row; resets only when a JEV step is acted on successfully
         unchanged = 0        # acted steps in a row (a wait does not count) after which the page looked exactly the same
         hold = None          # {'reason', 'url'} while the assistant, not JEV, decides the steps on this page; it ends when a Claude step moves the page or the page changes address
+        picture_only = bool(getattr(self.ladder.jev, 'picture_only', False))      # the owner's navigation test (picture_only_brain.py): JEV is shown the window only, and no one else decides a step
         for step in range(1, self.max_steps + 1):
             self.trace.step = step
             privacy.set_scrubbing(self.policy.on('personal_data_scrub'))      # read at every step: text for JEV is scrubbed unless this account switched it off
@@ -200,7 +201,7 @@ class BrowseRunner:
             if hold and (url != hold['url'] or (history and history[-1]['by'] != 'jev' and history[-1]['result'] == 'ok' and history[-1]['changed'] is True)):
                 self.trace.emit('claude_page', outcome='released', why='the page changed' if url != hold['url'] else 'a Claude step moved the page')
                 hold, notice = None, 'back'
-            if hold is None and (reason := modes.claude_reason(history)):
+            if hold is None and not picture_only and (reason := modes.claude_reason(history)):
                 hold, notice = {'reason': reason, 'url': url}, 'took'
                 self.trace.emit('claude_page', outcome='taken', why=reason)
                 self.on_stat('claude_page_takeovers')
@@ -210,7 +211,7 @@ class BrowseRunner:
                         claude=hold['reason'] if hold else '')
             visible, covered = modes.covered_share(snap)
             if snap.get('window') is not None:            # the deciders see the window on every step (a runner that cannot take a picture is the only exception)
-                only_picture = not candidates         # no list to choose from: the picture is all there is, and it is kept with the run's pictures
+                only_picture = not candidates or picture_only         # no list to choose from: the picture is all there is, and it is kept with the run's pictures
                 view = self.s.view(save=self.shots and only_picture)
                 if view.get('ok'):
                     look.shot = {'data': view['data'], 'width': view['width'], 'height': view['height'], 'view': view['view']}

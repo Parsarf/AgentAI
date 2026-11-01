@@ -1,0 +1,90 @@
+name: Deploy to server
+# After "Lumina CI" passes on a push to main, build the web app and send this commit to the server's deploy program (platform/deploy/agentai-deploy, see
+# platform/deploy/AUTO_DEPLOY.md). The website on Vercel deploys itself from main and is not part of this.
+# Off until the repository variable AUTO_DEPLOY_ENABLED is "true". "Run workflow" (on main) always works and defaults to a dry run that changes nothing live.
+on:
+  workflow_run:
+    workflows: ['Lumina CI']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: build, canary and probes, then stop. Nothing live changes.'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false      # a deploy that has started always finishes; a newer commit waits its turn
+
+jobs:
+  deploy:
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+          (vars.AUTO_DEPLOY_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && 'deploy-dry' || 'deploy' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 0
+      - name: Skip if main has moved on (the newer commit's own run deploys it)
+        id: tip
+        run: |
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" != "$SHA" ] && [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "main is now $(git rev-parse --short origin/main); $SHA is not the tip. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.tip.outputs.skip != 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: openclaw-project/lumina/package-lock.json
+      - name: Build the web app
+        if: steps.tip.outputs.skip != 'true'
+        working-directory: openclaw-project/lumina
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          test -f dist/index.html
+      - name: Assemble the upload
+        if: steps.tip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/upload"; mkdir -p "$out"
+          cd openclaw-project/platform
+          printf '{"commit": "%s", "purpose": "automatic deploy from GitHub"}\n' "$SHA" > RELEASE.json
+          tar --exclude='__pycache__' --exclude='*.pyc' -czf "$out/platform.tgz" \
+              RELEASE.json accounts agentai_platform deploy manage.py migrations openapi.json requirements.lock runtime.lock.json config.example.json
+          rm RELEASE.json
+          tar -czf "$out/ui.tgz" -C ../lumina/dist .
+          printf '{"sha": "%s", "ui": true}\n' "$SHA" > "$out/manifest.json"
+          tar -czf "$RUNNER_TEMP/upload.tgz" -C "$out" manifest.json platform.tgz ui.tgz
+          ls -l "$RUNNER_TEMP/upload.tgz"
+      - name: Send it to the server
+        if: steps.tip.outputs.skip != 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/deploy_key"; hosts="$RUNNER_TEMP/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key"; printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$hosts"
+          trap 'shred -u "$key" 2>/dev/null || rm -f "$key"' EXIT
+          echo "Sending $SHA as '$MODE'"
+          ssh -i "$key" -o IdentitiesOnly=yes -o UserKnownHostsFile="$hosts" -o StrictHostKeyChecking=yes -o BatchMode=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" "$MODE $SHA" < "$RUNNER_TEMP/upload.tgz"

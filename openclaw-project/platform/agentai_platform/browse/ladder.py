@@ -281,6 +281,8 @@ def validate_pointing(data, boxes=('target',), yesno=('found',)):
 
 
 class JevChooser:
+    neutral_picture = False      # True: picture prompts carry no 'something is in the way' reason (PictureOnlyChooser)
+
     def __init__(self, endpoint, model, credential, transport, deadline_s=8):
         self.endpoint, self.model, self.credential, self.transport, self.deadline = endpoint, model, credential, transport, deadline_s
 
@@ -315,10 +317,12 @@ class JevChooser:
                   'Only if nothing listed is right, point at what you see in the picture.')
 
     @classmethod
-    def _picture_state(cls, subgoal, page, history, why, ref, position='', hint=''):
-        """What JEV is told in picture mode: no page text and no control list, only the picture and what was already done."""
-        return (f'Subgoal: {scrub(instruction_text(subgoal, context_chars=1000), 48000)}\n\nPage: {cls._where(page)}\n'
-                f'You are shown the picture because {scrub(why, 160)} (a popup, a panel or a human check is probably in the way), so the picture is the way to see what can be clicked.\n'
+    def _picture_state(cls, subgoal, page, history, why, ref, position='', hint='', neutral=False):
+        """What JEV is told in picture mode: no page text and no control list, only the picture and what was already done. `neutral`: the picture is simply all JEV is given (the owner's
+        navigation test), so it is not told that something is probably in the way."""
+        reason = ('You are shown the browser window as a picture; it is all you are given, so use it to see what can be clicked.\n' if neutral else
+                  f'You are shown the picture because {scrub(why, 160)} (a popup, a panel or a human check is probably in the way), so the picture is the way to see what can be clicked.\n')
+        return (f'Subgoal: {scrub(instruction_text(subgoal, context_chars=1000), 48000)}\n\nPage: {cls._where(page)}\n' + reason
                 + (f'Scroll position: {position}.\n' if position else '') + f'\nRecent steps (oldest first):\n{cls._history_lines(history)}\n\n'
                 + (f'{hint}\n\n' if hint else '') + f'What the browser window shows right now: {ref}')
 
@@ -394,7 +398,7 @@ class JevChooser:
         questions = {name: {'type': 'choice', 'instructions': INSTRUCTIONS[name], 'criteria': options} for name, options in heads.items()}
         questions['target'] = {'type': 'box', 'instructions': BOX_INSTRUCTION}
         questions['found'] = {'type': 'noul', 'instructions': FOUND_INSTRUCTION}
-        body = {'model': self.model, 'state': self._picture_state(subgoal, page, history, why, ref, position, hint),
+        body = {'model': self.model, 'state': self._picture_state(subgoal, page, history, why, ref, position, hint, neutral=self.neutral_picture),
                 'assets': {ref: {'type': 'image', 'format': 'jpg', 'data_base64': shot['data']}}, 'questions': questions}
         raw = self.transport(self.endpoint, body, self.credential, max(self.deadline, PICTURE_DEADLINE_S), headers=IMAGE_HEADERS)
         try:
@@ -666,16 +670,21 @@ class Ladder:
         if self.handed:                                                    # the assistant has the task for good
             self.trace.emit('route', jev_asked=False, skipped='the assistant has the task', failures=failures, jev_misses=jev_misses, forced=force_escalate, mode='picture' if look.shot is not None else 'controls')
             return self._agent(goal, history, page, candidates, Handover(self.handed), look)
+        picture_only = bool(getattr(self.jev, 'picture_only', False))     # the owner's navigation test: JEV works from the picture alone and nobody else takes a step
         looping = force_escalate or failures >= 2
         skipped = ('no JEV' if not self.jev else 'repeated failure or a loop' if looping else f'the page needs more than controls: {look.claude}' if look.claude
                    else f'gave up on JEV after {jev_misses} misses' if jev_misses >= self.give_up_after else '')
         self.trace.emit('route', jev_asked=not skipped, skipped=skipped, failures=failures, jev_misses=jev_misses, forced=force_escalate, mode='picture' if look.shot is not None else 'controls')
+        if picture_only and (skipped or look.shot is None):
+            return Decision('stop', 'rule', f'picture-only test: JEV could not go on by itself ({skipped or "no picture of the window could be taken"})')
         if skipped:
             page_only = bool(self.jev) and not looping and bool(look.claude)       # the loop's own rule: JEV struggles with THIS page; the next page starts with JEV again
             return self._agent(goal, history, page, candidates, Handover(skipped, sticky=not page_only), look)
-        step = self._jev_step(goal, history, page, candidates, caps, look)
+        step = self._jev_step(goal, history, page, [] if picture_only else candidates, caps, look)       # picture-only: no control list and no page text, so JEV is shown only the window
         if step.decision is not None:
             return step.decision
+        if picture_only and (step.signal in ('too_complex', 'ask', 'text') or (step.signal == 'miss' and jev_misses + 1 >= 2)):
+            return Decision('stop', 'rule', f'picture-only test: JEV could not choose a step by itself ({step.signal})', cost_microusd=step.cost, signal=step.signal, miss=True)
         if step.signal == 'too_complex':
             return self._agent(goal, history, page, candidates, Handover('the planner found this too complex'), look, step.cost, 'too_complex')
         if step.signal == 'ask' and not any(c['action'] in ('click', 'select') for c in candidates):
