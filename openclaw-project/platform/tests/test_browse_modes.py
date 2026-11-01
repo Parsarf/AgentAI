@@ -132,15 +132,16 @@ class ModeRules(unittest.TestCase):
         self.assertEqual(modes.claude_reason([]), '')
         self.assertEqual(modes.claude_reason([step()]), '')                                                           # once is not a pattern
         self.assertIn('repeated the same step 2 times', modes.claude_reason([step(), step()]))
-        self.assertEqual(modes.claude_reason([step(), step(label='Other')]), '')                                      # a different step
+        self.assertIn('last 2 JEV steps changed nothing', modes.claude_reason([step(), step(label='Other')]))         # two different steps in a row that changed nothing: JEV is lost
         self.assertEqual(modes.claude_reason([step(changed=True), step(changed=True)]), '')                           # the page moved: not stuck
         self.assertEqual(modes.claude_reason([step(), step(by='agent')]), '')                                         # the assistant's step ends JEV's run
         self.assertIn('could not be carried out (stale)', modes.claude_reason([step(result='stale', changed=None)]))
         self.assertEqual(modes.claude_reason([step(result='covered', changed=None)]), '')                             # a refused click gets a picture first, not Claude
-        self.assertIn('last 3 JEV steps changed nothing', modes.claude_reason([step(label='A'), step(label='B'), step(label='C')]))
-        self.assertEqual(modes.claude_reason([step(label='A'), step(action='wait', label='', changed=False), step(label='B')]), '')   # a wait neither counts nor breaks the run
+        self.assertIn('last 2 JEV steps changed nothing', modes.claude_reason([step(label='A'), step(label='B'), step(label='C')]))
+        self.assertEqual(modes.claude_reason([step(label='A'), step(action='wait', label='', changed=False)]), '')       # a wait neither counts nor breaks the run
+        self.assertEqual(modes.claude_reason([step(label='A', changed=True), step(label='B')]), '')                      # one that moved the page and one that did not: not stuck
         down, up = step('scroll', '', move='down'), step('scroll', '', move='up')
-        self.assertEqual(modes.claude_reason([down, up]), '')                                                         # scrolling down then up is not the same step
+        self.assertNotIn('repeated the same step', modes.claude_reason([down, up]))                                   # scrolling down then up is not the same step
         self.assertIn('repeated the same step', modes.claude_reason([down, down]))
         moving = [step('scroll', '', changed=True, move='down')] * 6
         self.assertIn('only scrolled for 6 steps', modes.claude_reason(moving)); self.assertEqual(modes.claude_reason(moving[:5]), '')
@@ -236,9 +237,9 @@ class PictureSteps(unittest.TestCase):
     def test_a_weak_spot_is_a_miss_and_claude_takes_that_step(self):
         s = PictureSession({'start': COVERED, 'shop': SHOP}, hits={})
         weak = {'operation': 'click', 'found': 0.1, 'spot': 0.9}
-        r, jev, _ = runner(s, [weak, weak], ['{"action":"scroll"}'], max_steps=2)
+        r, jev, _ = runner(s, [weak, weak], ['{"action":"scroll"}', '{"action":"scroll"}'], max_steps=2)
         out = r.run('g', 'https://shop.example/')
-        self.assertEqual([h['by'] for h in out.steps], ['rule', 'agent']); self.assertEqual(s.acts[-1], ('scroll', None, None, None, None))      # the first weak spot was looked at again; the second handed over, and with no controls to name the assistant could only scroll
+        self.assertEqual([h['by'] for h in out.steps], ['agent', 'agent']); self.assertEqual(s.acts[-1], ('scroll', None, None, None, None))      # the first weak spot was looked at again; the second handed over, and with no controls to name the assistant could only scroll
 
     def test_when_the_picture_cannot_be_taken_claude_decides_instead(self):
         s = PictureSession({'start': COVERED}); s.view = lambda save=False: {'ok': False, 'error': 'no_picture'}

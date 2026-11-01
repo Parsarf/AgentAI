@@ -358,6 +358,26 @@ class JevOperations(unittest.TestCase):
         d, llm, jev, _ = self.decide('garbage', llm_steps=['{"action":"click","ref":2}'], jev_misses=4)
         self.assertEqual((jev.bodies, llm.calls, d.miss), ([], ['agent'], False))                 # JEV is left out for the rest of the run
 
+    def test_when_jevs_service_does_not_answer_the_assistant_takes_just_that_step_straight_away_and_jev_is_asked_again_on_the_next(self):
+        import urllib.error
+        def http_503(body): raise urllib.error.HTTPError('https://x', 503, 'Image processing is unavailable', {}, None)
+        def timed_out(body): raise TimeoutError('timed out')
+        for failing, why in ((http_503, 'error'), (timed_out, 'timeout')):
+            llm = scripted_llm(['{"action":"click","ref":2}']); jev = ScriptedJev(failing, {'operation': 'click', 'click_target': 'c2'})
+            ladder = live(llm, jev)
+            d = ladder.decide('find "carbon paddle" in blue', [], PAGE, CANDS, caps=RUNNER_V2)
+            self.assertEqual((d.by, d.kind, d.miss, llm.calls, bool(ladder.handed)), ('agent', 'act', True, ['agent'], False), why)       # no wasted "look again" step, and not for good
+            self.assertIn('did not answer', llm.hints[0])                                                                         # the assistant is told why it was asked
+            again = ladder.decide('find "carbon paddle" in blue', [], PAGE, CANDS, caps=RUNNER_V2, jev_misses=1)       # a second miss in a row would hand the task over: here JEV answers
+            self.assertEqual((again.by, len(jev.bodies)), ('jev', 2))
+
+    def test_two_service_failures_in_a_row_hand_the_task_over_for_good(self):
+        import urllib.error
+        def http_503(body): raise urllib.error.HTTPError('https://x', 503, 'Image processing is unavailable', {}, None)
+        llm = scripted_llm(['{"action":"click","ref":2}']); ladder = live(llm, ScriptedJev(http_503))
+        d = ladder.decide('find "carbon paddle" in blue', [], PAGE, CANDS, caps=RUNNER_V2, jev_misses=1)
+        self.assertEqual((d.by, bool(ladder.handed)), ('agent', True))
+
     def test_loops_failures_and_budget(self):
         for kw in ({'force_escalate': True}, {'failures': 2}):
             d, llm, jev, _ = self.decide({'operation': 'click', 'click_target': 'c2'}, llm_steps=['{"action":"click","ref":2}'], **kw)
@@ -461,16 +481,16 @@ class HandOffToTheAssistant(unittest.TestCase):
         r, *_ = self.run_loop([self.click('c2')] * 6, ['{"action":"click","ref":2}'], max_steps=8, session=FpSession(FLAT, iter(range(99))))
         self.assertEqual((r.status, r.reason), ('stuck', 'repeating the same step'))
 
-    def test_three_acts_that_changed_nothing_send_the_next_step_to_the_assistant_and_a_fourth_ends_the_run(self):
+    def test_two_acts_that_changed_nothing_send_the_next_step_to_the_assistant_and_the_run_ends_when_the_page_still_does_not_change(self):
         same = lambda: FpSession(FLAT, iter([7] * 99))
-        r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}'], session=same(), max_steps=8)
-        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'agent']); self.assertEqual((r.status, r.reason), ('stuck', 'the page is not changing'))
+        r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}', '{"action":"click","ref":1}'], session=same(), max_steps=8)
+        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'agent', 'agent']); self.assertEqual((r.status, r.reason), ('stuck', 'the page is not changing'))
         self.assertEqual([h['changed'] for h in r.steps], [False] * 4)
 
     def test_a_wait_neither_counts_nor_resets_and_a_changing_or_unknown_page_never_triggers(self):
         wait = {'operation': 'wait'}
-        r, llm, *_ = self.run_loop([self.click('c1'), wait, self.click('c2'), wait, self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}'], session=FpSession(FLAT, iter([7] * 99)), max_steps=8)
-        self.assertEqual([h['by'] for h in r.steps[:6]], ['jev', 'jev', 'jev', 'jev', 'jev', 'agent'])                         # the forced step comes after the third real act
+        r, llm, *_ = self.run_loop([self.click('c1'), wait, self.click('c2'), wait, self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}', '{"action":"click","ref":1}'], session=FpSession(FLAT, iter([7] * 99)), max_steps=8)
+        self.assertEqual([h['by'] for h in r.steps[:4]], ['jev', 'jev', 'jev', 'agent'])                                       # the assistant takes the page after the second real act: the wait between them counts for nothing
         for session in (FpSession(FLAT, iter(range(99))), FpSession(FLAT, iter([None] * 99)), FakeSession(FLAT)):
             r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c1'), self.click('c2')], [], session=session, max_steps=5)
             self.assertEqual((r.status, llm.calls), ('max_steps', []), type(session).__name__)
