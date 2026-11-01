@@ -1,7 +1,7 @@
 # NOTE FOR WHOEVER DEPLOYS NEXT (read this before you deploy)
 
 **Merged to `main` but NOT deployed** (written 2026-11-01 by the agent that built #8, #9 and #10, at the owner's request: "merge them but don't deploy; the other agent deploys them when it next deploys"; #11 is the other agent's own MCP work, merged at the owner's request with its feature switched off).
-At the time of writing the server runs `1ff1ef5`; `main` is `1e8ed54` (or later). Deploying `main` deploys all four; nothing special is needed for them beyond the points below. Automatic deploys were switched off (`AUTO_DEPLOY_ENABLED=false`) while these were merged, then switched back on, so **the next merge to `main` that passes CI deploys them by itself**, and so does Actions -> Deploy to server (dry run first).
+At the time of writing the server runs `1ff1ef5`; `main` is `1e8ed54` (or later). Deploying `main` deploys all four; nothing special is needed for them beyond the points below. **Automatic deploys are currently OFF** (`AUTO_DEPLOY_ENABLED=false`, switched off so merging these did not deploy them; the owner had set it to true before). Deploy with Actions -> Deploy to server on `main` (dry run first, then untick Dry run), or re-enable the variable (`gh variable set AUTO_DEPLOY_ENABLED --body true`) and the next merge to `main` that passes CI deploys everything by itself. Re-enabling is the owner's decision; if you do it, say so in your report.
 
 | PR | What | Files you will see in the deploy |
 |---|---|---|
