@@ -4,7 +4,7 @@ Start here. Scope: everything under `/Users/parsa/AgentAI`. Method: seven scoped
 
 | Read this | When |
 |---|---|
-| **`HANDOFF.md`** | **Give this ONE file to the AI doing the cleanup: self-contained state, rules, ordered task queue, owner decisions** |
+| **`../HANDOFF.md`** | **Current handoff (2026-11-02): live state, deploy procedure, gotchas, open work. Replaces the 2026-10-29 `HANDOFF.md` (deleted; other files here that say "HANDOFF.md" mean that old file, whose open tasks are carried into the new one).** |
 | `TECH_DEBT_AUDIT.md` | Executive summary, top 5 fixes, quick wins, open questions |
 | `PRODUCTION_VERIFICATION_2026-10-29.md` | What was actually verified on the live server (overrides "unverified" elsewhere) |
 | `CLEANUP_PLAN.md` | Prioritised, dependency-aware plan with the A–G classes, preserve list, do-not-do list |
