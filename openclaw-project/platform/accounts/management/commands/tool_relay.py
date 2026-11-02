@@ -26,7 +26,10 @@ def build(store):
     from accounts.mcp_connections import service as mcp_service
     from agentai_platform.mcp_connections.relay import RemoteTools
     from agentai_platform.mcp_connections import switch as mcp_switch
-    return Relay(tool, progress=TaskProgressTool(store), origin=origin, remote=RemoteTools(mcp_service(store), enabled=lambda account: mcp_switch.enabled(settings.MCP_SWITCH_FILE, account))), Identity(identify), own_models
+    from accounts import longterm
+    from agentai_platform.longterm_memory import MemoryTools
+    memory = longterm.build(store)                         # None unless fully configured; the tools then do not exist for anyone
+    return Relay(tool, progress=TaskProgressTool(store), origin=origin, memory=MemoryTools(memory) if memory is not None else None, remote=RemoteTools(mcp_service(store), enabled=lambda account: mcp_switch.enabled(settings.MCP_SWITCH_FILE, account))), Identity(identify), own_models
 
 
 class Command(BaseCommand):

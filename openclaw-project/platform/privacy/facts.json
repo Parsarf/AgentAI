@@ -67,8 +67,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "5a4dcec0d63cf9e1b3af865166083c608cca283901ef3e652a0567a47264b68e",
-  "schema_columns": 658,
+  "schema_sha256": "ffa45c2dd906ccd74b6c8b645cc22c60bbb4a33f8e90920c5588ce2bbe42ef22",
+  "schema_columns": 666,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -205,7 +205,10 @@
   "locally stored credentials",
   "sidePanel",
   "https://backend.getlumina.pro/v1/panel",
-  "side chat"
+  "side chat",
+  "long-term memory",
+  "Settings, Memory",
+  "Our memory service"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -266,6 +269,11 @@
    "date": "2026-11-01",
    "by": "side-panel chat (written by Claude Code for the owner to review; not yet published)",
    "note": "The extension gains the sidePanel permission and one HTTPS call to Lumina's own server (https://backend.getlumina.pro/v1/panel, same host as the device link) for the side chat; it keeps the short-lived pass in memory only, plus one more developer-only setting (panelApi). chat_messages gains a nullable surface column holding only the label 'panel' (no personal data; the typed text already lives in the same table as every chat message). Decided the policy must change: permission list, what the extension sends and receives, 'three' developer settings, date. privacy.html, facts.json and derive.py updated together. NOT published: the page must be published (see README) before the 0.2.0 extension is released or the side chat is switched on, because the live policy does not mention them."
+  },
+  {
+   "date": "2026-11-01",
+   "by": "long-term memory (Hindsight), written by Claude Code for the owner to review; not yet published",
+   "note": "New table longterm_memories: the plain text of short notes the assistant saved for a customer (preference/fact, one sentence, secrets refused), per account, visible and deletable by the customer, never restored from backups (LIVE in ops/restore.py). Notes are also indexed in a self-hosted Hindsight server (one bank per account, bank id = keyed hash computed on the server, never chosen by the assistant), configured with retain_extraction_mode=chunks and observations off, so it stores each note verbatim, calls no language model on notes and derives no text from them; embeddings and reranking must run locally on the same server (deploy/LONG_TERM_MEMORY.md). No new third party receives notes. Policy updated: short version, collect list, recipients (our memory service, same server), retention row, choices. Feature stays off (long-term-memory.json) until this policy is published and Hindsight is deployed per deploy/LONG_TERM_MEMORY.md."
   }
  ],
  "assistant_recipients": {

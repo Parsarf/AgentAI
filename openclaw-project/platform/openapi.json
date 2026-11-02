@@ -5297,6 +5297,102 @@
      }
     }
    }
+  },
+  "/v1/longterm-memory": {
+   "get": {
+    "summary": "Whether long-term memory is on for your account, and the short notes the assistant saved about you (id, kind, text, date); only your own",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Not available in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/longterm-memory/{entry_id}/forget": {
+   "post": {
+    "summary": "Delete one saved note; it disappears from your list at once and is then removed from the search index (pending: true if that part is still finishing)",
+    "parameters": [
+     {
+      "name": "entry_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Long-term memory is not available"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/longterm-memory/forget-all": {
+   "post": {
+    "summary": "Delete every saved note and the whole search index for your account",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "Long-term memory is not available"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    }
+   }
   }
  },
  "components": {

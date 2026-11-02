@@ -143,6 +143,12 @@ BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'        
 # Remote MCP custody uses the host-only encryption key; no credentials enter cells.
 MCP_KEY_FILE = os.environ.get('AGENTAI_MCP_KEY_FILE', '')
 MCP_SWITCH_FILE = os.environ.get('AGENTAI_MCP_SWITCH_FILE', '/var/lib/agentai-platform/mcp-connections.json')      # who may use remote MCP connections; off until turned on (agentai_platform/mcp_connections/switch.py)
+# Long-term memory (agentai_platform/longterm_memory.py): a self-hosted Hindsight server indexes what the assistant is asked to remember, one private bank per account.
+# Off until the owner turns it on AND all three are set; the bank secret must be its own file (never derived from SECRET_KEY: rotating that would orphan every customer's memory).
+LTM_SWITCH_FILE = os.environ.get('AGENTAI_LTM_SWITCH_FILE', '/var/lib/agentai-platform/long-term-memory.json')
+HINDSIGHT_URL = os.environ.get('AGENTAI_HINDSIGHT_URL', '')
+HINDSIGHT_KEY_FILE = os.environ.get('AGENTAI_HINDSIGHT_KEY_FILE', '')
+HINDSIGHT_BANK_SECRET_FILE = os.environ.get('AGENTAI_HINDSIGHT_BANK_SECRET_FILE', '')
 MCP_OAUTH_CLIENTS_FILE = os.environ.get('AGENTAI_MCP_OAUTH_CLIENTS_FILE', '')
 ASANA_MCP_CLIENT_ID = os.environ.get('ASANA_MCP_CLIENT_ID', '')
 ASANA_MCP_CLIENT_SECRET = os.environ.get('ASANA_MCP_CLIENT_SECRET', '')

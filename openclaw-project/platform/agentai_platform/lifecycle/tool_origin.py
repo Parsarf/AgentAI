@@ -13,7 +13,7 @@ import sqlite3
 import stat
 import time
 
-TOOLS = {'lumina_browser', 'lumina_browser_step', 'lumina_task_update'}
+TOOLS = {'lumina_browser', 'lumina_browser_step', 'lumina_task_update', 'lumina_memory_recall', 'lumina_memory_remember'}
 def is_tool_name(name):
     return isinstance(name, str) and (name in TOOLS or name in ('lumina_mcp_discover', 'lumina_mcp_call') or bool(re.fullmatch(r'lumina_mcp_[a-f0-9]{32}_[a-f0-9]{12}', name)))
 

@@ -42,6 +42,7 @@
   <li>We do not sell your data and we do not show ads.</li>
   <li>The extension works only in tabs it opens itself, only while you have switched it on, and you can stop it at any moment.</li>
   <li>If you choose to use your own model API key, your messages go to the company you chose instead of Anthropic.</li>
+  <li>If long-term memory is switched on for your account, the assistant keeps short notes of preferences and facts you tell it, so it can use them in later conversations. You can see and delete every note in Settings.</li>
   <li>If you connect an MCP service, that service receives the arguments and task data you authorize the assistant to send to its tools.</li>
   <li>Pictures and traces from browser tasks are deleted 24 hours after the task ends.</li>
   <li>Everything else we hold about you stays until you ask us to delete it.</li>
@@ -60,6 +61,7 @@
 <ul>
   <li>The messages you send, the assistant’s replies, your tasks and their results, and activity records that show what the assistant did.</li>
   <li>Logins and cards you choose to save are stored encrypted.</li>
+  <li>If long-term memory is on for your account, the short notes the assistant saved about you: one sentence each, only things you told it. Passwords, keys and card numbers are refused. You can see and delete every note in Settings, Memory.</li>
   <li>If you choose to use your own model, the address of the model service you entered, the model name, and your API key for it. The key is stored encrypted and is never shown again, apart from its last four characters.</li>
 </ul>
 <h3>Services you connect</h3>
@@ -107,6 +109,7 @@
   <li><strong>Anthropic</strong> provides the assistant’s model by default. It receives your messages and, during a browser task, the page content the assistant is asked to work with.</li>
   <li><strong>The company that runs the endpoint you enter</strong>, only if you choose to use your own model API key (Settings, Your own model). While it is on, it receives what Anthropic would otherwise receive: your messages, the assistant’s working notes, and the content of web pages and results the assistant reads for you. Its handling of that data is governed by its own terms, not this policy. Lumina does not charge you for that use and does not limit it by spend; you pay that company directly. The browser steps decided by TypeSafe (below) do not use your key.</li>
   <li><strong>TypeSafe</strong> provides the model that decides each step of a browser task. It receives a picture of the page and your task description. Before the text is sent we remove email addresses, phone numbers, card and ID numbers, street addresses, IP addresses and long keys from it. Pictures cannot be cleaned that way, so what is visible on a page is visible to them.</li>
+  <li><strong>Our memory service</strong>, only if long-term memory is on for your account. It is open-source software (Hindsight) that runs on our own server, with a separate store for each customer, so notes from one customer are never searched for another. It stores your notes as you wrote them and searches them with software that runs on that same server, so no other company receives your notes from it.</li>
   <li><strong>The MCP services you connect</strong> receive the arguments of tool calls and any task data included in those arguments. Integrations shows the server hostname and the exact call for your approval. For example, connecting <strong>Asana</strong> sends authorized calls to Asana’s MCP service and uses Asana for sign-in. Each service handles that data under its own terms and privacy policy. The entire conversation is not automatically sent, but a tool’s arguments can include content from it.</li>
   <li><strong>Brave Search</strong> receives the search terms when the assistant searches the web for you.</li>
   <li>Two public <strong>DNS services</strong>, Cloudflare (1.1.1.1) and Quad9 (9.9.9.9), turn website names into addresses whenever the assistant opens a page. They see the names of the sites it looks up, not what is on them.</li>
@@ -126,6 +129,7 @@
     <tr><td>Encrypted backups of our systems</td><td>Up to 30 days. Something you ask us to delete can therefore remain in a backup for up to 30 days before the backup expires.</td></tr>
     <tr><td>Copies of our database made just before software updates</td><td>Removed automatically after at most 30 days.</td></tr>
     <tr><td>MCP connection settings, locally stored credentials, tool selections and call approvals</td><td>Until you disconnect that service or ask us to delete your account. Disconnect deletes these live records and blocks further tool access. Deleted credentials are excluded from restores. Copies already in backups expire within 30 days. Tool results already included in chats and activity remain with those records.</td></tr>
+    <tr><td>Long-term memory notes, if it is on for your account</td><td>Until you delete them in Settings, Memory (one note or all of them), or ask us to delete your account. Deleting removes the text from our records at once and from the memory service. A copy can remain in our encrypted database backups for up to 30 days; backups are never used to bring a deleted note back.</td></tr>
     <tr><td>Your own model key, if you add one</td><td>Until you remove it in Settings, or ask us to delete your account. Removing it deletes it from our server.</td></tr>
     <tr><td>Your account details, chats, tasks, results, activity records, security records and saved items</td><td>Kept until you ask us to delete them. We do not currently delete these automatically.</td></tr>
   </tbody>
@@ -135,6 +139,7 @@
 <ul>
   <li>Email <a href="mailto:raouparsa@gmail.com">raouparsa@gmail.com</a> to see what we hold about you, to correct it, or to have it deleted. We will answer within 30 days.</li>
   <li>In Integrations you can disable individual MCP tools, disable a connection, or disconnect it. Disconnecting removes locally stored credentials. We attempt provider revocation when supported and report whether the request was accepted or failed; you may also need to revoke access in that service’s settings. Stopping a task or closing a connection cannot undo an action already received by the service.</li>
+  <li>If long-term memory is on for your account, Settings, Memory lists every note and lets you delete one note or all of them.</li>
   <li>You can archive chats yourself in the app.</li>
   <li>You can switch off or remove the browser extension at any time, as described above.</li>
 </ul>
