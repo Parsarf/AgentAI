@@ -8,6 +8,7 @@ import { STYLES, STYLE_INFO, useAnswerStyle } from '../lib/answerStyle';
 import Credits from '../components/Credits';
 import YourBrowser from '../components/YourBrowser';
 import OwnModel from '../components/OwnModel';
+import MemoryNotes from '../components/MemoryNotes';
 import McpConnections from '../components/McpConnections';
 
 function Soon({ name, what, needs }: { name: string; what: string; needs: string }) {
@@ -55,6 +56,7 @@ export function Settings() {
         <p className="faint" style={{ marginTop: 6 }}>Plan access: {app?.features.billing_mode === 'open' ? 'free access' : app?.features.billing_mode === 'paid_required' ? 'subscription' : 'invitation'}</p></section>
       <YourBrowser />
       <OwnModel />
+      <MemoryNotes />
       <Credits />
       <section className="panel card"><h2>Account</h2><p className="muted" style={{ marginTop: 10 }}>{app?.user.email}</p>
         <p style={{ marginTop: 12 }}><button className="btn" onClick={signOut}>Sign out</button> <a className="btn" href="/account/">Classic view</a></p></section></div>);
