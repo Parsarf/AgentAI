@@ -3,37 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lumina chat</title>
+<title>Lumina</title>
 <link rel="stylesheet" href="src/panel.css">
 </head>
 <body>
 <header>
-  <h1>Lumina</h1>
+  <div class="bar">
+    <h1>Lumina</h1>
+    <div class="tools">
+      <button id="new" type="button" class="icon" title="New session" aria-label="New session">New</button>
+      <button id="gear" type="button" class="icon" title="Settings" aria-label="Settings" aria-expanded="false">Settings</button>
+      <button id="close" type="button" class="icon" title="Close" aria-label="Close the panel">Close</button>
+    </div>
+  </div>
   <p id="status" role="status" aria-live="polite" data-tone="wait">Loading…</p>
   <p id="detail" class="note" hidden></p>
+  <p id="banner" class="banner" hidden><span id="banner-text"></span> <button id="banner-use" type="button">Show it here</button></p>
 </header>
-<main>
-  <section aria-labelledby="trail-title" class="trail">
+
+<section id="settings" class="settings" hidden aria-label="Settings">
+  <form id="pair" hidden>
+    <label for="code">Pairing code from Lumina, Settings, Your browser</label>
+    <div class="row"><input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" placeholder="ABCD-2345" inputmode="text"><button type="submit" class="primary">Connect</button></div>
+    <p id="pair-error" class="error" role="alert" hidden></p>
+  </form>
+  <div class="row between"><span id="power-text">Lumina is off.</span><button id="power" type="button"></button></div>
+  <div class="row between"><span id="sites-text">Reading pages is off.</span><button id="sites" type="button">Allow</button></div>
+  <fieldset class="saved">
+    <legend>Saved prompts</legend>
+    <ol id="saved"></ol>
+    <form id="saved-form" class="row"><input id="saved-name" maxlength="30" placeholder="Name" aria-label="Prompt name"><input id="saved-text" maxlength="2000" placeholder="What to send" aria-label="Prompt text"><button type="submit">Add</button></form>
+  </fieldset>
+  <p class="note">Shortcut: Ctrl+Shift+L (Command+Shift+L on a Mac) opens and closes this panel. Right-click selected text and choose “Ask Lumina”.</p>
+  <p class="note">Lumina only acts in tabs it opens itself, or in a tab you press Allow on here. Press Cancel on Chrome’s “is debugging this browser” bar, or turn Lumina off, to stop it at once.</p>
+</section>
+
+<main id="main">
+  <section aria-labelledby="trail-title" class="trail" id="trail-box" hidden>
     <h2 id="trail-title">What it is doing</h2>
     <ol id="trail" aria-live="off"></ol>
-    <p id="trail-empty" class="note">Nothing yet.</p>
   </section>
   <section aria-labelledby="chat-title" class="chat">
-    <h2 id="chat-title">Chat</h2>
+    <h2 id="chat-title" class="sr">Chat</h2>
     <ol id="messages" aria-live="polite" aria-relevant="additions"></ol>
+    <div id="empty" class="empty">
+      <p><strong>What should we do?</strong></p>
+      <p class="note">Ask about the page you are on, or tell Lumina to do something in a new tab, in this tab, or in another one.</p>
+    </div>
   </section>
 </main>
+
 <footer>
   <p id="error" role="alert" hidden></p>
+  <section class="context" aria-label="Where Lumina works">
+    <div class="seg" role="group" aria-label="Where to work">
+      <button type="button" data-target="new_tab" aria-pressed="true">New tab</button>
+      <button type="button" data-target="this_tab" aria-pressed="false">This tab</button>
+      <button type="button" data-target="tab" aria-pressed="false">Another tab</button>
+    </div>
+    <div id="picker" class="row" hidden><label for="tabs" class="sr">Tab</label><select id="tabs"></select></div>
+    <div id="tabline" class="tabline" hidden>
+      <span id="tabname"></span>
+      <button id="allow" type="button">Allow Lumina to use this tab</button>
+      <button id="revoke" type="button" hidden>Stop allowing</button>
+    </div>
+    <label class="check"><input id="withpage" type="checkbox" checked> <span id="withpage-text">Include what is on the page</span></label>
+    <p id="ctxnote" class="note" hidden></p>
+  </section>
+  <div id="quick" class="quick" role="group" aria-label="Quick actions"></div>
   <form id="composer" autocomplete="off">
     <label for="text" class="sr">Message to Lumina</label>
-    <textarea id="text" rows="2" maxlength="16000" placeholder="Tell it what to do differently…" disabled></textarea>
-    <div class="row">
-      <button id="stop" type="button" hidden>Stop</button>
-      <button id="send" type="submit" class="primary" disabled>Send</button>
+    <textarea id="text" rows="2" maxlength="16000" placeholder="Ask or tell Lumina…" disabled></textarea>
+    <div class="row between">
+      <div class="seg small" role="group" aria-label="Mode">
+        <button type="button" data-mode="browse" aria-pressed="true" title="Lumina uses a browser to do it">Browse</button>
+        <button type="button" data-mode="auto" aria-pressed="false" title="Lumina answers; it may still use tools">Chat</button>
+      </div>
+      <div class="row"><button id="stop" type="button" hidden>Stop</button><button id="send" type="submit" class="primary" disabled>Send</button></div>
     </div>
   </form>
-  <p class="note">Messages go into the same chat you see in Lumina. Enter sends, Shift+Enter adds a line.</p>
 </footer>
 <script type="module" src="src/panel.js"></script>
 </body>

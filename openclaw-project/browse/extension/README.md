@@ -2,7 +2,7 @@
 
 A third kind of "hands" for the browse service, next to the Docker stage (`../runner.mjs`) and the cell's own browser (`platform/agentai_platform/browse/native_runner.py`):
 it does the **same runner protocol** (`open`, `snapshot`, `act`, `xy`, `view`, `probe`, `screenshot`, `close`) in a new tab of the customer's own Chrome.
-The platform decides; the extension performs one validated step at a time and answers with the runner's fields.
+The platform decides; the extension performs one validated step at a time and answers with the runner's fields. Besides `open` (a new tab) there is `attach` (work in a tab the customer allowed, where it is). The side chat is the extension's own connection to the server: see `platform/deploy/SIDE_PANEL.md`.
 
 ```
 platform (job, consent) --WebSocket--> src/background.js --> src/executor.js --chrome.debugger--> tab in a "Lumina" group
@@ -10,18 +10,17 @@ platform (job, consent) --WebSocket--> src/background.js --> src/executor.js --c
 
 | File | Does |
 |---|---|
-| `manifest.json` | MV3. Permissions: `debugger`, `tabGroups`, `storage`. No host permissions: it can only act on tabs it opened itself. `externally_connectable`: the Lumina page only. |
-| `popup.html`, `src/popup*.js` | The toolbar popup: status, pairing code box, Turn on / off. |
+| `manifest.json` | MV3. Permissions: `debugger`, `tabGroups`, `storage`, `sidePanel`, `tabs` (tab names for the picker), `scripting` (page text, only after the customer allows it), `contextMenus`. No install-time host permissions: reading pages is the optional `<all_urls>`, asked for from the panel. It acts in tabs it opens itself or a tab the customer pressed Allow on. `externally_connectable`: the Lumina page only. Shortcut `toggle-panel` (Ctrl/Command+Shift+L). No popup: the toolbar button opens the side panel. |
 | `src/config.js` | The production address, the Lumina page origin, the pairing-code format. |
 | `src/executor.js` | The runner's commands over the DevTools protocol, behind a small `host` interface (so tests drive it with Playwright). |
-| `src/background.js` | The Chrome side: the tab group, `chrome.debugger`, popups, the WebSocket link, the on/off button. |
-| `panel.html`, `src/panel*.js`, `src/panel.css` | The side chat beside a Lumina tab: activity trail, chat, Send and Stop. `panel-model.js` is the pure part (what to show, what may be sent); `panel-link.js` holds the ticket in the service worker and makes the calls, so the page never sees it. |
+| `src/background.js` | The Chrome side: the tab group, allowed tabs (grants), `chrome.debugger`, the WebSocket link, side-panel sessions (one per window), the shortcut and right-click menu. |
+| `panel.html`, `src/panel*.js`, `src/panel.css` | The side chat on every tab: status, where to work (new tab / this tab / another tab) and Allow, quick actions and saved prompts, activity trail, chat, Send and Stop; settings (pairing, on/off, read pages). `panel-model.js` is the pure part (what to show, what may be sent); `panel-link.js` holds the ticket and signs in for a new session. |
 | `src/page.js` | Page-side helpers. `describe`, `hitAt`, `focusActive`, `fingerprint`, `ready` are copied from `../runner.mjs` and a test fails if they drift. |
 | `src/rules.js` | Address policy and limits, checked against `../runner.mjs` by a test. |
 | `dev/ws-server.mjs`, `dev/drive.mjs` | A dependency-free bridge and a scripted demo (no model). |
 
 Tests (from `browse/`): `node --test test/extension-*.test.mjs`
-- `extension-panel`: the side chat's model, ticket link, popup choice of tab and the worker's wiring (fake `chrome`).
+- `extension-panel`: the side chat's model, ticket link and session sign-in, and the worker's wiring (fake `chrome`): panel toggle, sessions, tab picker, allowed tabs, page reading.
 - `extension-panel-page`: `panel.html` in real Chrome with a scripted worker (text stays text, one key per send, Send only while a task runs).
 - `extension-executor`: the executor against real Chrome (Playwright as the host) on the mock shop.
 - `extension-parity`: page helpers, address policy and limits equal the runner's.
@@ -41,7 +40,7 @@ Chrome shows "Lumina is debugging this browser" on those tabs. **Cancel on that 
 
 The platform side (device gateway, pairing, the `local` engine) is in `platform/agentai_platform/browse/`; see `platform/deploy/DEVICE_BROWSER.md`.
 `dev/device-sim.mjs` plays this extension (the real executor in headless Chrome) for `platform/tests/e2e/test_device_extension.py`.
-Pairing: Lumina → Settings → Your browser → Connect gives a code; type it in the extension's popup (or, with the Web Store build, the page hands it over itself: `chrome.runtime.sendMessage(<extension id>, { type: 'pair', code })`, accepted only from `https://getlumina.pro`, and it carries nothing but the code). The extension always connects to production (`src/config.js`); a stored address is honoured only if it is this computer, so no page can point it elsewhere.
+Pairing: Lumina → Settings → Your browser → Connect gives a code; type it in the side panel (or, with the Web Store build, the page hands it over itself: `chrome.runtime.sendMessage(<extension id>, { type: 'pair', code })`, accepted only from `https://getlumina.pro`, and it carries nothing but the code). The extension always connects to production (`src/config.js`); a stored address is honoured only if it is this computer, so no page can point it elsewhere.
 An unknown, revoked or replaced device (close codes 4401 / 4403 / 4409) switches the extension off with a red "!" instead of retrying forever.
 
 ## Privacy

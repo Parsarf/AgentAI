@@ -9,6 +9,8 @@
 //   host.send(tabId, method, params) -> result   one DevTools command
 //   host.onEvent(fn)             fn(tabId, method, params) for DevTools events
 //   host.activate(tabId)         bring the tab to the front (a background tab may not paint, so a picture of it can stall)
+//   host.granted(grant)          -> tabId|null  a tab the customer allowed Lumina to use in their own window (attached on this call); `host.isGranted(tabId)` says whether a tab is one.
+//                                A granted tab is the customer's own: it keeps its size, is never closed by Lumina (closeTab only lets go of it), and tabs() lists it while it is in use.
 import { WIDTH, HEIGHT, MAX_ELEMENTS, MAX_VALUE, MAX_URL, KEYS, TAKEOVER_KEYS, SELECTOR, urlAllowed, pointOk } from './rules.js';
 import { describe, hitAt, focusActive, fingerprint, ready, locate, chooseOption, focusForFill } from './page.js';
 
@@ -34,7 +36,7 @@ export class Executor {
       const send = (m, p) => this.host.send(tab, m, p);
       this.prepared.set(tab, (async () => {
         await send('Page.enable');
-        await send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1, mobile: false });
+        if (!this.host.isGranted?.(tab)) await send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1, mobile: false });      // the customer's own tab keeps its size
         await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
       })());
     }
@@ -97,7 +99,7 @@ export class Executor {
     try {
       if (!msg || typeof msg.cmd !== 'string') return err('unknown_command');
       if (msg.cmd === 'close') return await this.close();
-      const fn = { open: this.open, snapshot: this.snapshot, act: this.act, xy: this.xy, view: this.view, probe: this.probe, screenshot: this.screenshot }[msg.cmd];
+      const fn = { open: this.open, attach: this.attach, snapshot: this.snapshot, act: this.act, xy: this.xy, view: this.view, probe: this.probe, screenshot: this.screenshot }[msg.cmd];
       return fn ? await fn.call(this, msg) : err('unknown_command');
     } catch (e) { return err('runner_error', e && e.message); }
   }
@@ -109,6 +111,31 @@ export class Executor {
     if (nav.errorText) return err('navigation_failed', nav.errorText);
     await this.settle();
     return { ok: true, url: await this.url(), title: await this.title() };
+  }
+
+  /** Work in a tab the customer granted, exactly where it is: no address is opened. The grant is a short name the platform got from the customer's message, never a tab number. */
+  async attach(msg) {
+    if (typeof msg.tab !== 'string' || !/^[a-z0-9]{1,24}$/.test(msg.tab)) return err('bad_tab');
+    if (typeof this.host.granted !== 'function') return err('no_such_tab');
+    const tab = await this.host.granted(msg.tab);
+    if (tab === null || tab === undefined) return err('no_such_tab');
+    this.current = tab; this.prepared.delete(tab);      // set up again: a tab let go of after a task lost its DevTools settings
+    await this.prepare(tab);
+    await this.settle();
+    const url = await this.url();
+    if (!urlAllowed(url, this.allowLoopback)) { await this.host.closeTab(tab).catch(() => {}); this.current = null; return err('url_blocked'); }
+    return { ok: true, url, title: await this.title() };
+  }
+
+  /** The window commands and pictures are judged against: the fixed one for Lumina's own tabs, the real (but never larger) viewport for a granted tab. */
+  async size() {
+    const tab = await this.page();
+    if (!this.host.isGranted?.(tab)) return { w: WIDTH, h: HEIGHT };
+    try {
+      const m = await this.host.send(tab, 'Page.getLayoutMetrics');
+      const v = m.cssVisualViewport || m.visualViewport;
+      return { w: Math.max(100, Math.min(WIDTH, Math.floor(v.clientWidth))), h: Math.max(100, Math.min(HEIGHT, Math.floor(v.clientHeight))) };
+    } catch { return { w: WIDTH, h: HEIGHT }; }
   }
 
   async snapshot() {
@@ -186,10 +213,12 @@ export class Executor {
 
   async view() {
     const tab = await this.page();
-    const shoot = () => this.host.send(tab, 'Page.captureScreenshot', { format: 'jpeg', quality: 75, fromSurface: true });
+    const { w, h } = await this.size();
+    const clip = this.host.isGranted?.(tab) ? { clip: { x: 0, y: 0, width: w, height: h, scale: 1 } } : {};      // the customer's tab: the same pixels the points are judged in
+    const shoot = () => this.host.send(tab, 'Page.captureScreenshot', { format: 'jpeg', quality: 75, fromSurface: true, ...clip });
     let shot;
     try { shot = await withTimeout(shoot(), 4000); } catch { await this.host.activate(tab); shot = await withTimeout(shoot(), 6000); }      // a background tab may not paint: bring it forward, once
-    return { ok: true, data: shot.data, width: WIDTH, height: HEIGHT, view: { w: WIDTH, h: HEIGHT } };
+    return { ok: true, data: shot.data, width: w, height: h, view: { w, h } };
   }
 
   /** The runner keeps the file itself; here the picture comes back as `data` and whoever owns the job's folder writes shot-NNN.jpg (see dev/drive.mjs). */
@@ -217,7 +246,7 @@ export class Executor {
     await this.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
   }
 
-  async wheel(deltaY) { await this.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: WIDTH / 2, y: HEIGHT / 2, deltaX: 0, deltaY }); }
+  async wheel(deltaY) { const { w, h } = await this.size(); await this.cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: w / 2, y: h / 2, deltaX: 0, deltaY }); }
 
   async key(name) {
     const k = KEY_INFO[name];

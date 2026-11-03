@@ -1,14 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Lumina Browser",
-  "version": "0.2.0",
-  "description": "Let Lumina do browsing tasks for you in tabs of your own Chrome, only while you switch it on. Stop it any time.",
+  "version": "0.3.0",
+  "description": "Chat with Lumina beside any tab. It browses for you in a new tab, or in a tab you allow, only while you switch it on.",
   "minimum_chrome_version": "120",
   "permissions": [
     "debugger",
     "tabGroups",
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "tabs",
+    "scripting",
+    "contextMenus"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -16,7 +19,6 @@
   },
   "action": {
     "default_title": "Lumina",
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png"
@@ -31,5 +33,17 @@
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
+  },
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "commands": {
+    "toggle-panel": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "Open or close the Lumina chat"
+    }
   }
 }

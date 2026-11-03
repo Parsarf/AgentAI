@@ -97,6 +97,23 @@ class ApprovalWakeChecks(unittest.TestCase):
     setUp, worker, state = fixtures.WorkerChecks.setUp, fixtures.WorkerChecks.worker, fixtures.WorkerChecks.state
     submit, queue = fixtures.WakeChecks.submit, fixtures.WakeChecks.queue
 
+    def test_opening_the_side_chat_wakes_only_that_customers_cell_with_no_message_at_all(self):
+        backups = self.root / 'backups'; backups.mkdir(mode=0o700)
+        backend = Backend()
+        host = HostSupervisor(self.root / 'host', backend, enrollment=EnrollmentPolicy({'image': IMAGE, 'profile': 'trial-unmeasured-v1', 'backup_root': str(backups), 'max_cells': 2}))
+        for account in ('a', 'b'):
+            self.engine.host_create(account, key='signup-' + account, target_profile='trial-unmeasured-v1')
+        worker = self.worker(driver=host, wake=True, idle_after=10**12)
+        self.assertEqual(worker.tick()['ran'], 2)
+        self.assertEqual(worker.tick()['woken'], 0, 'nobody is waiting: nothing is woken by the worker itself')
+        self.engine.request_system('b', key='presence-1-1', generation=1, kind='start', presence=True)      # what accounts.chat.prewarm queues when b opens the panel
+        worker.tick(); worker.tick()
+        self.assertEqual((self.state('a'), self.state('b')), ('stopped', 'running'))
+        self.assertEqual([(c.account_id, c.kind) for c in backend.calls], [('a', 'create'), ('b', 'create'), ('b', 'start')])
+        self.submit('b')
+        claim = self.queue().claim(owner='request-worker', capacity=self.capacity())
+        self.assertEqual(claim.account_id, 'b', 'the first message finds its cell already awake and is claimed at once')
+
     def test_approval_create_reaches_host_without_manual_enrollment_then_prompt_wakes_only_its_cell(self):
         backups = self.root / 'backups'; backups.mkdir(mode=0o700)
         backend = Backend()

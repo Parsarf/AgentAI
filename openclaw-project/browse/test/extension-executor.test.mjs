@@ -186,3 +186,38 @@ test('a page that cannot be reached is a failed step, not a crash', async () => 
   assert.equal(o.ok, false); assert.equal(o.error, 'navigation_failed');
   await stop();
 });
+
+test('attach works in a tab the customer already has open: the same page, its real size, and it is never closed', async () => {
+  await start();
+  host.onAdopt = undefined;      // the customer's own tab is never set up as one of Lumina's own (no fixed window): only `attach` touches it
+  const sent = []; const send = host.send.bind(host); host.send = (t, m, p) => { sent.push(m); return send(t, m, p); };
+  const mine = await context.newPage(); await mine.setViewportSize({ width: 900, height: 600 }); await mine.goto(base + '/');
+  const id = host.order[host.order.length - 1];
+  host.isGranted = t => t === id; host.granted = async g => (g === 'g1' ? id : null);
+  const closeTab = host.closeTab.bind(host); host.closeTab = async t => { if (host.isGranted(t)) return; await closeTab(t); };      // what the extension does: let go, never close
+  const a = await ex.handle({ cmd: 'attach', tab: 'g1' });
+  assert.equal(a.ok, true); assert.equal(a.url, base + '/'); assert.equal(a.title, 'Paddle Shop');
+  assert.equal(await mine.evaluate(() => innerWidth), 900, 'no fixed window is forced on the customer\'s own tab');
+  assert.ok(!sent.includes('Emulation.setDeviceMetricsOverride'));
+  const s = await ex.handle({ cmd: 'snapshot' }); assert.ok(find(s.snapshot, 'Add to cart'), 'it reads the page the customer is on');
+  const v = await ex.handle({ cmd: 'view' }); assert.equal(v.ok, true); assert.deepEqual([v.width, v.height], [900, 600]); assert.ok(v.data.length > 100);
+  const add = find(s.snapshot, 'Add to cart');
+  const c = await ex.handle({ cmd: 'act', action: 'click', ref: +add[1], expect: { label: add[4] } });
+  assert.equal(c.ok, true); assert.match(mine.url(), /\/cart$/, 'the click happened in the customer\'s own tab');
+  assert.equal((await ex.handle({ cmd: 'attach', tab: 'g9' })).error, 'no_such_tab');
+  assert.equal((await ex.handle({ cmd: 'attach', tab: '../x' })).error, 'bad_tab'); assert.equal((await ex.handle({ cmd: 'attach' })).error, 'bad_tab');
+  await ex.handle({ cmd: 'close' });
+  assert.equal(mine.isClosed(), false, 'their tab is still there');
+  await context.close();
+});
+
+test('attach refuses a granted tab that has gone somewhere Lumina may not work', async () => {
+  await start({ allowLoopback: false });
+  const mine = await context.newPage(); await mine.goto('about:blank');
+  const id = host.order[host.order.length - 1];
+  host.isGranted = t => t === id; host.granted = async g => (g === 'g1' ? id : null);
+  host.closeTab = async () => {};
+  const a = await ex.handle({ cmd: 'attach', tab: 'g1' });
+  assert.equal(a.ok, false); assert.equal(a.error, 'url_blocked');
+  await context.close();
+});

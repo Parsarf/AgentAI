@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalisePairCode, bridgeAllowed, PROD_BRIDGE, LUMINA_ORIGIN } from '../extension/src/config.js';
-import { describe } from '../extension/src/popup-model.js';
 import { readFileSync } from 'node:fs';
 
 test('pairing codes are cleaned up, and only what the platform can issue is accepted', () => {
@@ -25,16 +24,8 @@ test('connect addresses: production or this computer, nothing else', () => {
 test('the manifest names exactly the page origin the code accepts, and the production address is the one the proxy routes', () => {
   const m = JSON.parse(readFileSync(new URL('../extension/manifest.json', import.meta.url), 'utf8'));
   assert.deepEqual(m.externally_connectable.matches, [LUMINA_ORIGIN + '/*']);
-  assert.equal(m.action.default_popup, 'popup.html'); assert.equal(m.host_permissions, undefined);
+  assert.equal(m.action.default_popup, undefined, 'the toolbar button opens the side panel'); assert.equal(m.host_permissions, undefined, 'nothing is asked for at install'); assert.deepEqual(m.optional_host_permissions, ['<all_urls>'], 'reading pages is asked for later, by the customer');
+  assert.ok(m.commands['toggle-panel'].suggested_key.default);
   const caddy = readFileSync(new URL('../../platform/deploy/caddy/Caddyfile.getlumina', import.meta.url), 'utf8');
   assert.ok(caddy.startsWith('# Customer HTTPS edge only.') && caddy.includes(new URL(PROD_BRIDGE.replace('wss', 'https')).host + ' {') && caddy.includes('@device path ' + new URL(PROD_BRIDGE.replace('wss', 'https')).pathname));
-});
-
-test('the popup says what is true and offers only what makes sense', () => {
-  assert.deepEqual(describe({ enabled: false, paired: false }), { text: 'Not connected to Lumina yet.', button: '', askCode: true, tone: 'off' });
-  assert.equal(describe({ enabled: false, paired: true }).button, 'Turn on'); assert.equal(describe({ enabled: false, paired: true }).askCode, false);
-  assert.equal(describe({ enabled: true, connected: false, paired: true }).tone, 'wait');
-  assert.match(describe({ enabled: true, connected: true, paired: true, pairing: true }).text, /^On\./);
-  assert.equal(describe({ enabled: true, connected: false, pairing: true }).text, 'Connecting to Lumina…');
-  assert.equal(describe(undefined).askCode, true);
 });

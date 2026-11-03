@@ -7,7 +7,7 @@ const store = {}, calls = [], sockets = [];
 let tabSeq = 100;
 const chrome = {
   storage: { local: { get: async keys => Object.fromEntries([].concat(keys).filter(k => k in store).map(k => [k, store[k]])), set: async o => { Object.assign(store, o); }, remove: async k => { delete store[k]; } } },
-  runtime: { id: 'ext-id', getManifest: () => ({ version: '0.1.0' }), getPlatformInfo: async () => ({ os: 'mac' }), onMessage: listeners(), onMessageExternal: listeners() },
+  runtime: { id: 'ext-id', getManifest: () => ({ version: '0.1.0' }), getPlatformInfo: async () => ({ os: 'mac' }), onMessage: listeners(), onMessageExternal: listeners(), onConnect: listeners(), onInstalled: listeners() },
   action: { setBadgeText: o => calls.push(['badge', o.text]), setBadgeBackgroundColor() {}, setTitle() {} },
   tabs: { onRemoved: listeners(), onCreated: listeners(), create: async o => { calls.push(['tabs.create', o.url]); return { id: ++tabSeq }; }, remove: async id => { calls.push(['tabs.remove', id]); }, update: async () => {}, group: async o => o.groupId ?? 7 },
   tabGroups: { update: async () => {} },
@@ -115,7 +115,7 @@ test('refused, revoked or replaced means switched off with a visible reason, not
 
 test('the popup reports the state, and a bad pairing code is refused without touching anything', async () => {
   const idle = await popup({ type: 'status' });
-  assert.deepEqual(idle, { enabled: false, connected: false, paired: true, pairing: false, tabs: [], panel: false });
+  assert.deepEqual(idle, { enabled: false, connected: false, paired: true, pairing: false, tabs: [], granted: [], panel: false });
   const n = sockets.length;
   assert.deepEqual(await popup({ type: 'pair', code: 'nope' }), { ok: false, error: 'bad_code' });
   assert.deepEqual(await popup({ type: 'pair', code: 'ABCD-2340' }), { ok: false, error: 'bad_code' });      // 0 is never in a code
