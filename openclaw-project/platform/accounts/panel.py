@@ -4,7 +4,10 @@ No cookie and no device token: the panel's whole credential is a short-lived tic
 extension while a run of this conversation goes on. Every request here re-checks, not just the ticket's lifetime: the origin is one of our extensions, the person and conversation
 are still the customer's own, and for anything that writes (and for the status) the very computer the ticket names is connected right now with "use my own browser" on.
 Sending a message goes through the same ChatService.send as the web chat (budget, steering, limits and denial categories included), labelled as coming from the panel.
-Everything returned is plain fields; the extension shows them as text."""
+Everything returned is plain fields; the extension shows them as text.
+
+The extension also stands on its own: `session` trades the extension's paired-device token for a ticket on a NEW conversation (every time the panel is opened is a fresh session),
+wakes the customer's cell, and `send` then starts a task (it steers one only when a run is already going). The device token is checked by the browse service, which alone holds it."""
 import json
 import re
 from functools import wraps
@@ -21,13 +24,13 @@ from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.panel import ticket as panel_ticket
 from agentai_platform.panel.offer import read_secret
 from agentai_platform.security import Principal, NotFound
-from .chat import service
+from .chat import prewarm, service
 from .lifecycle import AccountStore
 from .services import Limited, rate
 
 REQUEST_ID = re.compile(r'^[a-f0-9]{32}$')
 KEY = re.compile(r'^[A-Za-z0-9_-]{8,64}$')
-MAX_BODY = 20_000
+MAX_BODY = 80_000      # a message (16,000) plus the page text (20,000), the selection (4,000) and the tab list that may come with it
 EVENT_FIELDS = ('summary', 'category', 'status', 'tool')
 
 
@@ -90,6 +93,140 @@ def panel_endpoint(methods, *, writes=False, status=False):
     return decorate
 
 
+TARGETS = ('new_tab', 'this_tab', 'tab')
+MODES = ('auto', 'browse', 'text')
+GRANT = re.compile(r'^[a-z0-9]{1,24}$')
+
+
+def _text(value, limit):
+    return value[:limit] if isinstance(value, str) and '\x00' not in value else None
+
+
+def clean_context(raw):
+    """What the extension saw in the browser, checked and cut down: a target, at most eight tabs (title, address, and a grant name for one the customer allowed), the text they
+    selected and the text of their page. -> a clean dict, {} for nothing, or None when the shape is wrong. Sizes are capped here; the driver quotes it all as untrusted data."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or set(raw) - {'target', 'tabs', 'selection', 'page'}:
+        return None
+    out = {}
+    if 'target' in raw:
+        if raw['target'] not in TARGETS:
+            return None
+        out['target'] = raw['target']
+    if 'tabs' in raw:
+        if not isinstance(raw['tabs'], list) or len(raw['tabs']) > 8:
+            return None
+        tabs = []
+        for tab in raw['tabs']:
+            if not isinstance(tab, dict) or set(tab) - {'title', 'url', 'grant'}:
+                return None
+            title, url = _text(tab.get('title', ''), 200), _text(tab.get('url', ''), 2000)
+            grant = tab.get('grant')
+            if title is None or url is None or (grant is not None and not (isinstance(grant, str) and GRANT.fullmatch(grant))):
+                return None
+            tabs.append({'title': title, 'url': url, **({'grant': grant} if grant else {})})
+        out['tabs'] = tabs
+    for key, limit in (('selection', 4000), ('page', 20000)):
+        if key in raw:
+            text = _text(raw[key], limit)
+            if text is None:
+                return None
+            if text.strip():
+                out[key] = text
+    return out
+
+
+def _cell_state(account):
+    """Is this customer's assistant ready to work? 'ready' | 'waking' | 'asleep' | 'unknown'. For the panel's status line only."""
+    store = AccountStore(connection.settings_dict['NAME'])
+    with store.connect() as con:
+        cell = con.execute('SELECT observed_state FROM lifecycle_cells WHERE account_id=?', (account,)).fetchone()
+        starting = con.execute("SELECT 1 FROM operations WHERE account_id=? AND kind='start' AND state IN ('pending','running','uncertain')", (account,)).fetchone()
+    if cell is None:
+        return 'unknown'
+    if cell['observed_state'] == 'running':
+        return 'ready'
+    return 'waking' if starting else 'asleep'
+
+
+def _customer(account):
+    """The person this account's computer belongs to: its active customer. A device is paired by the signed-in customer, so this is who the panel acts as."""
+    store = AccountStore(connection.settings_dict['NAME'])
+    with store.connect() as con:
+        row = con.execute("""SELECT m.actor_id FROM memberships m JOIN accounts a ON a.id=m.account_id
+            WHERE m.account_id=? AND m.role='customer' AND m.status='active' AND a.status='active' ORDER BY m.actor_id LIMIT 1""", (account,)).fetchone()
+    return row['actor_id'] if row else None
+
+
+@csrf_exempt
+def session(request):
+    """Start a panel session from the extension's own sign-in (its device token): a NEW conversation (or, with `conversation`, a fresh ticket for one made earlier), the assistant
+    woken up, and the ticket the other panel calls use. Same gate as every panel call: the feature is on, the origin is one of our extensions, and the computer is connected."""
+    if not settings.PANEL_ORIGINS or not read_secret(settings.PANEL_SECRET_FILE):
+        return _fail('unavailable', 404)
+    origin = request.headers.get('Origin', '')
+    if origin not in settings.PANEL_ORIGINS:
+        return _fail('origin_not_allowed', 403)
+    if request.method == 'OPTIONS':
+        return _cors(JsonResponse({}, status=204), origin)
+    if request.method != 'POST':
+        return _cors(_fail('method_not_allowed', 405), origin)
+    try:
+        rate('panel.ip', request.client_ip, 600, 60)
+        data = _body(request)
+        header = request.headers.get('Authorization', '')
+        token = header[7:] if header.startswith('Device ') else ''
+        if data is None or set(data) - {'conversation'} or not token:
+            return _cors(_fail('invalid_request', 400), origin)
+        conversation = data.get('conversation')
+        if conversation is not None and not (isinstance(conversation, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', conversation)):
+            return _cors(_fail('invalid_request', 400), origin)
+        who = BrowseRpc('', settings.BROWSE_SOCKET)('device_auth', token=token)
+        if not who.get('ok'):
+            return _cors(_fail('device', 401), origin)
+        account, device = who['account'], who['device_id']
+        if not who.get('allowed'):
+            return _cors(_fail('unavailable', 404), origin)
+        if not who.get('connected'):
+            return _cors(_fail('browser_off', 409), origin)
+        rate('panel.session', account, 40, 600)
+        actor = _customer(account)
+        if not actor:
+            return _cors(_fail('unavailable', 404), origin)
+        principal = Principal(account, actor, 'customer')
+        s = service()
+        if conversation is None:
+            projects = s.projects(principal)
+            if not projects:
+                return _cors(_fail('unavailable', 404), origin)
+            created = s.create_conversation(principal, projects[0]['id'])
+            conversation = created['id']
+            try:
+                s.rename_conversation(principal, conversation, 'Browser extension')
+            except Exception:
+                pass                                                                # the title is a courtesy
+        else:
+            s.conversation(principal, conversation)                                  # theirs and still there, or NotFound
+        if not who.get('use'):
+            BrowseRpc(account, settings.BROWSE_SOCKET)('device_use', on=True)        # using the extension is the customer saying "use my own browser"
+        prewarm(account)                                                             # the assistant starts waking now, not when the first message is sent
+        secret = read_secret(settings.PANEL_SECRET_FILE)
+        ticket = panel_ticket.mint(secret, account, actor, conversation, device)
+        response = JsonResponse({'ticket': ticket, 'conversation': conversation, 'expires_in': panel_ticket.TTL_SECONDS, 'cell': _cell_state(account)})
+    except Limited:
+        response = JsonResponse({'error': 'rate_limited'}, status=429, headers={'Retry-After': '60'})
+    except NotFound:
+        response = _fail('unavailable', 404)
+    except Conflict:
+        response = _fail('request_conflict', 409)
+    except panel_ticket.TicketError:
+        response = _fail('unavailable', 404)
+    except CapabilityUnavailable:
+        response = _fail('unavailable_now', 503)
+    return _cors(response, origin)
+
+
 def _message(row):
     return {'id': row['id'], 'role': row['provenance'], 'text': row['content'], 'surface': row['surface'], 'at': row['created_at']}
 
@@ -98,7 +235,7 @@ def _message(row):
 def state(request, claims, principal):
     view = service().panel_view(principal, claims['conversation'])
     latest = view['request']
-    return JsonResponse({'messages': [_message(r) for r in view['messages']], 'live': view['live'],
+    return JsonResponse({'messages': [_message(r) for r in view['messages']], 'live': view['live'], 'cell': _cell_state(claims['account']),
                          'request': {'id': latest['id'], 'state': latest['state'], 'paused': bool(latest['paused']), 'outcome': latest['outcome']} if latest else None})
 
 
@@ -127,20 +264,26 @@ def _body(request):
 @panel_endpoint(['POST'], writes=True)
 def send(request, claims, principal):
     data = _body(request)
-    if data is None or set(data) - {'message', 'key'} or not isinstance(data.get('message'), str) or not isinstance(data.get('key'), str) or not KEY.fullmatch(data['key']):
+    if data is None or set(data) - {'message', 'key', 'mode', 'context'} or not isinstance(data.get('message'), str) or len(data['message']) > 16_000 or not isinstance(data.get('key'), str) or not KEY.fullmatch(data['key']):
+        return _fail('invalid_request', 400)
+    mode = data.get('mode', 'auto')
+    context = clean_context(data.get('context'))
+    if mode not in MODES or context is None:
         return _fail('invalid_request', 400)
     s = service()
-    if not s.panel_view(principal, claims['conversation'], limit=1)['live']:
-        return _fail('no_active_run', 409)                                         # the panel steers a running task; it does not start new ones
+    live = s.panel_view(principal, claims['conversation'], limit=1)['live']
     try:
-        result = s.send(principal, conversation_id=claims['conversation'], message=data['message'], key=data['key'], mode='auto', surface='panel')
+        # A run going on takes the message as a steer (the same ChatService.send decides); otherwise this starts a task, and the assistant is woken if it is asleep.
+        result = s.send(principal, conversation_id=claims['conversation'], message=data['message'], key=data['key'], mode=mode, surface='panel',
+                        panel_context=None if live else (context or None))
     except Conflict:
         return _fail('request_conflict', 409)
     except BudgetDenied as error:
         return JsonResponse({'error': 'budget_denied', 'category': denial_category(error)}, status=402)
     except ValueError:
         return _fail('invalid_request', 400)
-    return JsonResponse({'ok': True, 'request': result.get('id') or result.get('request_id')}, status=202)
+    prewarm(claims['account'])
+    return JsonResponse({'ok': True, 'request': result.get('id') or result.get('request_id'), 'started': not live}, status=202)
 
 
 @panel_endpoint(['POST'], writes=True)
