@@ -124,6 +124,15 @@ hostile or the model API that would be given its schema could not handle it:
 | A reference outside the schema (URL, `$dynamicRef`) or a cycle (`#`, a definition that leads back to itself) | Cannot be resolved by the model API. |
 | A name that is not 1-128 of `A-Za-z0-9_.:-` | Cannot be addressed; dropped (a repeated name keeps the first). |
 
+**How the assistant sees the tools.** However many tools are enabled, the assistant is given at most
+eight as tools of their own (all of them while there are eight or fewer; otherwise the ones this account
+has completed the most calls with in the last 90 days, most recent breaking ties; a tool never used is
+never promoted). Everything else stays reachable on demand through the two generic tools:
+`lumina_mcp_discover` returns a compact list (name, service, one line, `[direct]` marker; no schemas) and
+accepts `{"query"}` to search or `{"tool"}` for one tool's exact parameters; `lumina_mcp_call` takes the full
+name or, when only one service has it, the plain tool name. The two names are unchanged on purpose: the
+runtime's ownership-proof plugin knows only them and the namespaced names.
+
 Regular expressions (`pattern`, `patternProperties`) are **accepted**: the schema is stored and
 shown exactly as sent, but Lumina never runs a server's expression (a hostile one could hang a web
 worker). The server that owns the tool enforces them. Checking the model's arguments here is a
@@ -171,7 +180,7 @@ you intend to trust with authorized task data.
   are refused. Proxies, redirects and compressed responses are refused.
 - Bearer tokens go only to the original resource origin. Client secrets/refresh
   grants go only to the SDK-bound or operator-configured issuer origin.
-- Ten connections/account, 32 enabled tools/account; the first 100 discovered tools
+- Ten connections/account, 200 enabled tools/account (an abuse guard only); the first 100 discovered tools
   (eight pages) are kept. At most two discoveries or two dispatches/account and
   one operation/connection; 16 outstanding approvals/account. API operations also
   use the existing per-account rate limits.

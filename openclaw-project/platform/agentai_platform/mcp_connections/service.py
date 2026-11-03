@@ -24,7 +24,8 @@ from .network import ConnectionError, endpoint_url, origin
 from .client import RemoteClient
 
 ASANA_URL = 'https://mcp.asana.com/v2/mcp'
-MAX_CONNECTIONS, MAX_ENABLED = 10, 32
+MAX_CONNECTIONS, MAX_ENABLED = 10, 200        # MAX_ENABLED only guards against abuse: how many tools are enabled costs the assistant nothing (see NATIVE_TOOLS)
+NATIVE_TOOLS, USAGE_DAYS = 8, 90              # the most-used enabled tools (completed calls in the last 90 days) are offered to the assistant directly; the rest are found on demand
 DISCOVERY_TTL = 60
 TOOL_NAME = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
 NAMESPACE = re.compile(r'^lumina_mcp_([a-f0-9]{32})_([a-f0-9]{12})$')
@@ -436,7 +437,7 @@ class ConnectionService:
                 for name_, on in tools.items():
                     con.execute('UPDATE mcp_tool_choices SET enabled=? WHERE account_id=? AND connection_id=? AND tool_name=?', (int(on), principal.account_id, connection, name_))
                 if con.execute('SELECT count(*) FROM mcp_tool_choices WHERE account_id=? AND enabled=1', (principal.account_id,)).fetchone()[0] > MAX_ENABLED:
-                    raise ConnectionError('tool_limit', 'Enable up to 32 MCP tools across your connections.')
+                    raise ConnectionError('tool_limit', f'Enable up to {MAX_ENABLED} MCP tools across your connections.')
                 con.execute('UPDATE mcp_connections SET generation=generation+1,busy_until=0 WHERE account_id=? AND id=?', (principal.account_id, connection))
                 con.execute("UPDATE mcp_calls SET state='rejected' WHERE account_id=? AND connection_id=? AND state IN ('pending','approved')", (principal.account_id, connection))
 
@@ -498,27 +499,64 @@ class ConnectionService:
             except Exception: status = 'failed'
         return {'disconnected': True, 'credentials_deleted': True, 'provider_revocation': status}
 
-    def catalog(self, account):
+    def _enabled(self, con, account):
+        """Every enabled tool of every enabled, connected server (no cap): name (full), tool (plain), connection, recipient, description, inputSchema."""
+        rows = con.execute("SELECT * FROM mcp_connections WHERE account_id=? AND enabled=1 AND state='connected' ORDER BY created_epoch, id", (account,)).fetchall()
+        out = []
+        for row in rows:
+            pub = self.public(con, dict(row))
+            for tool in pub['tools']:
+                if tool['enabled']:
+                    out.append({'name': namespaced(row['id'], tool['name']), 'tool': tool['name'], 'connection': row['id'], 'recipient': pub['recipient'],
+                                'description': tool['description'], 'inputSchema': tool['inputSchema']})
+        return out
+
+    def _usage(self, con, account):
+        since = int(self.clock()) - USAGE_DAYS * 86400
+        return {(r['connection_id'], r['tool_name']): (r['n'], r['last']) for r in con.execute(
+            "SELECT connection_id, tool_name, COUNT(*) n, MAX(created_epoch) last FROM mcp_calls WHERE account_id=? AND state='completed' AND created_epoch>=? GROUP BY 1,2", (account, since)).fetchall()}
+
+    def enabled_tools(self, account):
         principal = self._principal_for(account)
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            rows = con.execute("SELECT * FROM mcp_connections WHERE account_id=? AND enabled=1 AND state='connected'", (account,)).fetchall()
-            out = []
-            for row in rows:
-                pub = self.public(con, dict(row))
-                for tool in pub['tools']:
-                    if tool['enabled']:
-                        out.append({'name': namespaced(row['id'], tool['name']), 'description': ('Untrusted remote tool from ' + pub['recipient'] + '. Requires customer approval of the exact call. ' + tool['description'])[:1800], 'inputSchema': tool['inputSchema']})
-            return out[:MAX_ENABLED]
+            return self._enabled(con, account)
+
+    def catalog(self, account):
+        """The tools the assistant is given as tools of their own: all of them while there are few, otherwise the ones this customer actually uses most (completed calls, most recent
+        breaking ties). Every other enabled tool is still reachable through lumina_mcp_discover and lumina_mcp_call, at no cost to the context of every message."""
+        principal = self._principal_for(account)
+        with self.store.connect() as con:
+            self.store._authorize(con, principal)
+            tools = self._enabled(con, account)
+            if len(tools) > NATIVE_TOOLS:
+                used = self._usage(con, account)
+                tools = sorted((t for t in tools if (t['connection'], t['tool']) in used), key=lambda t: used[(t['connection'], t['tool'])], reverse=True)[:NATIVE_TOOLS]
+            return [{'name': t['name'], 'description': ('Untrusted remote tool from ' + t['recipient'] + '. Requires customer approval of the exact call. ' + t['description'])[:1800],
+                     'inputSchema': t['inputSchema']} for t in tools]
+
+    def resolve(self, account, name):
+        """The full tool name, from either the full name or (when exactly one enabled tool has it) the plain name the server gave it."""
+        if isinstance(name, str) and NAMESPACE.fullmatch(name):
+            return name
+        if not isinstance(name, str) or not 0 < len(name) <= 200:
+            raise ConnectionError('tool_removed', 'Unknown remote tool. Call lumina_mcp_discover to list the tools.')
+        found = [t['name'] for t in self.enabled_tools(account) if t['tool'] == name]
+        if len(found) == 1:
+            return found[0]
+        if not found:
+            raise ConnectionError('tool_removed', 'No enabled tool has that name. Call lumina_mcp_discover to list the tools.')
+        raise ConnectionError('ambiguous_tool', 'More than one connected service has a tool with that name. Use its full name from lumina_mcp_discover.')
 
     def refresh_catalog(self, account, *, closed=lambda: False):
+        """Refreshes stale connections, then returns EVERY enabled tool (for lumina_mcp_discover), not only the ones offered directly."""
         principal = self._principal_for(account)
         with self.store.connect() as con:
             rows = con.execute("SELECT id FROM mcp_connections WHERE account_id=? AND enabled=1 AND state='connected' AND checked_epoch<? ORDER BY checked_epoch LIMIT 2", (account, int(self.clock()) - DISCOVERY_TTL)).fetchall()
         for row in rows:
             try: self.test(principal, row['id'], closed=closed)
             except ConnectionError: pass
-        return self.catalog(account)
+        return self.enabled_tools(account)
 
     def approve(self, principal, call, approved):
         with self.coordinator.transaction() as con:
@@ -531,6 +569,7 @@ class ConnectionService:
 
     def call(self, account, name, arguments, request_id, *, closed=lambda: False):
         principal = self._principal_for(account)
+        name = self.resolve(account, name)
         match = NAMESPACE.fullmatch(name or '')
         if not match: raise ConnectionError('tool_removed', 'Unknown remote tool.')
         with self.coordinator.transaction() as con:
