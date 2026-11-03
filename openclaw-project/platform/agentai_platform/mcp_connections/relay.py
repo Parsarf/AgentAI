@@ -1,8 +1,10 @@
 """Account-scoped tools behind the existing authenticated, admitted-task relay."""
-import json
+import json, logging
 from ..security import NotFound
 from .network import ConnectionError
 from .service import NAMESPACE
+
+log = logging.getLogger('agentai.mcp')
 
 DISCOVER = {'name': 'lumina_mcp_discover',
             'description': ('List this customer’s enabled remote MCP tools in a compact form (name, service, one line). Pass {"query": "text"} to search a long list, or {"tool": "name"} to get one tool’s exact '
@@ -70,3 +72,6 @@ class RemoteTools:
             return {'content': [{'type': 'text', 'text': error.message}], 'isError': True}
         except (ValueError, TypeError, NotFound):
             return {'content': [{'type': 'text', 'text': 'Invalid remote tool call. Nothing was started.'}], 'isError': True}
+        except Exception:
+            log.exception('mcp_relay_error tool=%s', name)          # an unexpected failure must reach the assistant as a message, never as a dropped connection
+            return {'content': [{'type': 'text', 'text': 'The remote tool service failed unexpectedly. Nothing was changed. Try again, or ask the customer to test the connection in Integrations.'}], 'isError': True}

@@ -339,13 +339,13 @@ class ConnectionService:
 
     def _network(self, row, credentials, *, closed=lambda: False, **kwargs):
         async def run():
-            if closed(): raise ConnectionError('cancelled', 'The caller stopped before the remote operation began.')
+            if await asyncio.to_thread(closed): raise ConnectionError('cancelled', 'The caller stopped before the remote operation began.')      # closed() reads the database: never from inside the event loop
             async with asyncio.timeout(35 if kwargs.get('tool') else 10):
                 operation = asyncio.create_task(self.remote.perform(row, credentials, self.callback_url, **kwargs))
                 try:
                     while not operation.done():
                         await asyncio.wait({operation}, timeout=0.25)
-                        if not operation.done() and (closed() or not await asyncio.to_thread(self._alive, row['account_id'], row['id'], row['generation'])):
+                        if not operation.done() and (await asyncio.to_thread(closed) or not await asyncio.to_thread(self._alive, row['account_id'], row['id'], row['generation'])):
                             raise ConnectionError('connection_changed', 'The task stopped or this connection changed. The MCP session was closed; check the service for any remote effects.')
                     return await operation
                 finally:
