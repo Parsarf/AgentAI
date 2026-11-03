@@ -210,3 +210,55 @@ class ConnectionChecks(unittest.TestCase):
         result=self.service.test(self.a,cid,session='browser')
         self.assertFalse(result['connected']);self.assertTrue(result['authorize_url'])
         self.assertEqual(self.service.listing(self.a)['connections'][0]['state'],'authentication_required')
+
+
+class SchemaRejectionDiagnostics(unittest.TestCase):
+    """The stored error for a refused tool list is only `unsupported_schema`; the log says which tools broke which rule (names and fixed phrases only)."""
+    GOOD = {'name': 'get_task', 'description': 'd', 'inputSchema': {'type': 'object', 'properties': {'gid': {'type': 'string'}}}}
+
+    def tool(self, name, schema):
+        return {'name': name, 'description': 'd', 'inputSchema': schema}
+
+    def test_each_rule_is_named_per_tool_and_a_good_tool_is_not_reported(self):
+        from agentai_platform.mcp_connections.service import schema_problems
+        tools = [self.GOOD,
+                 self.tool('with_pattern', {'type': 'object', 'properties': {'gid': {'type': 'string', 'pattern': '^[0-9]+$'}}}),
+                 self.tool('outside_ref', {'type': 'object', 'properties': {'a': {'$ref': 'https://example.com/x.json'}}}),
+                 self.tool('not_object', {'type': 'array'}),
+                 self.tool('recursive', {'type': 'object', '$defs': {'n': {'properties': {'c': {'$ref': '#/$defs/n'}}}}}),
+                 self.tool('get_task', {'type': 'object'}),
+                 {'name': 'no_schema'}, 'not even a dict']
+        problems = dict(schema_problems(tools))
+        self.assertNotIn('get_task', [n for n, p in schema_problems([self.GOOD])])
+        self.assertEqual(problems['with_pattern'], 'Regular-expression tool schemas are not supported.')
+        self.assertEqual(problems['outside_ref'], 'Only local, non-recursive tool schema references are supported.')
+        self.assertEqual(problems['not_object'], 'The server returned an invalid tool definition.')
+        self.assertEqual(problems['recursive'], 'Recursive tool schemas are not supported.')
+        self.assertEqual(problems['no_schema'], 'The server returned an unsupported tool schema.')                  # a missing inputSchema fails the schema check, as before
+        self.assertIn('get_task', problems)                                           # the second get_task is a duplicate of the first
+        self.assertEqual(len(schema_problems(tools)), 7)
+
+    def test_the_log_line_carries_names_and_reasons_but_never_schema_content_or_the_connection_id(self):
+        from agentai_platform.mcp_connections.service import log_schema_rejection
+        secret = 'SECRET-DESCRIPTION-TEXT'
+        tools = [self.GOOD, {'name': 'bad name\nwith newline', 'description': secret, 'inputSchema': {'type': 'object', 'properties': {'x': {'pattern': secret}}}}]
+        with self.assertLogs('agentai.mcp', 'WARNING') as logs:
+            log_schema_rejection('0123456789abcdef0123456789abcdef', tools)
+        line = logs.output[0]
+        self.assertIn('mcp_schema_rejected', line); self.assertIn('tools=2 rejected=1', line); self.assertIn('Regular-expression', line)
+        self.assertIn('bad?name?with?newline', line); self.assertNotIn(secret, line); self.assertNotIn('\n', line)
+        self.assertIn('connection=01234567 ', line); self.assertNotIn('0123456789abcdef0123', line)
+
+    def test_saving_a_refused_discovery_still_raises_the_same_code_and_logs_why(self):
+        import tempfile
+        from agentai_platform.mcp_connections import service as svc
+        tools = [self.tool('with_pattern', {'type': 'object', 'properties': {'gid': {'type': 'string', 'pattern': '^[0-9]+$'}}})]
+        with self.assertRaises(ConnectionError) as caught, self.assertLogs('agentai.mcp', 'WARNING') as logs:
+            try:
+                seen = set()
+                for t in tools:
+                    svc.check_tool(t, seen)
+            except ConnectionError as error:
+                svc.log_schema_rejection('abcdef0123456789', tools)
+                raise
+        self.assertEqual(caught.exception.code, 'unsupported_schema'); self.assertIn('with_pattern', logs.output[0])

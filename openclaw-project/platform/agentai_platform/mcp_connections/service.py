@@ -9,6 +9,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 import re
 import time
 import uuid
@@ -55,6 +56,47 @@ def bounded(value, limit=32768, depth=0, schema=False):
         elif isinstance(item, list):
             for child in item: walk(child, level + 1)
     walk(value, depth)
+
+
+def check_tool(t, seen):
+    """The rules one discovered tool must meet before Lumina stores it. Raises ConnectionError('unsupported_schema', <fixed phrase>)."""
+    try:
+        bounded(t, 24000, schema=True)
+        try: Draft202012Validator.check_schema(t['inputSchema'])
+        except Exception: raise ConnectionError('unsupported_schema', 'The server returned an unsupported tool schema.') from None
+        if (not TOOL_NAME.fullmatch(t['name']) or t['name'] in seen or t['inputSchema'].get('type') != 'object'
+                or '_lumina_origin' in t['inputSchema'].get('properties', {}) or '_lumina_origin' in t['inputSchema'].get('required', [])):
+            raise ConnectionError('unsupported_schema', 'The server returned an invalid tool definition.')
+        # A referenced schema must be acyclic; reject references inside definitions too.
+        defs = t['inputSchema'].get('$defs', {})
+        if any('"$ref"' in packed(v) for v in defs.values()):
+            raise ConnectionError('unsupported_schema', 'Recursive tool schemas are not supported.')
+    except (KeyError, TypeError, AttributeError):
+        raise ConnectionError('unsupported_schema', 'The server returned an invalid tool definition.') from None
+
+
+def schema_problems(tools):
+    """Every tool that fails `check_tool`, with the fixed phrase of the rule it broke: [(tool name, phrase)]. Names are cleaned and cut; no schema content is ever returned."""
+    problems, seen = [], set()
+    for t in tools if isinstance(tools, list) else []:
+        name = t.get('name') if isinstance(t, dict) else None
+        label = re.sub(r'[^A-Za-z0-9_.:-]', '?', name if isinstance(name, str) else repr(type(t).__name__))[:64]
+        try:
+            check_tool(t, seen)
+            seen.add(t['name'])
+        except ConnectionError as error:
+            problems.append((label, error.message))
+    return problems
+
+
+def log_schema_rejection(connection_id, tools):
+    """The stored error is only the code `unsupported_schema`; this says which tools broke which rule, so an operator can tell what a real server sent without reading its schemas."""
+    problems = schema_problems(tools)
+    reasons = {}
+    for _, phrase in problems:
+        reasons[phrase] = reasons.get(phrase, 0) + 1
+    logging.getLogger('agentai.mcp').warning('mcp_schema_rejected connection=%s tools=%d rejected=%d reasons=%s first=%s', str(connection_id)[:8], len(tools) if isinstance(tools, list) else 0,
+                                             len(problems), json.dumps(reasons, sort_keys=True)[:400], json.dumps(problems[:5])[:400])
 
 
 def validate_arguments(schema, arguments):
@@ -173,19 +215,15 @@ class ConnectionService:
 
     def _save_discovery(self, row, data, credentials, *, actor='', session='', browser=''):
         tools = redact(data.get('tools', []), credentials)
-        seen = set()
-        for t in tools:
-            bounded(t, 24000, schema=True)
-            try: Draft202012Validator.check_schema(t['inputSchema'])
-            except Exception: raise ConnectionError('unsupported_schema', 'The server returned an unsupported tool schema.') from None
-            if (not TOOL_NAME.fullmatch(t['name']) or t['name'] in seen or t['inputSchema'].get('type') != 'object'
-                    or '_lumina_origin' in t['inputSchema'].get('properties', {}) or '_lumina_origin' in t['inputSchema'].get('required', [])):
-                raise ConnectionError('unsupported_schema', 'The server returned an invalid tool definition.')
-            # A referenced schema must be acyclic; reject references inside definitions too.
-            defs = t['inputSchema'].get('$defs', {})
-            if any('"$ref"' in packed(v) for v in defs.values()):
-                raise ConnectionError('unsupported_schema', 'Recursive tool schemas are not supported.')
-            seen.add(t['name'])
+        try:
+            seen = set()
+            for t in tools:
+                check_tool(t, seen)
+                seen.add(t['name'])
+        except ConnectionError as error:
+            if error.code == 'unsupported_schema':
+                log_schema_rejection(row['id'], tools)
+            raise
         pending = credentials.get('pending') if data.get('authorize_url') else None
         with self.coordinator.transaction() as con:
             self.store._authorize(con, self._principal_for(row['account_id']) if not actor else self._actor(row['account_id'], actor))
