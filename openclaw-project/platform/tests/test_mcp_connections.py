@@ -243,6 +243,67 @@ class ConnectionChecks(unittest.TestCase):
         item = self.service.listing(self.a)['connections'][0]
         self.assertEqual(item['state'], 'connected'); self.assertEqual(len(item['tools']), 100)
 
+    # ---- the assistant's view: the most-used tools are direct, the rest are found on demand --------------------------------------------------------------
+    def many_tools(self, count=40):
+        self.fixture.tools = [{'name': f't{n}', 'description': f'Tool number {n} of the fixture', 'inputSchema': {'type': 'object', 'properties': {'x': {'type': 'string'}}}} for n in range(count)]
+        cid = self.connect()
+        self.service.update(self.a, cid, tools={t['name']: True for t in self.service.listing(self.a)['connections'][0]['tools']})
+        return cid
+
+    def use(self, cid, tool, times, age_days=0):
+        import time, uuid
+        now = int(time.time())
+        with self.store.connect() as con:
+            for _ in range(times):
+                con.execute("INSERT INTO mcp_calls(account_id,id,connection_id,tool_name,payload_hash,schema_hash,request_id,arguments_json,state,expires_epoch,created_epoch) "
+                            "VALUES ('a',?,?,?,'p','s','r','{}','completed',?,?)", (uuid.uuid4().hex, cid, tool, now, now - age_days * 86400))
+
+    def test_a_few_enabled_tools_are_all_offered_directly(self):
+        cid = self.connect()
+        self.service.update(self.a, cid, tools={'echo': True, 'write': True, 'picture': True})
+        self.assertEqual({t['name'] for t in self.service.catalog('a')}, {namespaced(cid, n) for n in ('echo', 'write', 'picture')})
+
+    def test_many_tools_can_be_enabled_and_only_the_most_used_become_direct_tools(self):
+        cid = self.many_tools(40)                                                           # more than the old limit of 32
+        self.assertEqual(len(self.service.enabled_tools('a')), 40)
+        self.assertEqual(self.service.catalog('a'), [])                                     # nothing used yet: nothing promoted
+        for tool, times in (('t3', 5), ('t7', 3), ('t1', 1), ('t0', 1), ('t2', 1), ('t4', 1), ('t5', 1), ('t6', 1), ('t8', 1)):
+            self.use(cid, tool, times)
+        self.use(cid, 't39', 9, age_days=100)                                               # too old to count
+        names = [t['name'] for t in self.service.catalog('a')]
+        self.assertEqual(len(names), 8)
+        self.assertEqual(names[:2], [namespaced(cid, 't3'), namespaced(cid, 't7')])
+        self.assertNotIn(namespaced(cid, 't39'), names)
+
+    def test_discover_is_compact_searchable_and_describes_one_tool_on_request(self):
+        from agentai_platform.mcp_connections.relay import RemoteTools
+        cid = self.many_tools(70); self.use(cid, 't3', 4)
+        remote = RemoteTools(self.service)
+        ask = lambda **arguments: remote.call('a', arguments, lambda: False, name='lumina_mcp_discover')
+        listing = ask()['content'][0]['text']
+        self.assertIn('70 enabled tool(s)', listing); self.assertIn('... 10 more', listing); self.assertNotIn('inputSchema', listing)
+        direct = [l for l in ask(query='t3')['content'][0]['text'].splitlines() if l.startswith('- ' + namespaced(cid, 't3'))]
+        self.assertEqual(len(direct), 1); self.assertIn('[direct]', direct[0])
+        one = ask(query='t11')['content'][0]['text']
+        self.assertIn('1 enabled tool(s)', one); self.assertNotIn('[direct]', one)
+        detail = ask(tool='t11')['content'][0]['text']
+        self.assertIn('"inputSchema"', detail); self.assertIn('"name_at_the_service": "t11"', detail)
+        self.assertIn('No enabled tool has that name', ask(tool='nope')['content'][0]['text'])
+        refused = ask(bogus='x')
+        self.assertTrue(refused['isError'])
+
+    def test_a_plain_tool_name_works_when_only_one_service_has_it(self):
+        cid = self.connect()
+        self.service.update(self.a, cid, tools={'echo': True})
+        self.assertEqual(self.service.resolve('a', 'echo'), namespaced(cid, 'echo'))
+        self.assertEqual(self.service.resolve('a', namespaced(cid, 'echo')), namespaced(cid, 'echo'))
+        with self.assertRaises(ConnectionError) as caught: self.service.resolve('a', 'nope')
+        self.assertEqual(caught.exception.code, 'tool_removed')
+        cid2 = self.service.create(self.a, name='Second', url=URL, auth_method='none'); self.assertTrue(self.service.test(self.a, cid2)['connected'])
+        self.service.update(self.a, cid2, tools={'echo': True})
+        with self.assertRaises(ConnectionError) as caught: self.service.resolve('a', 'echo')
+        self.assertEqual(caught.exception.code, 'ambiguous_tool')
+
 
 class ToolVerdicts(unittest.TestCase):
     """What makes ONE tool unusable. Everything else about a server is allowed to just work."""

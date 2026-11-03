@@ -13,7 +13,8 @@ const STATE: Record<string, string> = { connecting: 'Connecting', connected: 'Co
 const ERRORS: Record<string, string> = {
   busy: 'This connection is already in use. Wait for it to finish, then try again.',
   connection_limit: 'You can connect up to ten MCP servers.',
-  tool_limit: 'Enable up to 32 tools across your MCP connections.',
+  tool_limit: 'Enable up to 200 tools across your MCP connections.',
+  ambiguous_tool: 'More than one connected service has a tool with that name.',
   discovery_limit: 'This server exceeds the supported discovery limit of 100 tools and eight pages.',
   redirect_refused: 'The server redirects. Enter its final public HTTPS URL instead.',
   no_tools: 'The server did not advertise MCP tool support.',
@@ -50,7 +51,7 @@ function ConnectionItem({ item, busy, act }: { item: Connection; busy: boolean; 
     {replacing && <form className="mcp-row" onSubmit={e => { e.preventDefault(); const next = token; setToken(''); setReplacing(false); void act(item.id, 'reconnect', { token: next }); }} autoComplete="off">
       <label htmlFor={`mcp-token-${item.id}`}>Replacement bearer token</label><input className="input" id={`mcp-token-${item.id}`} type="password" autoComplete="new-password" value={token} onChange={e => setToken(e.target.value)} maxLength={4096} />
       <button className="btn" disabled={!token || busy}>Save token and reconnect</button></form>}
-    {item.tools.length > 0 && <div className="mcp-tools"><h4>Tools</h4><p className="muted">Enable the tools Lumina can discover. Each call still needs your approval of its exact arguments.</p>
+    {item.tools.length > 0 && <div className="mcp-tools"><h4>Tools</h4><p className="muted">Enable the tools Lumina can discover. Each call still needs your approval of its exact arguments. The tools you use most are offered to your assistant directly; the rest it finds when it needs them.</p>
       {item.tools.map(tool => <div key={tool.name} className="mcp-tool"><Toggle label={tool.name} hint={tool.description || 'No description supplied by this server.'} checked={tool.enabled} disabled={busy || !item.enabled || !!tool.unusable} onChange={enabled => void act(item.id, 'update', { tools: { [tool.name]: enabled } })} />
         {tool.unusable ? <p className="faint" role="note">Can’t be used: {tool.unusable}. The other tools on this server work normally.</p>
           : <details><summary className="faint">Tool parameters</summary><pre tabIndex={0}>{JSON.stringify(tool.inputSchema, null, 2)}</pre></details>}</div>)}
