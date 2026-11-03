@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the AgentAI long-term memory sweep
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=30s
+Unit=agentai-memory-sweep.service
+
+[Install]
+WantedBy=timers.target

@@ -28,6 +28,10 @@ Hindsight (MIT, Vectorize) is run **on the same server or private network as the
 4. **Logs**: Hindsight keeps audit logs and LLM request logs (`/audit-logs`, `/llm-requests`). Make sure no note text ends up in files kept longer than the policy's 7-day log promise.
 5. **Postgres**: Hindsight's own database holds the index. It may be rebuilt from the ledger, so it does not need to be in the encrypted backups; if you do back it up, deleted notes then persist there too and the policy's 30-day statement must cover it.
 
+## Production setup (done 2026-11-03)
+
+`deploy/hindsight/install.sh` (run as root, safe to repeat) creates the Postgres+pgvector and Hindsight 1.1.0 containers (`agentai-hindsight-db`, `agentai-hindsight`, private network `agentai-hindsight`, Hindsight on `127.0.0.1:8888` only, no language model, models bundled in the image and downloads switched off) and the two private files under `/var/lib/agentai-platform/hindsight/` (`key`, `bank-secret`; **back up the bank secret**). Its settings go in `/etc/agentai-platform/accounts.env`; `deploy/agentai-memory-sweep.{service,timer}` run `memory_sweep` every 5 minutes. On the live server `tests/live_hindsight.py` passed, no outbound connections from the container were seen, and the switch was set to the owner account only.
+
 ## Settings (all in `accounts/settings.py`, from the environment)
 
 | Variable | Meaning |
