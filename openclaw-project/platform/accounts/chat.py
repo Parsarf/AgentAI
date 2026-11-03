@@ -278,11 +278,30 @@ def chat_retry(request, request_id):
         return JsonResponse({'error': 'budget_denied', 'category': denial_category(error), 'execution_enabled': False}, status=402)
 
 
+def prewarm(account_id):
+    """The customer opened the app: start their stopped cell now instead of when they send. Best effort; it never slows or breaks the page.
+    It only queues a start. The lifecycle worker runs it and still respects the cell slot, so no other customer's working cell is stopped for it."""
+    import time
+    try:
+        if not execution_on():
+            return
+        store = AccountStore(connection.settings_dict['NAME'])
+        with store.connect() as con:
+            cell = con.execute("SELECT d.generation FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id "
+                               "WHERE c.account_id=? AND c.observed_state='stopped'", (account_id,)).fetchone()
+        if cell:
+            from agentai_platform.lifecycle.coordinator import Coordinator
+            Coordinator(store).request_system(account_id, key=f"presence-{cell['generation']}-{int(time.time()) // 600}", generation=cell['generation'], kind='start', presence=True)
+    except Exception:
+        pass      # Conflict (already starting, slot busy) or any lookup problem: the first message wakes the cell as before
+
+
 @endpoint(['GET'])
 def chat_page(request):
     denied = customer(request)
     if denied:
         return HttpResponseRedirect('/account/login/')
+    prewarm(request.account_id)
     s = service()
     p = principal(request)
     project_id = request.GET.get('project') or None
