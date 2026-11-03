@@ -4,21 +4,23 @@ import remarkGfm from 'remark-gfm';
 import { safeHttpUrl } from '../safety';
 import { cx, type P } from './types';
 import { useLocal } from './context';
+import { Emojified, EmojiImg } from '../../components/Emoji';
+import { isEmojiUrl, remarkEmoji } from '../../lib/emojify';
 
 const mdComponents = {
   a: ({ href, children }: { href?: string; children?: React.ReactNode }) => { const u = href ? safeHttpUrl(href) : null; return u ? <a href={u} target="_blank" rel="noopener noreferrer nofollow">{children}<span className="sr"> (opens in a new tab)</span></a> : <span>{children}</span>; },
-  img: ({ alt }: { alt?: string }) => <span>{alt || 'Image'}</span>,           // remote images are never loaded from model text
+  img: ({ alt, src }: { alt?: string; src?: string }) => isEmojiUrl(src) ? <EmojiImg emoji={alt ?? ''} file={src!.slice(src!.lastIndexOf('/') + 1)} /> : <span>{alt || 'Image'}</span>,           // remote images are never loaded from model text
 };
-export function Prose({ children }: { children: string }) { return <Markdown remarkPlugins={[remarkGfm]} skipHtml components={mdComponents}>{children}</Markdown>; }
+export function Prose({ children }: { children: string }) { return <Markdown remarkPlugins={[remarkGfm, remarkEmoji]} skipHtml components={mdComponents}>{children}</Markdown>; }
 
 export function TextBlock({ block }: P<'text'>) {
   const p = block.props; const [l, set] = useLocal(block.id, { expanded: block.expansion !== 'collapsed' });
   const long = block.expansion === 'collapsed' && p.content.length > 280;
-  const body = p.format === 'plain' ? <p>{p.content}</p> : <Prose>{p.content}</Prose>;
+  const body = p.format === 'plain' ? <p><Emojified text={p.content} /></p> : <Prose>{p.content}</Prose>;
   return <div className={cx('gen-text', block.variant && `v-${block.variant}`, long && !l.expanded && 'clamp')}>{body}
     {long && <button className="btn tertiary small" aria-expanded={!!l.expanded} onClick={() => set({ expanded: !l.expanded })}>{l.expanded ? 'Show less' : 'Show more'}</button>}</div>;
 }
-export function HeadingBlock({ block }: P<'heading'>) { const H = (`h${block.props.level}`) as 'h2'; return <H className="gen-heading">{block.props.text}</H>; }
+export function HeadingBlock({ block }: P<'heading'>) { const H = (`h${block.props.level}`) as 'h2'; return <H className="gen-heading"><Emojified text={block.props.text} /></H>; }
 export function ListBlock({ block }: P<'list'>) {
   const { items, ordered } = block.props; const check = items.some(i => i.checked !== undefined);
   if (check) return <ul className="gen-list check" role="list">{items.map((i, n) => <li key={n}><span className={cx('box', i.checked && 'on')} aria-hidden>{i.checked ? '✓' : ''}</span><span className="sr">{i.checked ? 'Done: ' : 'To do: '}</span><Prose>{i.text}</Prose></li>)}</ul>;
@@ -27,7 +29,7 @@ export function ListBlock({ block }: P<'list'>) {
 }
 export function CalloutBlock({ block }: P<'callout'>) {
   const { tone, content, title } = block.props;
-  return <aside className={cx('gen-callout', `tone-${tone}`)} role={tone === 'warning' || tone === 'danger' ? 'alert' : 'note'}>{title && <strong>{title}</strong>}<Prose>{content}</Prose></aside>;
+  return <aside className={cx('gen-callout', `tone-${tone}`)} role={tone === 'warning' || tone === 'danger' ? 'alert' : 'note'}>{title && <strong><Emojified text={title} /></strong>}<Prose>{content}</Prose></aside>;
 }
 export function QuoteBlock({ block }: P<'quote'>) { return <blockquote className="gen-quote"><Prose>{block.props.content}</Prose>{block.props.source && <footer>— {block.props.source}</footer>}</blockquote>; }
 export function CitationList({ block }: P<'citation_list'>) {

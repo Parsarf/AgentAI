@@ -8,6 +8,7 @@ export function EmojiImg({ emoji, file }: { emoji: string; file: string }) {
 
 /** Text with its emoji shown as pictures. Plain text (the usual case) comes back untouched. */
 export function Emojified({ text }: { text: string }): ReactNode {
+  if (typeof text !== 'string') return (text ?? null) as ReactNode;      // a card field that is missing or a number: show it as it is, never crash
   const parts = splitEmoji(text);
   if (parts.length === 1 && typeof parts[0] === 'string') return parts[0];
   return parts.map((p, i) => (typeof p === 'string' ? p : <EmojiImg key={i} emoji={p.emoji} file={p.file} />));

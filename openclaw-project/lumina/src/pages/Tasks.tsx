@@ -1,3 +1,4 @@
+import { Emojified } from '../components/Emoji';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { TaskRow } from './Home';
@@ -53,8 +54,8 @@ function Detail({ id, onClose }: { id: string; onClose(): void }) {
           {outcomeLine(row) && <p className="muted" role="status">{outcomeLine(row)}</p>}
           {p === 'running' && <p className="faint" style={{ fontSize: 13 }}>A running task cannot be paused, because the assistant has no safe place to stop partway. You can cancel it.</p>}
           {row.retry_of && <p className="faint" style={{ fontSize: 13 }}>This is a retry of an earlier task.</p>}
-          <div className="result" style={{ marginTop: 14 }}><small className="faint">Your request</small><br />{row.message}</div>
-          {row.result && <div className="result"><small className="faint">Result</small><br />{row.result}</div>}
+          <div className="result" style={{ marginTop: 14 }}><small className="faint">Your request</small><br /><Emojified text={row.message} /></div>
+          {row.result && <div className="result"><small className="faint">Result</small><br /><Emojified text={row.result} /></div>}
           <h3 style={{ marginTop: 22 }}>Activity</h3>
           <div className="log">{events.length ? events.map((e, n) => <div key={n}><time>{(e.created_at || '').slice(11, 16)} UTC</time>{e.payload?.summary ?? e.kind}</div>) : <span className="faint">No activity recorded yet.</span>}</div>
           {err && <p className="err" role="alert">{err}</p>}
@@ -78,7 +79,7 @@ export default function Tasks() {
   return (
     <div className="center">
       <h1 className="page-title">Tasks</h1>
-      <div className="filters" role="group" aria-label="Filter tasks">{FILTERS.map(f => <button key={f.key} className="chip" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>)}</div>
+      <div className="filters" role="group" aria-label="Filter tasks">{FILTERS.map(f => <button key={f.key} className="chip" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}><Emojified text={f.label} /></button>)}</div>
       {rows.length ? <div className="tasks">{rows.map(r => <TaskRow key={r.id} r={r} onOpen={() => nav(r.conversation_id ? `/chat/${r.conversation_id}` : `/tasks/${r.id}`)} />)}</div> : <div className="empty">No tasks here yet.</div>}
       {id && <Detail id={id} onClose={() => nav('/tasks')} />}
     </div>);

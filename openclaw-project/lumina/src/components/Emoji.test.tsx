@@ -58,4 +58,16 @@ describe('emoji in agent replies', () => {
     expect(imgs().length).toBe(0);
     expect(document.body.textContent).toContain('No pictures here: © 2026, 100% fine.');
   });
+
+  it('shows emoji as pictures in generated text blocks, headings and callouts, and survives a missing field', async () => {
+    const { Prose, HeadingBlock, CalloutBlock } = await import('../gen/components/text');
+    const block = (props: object, extra: object = {}) => ({ id: 'b', type: 't', props, ...extra }) as any;
+    const { container } = render(<div>
+      <Prose>{'Done 👍'}</Prose>
+      <HeadingBlock block={block({ level: 2, text: 'Hello 🙂' })} />
+      <CalloutBlock block={block({ tone: 'info', title: 'Note 🚀', content: 'Body 🙂' })} />
+    </div>);
+    expect(container.querySelectorAll('img.emoji').length).toBe(4);
+    expect(() => render(<p><Emojified text={undefined as any} /></p>)).not.toThrow();
+  });
 });
