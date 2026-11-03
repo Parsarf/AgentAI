@@ -211,86 +211,108 @@ class ConnectionChecks(unittest.TestCase):
         self.assertFalse(result['connected']);self.assertTrue(result['authorize_url'])
         self.assertEqual(self.service.listing(self.a)['connections'][0]['state'],'authentication_required')
 
+    def test_one_unusable_tool_never_fails_the_connection_and_the_rest_run(self):
+        obj = lambda **props: {'type': 'object', 'properties': props}
+        self.fixture.tools += [
+            {'name': 'find', 'description': 'Asana-like: ids are validated by a pattern', 'inputSchema': {**obj(gid={'type': 'string', 'pattern': '^[0-9]+$'}), 'required': ['gid']}},
+            {'name': 'ext', 'description': 'SECRET-DESCRIPTION', 'inputSchema': obj(a={'$ref': 'https://example.com/x.json'})},
+            {'name': 'spoof', 'description': 'd', 'inputSchema': obj(_lumina_origin={'type': 'string'})},
+            {'name': 'loop', 'description': 'd', 'inputSchema': {**obj(n={'$ref': '#/$defs/node'}), '$defs': {'node': {'type': 'object', 'properties': {'c': {'$ref': '#/$defs/node'}}}}}},
+            {'name': 'echo', 'description': 'a duplicate name', 'inputSchema': obj()},
+            {'name': 'bad name', 'description': 'd', 'inputSchema': obj()}]
+        with self.assertLogs('agentai.mcp', 'WARNING') as logs:
+            cid = self.connect()
+        tools = {t['name']: t for t in self.service.listing(self.a)['connections'][0]['tools']}
+        self.assertEqual(self.service.listing(self.a)['connections'][0]['state'], 'connected')
+        self.assertEqual(set(tools), {'echo', 'write', 'picture', 'find', 'ext', 'spoof', 'loop'})     # the duplicate and the unusable name are dropped
+        for ok in ('echo', 'write', 'picture', 'find'):
+            self.assertIsNone(tools[ok]['unusable'], ok)
+        self.assertIn('outside itself', tools['ext']['unusable']); self.assertIn('reserves', tools['spoof']['unusable']); self.assertIn('recursive', tools['loop']['unusable'])
+        self.assertEqual(tools['ext']['inputSchema'], {})                                                # a refused tool keeps no schema, only its name and a short description
+        self.service.update(self.a, cid, tools={'find': True})
+        self.assertEqual([t['name'] for t in self.service.catalog('a')], [namespaced(cid, 'find')])
+        with self.assertRaises(ConnectionError) as caught:
+            self.service.update(self.a, cid, tools={'ext': True})
+        self.assertEqual(caught.exception.code, 'tool_unusable')
+        line = logs.output[0]
+        self.assertIn('mcp_tools_refused', line); self.assertIn('refused=5', line); self.assertNotIn('SECRET-DESCRIPTION', line)
 
-class SchemaRejectionDiagnostics(unittest.TestCase):
-    """The stored error for a refused tool list is only `unsupported_schema`; the log says which tools broke which rule (names and fixed phrases only)."""
-    GOOD = {'name': 'get_task', 'description': 'd', 'inputSchema': {'type': 'object', 'properties': {'gid': {'type': 'string'}}}}
+    def test_a_server_with_more_than_a_hundred_tools_keeps_the_first_hundred(self):
+        self.fixture.tools = [{'name': f't{n}', 'description': 'd', 'inputSchema': {'type': 'object', 'properties': {}}} for n in range(120)]
+        self.connect()
+        item = self.service.listing(self.a)['connections'][0]
+        self.assertEqual(item['state'], 'connected'); self.assertEqual(len(item['tools']), 100)
 
-    def tool(self, name, schema):
-        return {'name': name, 'description': 'd', 'inputSchema': schema}
 
-    def test_each_rule_is_named_per_tool_and_a_good_tool_is_not_reported(self):
-        from agentai_platform.mcp_connections.service import schema_problems
-        tools = [self.GOOD,
-                 self.tool('with_dynamic_ref', {'type': 'object', 'properties': {'a': {'$dynamicRef': '#x'}}}),
-                 self.tool('outside_ref', {'type': 'object', 'properties': {'a': {'$ref': 'https://example.com/x.json'}}}),
-                 self.tool('not_object', {'type': 'array'}),
-                 self.tool('recursive', {'type': 'object', '$defs': {'n': {'properties': {'c': {'$ref': '#/$defs/n'}}}}}),
-                 self.tool('get_task', {'type': 'object'}),
-                 {'name': 'no_schema'}, 'not even a dict']
-        problems = dict(schema_problems(tools))
-        self.assertNotIn('get_task', [n for n, p in schema_problems([self.GOOD])])
-        self.assertEqual(problems['with_dynamic_ref'], 'Only local, non-recursive tool schema references are supported.')
-        self.assertEqual(problems['outside_ref'], 'Only local, non-recursive tool schema references are supported.')
-        self.assertEqual(problems['not_object'], 'The server returned an invalid tool definition.')
-        self.assertEqual(problems['recursive'], 'Recursive tool schemas are not supported.')
-        self.assertEqual(problems['no_schema'], 'The server returned an unsupported tool schema.')                  # a missing inputSchema fails the schema check, as before
-        self.assertIn('get_task', problems)                                           # the second get_task is a duplicate of the first
-        self.assertEqual(len(schema_problems(tools)), 7)
+class ToolVerdicts(unittest.TestCase):
+    """What makes ONE tool unusable. Everything else about a server is allowed to just work."""
+    def verdict(self, schema, name='t', seen=()):
+        from agentai_platform.mcp_connections.service import tool_verdict
+        tool = {'name': name, 'description': 'd'}
+        if schema is not None: tool['inputSchema'] = schema
+        return tool_verdict(tool, set(seen))
 
-    def test_the_log_line_carries_names_and_reasons_but_never_schema_content_or_the_connection_id(self):
+    def test_ordinary_schemas_are_usable_including_regexes_and_chained_local_references(self):
+        self.assertIsNone(self.verdict({'type': 'object', 'required': ['gid'], 'properties': {'gid': {'type': 'string', 'pattern': '^[0-9]+$'}}, 'patternProperties': {'^x-': {'type': 'string'}}}))
+        self.assertIsNone(self.verdict({'type': 'object', 'properties': {'pattern': {'type': 'string'}}}))                # a parameter merely NAMED pattern
+        chained = {'type': 'object', 'properties': {'a': {'$ref': '#/$defs/a'}}, '$defs': {'a': {'type': 'object', 'properties': {'b': {'$ref': '#/$defs/b'}}}, 'b': {'type': 'string'}}}
+        self.assertIsNone(self.verdict(chained))                                                                        # a definition may refer to another one; only a cycle is refused
+        self.assertIsNone(self.verdict({'type': 'object', 'properties': {'a': {'$ref': '#/definitions/a'}}, 'definitions': {'a': {'type': 'string'}}}))
+
+    def test_only_harmful_or_unusable_tools_are_refused_and_each_says_why(self):
+        recursive = {'type': 'object', 'properties': {'a': {'$ref': '#/$defs/a'}}, '$defs': {'a': {'properties': {'x': {'$ref': '#/$defs/b'}}}, 'b': {'properties': {'y': {'$ref': '#/$defs/a'}}}}}
+        cases = [({'type': 'object', 'properties': {'a': {'$ref': '#'}}}, 'recursive'), (recursive, 'recursive'),
+                 ({'type': 'object', 'properties': {'a': {'$ref': 'https://example.com/s.json'}}}, 'outside'), ({'type': 'object', 'properties': {'a': {'$dynamicRef': '#x'}}}, 'outside'),
+                 ({'type': 'object', 'properties': {'_lumina_origin': {}}}, 'reserves'), ({'type': 'object', 'required': ['_lumina_origin']}, 'reserves'),
+                 ({'type': 'array'}, 'not an object'), ({'type': 'object', 'properties': 5}, 'not valid JSON Schema'), (None, 'no input schema'),
+                 ({'type': 'object', 'properties': {'big': {'description': 'x' * 30000}}}, 'too large')]
+        for schema, word in cases:
+            phrase, keep_stub = self.verdict(schema)
+            self.assertIn(word, phrase); self.assertTrue(keep_stub)
+
+    def test_names_that_cannot_be_addressed_are_dropped_not_stubbed(self):
+        schema = {'type': 'object', 'properties': {}}
+        for name, seen in (('bad name', ()), ('', ()), ('x' * 200, ()), ('dup', ('dup',))):
+            phrase, keep_stub = self.verdict(schema, name, seen)
+            self.assertFalse(keep_stub, name)
+
+    def test_the_operator_log_names_tools_and_reasons_never_schema_content(self):
         from agentai_platform.mcp_connections.service import log_schema_rejection
         secret = 'SECRET-DESCRIPTION-TEXT'
-        tools = [self.GOOD, {'name': 'bad name\nwith newline', 'description': secret, 'inputSchema': {'type': 'object', 'properties': {'x': {'$dynamicRef': secret}}}}]
+        tools = [{'name': 'good', 'description': 'd', 'inputSchema': {'type': 'object'}},
+                 {'name': 'bad\nname', 'description': secret, 'inputSchema': {'type': 'object', 'properties': {'x': {'$dynamicRef': secret}}}},
+                 {'name': 'ext', 'description': secret, 'inputSchema': {'type': 'object', 'properties': {'x': {'$dynamicRef': secret}}}}]
         with self.assertLogs('agentai.mcp', 'WARNING') as logs:
             log_schema_rejection('0123456789abcdef0123456789abcdef', tools)
         line = logs.output[0]
-        self.assertIn('mcp_schema_rejected', line); self.assertIn('tools=2 rejected=1', line); self.assertIn('references are supported', line)
-        self.assertIn('bad?name?with?newline', line); self.assertNotIn(secret, line); self.assertNotIn('\n', line)
+        self.assertIn('tools=3 refused=2', line); self.assertIn('bad?name', line); self.assertNotIn(secret, line); self.assertNotIn('\n', line)
         self.assertIn('connection=01234567 ', line); self.assertNotIn('0123456789abcdef0123', line)
 
-    def test_saving_a_refused_discovery_still_raises_the_same_code_and_logs_why(self):
-        import tempfile
-        from agentai_platform.mcp_connections import service as svc
-        tools = [self.tool('with_pattern', {'type': 'object', 'properties': {'gid': {'$dynamicRef': '#x'}}})]
-        with self.assertRaises(ConnectionError) as caught, self.assertLogs('agentai.mcp', 'WARNING') as logs:
-            try:
-                seen = set()
-                for t in tools:
-                    svc.check_tool(t, seen)
-            except ConnectionError as error:
-                svc.log_schema_rejection('abcdef0123456789', tools)
-                raise
-        self.assertEqual(caught.exception.code, 'unsupported_schema'); self.assertIn('with_pattern', logs.output[0])
 
-
-class RegularExpressionsInToolSchemas(unittest.TestCase):
-    """Asana's tool schemas use `pattern`. They are accepted and shown as they are, but no regular expression from a server is ever run on our side."""
+class ArgumentChecks(unittest.TestCase):
+    """Checking the model's arguments here is a convenience; the server that owns the tool is the authority."""
     PATTERNED = {'type': 'object', 'required': ['gid'], 'properties': {'gid': {'type': 'string', 'pattern': '^[0-9]+$'}, 'n': {'type': 'integer', 'maximum': 5}},
                  'patternProperties': {'^x-': {'type': 'string'}}}
 
-    def test_a_schema_with_patterns_is_accepted_and_stored_as_sent(self):
-        from agentai_platform.mcp_connections.service import check_tool, schema_problems
-        tool = {'name': 'get_task', 'description': 'd', 'inputSchema': self.PATTERNED}
-        check_tool(tool, set())
-        self.assertEqual(schema_problems([tool]), [])
-
-    def test_a_property_that_is_merely_named_pattern_is_fine(self):
-        from agentai_platform.mcp_connections.service import schema_problems
-        tool = {'name': 'search', 'description': 'd', 'inputSchema': {'type': 'object', 'properties': {'pattern': {'type': 'string'}}}}
-        self.assertEqual(schema_problems([tool]), [])
-
-    def test_the_server_not_us_enforces_patterns_but_everything_else_is_still_checked(self):
+    def test_patterns_are_the_servers_to_enforce_but_everything_else_is_checked_with_a_useful_message(self):
         from agentai_platform.mcp_connections.service import validate_arguments
-        validate_arguments(self.PATTERNED, {'gid': 'not-digits'})                       # the pattern is the server's to enforce
-        for bad in ({}, {'gid': 5}, {'gid': 'a', 'n': 9}, {'gid': 'a', 'n': 'x'}):
-            with self.assertRaises(ConnectionError, msg=str(bad)):
+        validate_arguments(self.PATTERNED, {'gid': 'not-digits'})
+        for bad, where in (({}, 'the arguments'), ({'gid': 5}, 'gid'), ({'gid': 'a', 'n': 9}, 'n'), ({'gid': 'a', 'n': 'x'}, 'n')):
+            with self.assertRaises(ConnectionError, msg=str(bad)) as caught:
                 validate_arguments(self.PATTERNED, bad)
+            self.assertEqual(caught.exception.code, 'invalid_arguments'); self.assertIn(where, caught.exception.message)
 
     def test_a_catastrophic_pattern_cannot_hang_validation(self):
         import time
         from agentai_platform.mcp_connections.service import validate_arguments
-        schema = {'type': 'object', 'properties': {'v': {'type': 'string', 'pattern': '^(a+)+$'}}}
         started = time.monotonic()
-        validate_arguments(schema, {'v': 'a' * 40 + '!'})
+        validate_arguments({'type': 'object', 'properties': {'v': {'type': 'string', 'pattern': '^(a+)+$'}}}, {'v': 'a' * 40 + '!'})
         self.assertLess(time.monotonic() - started, 1.0)
+
+    def test_a_schema_that_cannot_be_interpreted_here_never_blocks_a_call(self):
+        from agentai_platform.mcp_connections.service import validate_arguments
+        validate_arguments({'type': 'object', 'properties': {'a': {'$ref': '#/$defs/missing'}}}, {'a': 1})
+        with self.assertRaises(ConnectionError):
+            validate_arguments({'type': 'object'}, ['not', 'an', 'object'])
+        with self.assertRaises(ConnectionError):
+            validate_arguments({'type': 'object'}, {'blob': 'x' * 20000})

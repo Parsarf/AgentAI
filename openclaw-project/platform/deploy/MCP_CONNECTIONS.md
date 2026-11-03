@@ -109,9 +109,28 @@ start disabled. Changed definitions are disabled until reviewed; removed tools
 cannot be called. Schema checks run before approval and again against a fresh
 paginated tool list immediately before execution. Reserved runtime proof fields
 are refused. Supported input schemas are JSON Schema 2020-12 object schemas, with
-bounded depth and local, nonrecursive `$defs` references. Regular-expression
-schemas (`pattern`/`patternProperties`) and remote/recursive references are refused
-rather than evaluating unbounded attacker-controlled expressions or fetching URLs.
+bounded depth and local `$defs`/`definitions` references (one definition may refer to another).
+
+**Servers just work; only the one tool that cannot be used safely is switched off.** A refused tool
+never fails the connection: it is kept as a labelled stub ("Can't be used: <reason>", never callable,
+no schema stored) and every other tool on the server carries on. A tool is refused only when it is
+hostile or the model API that would be given its schema could not handle it:
+
+| Refused | Why |
+|---|---|
+| A parameter named `_lumina_origin` | Spoofing the runtime's ownership proof. |
+| A definition over 24 KB or nested over 20 levels | Memory and database bomb. |
+| A schema that is not valid JSON Schema, not an object, or has no input schema | The model API would reject it, which can fail a customer's whole request. |
+| A reference outside the schema (URL, `$dynamicRef`) or a cycle (`#`, a definition that leads back to itself) | Cannot be resolved by the model API. |
+| A name that is not 1-128 of `A-Za-z0-9_.:-` | Cannot be addressed; dropped (a repeated name keeps the first). |
+
+Regular expressions (`pattern`, `patternProperties`) are **accepted**: the schema is stored and
+shown exactly as sent, but Lumina never runs a server's expression (a hostile one could hang a web
+worker). The server that owns the tool enforces them. Checking the model's arguments here is a
+convenience (types, required fields, enums, ranges, with the path of the problem in the message so
+the assistant can fix it before an approval is asked for); a schema Lumina cannot interpret never
+blocks a call. A server with more than 100 tools keeps its first 100 instead of failing. The
+operator log line `mcp_tools_refused` gives the counts per reason and the first tool names.
 
 The cell receives no connection tokens, OAuth secrets or refresh tokens. Its
 existing Lumina relay credential and one-use origin proof bind tool calls to an
@@ -152,8 +171,8 @@ you intend to trust with authorized task data.
   are refused. Proxies, redirects and compressed responses are refused.
 - Bearer tokens go only to the original resource origin. Client secrets/refresh
   grants go only to the SDK-bound or operator-configured issuer origin.
-- Ten connections/account, 32 enabled tools/account, 100 discovered tools and
-  eight pages/connection. At most two discoveries or two dispatches/account and
+- Ten connections/account, 32 enabled tools/account; the first 100 discovered tools
+  (eight pages) are kept. At most two discoveries or two dispatches/account and
   one operation/connection; 16 outstanding approvals/account. API operations also
   use the existing per-account rate limits.
 - Discovery/auth network work has a ten-second total budget; calls 35 seconds;
