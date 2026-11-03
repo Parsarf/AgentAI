@@ -258,6 +258,16 @@ class RulesChecks(unittest.TestCase):
         self.assertNotIn('```lumina\n', rules)
         self.assertIn('Use plain text', rules)
 
+    def test_rules_send_customer_memory_to_hindsight_tools_not_workspace_files(self):
+        from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
+        section = rules.split('## Remembering the customer', 1)[1].split('\n## ', 1)[0]
+        self.assertIn('lumina_memory_remember', section)
+        self.assertIn('lumina_memory_recall', section)
+        self.assertIn('Never store customer preferences or facts in', section)
+        for name in ('USER.md', 'MEMORY.md'):
+            self.assertIn(name, section)
+        self.assertIn('do not save it to a file instead', section)
+
     def test_written_component_schemas_and_examples_match_the_registry(self):
         from agentai_platform.genui.document import registry, validate_block
         tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
