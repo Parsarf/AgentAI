@@ -12,6 +12,7 @@
     <h1>Lumina</h1>
     <div class="tools">
       <button id="new" type="button" class="icon" title="New session" aria-label="New session">New</button>
+      <button id="hist" type="button" class="icon" title="Earlier chats" aria-label="Earlier chats" aria-expanded="false">History</button>
       <button id="gear" type="button" class="icon" title="Settings" aria-label="Settings" aria-expanded="false">Settings</button>
       <button id="close" type="button" class="icon" title="Close" aria-label="Close the panel">Close</button>
     </div>
@@ -20,6 +21,11 @@
   <p id="detail" class="note" hidden></p>
   <p id="banner" class="banner" hidden><span id="banner-text"></span> <button id="banner-use" type="button">Show it here</button></p>
 </header>
+
+<section id="history" class="settings" hidden aria-label="Earlier chats">
+  <ol id="history-list"></ol>
+  <p id="history-empty" class="note" hidden>No earlier chats yet.</p>
+</section>
 
 <section id="settings" class="settings" hidden aria-label="Settings">
   <form id="pair" hidden>
@@ -68,6 +74,7 @@
       <button id="revoke" type="button" hidden>Stop allowing</button>
     </div>
     <label class="check"><input id="withpage" type="checkbox" checked> <span id="withpage-text">Include what is on the page</span></label>
+    <details id="more" class="more"><summary id="more-sum">Add other tabs as context</summary><ol id="more-list"></ol></details>
     <p id="ctxnote" class="note" hidden></p>
   </section>
   <div id="quick" class="quick" role="group" aria-label="Quick actions"></div>

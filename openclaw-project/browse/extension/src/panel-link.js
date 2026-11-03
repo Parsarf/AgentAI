@@ -53,8 +53,11 @@ export function createPanelLink({ base, isOn, token = async () => '', fetchFn = 
       if (parsed?.type === 'ticket') { const was = offered?.conversation; offered = { ...parsed, cell: 'unknown' }; if (was !== parsed.conversation) onChange(); }
       return true;
     },
-    /** Start a new session (every open of the panel is one). Concurrent opens share one request. */
-    open() { return (opening ??= session(null).finally(() => { opening = null; })); },
+    /** Start a new session (every open of the panel is one). Concurrent opens share one request. With a conversation id it reopens that earlier chat instead. */
+    open(conversation = null) {
+      if (conversation) return session(conversation);
+      return (opening ??= session(null).finally(() => { opening = null; }));
+    },
     /** The panel's session switches to the conversation the platform offered (a web-chat task running here). */
     useOffered() { if (!fresh(offered)) return false; held = offered; offered = null; onChange(); return true; },
     clear: drop,

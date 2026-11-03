@@ -39,7 +39,11 @@ const cut = (value, limit) => (typeof value === 'string' ? value.replace(/\0/g, 
 export function buildContext({ target, tabs = [], selection = '', page = '' } = {}) {
   const out = {};
   if (TARGETS.includes(target)) out.target = target;
-  const list = (Array.isArray(tabs) ? tabs : []).slice(0, 8).map(t => ({ title: cut(t?.title, 200), url: cut(t?.url, 2000), ...(typeof t?.grant === 'string' && /^[a-z0-9]{1,24}$/.test(t.grant) ? { grant: t.grant } : {}) }));
+  let room = 24000;      // the text of all the tabs together (the page the customer is on has its own, larger limit below)
+  const list = (Array.isArray(tabs) ? tabs : []).slice(0, 8).map(t => {
+    const text = cut(t?.text, Math.min(6000, room)); room -= text.length;
+    return { title: cut(t?.title, 200), url: cut(t?.url, 2000), ...(typeof t?.grant === 'string' && /^[a-z0-9]{1,24}$/.test(t.grant) ? { grant: t.grant } : {}), ...(text.trim() ? { text } : {}) };
+  });
   if (list.length) out.tabs = list;
   const sel = cut(selection, 4000), body = cut(page, 20000);
   if (sel.trim()) out.selection = sel;
@@ -49,7 +53,7 @@ export function buildContext({ target, tabs = [], selection = '', page = '' } = 
 
 /** The endpoints the panel may reach, and what each accepts. Anything else is refused before it leaves the browser. */
 export function buildCall(endpoint, input = {}) {
-  if (endpoint === 'state' || endpoint === 'stop') return { method: endpoint === 'state' ? 'GET' : 'POST', path: endpoint, query: '', body: undefined };
+  if (endpoint === 'state' || endpoint === 'stop' || endpoint === 'history') return { method: endpoint === 'stop' ? 'POST' : 'GET', path: endpoint, query: '', body: undefined };
   if (endpoint === 'events') {
     const { request, after = 0, limit = 100 } = input;
     if (typeof request !== 'string' || !/^[a-f0-9]{32}$/.test(request) || !Number.isInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100) return null;

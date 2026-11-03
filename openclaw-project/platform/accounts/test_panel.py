@@ -53,6 +53,9 @@ class FakeService:
     def rename_conversation(self, principal, conversation_id, title):
         self.renamed = (conversation_id, title)
 
+    def conversations(self, principal, project_id=None, *, limit=500, **kw):
+        return [{'id': 'conversation-a', 'title': None, 'created_at': 'c1', 'last_activity': 'l1'}, {'id': 'conversation-old', 'title': 'Hotels in Paris', 'created_at': 'c0', 'last_activity': None}][:limit]
+
     def send(self, principal, **kwargs):
         if self.send_error:
             raise self.send_error
@@ -223,6 +226,23 @@ class PanelEndpointChecks(PanelBase):
         for extra in bad:
             self.assertEqual(self.call('POST', '/v1/panel/send', body={**good, **extra}).status_code, 400, extra)
         self.assertEqual(self.svc.sent, [])
+
+    def test_history_lists_recent_chats_without_their_text(self):
+        r = self.call('GET', '/v1/panel/history')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['conversations'], [{'id': 'conversation-a', 'title': 'New chat', 'at': 'l1', 'current': True}, {'id': 'conversation-old', 'title': 'Hotels in Paris', 'at': 'c0', 'current': False}])
+        self.assertEqual(self.call('POST', '/v1/panel/history').status_code, 405)
+        self.assertEqual(self.call('GET', '/v1/panel/history', ticket='garbage').status_code, 401)
+
+    def test_extra_tabs_may_carry_their_own_text_within_limits(self):
+        self.svc.live = False
+        tabs = [{'title': 'A', 'url': 'https://a.example/', 'text': 'a' * 7000}, {'title': 'B', 'url': 'https://b.example/', 'text': 'b' * 100}]
+        self.call('POST', '/v1/panel/send', body={'message': 'compare them', 'key': 'abcdefgh1234', 'context': {'tabs': tabs}})
+        got = self.svc.sent[0][1]['panel_context']['tabs']
+        self.assertEqual((len(got[0]['text']), len(got[1]['text'])), (6000, 100))
+        many = [{'title': str(i), 'url': 'https://x.example/', 'text': 'z' * 6000} for i in range(5)]       # 30,000 in all: over the total
+        self.assertEqual(self.call('POST', '/v1/panel/send', body={'message': 'x', 'key': 'abcdefgh5678', 'context': {'tabs': many}}).status_code, 400)
+        self.assertEqual(self.call('POST', '/v1/panel/send', body={'message': 'x', 'key': 'abcdefgh9012', 'context': {'tabs': [{'title': 't', 'url': 'u', 'text': 5}]}}).status_code, 400)
 
     def test_oversized_page_text_is_cut_not_refused(self):
         self.svc.live = False

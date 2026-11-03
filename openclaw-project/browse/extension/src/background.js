@@ -216,14 +216,14 @@ async function pair(raw) {
 }
 
 /** Opening the side chat is the customer using Lumina: switch it on if it was off, wait for the link, and start a NEW session (a new conversation; the assistant begins waking). */
-async function openSession(windowId, { fresh }) {
+async function openSession(windowId, { fresh, conversation = null }) {
   const s = await status();
   if (!s.paired && !s.pairing) return { ok: false, error: 'unpaired' };
   if (!enabled) await start();
   if (!(await waitConnected(8000))) return { ok: false, error: 'connecting' };
   const link = linkFor(windowId);
   if (fresh) link.clear();
-  const out = link.has() ? { status: 200, data: { conversation: link.conversation() } } : await link.open();
+  const out = link.has() ? { status: 200, data: { conversation: link.conversation() } } : await link.open(conversation);
   return { ok: out.status === 200, status: out.status, error: out.data?.error ?? null, conversation: out.data?.conversation ?? link.conversation(), cell: out.data?.cell ?? 'unknown' };
 }
 
@@ -259,6 +259,7 @@ async function onPopup(msg) {
   }
   if (msg?.type === 'panel:open') return openSession(msg.windowId, { fresh: false });
   if (msg?.type === 'panel:new') return openSession(msg.windowId, { fresh: true });
+  if (msg?.type === 'panel:resume') return typeof msg.conversation === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(msg.conversation) ? openSession(msg.windowId, { fresh: true, conversation: msg.conversation }) : { ok: false, error: 'invalid_request' };
   if (msg?.type === 'panel:use-offered') return { ok: linkFor(msg.windowId).useOffered() };
   if (msg?.type === 'panel:call') return linkFor(msg.windowId).call(msg.endpoint, msg.input);
   if (msg?.type === 'tabs:list') return { ok: true, tabs: await listTabs(msg.windowId) };

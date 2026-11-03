@@ -96,6 +96,7 @@ def panel_endpoint(methods, *, writes=False, status=False):
 TARGETS = ('new_tab', 'this_tab', 'tab')
 MODES = ('auto', 'browse', 'text')
 GRANT = re.compile(r'^[a-z0-9]{1,24}$')
+TAB_TEXT, TABS_TEXT_TOTAL = 6000, 24000       # the text of one extra tab, and of all the tabs together (the page the customer is on has its own, larger limit)
 
 
 def _text(value, limit):
@@ -119,13 +120,16 @@ def clean_context(raw):
             return None
         tabs = []
         for tab in raw['tabs']:
-            if not isinstance(tab, dict) or set(tab) - {'title', 'url', 'grant'}:
+            if not isinstance(tab, dict) or set(tab) - {'title', 'url', 'grant', 'text'}:
                 return None
             title, url = _text(tab.get('title', ''), 200), _text(tab.get('url', ''), 2000)
             grant = tab.get('grant')
-            if title is None or url is None or (grant is not None and not (isinstance(grant, str) and GRANT.fullmatch(grant))):
+            body = _text(tab.get('text', ''), TAB_TEXT)
+            if title is None or url is None or body is None or (grant is not None and not (isinstance(grant, str) and GRANT.fullmatch(grant))):
                 return None
-            tabs.append({'title': title, 'url': url, **({'grant': grant} if grant else {})})
+            tabs.append({'title': title, 'url': url, **({'grant': grant} if grant else {}), **({'text': body} if body.strip() else {})})
+        if sum(len(t.get('text', '')) for t in tabs) > TABS_TEXT_TOTAL:
+            return None
         out['tabs'] = tabs
     for key, limit in (('selection', 4000), ('page', 20000)):
         if key in raw:
@@ -237,6 +241,17 @@ def state(request, claims, principal):
     latest = view['request']
     return JsonResponse({'messages': [_message(r) for r in view['messages']], 'live': view['live'], 'cell': _cell_state(claims['account']),
                          'request': {'id': latest['id'], 'state': latest['state'], 'paused': bool(latest['paused']), 'outcome': latest['outcome']} if latest else None})
+
+
+@panel_endpoint(['GET'])
+def history(request, claims, principal):
+    """The customer's recent chats, so a past session can be reopened in the panel (the panel then asks `session` for a ticket on it). Titles and times only: no message text."""
+    s = service()
+    projects = s.projects(principal)
+    if not projects:
+        return JsonResponse({'conversations': []})
+    rows = s.conversations(principal, projects[0]['id'], limit=15)
+    return JsonResponse({'conversations': [{'id': r['id'], 'title': str(r.get('title') or 'New chat')[:90], 'at': r.get('last_activity') or r.get('created_at'), 'current': r['id'] == claims['conversation']} for r in rows]})
 
 
 @panel_endpoint(['GET'])

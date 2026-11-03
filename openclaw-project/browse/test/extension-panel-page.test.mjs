@@ -43,14 +43,16 @@ async function open(world = {}) {
         if (m.type === 'panel:state') return W.link;
         if (m.type === 'panel:open' || m.type === 'panel:new') { W.link = { ...W.link, hasTicket: true }; return { ok: true }; }
         if (m.type === 'tabs:list') return { ok: true, tabs: W.tabs };
-        if (m.type === 'tab:read') return { ok: true, ...W.read, grant: (W.tabs.find(t => t.id === m.tabId) || {}).grant ?? null };
+        if (m.type === 'tab:read') { const t = W.tabs.find(x => x.id === m.tabId) || {}; return { ok: true, ...W.read, title: t.title ?? W.read.title, url: t.url ?? W.read.url, grant: t.grant ?? null }; }
         if (m.type === 'tab:grant') { const t = W.tabs.find(x => x.id === m.tabId); if (t) t.grant = 'g1'; return { ok: true, grant: 'g1' }; }
         if (m.type === 'tab:revoke') { for (const t of W.tabs) if (t.grant === m.grant) t.grant = null; return { ok: true }; }
         if (m.type === 'panel:take-prompt') { const p = W.prompt; W.prompt = null; return { ok: true, prompt: p }; }
         if (m.type === 'pair') return { ok: /^[A-Z0-9-]{8,}$/.test(m.code) };
         if (m.type === 'toggle') { W.link = { ...W.link, enabled: !W.link.enabled }; return {}; }
         if (m.type === 'panel:use-offered') { W.link = { ...W.link, offered: null }; return { ok: true }; }
+        if (m.type === 'panel:resume') { W.link = { ...W.link, hasTicket: true, conversation: m.conversation }; return { ok: true }; }
         if (m.type === 'panel:call') {
+          if (m.endpoint === 'history') return { status: 200, data: { conversations: W.history || [] } };
           if (m.endpoint === 'state') return { status: 200, data: W.state };
           if (m.endpoint === 'events') return { status: 200, data: { task_state: 'running', events: W.events } };
           if (m.endpoint === 'send') return W.sendStatus === 202 ? { status: 202, data: { ok: true, started: true } } : { status: 409, data: { error: W.sendError } };
@@ -223,5 +225,32 @@ test('saved prompts are kept on this computer and put in the box; a changed noti
   const before = await page.evaluate(() => window.__calls.filter(c => c.type === 'panel:state').length);
   await page.evaluate(() => window.__fire({ type: 'panel:changed' })); await settle(page);
   assert.ok(await page.evaluate(n => window.__calls.filter(c => c.type === 'panel:state').length > n, before));
+  await context.close();
+});
+
+test('earlier chats are listed by title and reopened with one press', async () => {
+  const { page, context } = await open({ state: FRESH, history: [{ id: 'conv_1', title: 'This one', at: 't', current: true }, { id: 'conv_old', title: 'Hotels in <b>Paris</b>', at: 't', current: false }] });
+  await settle(page);
+  assert.equal(await page.isHidden('#history'), true);
+  await page.click('#hist'); await settle(page);
+  assert.deepEqual(await page.$$eval('#history-list li span', s => s.map(x => x.textContent)), ['This one', 'Hotels in <b>Paris</b>']);      // titles are plain text
+  assert.equal(await page.isDisabled('#history-list li:first-child button'), true);
+  await page.click('#history-list li:last-child button'); await settle(page);
+  assert.ok(await page.evaluate(() => window.__calls.some(c => c.type === 'panel:resume' && c.conversation === 'conv_old')));
+  assert.equal(await page.isHidden('#history'), true);
+  await context.close();
+  const none = await open({ state: FRESH }); await settle(none.page); await none.page.click('#hist'); await settle(none.page);
+  assert.equal(await none.page.isVisible('#history-empty'), true); await none.context.close();
+});
+
+test('other tabs can be ticked as context: their names, addresses and text go along, in context only', async () => {
+  const { page, context } = await open({ state: FRESH });
+  await settle(page);
+  assert.equal(await page.isVisible('#more'), true);
+  await page.click('#more-sum'); await page.check('#more-list li:first-child input'); await settle(page);
+  assert.match(await page.textContent('#more-sum'), /\(1\)/);
+  await page.fill('#text', 'compare the two'); await page.press('#text', 'Enter'); await settle(page);
+  const [sent] = await sends(page);
+  assert.deepEqual(sent.context.tabs.map(t => [t.title, t.grant ?? null, (t.text ?? '').length > 0]), [['Hotels in Paris', null, false], ['Docs', null, true]]);
   await context.close();
 });

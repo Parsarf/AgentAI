@@ -39,6 +39,14 @@ test('what goes with a message is cut to size and limited to a target, a few tab
   assert.equal(buildContext({ tabs: Array(20).fill({ title: 't', url: 'u' }) }).tabs.length, 8);
 });
 
+test('extra tabs carry their own text, cut per tab and in total, so several tabs can be compared', () => {
+  const c = buildContext({ tabs: [{ title: 'A', url: 'https://a.example/', text: 'a'.repeat(9000) }, { title: 'B', url: 'https://b.example/', text: 'b'.repeat(6000) }, { title: 'C', url: 'https://c.example/', text: 'c'.repeat(6000) },
+    { title: 'D', url: 'https://d.example/', text: 'd'.repeat(6000) }, { title: 'E', url: 'https://e.example/', text: 'e'.repeat(6000) }, { title: 'F', url: 'https://f.example/', text: ' ' }] });
+  assert.deepEqual(c.tabs.map(t => (t.text ?? '').length), [6000, 6000, 6000, 6000, 0, 0]);      // 24,000 in all; an empty text is left out
+  assert.equal(c.tabs[5].text, undefined);
+  assert.deepEqual(buildCall('history'), { method: 'GET', path: 'history', query: '', body: undefined });
+});
+
 test('the panel may reach four endpoints and send one thing to each', () => {
   assert.deepEqual(buildCall('state'), { method: 'GET', path: 'state', query: '', body: undefined });
   assert.deepEqual(buildCall('stop'), { method: 'POST', path: 'stop', query: '', body: undefined });
@@ -132,6 +140,13 @@ test('opening the panel signs in with the device token alone and starts a NEW se
   const sent = await link.call('send', { message: 'hello', key: 'abcdefgh1234', mode: 'browse' });
   assert.equal(sent.status, 200); assert.equal(state.calls[1][1].headers.Authorization, `Panel ${TICKET_OK}`);       // after that, only the ticket is shown, never the device token
   assert.ok(!JSON.stringify(state.calls.slice(1)).includes('device-token'));
+});
+
+test('a past chat is reopened with a ticket for that conversation, without disturbing a new-session open', async () => {
+  const { state, link } = harness({ sessions: [{ body: session({ conversation: 'conv_old' }) }] });
+  const out = await link.open('conv_old');
+  assert.equal(out.status, 200); assert.equal(link.conversation(), 'conv_old');
+  assert.deepEqual(JSON.parse(state.calls[0][1].body), { conversation: 'conv_old' });
 });
 
 test('concurrent opens share one request; with no device token or when switched off nothing is asked', async () => {
@@ -351,6 +366,12 @@ test('a normal browse job still opens its own tab in the Lumina group, as before
   const after = calls.slice(mark);
   assert.ok(after.some(c => c[0] === 'attach' && c[1] > 200)); const own = after.find(c => c[0] === 'attach')[1];
   assert.ok(after.filter(c => c[0] === 'cdp' && c[1] === own).map(c => c[2]).includes('Emulation.setDeviceMetricsOverride'));
+});
+
+test('a past chat is reopened through the worker, and only a plain conversation id is accepted', async () => {
+  const before = fetches.length;
+  assert.deepEqual(await popup({ type: 'panel:resume', windowId: 1, conversation: '../x' }), { ok: false, error: 'invalid_request' });
+  assert.equal(fetches.length, before);
 });
 
 test('the right-click menu leaves a prompt for the window\'s panel, opens it, and it is handed over once', async () => {

@@ -10,7 +10,7 @@ const call = (endpoint, input) => ask({ type: 'panel:call', endpoint, input });
 
 const model = {
   link: { enabled: false, connected: false, paired: false, hasTicket: false, offered: null, hasSites: false }, state: null, error: null, notice: null, sending: false, opening: false,
-  trail: [], after: 0, request: null, failures: 0, draftKey: null, draftText: '', target: 'new_tab', mode: 'browse', tabs: [], picked: null, read: null, withPage: true, prompts: [], settings: false,
+  trail: [], after: 0, request: null, failures: 0, draftKey: null, draftText: '', target: 'new_tab', mode: 'browse', tabs: [], picked: null, read: null, withPage: true, prompts: [], settings: false, extra: new Set(), history: [], historyOpen: false,
 };
 let timer = null, wakeUp = null, running = false;
 
@@ -31,7 +31,18 @@ function paint() {
   const code = model.notice || (['browser_off', 'no_ticket', 'device'].includes(model.error) ? null : model.error);
   const err = $('error'); err.hidden = !code; err.textContent = code ? errorText(code) : '';
   $('banner').hidden = !model.link.offered; if (model.link.offered) $('banner-text').textContent = 'A task from the Lumina web chat is running in this browser.';
-  paintSettings(v); paintTrail(); paintMessages(); paintContext(); paintQuick();
+  paintSettings(v); paintHistory(); paintTrail(); paintMessages(); paintContext(); paintQuick();
+}
+
+function paintHistory() {
+  $('history').hidden = !model.historyOpen; $('hist').setAttribute('aria-expanded', String(model.historyOpen));
+  $('history-empty').hidden = model.history.length > 0;
+  $('history-list').replaceChildren(...model.history.map(h => {
+    const li = document.createElement('li'); const label = document.createElement('span'); label.textContent = String(h.title ?? 'New chat'); label.title = String(h.title ?? '');
+    const open = document.createElement('button'); open.type = 'button'; open.textContent = h.current ? 'Open now' : 'Open'; open.disabled = !!h.current;
+    open.addEventListener('click', async () => { model.historyOpen = false; await resume(h.id); });
+    li.append(label, open); return li;
+  }));
 }
 
 function paintSettings(v) {
@@ -93,6 +104,14 @@ function paintContext() {
     $('allow').disabled = !model.link.enabled || !model.link.connected;
   }
   $('withpage').parentElement.hidden = !tab;
+  const others = model.tabs.filter(t => !t.restricted && t.id !== tab?.id);
+  for (const id of [...model.extra]) if (!others.some(t => t.id === id)) model.extra.delete(id);
+  $('more').hidden = others.length === 0; $('more-sum').textContent = model.extra.size ? `Other tabs as context (${model.extra.size})` : 'Add other tabs as context';
+  $('more-list').replaceChildren(...others.map(t => {
+    const li = document.createElement('li'); const label = document.createElement('label'); const box = document.createElement('input'); box.type = 'checkbox'; box.checked = model.extra.has(t.id);
+    box.addEventListener('change', () => { if (box.checked && model.extra.size < 5) model.extra.add(t.id); else { box.checked = false; model.extra.delete(t.id); } paint(); });
+    const name = document.createElement('span'); name.textContent = (t.title || t.url).slice(0, 70); label.append(box, name); li.append(label); return li;
+  }));
   const note = $('ctxnote');
   const reason = !tab ? '' : tab.restricted ? 'Lumina cannot work in this kind of page.' : model.read && !model.read.read ? 'Lumina can only see this tab’s name until you allow page reading in settings.' : '';
   note.hidden = !reason; note.textContent = reason;
@@ -109,6 +128,12 @@ function paintQuick() {
 // ------------------------------------------------------------------------------------------------------------ talking to the worker and the platform
 async function refreshLink() {
   try { model.link = { ...model.link, ...(await ask({ type: 'panel:state' })) }; } catch { /* the worker is restarting */ }
+}
+
+async function resume(conversation) {
+  model.opening = true; model.error = null; model.notice = null; model.state = null; model.trail = []; model.after = 0; model.request = null; shown = ''; paint();
+  try { const out = await ask({ type: 'panel:resume', conversation }); if (out && !out.ok) model.error = out.error; await refreshLink(); } catch { model.error = 'unavailable_now'; } finally { model.opening = false; }
+  paint(); wake();
 }
 
 async function startSession(fresh) {
@@ -177,8 +202,15 @@ async function send(text, { mode } = {}) {
     if (acting && (!tab || tab.restricted || !tab.grant)) { model.notice = 'bad_tab'; return; }
     if (acting && !model.link.enabled) { model.notice = 'browser_off'; return; }
     const read = tab ? await ask({ type: 'tab:read', tabId: tab.id }).catch(() => null) : null;
+    // other tabs the customer ticked as context: their names and addresses, and (if reading pages is allowed) a part of their text. Context only: never acted in unless allowed.
+    const more = [];
+    for (const id of model.extra) {
+      const t = model.tabs.find(x => x.id === id); if (!t) continue;
+      const r = model.withPage ? await ask({ type: 'tab:read', tabId: id }).catch(() => null) : null;
+      more.push({ title: r?.title ?? t.title, url: r?.url ?? t.url, grant: t.grant ?? undefined, text: r?.text ?? '' });
+    }
     const context = buildContext({
-      target: model.target, tabs: tab ? [{ title: read?.title ?? tab.title, url: read?.url ?? tab.url, grant: tab.grant ?? undefined }] : [],
+      target: model.target, tabs: [...(tab ? [{ title: read?.title ?? tab.title, url: read?.url ?? tab.url, grant: tab.grant ?? undefined }] : []), ...more],
       selection: read?.selection ?? '', page: model.withPage ? read?.text ?? '' : '',
     });
     if (message !== model.draftText || !model.draftKey) { model.draftText = message; model.draftKey = newKey(); }
@@ -197,6 +229,11 @@ $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKe
 $('stop').addEventListener('click', async () => { const out = await call('stop'); model.notice = out.status === 202 ? null : out.data?.error ?? 'unavailable_now'; paint(); wake(); });
 $('new').addEventListener('click', async () => { await startSession(true); paint(); wake(); });
 $('close').addEventListener('click', () => window.close());
+$('hist').addEventListener('click', async () => {
+  model.historyOpen = !model.historyOpen;
+  if (model.historyOpen) { model.settings = false; const out = await call('history'); model.history = out.status === 200 && Array.isArray(out.data.conversations) ? out.data.conversations.filter(h => h && typeof h.id === 'string') : []; }
+  paint();
+});
 $('gear').addEventListener('click', () => { model.settings = !model.settings; paint(); });
 $('power').addEventListener('click', async () => { await ask({ type: 'toggle' }); await refreshLink(); paint(); wake(); });
 $('banner-use').addEventListener('click', async () => { await ask({ type: 'panel:use-offered' }); model.state = null; model.request = null; model.trail = []; shown = ''; await refreshLink(); paint(); wake(); });

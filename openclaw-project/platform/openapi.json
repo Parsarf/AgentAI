@@ -5260,6 +5260,11 @@
               "grant": {
                "type": "string",
                "pattern": "^[a-z0-9]{1,24}$"
+              },
+              "text": {
+               "type": "string",
+               "maxLength": 6000,
+               "description": "The text of that tab (all tabs together at most 24,000 characters)"
               }
              },
              "additionalProperties": false
@@ -5486,6 +5491,32 @@
      },
      "409": {
       "description": "The paired computer is not connected"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
+     }
+    }
+   }
+  },
+  "/v1/panel/history": {
+   "get": {
+    "summary": "Side panel: the customer's recent chats (id, title, time; no message text) so a past session can be reopened. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>); CORS allows only the configured extension origins.",
+    "parameters": [],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Panel ticket missing, wrong or expired"
+     },
+     "403": {
+      "description": "Origin is not one of the Lumina extensions"
+     },
+     "404": {
+      "description": "Feature off, or not this ticket's conversation"
      },
      "429": {
       "description": "Rate limited"

@@ -53,6 +53,11 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .check { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
 .quick { display: flex; gap: 6px; flex-wrap: wrap; }
 .quick button { font-size: 12px; padding: 3px 10px; }
+.more { font-size: 13px; color: var(--muted); }
+.more ol { margin-top: 6px; max-height: 120px; overflow-y: auto; }
+.more li label { display: flex; gap: 6px; align-items: center; }
+#history-list li { display: flex; gap: 6px; justify-content: space-between; align-items: center; font-size: 13px; }
+#history-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 #saved li { display: flex; gap: 6px; align-items: center; justify-content: space-between; font-size: 13px; }
 .error, #error { color: var(--danger); font-size: 12px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -89,4 +89,4 @@ urlpatterns += [path('v1/account/mcp', mcp.connections),
                 path('v1/account/mcp/callback', mcp.callback),
                 path('v1/account/mcp/<str:connection_id>/<str:action>', mcp.change),
                 path('v1/account/mcp-approvals/<str:call_id>', mcp.approve)]
-urlpatterns += [path('v1/panel/session', pnl.session), path('v1/panel/state', pnl.state), path('v1/panel/events', pnl.events), path('v1/panel/send', pnl.send), path('v1/panel/stop', pnl.stop)]
+urlpatterns += [path('v1/panel/session', pnl.session), path('v1/panel/state', pnl.state), path('v1/panel/events', pnl.events), path('v1/panel/history', pnl.history), path('v1/panel/send', pnl.send), path('v1/panel/stop', pnl.stop)]
