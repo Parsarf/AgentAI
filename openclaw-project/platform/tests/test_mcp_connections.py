@@ -258,6 +258,24 @@ class ConnectionChecks(unittest.TestCase):
                 con.execute("INSERT INTO mcp_calls(account_id,id,connection_id,tool_name,payload_hash,schema_hash,request_id,arguments_json,state,expires_epoch,created_epoch) "
                             "VALUES ('a',?,?,?,'p','s','r','{}','completed',?,?)", (uuid.uuid4().hex, cid, tool, now, now - age_days * 86400))
 
+    def test_the_caller_closed_check_never_runs_inside_the_event_loop(self):
+        """closed() reads the database; Django refuses that inside async code, which dropped the relay connection on every re-check of a stale connection."""
+        import asyncio
+        cid = self.connect(); seen = []
+        def closed():
+            try: asyncio.get_running_loop()
+            except RuntimeError: seen.append('thread'); return False
+            seen.append('loop'); raise RuntimeError('database read inside the event loop')
+        self.service.test(self.a, cid, closed=closed)
+        self.assertTrue(seen); self.assertEqual(set(seen), {'thread'})
+
+    def test_an_unexpected_failure_reaches_the_assistant_as_a_message_not_a_dropped_connection(self):
+        from agentai_platform.mcp_connections.relay import RemoteTools, DISCOVER
+        class Broken:
+            def refresh_catalog(self, *a, **k): raise RuntimeError('boom')
+        out = RemoteTools(Broken()).call('a', {}, lambda: False, name=DISCOVER['name'])
+        self.assertTrue(out['isError']); self.assertIn('unexpectedly', out['content'][0]['text'])
+
     def test_a_few_enabled_tools_are_all_offered_directly(self):
         cid = self.connect()
         self.service.update(self.a, cid, tools={'echo': True, 'write': True, 'picture': True})
