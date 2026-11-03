@@ -161,16 +161,11 @@ class RemoteClient:
                     for _ in range(MAX_PAGES):
                         page = await client.list_tools(cursor=cursor, cache_mode='bypass')
                         found.extend(t.model_dump(mode='json', by_alias=True, exclude_none=True) for t in page.tools)
-                        if len(found) > MAX_TOOLS:
-                            raise ConnectionError('discovery_limit', 'The server exposes more than 100 tools.')
                         cursor = page.next_cursor
-                        if not cursor:
-                            break
-                        if cursor in seen:
-                            raise ConnectionError('discovery_limit', 'The server repeated a tool-discovery cursor.')
+                        if not cursor or cursor in seen or len(found) >= MAX_TOOLS:
+                            break                                   # a big server (or a looping cursor) keeps the first tools instead of failing the whole connection
                         seen.add(cursor)
-                    else:
-                        raise ConnectionError('discovery_limit', 'Tool discovery exceeded eight pages.')
+                    found = found[:MAX_TOOLS]
                     if tool is not None:
                         schema = next((t for t in found if t['name'] == tool), None)
                         if schema is None:

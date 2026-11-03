@@ -14,7 +14,8 @@ import re
 import time
 import uuid
 from urllib.parse import urlsplit
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, validators
+from jsonschema.exceptions import best_match
 from referencing import Registry
 from ..lifecycle.coordinator import Coordinator, identifier
 from ..security import NotFound
@@ -41,72 +42,139 @@ def schema_digest(tool):
     return digest({k: tool.get(k) for k in ('name', 'description', 'inputSchema')})
 
 
-def bounded(value, limit=32768, depth=0, schema=False):
+def bounded(value, limit=32768, depth=0):
+    """Size and nesting guards only (a bomb costs memory and database space); what a schema SAYS is judged by `tool_verdict`."""
     if len(packed(value)) > limit:
         raise ConnectionError('invalid_arguments', 'The tool definition or arguments are too large.')
     def walk(item, level):
         if level > 20:
             raise ConnectionError('invalid_arguments', 'Nested tool data exceeds the supported depth.')
         if isinstance(item, dict):
-            if schema and any(k in item for k in ('pattern', 'patternProperties')):
-                raise ConnectionError('unsupported_schema', 'Regular-expression tool schemas are not supported.')
-            if schema and (any(k in item for k in ('$dynamicRef', '$recursiveRef')) or ('$ref' in item and not str(item['$ref']).startswith('#/$defs/'))):
-                raise ConnectionError('unsupported_schema', 'Only local, non-recursive tool schema references are supported.')
             for child in item.values(): walk(child, level + 1)
         elif isinstance(item, list):
             for child in item: walk(child, level + 1)
     walk(value, depth)
 
 
-def check_tool(t, seen):
-    """The rules one discovered tool must meet before Lumina stores it. Raises ConnectionError('unsupported_schema', <fixed phrase>)."""
+ROOT = '#'
+_DEF_REF = re.compile(r'^#/(?:\$defs|definitions)/([^/]+)')
+
+
+def _ref_problem(schema):
+    """None, or a fixed phrase. A reference to anything outside the schema (or a dynamic one) cannot be resolved by the model API that will be given the schema, and a cycle can
+    make it fail the whole request, so a tool like that is not offered. Local, acyclic references (even from one definition to another) are fine."""
+    graph, outside = {}, []
+    def walk(item, node):
+        if isinstance(item, dict):
+            if '$dynamicRef' in item or '$recursiveRef' in item:
+                outside.append(True)
+            ref = item.get('$ref')
+            if isinstance(ref, str):
+                found = _DEF_REF.match(ref)
+                if found: graph.setdefault(node, set()).add(found.group(1))
+                elif ref == ROOT: graph.setdefault(node, set()).add(ROOT)
+                else: outside.append(True)
+            elif ref is not None:
+                outside.append(True)
+            for key, child in item.items():
+                if key in ('$defs', 'definitions') and isinstance(child, dict):
+                    for name, sub in child.items(): walk(sub, name)
+                else:
+                    walk(child, node)
+        elif isinstance(item, list):
+            for child in item: walk(child, node)
+    walk(schema, ROOT)
+    if outside:
+        return 'it refers to a schema outside itself, which cannot be resolved'
+    state = {}
+    def cyclic(node):
+        if state.get(node) == 1: return True
+        if state.get(node) == 2: return False
+        state[node] = 1
+        if any(cyclic(n) for n in graph.get(node, ())): return True
+        state[node] = 2
+        return False
+    if any(cyclic(n) for n in list(graph)):
+        return 'its schema refers back to itself (recursive)'
+    return None
+
+
+def tool_verdict(t, seen):
+    """None when the tool is usable, else (fixed phrase, keep_a_stub). Only genuinely unusable or hostile tools are refused, and only that tool: the connection and every other tool carry on.
+    A refused tool with a valid name is kept as a labelled stub (never callable) so the customer can see it exists and why it is off; one without a usable name is dropped.
+    Whatever a server sends, this never raises: a definition it cannot read is simply refused."""
+    if not isinstance(t, dict) or not isinstance(t.get('name'), str) or not TOOL_NAME.fullmatch(t['name']):
+        return 'its name cannot be used as a tool name', False
+    if t['name'] in seen:
+        return 'its name repeats another tool', False
     try:
-        bounded(t, 24000, schema=True)
-        try: Draft202012Validator.check_schema(t['inputSchema'])
-        except Exception: raise ConnectionError('unsupported_schema', 'The server returned an unsupported tool schema.') from None
-        if (not TOOL_NAME.fullmatch(t['name']) or t['name'] in seen or t['inputSchema'].get('type') != 'object'
-                or '_lumina_origin' in t['inputSchema'].get('properties', {}) or '_lumina_origin' in t['inputSchema'].get('required', [])):
-            raise ConnectionError('unsupported_schema', 'The server returned an invalid tool definition.')
-        # A referenced schema must be acyclic; reject references inside definitions too.
-        defs = t['inputSchema'].get('$defs', {})
-        if any('"$ref"' in packed(v) for v in defs.values()):
-            raise ConnectionError('unsupported_schema', 'Recursive tool schemas are not supported.')
-    except (KeyError, TypeError, AttributeError):
-        raise ConnectionError('unsupported_schema', 'The server returned an invalid tool definition.') from None
+        try:
+            bounded(t, 24000)
+        except ConnectionError:
+            return 'its definition is too large or nested too deeply', True
+        schema = t.get('inputSchema')
+        if not isinstance(schema, dict):
+            return 'it has no input schema', True
+        props, required = schema.get('properties'), schema.get('required')
+        if (isinstance(props, dict) and '_lumina_origin' in props) or (isinstance(required, list) and '_lumina_origin' in required):
+            return 'it uses a field name Lumina reserves for its own checks', True
+        if schema.get('type') != 'object':
+            return 'its input is not an object', True
+        try: Draft202012Validator.check_schema(schema)
+        except Exception: return 'its schema is not valid JSON Schema', True
+        problem = _ref_problem(schema)
+        return (problem, True) if problem else None
+    except Exception:
+        return 'its definition could not be read', True
 
 
 def schema_problems(tools):
-    """Every tool that fails `check_tool`, with the fixed phrase of the rule it broke: [(tool name, phrase)]. Names are cleaned and cut; no schema content is ever returned."""
+    """Every tool that is refused, with the fixed phrase of the reason: [(tool name, phrase)]. Names are cleaned and cut; no schema content is ever returned."""
     problems, seen = [], set()
     for t in tools if isinstance(tools, list) else []:
         name = t.get('name') if isinstance(t, dict) else None
         label = re.sub(r'[^A-Za-z0-9_.:-]', '?', name if isinstance(name, str) else repr(type(t).__name__))[:64]
-        try:
-            check_tool(t, seen)
-            seen.add(t['name'])
-        except ConnectionError as error:
-            problems.append((label, error.message))
+        verdict = tool_verdict(t, seen)
+        if verdict:
+            problems.append((label, verdict[0]))
+        elif isinstance(name, str):
+            seen.add(name)
     return problems
 
 
 def log_schema_rejection(connection_id, tools):
-    """The stored error is only the code `unsupported_schema`; this says which tools broke which rule, so an operator can tell what a real server sent without reading its schemas."""
+    """The refusals are shown in Integrations; this is the operator's view: how many tools, a count per reason, the first few names. Names and fixed phrases only, never schema content."""
     problems = schema_problems(tools)
     reasons = {}
     for _, phrase in problems:
         reasons[phrase] = reasons.get(phrase, 0) + 1
-    logging.getLogger('agentai.mcp').warning('mcp_schema_rejected connection=%s tools=%d rejected=%d reasons=%s first=%s', str(connection_id)[:8], len(tools) if isinstance(tools, list) else 0,
+    logging.getLogger('agentai.mcp').warning('mcp_tools_refused connection=%s tools=%d refused=%d reasons=%s first=%s', str(connection_id)[:8], len(tools) if isinstance(tools, list) else 0,
                                              len(problems), json.dumps(reasons, sort_keys=True)[:400], json.dumps(problems[:5])[:400])
 
 
+def _never_match(validator, value, instance, schema):
+    return ()
+
+
+# A remote server's regular expressions are never run here: a hostile pattern could hang a web worker (catastrophic backtracking). The schema keeps its `pattern` and
+# `patternProperties` (the assistant reads them as hints and the customer reviews the exact definition); the server that owns the tool is the one that enforces them.
+# Everything else (types, required fields, enums, lengths, ranges, nesting) is still checked here.
+ArgumentValidator = validators.extend(Draft202012Validator, {'pattern': _never_match, 'patternProperties': _never_match})
+
+
 def validate_arguments(schema, arguments):
+    """The arguments must be a JSON object of sane size and match what the schema says in ways we can check. That check is a convenience (it lets the assistant fix a mistake before an
+    approval is asked for): the server that owns the tool is the authority, so a schema we cannot interpret here never blocks a call."""
     bounded(arguments, 14000)
     if not isinstance(arguments, dict):
         raise ConnectionError('invalid_arguments', 'Tool arguments must be a JSON object.')
     try:
-        Draft202012Validator(schema, registry=Registry()).validate(arguments)
+        error = best_match(ArgumentValidator(schema, registry=Registry()).iter_errors(arguments))
     except Exception:
-        raise ConnectionError('invalid_arguments', 'The arguments do not match this tool’s schema.') from None
+        return
+    if error is not None:
+        where = '.'.join(str(p) for p in error.absolute_path) or 'the arguments'
+        raise ConnectionError('invalid_arguments', f'The arguments do not match this tool’s schema at {where}: {error.message}'[:300])
 
 
 def redact(value, credentials):
@@ -165,8 +233,8 @@ class ConnectionService:
         tools = []
         for t in json.loads(row['tools_json']):
             choice = choices.get(t['name'])
-            tools.append({'name': t['name'], 'description': t.get('description', ''), 'inputSchema': t['inputSchema'],
-                          'enabled': bool(choice and choice['enabled'] and choice['schema_hash'] == schema_digest(t))})
+            tools.append({'name': t['name'], 'description': t.get('description', ''), 'inputSchema': t['inputSchema'], 'unusable': t.get('unusable'),
+                          'enabled': bool(not t.get('unusable') and choice and choice['enabled'] and choice['schema_hash'] == schema_digest(t))})
         return {'id': row['id'], 'name': row['name'], 'url': row['url'], 'recipient': urlsplit(row['url']).hostname,
                 'auth_method': row['auth_method'], 'enabled': bool(row['enabled']), 'state': row['state'] if row['enabled'] else 'disabled',
                 'error_code': row['error_code'], 'checked_epoch': row['checked_epoch'], 'tools': tools}
@@ -215,15 +283,17 @@ class ConnectionService:
 
     def _save_discovery(self, row, data, credentials, *, actor='', session='', browser=''):
         tools = redact(data.get('tools', []), credentials)
-        try:
-            seen = set()
-            for t in tools:
-                check_tool(t, seen)
-                seen.add(t['name'])
-        except ConnectionError as error:
-            if error.code == 'unsupported_schema':
-                log_schema_rejection(row['id'], tools)
-            raise
+        tools = tools if isinstance(tools, list) else []
+        stored, seen = [], set()
+        for t in tools:
+            verdict = tool_verdict(t, seen)
+            if verdict is None:
+                stored.append(t); seen.add(t['name'])
+            elif verdict[1]:
+                stored.append({'name': t['name'], 'description': str(t.get('description') or '')[:300], 'inputSchema': {}, 'unusable': verdict[0]}); seen.add(t['name'])
+        if len(stored) != len(tools) or any(t.get('unusable') for t in stored):
+            log_schema_rejection(row['id'], tools)
+        tools = stored
         pending = credentials.get('pending') if data.get('authorize_url') else None
         with self.coordinator.transaction() as con:
             self.store._authorize(con, self._principal_for(row['account_id']) if not actor else self._actor(row['account_id'], actor))
@@ -358,8 +428,11 @@ class ConnectionService:
                 con.execute("UPDATE mcp_calls SET state='rejected' WHERE account_id=? AND connection_id=? AND state IN ('pending','approved')", (principal.account_id, connection))
             if tools is not None:
                 if not isinstance(tools, dict) or len(tools) > 100 or any(type(v) is not bool for v in tools.values()): raise ValueError('invalid tools')
-                known = {t['name'] for t in json.loads(row['tools_json'])}
-                if set(tools) - known: raise ConnectionError('tool_removed', 'A selected tool is no longer available.')
+                known = {t['name']: t for t in json.loads(row['tools_json'])}
+                if set(tools) - set(known): raise ConnectionError('tool_removed', 'A selected tool is no longer available.')
+                for name_, on in tools.items():
+                    if on and known[name_].get('unusable'):
+                        raise ConnectionError('tool_unusable', 'This tool cannot be used: ' + known[name_]['unusable'] + '.')
                 for name_, on in tools.items():
                     con.execute('UPDATE mcp_tool_choices SET enabled=? WHERE account_id=? AND connection_id=? AND tool_name=?', (int(on), principal.account_id, connection, name_))
                 if con.execute('SELECT count(*) FROM mcp_tool_choices WHERE account_id=? AND enabled=1', (principal.account_id,)).fetchone()[0] > MAX_ENABLED:
@@ -469,6 +542,8 @@ class ConnectionService:
             choice = con.execute('SELECT * FROM mcp_tool_choices WHERE account_id=? AND connection_id=? AND tool_name=?', (account, row['id'], tool['name'] if tool else '')).fetchone()
             if tool is None or not choice or not choice['enabled'] or choice['schema_hash'] != schema_digest(tool):
                 raise ConnectionError('tool_removed', 'This tool is disabled or changed. Review it in Integrations.')
+            if tool.get('unusable'):
+                raise ConnectionError('tool_unusable', 'This tool cannot be used: ' + tool['unusable'] + '.')
             validate_arguments(tool['inputSchema'], arguments)
             target_hash = digest(arguments)
             prior = con.execute('''SELECT * FROM mcp_calls WHERE account_id=? AND connection_id=? AND tool_name=? AND payload_hash=? AND schema_hash=?

@@ -33,6 +33,17 @@ describe('MCP connections', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'echo' }));
     await waitFor(() => expect(api).toHaveBeenCalledWith('POST','/v1/account/mcp/c1/update',{ tools: { echo: true } }));
   });
+  it('shows a tool the server sent but Lumina cannot use as off, with the reason, while the others stay usable', async () => {
+    data.connections=[{id:'c1',name:'Asana',url:'https://mcp.asana.com/v2/mcp',recipient:'mcp.asana.com',state:'connected',enabled:true,auth_method:'oauth',error_code:null,tools:[
+      {name:'get_task',description:'Read a task',enabled:false,inputSchema:{type:'object'},unusable:null},
+      {name:'loopy',description:'Recursive',enabled:false,inputSchema:{},unusable:'its schema refers back to itself (recursive)'}]}];
+    render(<McpConnections />);
+    await screen.findByText(/Can’t be used: its schema refers back to itself/);
+    expect(screen.getByRole('switch',{name:'loopy'}).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('switch',{name:'get_task'}).hasAttribute('disabled')).toBe(false);
+    fireEvent.click(screen.getByRole('switch',{name:'get_task'}));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('POST','/v1/account/mcp/c1/update',{ tools: { get_task: true } }));
+  });
   it('shows Asana registration requirements and never claims OAuth is ready without operator setup', async () => {
     render(<McpConnections />);fireEvent.click(await screen.findByRole('button', { name: 'Choose a service' }));
     expect(screen.getByDisplayValue('https://mcp.asana.com/v2/mcp')).toBeTruthy();

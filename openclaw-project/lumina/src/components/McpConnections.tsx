@@ -4,7 +4,7 @@ import Toggle from './ui/Toggle';
 import './mcp.css';
 
 type Auth = 'oauth' | 'bearer' | 'none';
-interface Tool { name: string; description: string; enabled: boolean; inputSchema: Record<string, unknown> }
+interface Tool { name: string; description: string; enabled: boolean; inputSchema: Record<string, unknown>; unusable?: string | null }
 interface Connection { id: string; name: string; url: string; recipient: string; auth_method: Auth; enabled: boolean; state: string; error_code: string | null; tools: Tool[] }
 interface Preset { id: string; name: string; url: string; auth_method: Auth; configured: boolean; setup: string }
 interface Pending { id: string; connection_id: string; tool_name: string; arguments: unknown; state: string }
@@ -27,6 +27,7 @@ const ERRORS: Record<string, string> = {
   unsupported_schema: 'The server returned a tool schema Lumina cannot safely validate.',
   response_too_large: 'The server response exceeded Lumina’s size limit.',
   tool_changed: 'A tool changed. Test the connection, review its definition, then enable it again.',
+  tool_unusable: 'That tool cannot be used. The reason is shown under it.',
 };
 const message = (error: unknown) => error instanceof ApiError ? ERRORS[error.code] ?? 'The connection could not be updated. Please try again.' : 'Could not reach Lumina. Please try again.';
 
@@ -50,8 +51,9 @@ function ConnectionItem({ item, busy, act }: { item: Connection; busy: boolean; 
       <label htmlFor={`mcp-token-${item.id}`}>Replacement bearer token</label><input className="input" id={`mcp-token-${item.id}`} type="password" autoComplete="new-password" value={token} onChange={e => setToken(e.target.value)} maxLength={4096} />
       <button className="btn" disabled={!token || busy}>Save token and reconnect</button></form>}
     {item.tools.length > 0 && <div className="mcp-tools"><h4>Tools</h4><p className="muted">Enable the tools Lumina can discover. Each call still needs your approval of its exact arguments.</p>
-      {item.tools.map(tool => <div key={tool.name} className="mcp-tool"><Toggle label={tool.name} hint={tool.description || 'No description supplied by this server.'} checked={tool.enabled} disabled={busy || !item.enabled} onChange={enabled => void act(item.id, 'update', { tools: { [tool.name]: enabled } })} />
-        <details><summary className="faint">Tool parameters</summary><pre tabIndex={0}>{JSON.stringify(tool.inputSchema, null, 2)}</pre></details></div>)}
+      {item.tools.map(tool => <div key={tool.name} className="mcp-tool"><Toggle label={tool.name} hint={tool.description || 'No description supplied by this server.'} checked={tool.enabled} disabled={busy || !item.enabled || !!tool.unusable} onChange={enabled => void act(item.id, 'update', { tools: { [tool.name]: enabled } })} />
+        {tool.unusable ? <p className="faint" role="note">Can’t be used: {tool.unusable}. The other tools on this server work normally.</p>
+          : <details><summary className="faint">Tool parameters</summary><pre tabIndex={0}>{JSON.stringify(tool.inputSchema, null, 2)}</pre></details>}</div>)}
     </div>}
     {item.state === 'connected' && !item.tools.length && <p className="faint">This server currently exposes no tools.</p>}
   </article>;
