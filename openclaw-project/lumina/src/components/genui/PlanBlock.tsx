@@ -1,3 +1,4 @@
+import { Emojified } from '../Emoji';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
@@ -27,15 +28,15 @@ function Card(props: {
          onDrop={e => { e.preventDefault(); props.onDrop(); }} onDragEnd={props.onDragEnd}>
       <div className="phase-head">
         <span className="grip" aria-hidden title="Drag to reorder">⠿</span>
-        <button className="phase-title" aria-expanded={open} onClick={props.onToggleOpen}><span className="num">{n}</span><span>{p.title}</span></button>
+        <button className="phase-title" aria-expanded={open} onClick={props.onToggleOpen}><span className="num">{n}</span><span><Emojified text={p.title} /></span></button>
         <span className={`badge ${props.run ? 'run-' + props.run.state : state === 'On' ? '' : 'alt'}`}>{state}{props.run?.state === 'running' && props.run.started_epoch ? ` · ${elapsed(props.run.started_epoch, props.now)}` : ''}</span>
         {!locked && <button type="button" role="switch" aria-checked={p.enabled} aria-label={`${p.title} enabled`} className={`switch sm${p.enabled ? ' on' : ''}`} onClick={() => props.onChange(P.setEnabled(plan, p.id, !p.enabled))}><i /></button>}
       </div>
       {issue && <p className="err small" role="alert">{issue}</p>}
       {props.run?.state === 'awaiting_approval' && (
         <div className="approval" role="group" aria-label={`Approval needed: ${p.title}`}>
-          <p><b>Approval needed before “{p.title}” runs.</b></p>
-          {p.description && <p className="muted small">{p.description}</p>}
+          <p><b>Approval needed before “<Emojified text={p.title} />” runs.</b></p>
+          {p.description && <p className="muted small"><Emojified text={p.description} /></p>}
           <div className="actions"><button className="btn small primary" onClick={() => props.onAct?.('approve')}>Approve and run</button><button className="btn small" onClick={() => props.onAct?.('skip')}>Skip this phase</button></div>
         </div>)}
       {props.run?.state === 'failed' && (
@@ -46,7 +47,7 @@ function Card(props: {
       {props.run?.state === 'completed' && props.run.summary && !open && <p className="muted small phase-sum">{props.run.summary.length > 160 ? props.run.summary.slice(0, 160) + '…' : props.run.summary}</p>}
       {open && (
         <div className="phase-body">
-          {props.run?.summary && props.run.state !== 'failed' && <div className="result" style={{ marginTop: 0 }}><small className="faint">Result</small><br />{props.run.summary}</div>}
+          {props.run?.summary && props.run.state !== 'failed' && <div className="result" style={{ marginTop: 0 }}><small className="faint">Result</small><br /><Emojified text={props.run.summary} /></div>}
           <label>Name<input value={p.title} maxLength={80} disabled={locked} onChange={e => set({ title: e.target.value || ' ' })} /></label>
           <label>Instructions<textarea rows={3} maxLength={1000} disabled={locked} value={p.description} onChange={e => set({ description: e.target.value })} /></label>
           <label>Checkpoint<input maxLength={240} disabled={locked} value={p.checkpoint ?? ''} onChange={e => set({ checkpoint: e.target.value || undefined })} placeholder="How will this phase be verified?" /></label>
@@ -55,7 +56,7 @@ function Card(props: {
             {plan.phases.filter(o => o.id !== p.id).map(o => {
               const blocked = !p.dependsOn.includes(o.id) && P.wouldCycle(plan, p.id, o.id);
               return <label key={o.id} className="check"><input type="checkbox" disabled={blocked} checked={p.dependsOn.includes(o.id)}
-                onChange={e => props.onChange(P.setDependencies(plan, p.id, e.target.checked ? [...p.dependsOn, o.id] : p.dependsOn.filter(d => d !== o.id)))} />{o.title}{blocked && <span className="faint"> (would loop)</span>}</label>;
+                onChange={e => props.onChange(P.setDependencies(plan, p.id, e.target.checked ? [...p.dependsOn, o.id] : p.dependsOn.filter(d => d !== o.id)))} /><Emojified text={o.title} />{blocked && <span className="faint"> (would loop)</span>}</label>;
             })}</fieldset>
           <div className="flags">
             <label className="check"><input type="checkbox" disabled={locked} checked={p.optional} onChange={e => set({ optional: e.target.checked })} />Optional</label>
@@ -126,10 +127,10 @@ export default function PlanBlock({ block, original, onChanged }: { block: Block
   return (
     <section className="gblock plan" aria-label={`Plan: ${plan.title}`}>
       <header>
-        <div className="plan-head"><h3>{plan.title}</h3>
+        <div className="plan-head"><h3><Emojified text={plan.title} /></h3>
           <span className={`badge ${launched && block.run_status === 'running' ? 'run-running' : launched && block.run_status === 'completed' ? 'run-completed' : launched && (block.run_status === 'failed' || block.run_status === 'awaiting_approval') ? 'run-awaiting_approval' : 'alt'}`}>{badge}</span>
           {launched && total > 0 && <span className="faint small">{doneCount} of {total} phases done</span>}</div>
-        {plan.summary && <p className="muted">{plan.summary}</p>}
+        {plan.summary && <p className="muted"><Emojified text={plan.summary} /></p>}
         {!locked && !launched && (
           <div className="toolbar" role="toolbar" aria-label="Plan tools">
             <button className="btn small" disabled={!history.current.canUndo} onClick={() => go(history.current.undo())}>Undo</button>
@@ -162,7 +163,7 @@ export default function PlanBlock({ block, original, onChanged }: { block: Block
         <form className="inline" onSubmit={e => { e.preventDefault(); if (newTitle.trim()) { commit(P.addPhase(plan, null, newTitle)); setNewTitle(''); } }}>
           <input aria-label="Add a phase" placeholder="Add a phase at the end…" value={newTitle} maxLength={80} onChange={e => setNewTitle(e.target.value)} /><button type="submit" className="btn small">Add phase</button>
         </form>)}
-      {general.length > 0 && !locked && <ul className="issues" role="alert">{general.map((i, n) => <li key={n}>{i.message}</li>)}</ul>}
+      {general.length > 0 && !locked && <ul className="issues" role="alert">{general.map((i, n) => <li key={n}><Emojified text={i.message} /></li>)}</ul>}
       <footer>
         {!launched && !locked ? (<>
           <button className="btn primary" disabled={busy || issues.length > 0 || status === 'conflict' || status === 'saving'} onClick={launch}>{busy ? 'Launching…' : `Launch plan (${enabledCount} phase${enabledCount === 1 ? '' : 's'})`}</button>

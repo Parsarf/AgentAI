@@ -1,6 +1,6 @@
 # Phase 3 (consolidation) and Phase 4 (decision-driven) implementation specs
 
-Purpose: executable specifications for Phase 3 items P3-1..P3-14 and the Phase 4 items listed in `docs/codebase-audit/HANDOFF.md` section 5, written for a cleanup AI that has no other context. Every file:line below was re-read on 2026-10-29 against branch `product-phases-6-11` (HEAD `03662de` plus the uncommitted tool-origin work). Production (Hostinger `srv2054170`, `179.236.71.203`, `ssh lumina`) was verified read-only by the audit; every server command in this file is TEXT for the owner to approve, never something to run unprompted. Owner priorities that govern every task: customer privacy first; no new per-task limits; preserve unfinished functionality; fail-closed bookkeeping fixes are fine.
+Purpose: executable specifications for Phase 3 items P3-1..P3-14 and the Phase 4 items listed in `docs/codebase-audit/HANDOFF.md` section 5, written for a cleanup AI that has no other context. Every file:line below was re-read on 2026-10-29 against branch `product-phases-6-11` (HEAD `03662de` plus the uncommitted tool-origin work). Production (Hostinger `<vps-host>`, `<PROD_IP>`, `ssh lumina`) was verified read-only by the audit; every server command in this file is TEXT for the owner to approve, never something to run unprompted. Owner priorities that govern every task: customer privacy first; no new per-task limits; preserve unfinished functionality; fail-closed bookkeeping fixes are fine.
 
 All paths are relative to `/Users/parsa/AgentAI/openclaw-project/` (called `$P` below) unless they start with `/`. Platform commands run from `$P/platform` with `.venv/bin/python`. Frontend commands run from `$P/lumina`.
 
@@ -204,13 +204,13 @@ jobs:
 
 ## P3-2: Documentation drift
 
-- **Findings**: M-11, ST-014, IS-015, AG-016, OP-015, L-01, ST-013, plus GX-008 context for the IP. **Finding check**: re-verified HIGH. Extra checks done: `routing/` has no `services.py` (listing: `__init__ bench classifier config decision display policy report_cli shadow store`), `platform/tests/test_service_handoff.py` does not exist, `git grep ServiceRouter` hits only `docs/architecture/findings.md:35` and `docs/orchestration-audit/*` (those are historical analysis and already say "deleted"); `git ls-files | xargs grep -l 69.48.206.62` returns exactly 17 files (list below). One correction to the audit: `OPERATIONS.md:211` says `pursuit` and `jev_services` "no longer exist" and that is TRUE for the code (`git grep jev_services` in `platform/ accounts/ dashboard/` finds nothing), while the server's persisted switch file still contains `jev_services` ON (PRODUCTION_VERIFICATION). Do not "fix" that sentence; the stale entry is server state (see P3-10).
+- **Findings**: M-11, ST-014, IS-015, AG-016, OP-015, L-01, ST-013, plus GX-008 context for the IP. **Finding check**: re-verified HIGH. Extra checks done: `routing/` has no `services.py` (listing: `__init__ bench classifier config decision display policy report_cli shadow store`), `platform/tests/test_service_handoff.py` does not exist, `git grep ServiceRouter` hits only `docs/architecture/findings.md:35` and `docs/orchestration-audit/*` (those are historical analysis and already say "deleted"); `git ls-files | xargs grep -l <OLD_IP>` returns exactly 17 files (list below). One correction to the audit: `OPERATIONS.md:211` says `pursuit` and `jev_services` "no longer exist" and that is TRUE for the code (`git grep jev_services` in `platform/ accounts/ dashboard/` finds nothing), while the server's persisted switch file still contains `jev_services` ON (PRODUCTION_VERIFICATION). Do not "fix" that sentence; the stale entry is server state (see P3-10).
 - **Goal**: a new reader (human or AI) gets the true state: Lumina is a live customer platform on Hostinger; IONOS is dead; ServiceRouter is gone.
 - **Depends on / blocks**: none. Do after P1-14 so `bin/*` stop pointing at the dead IP. **GATE**: `CLAUDE.local.md` is the owner's private, untracked instruction file: the AI must only PROPOSE the edit (write it into the report), never edit it.
 - **Files to change / edit list** (quote = exact current text; verify with `rg -nF` before editing, then replace):
 
   `README.md`
-  - Current: `The owner OpenClaw deployment runs on the always-on IONOS VPS with LiteLLM` -> `The owner OpenClaw deployment and the Lumina customer platform run on the always-on Hostinger VPS (srv2054170, 179.236.71.203, \`ssh lumina\`) with LiteLLM`.
+  - Current: `The owner OpenClaw deployment runs on the always-on IONOS VPS with LiteLLM` -> `The owner OpenClaw deployment and the Lumina customer platform run on the always-on Hostinger VPS (<vps-host>, <PROD_IP>, \`ssh lumina\`) with LiteLLM`.
   - Current: `Product Phases1–2 now deliver the [customer contract](../product/CONTRACT.md)` through `Customer accounts/provisioning/chat/billing remain subsequent product phases.` (the whole 4-line sentence block) -> `The customer platform is built and live in invitation-only beta: accounts, chat, native execution, browser tasks, billing and operations are delivered (see [BUILD_LOG.md](BUILD_LOG.md), [RELEASE_NOTES.md](RELEASE_NOTES.md), platform/OPERATIONS.md). Status of record: docs/codebase-audit/PRODUCTION_VERIFICATION_2026-10-29.md.`
   - Current: `Product Phase3 account build and targeted private boundaries now pass.` through `Next implementation phase4.` -> delete the three lines (stale; the phase-by-phase history is in BUILD_LOG.md).
   - Current: `Production services and\ndatabases were not changed.` (end of the "Read SERVER_DEPLOYMENT" paragraph) -> delete that sentence (it describes the Phase-0 audit session).
@@ -219,17 +219,17 @@ jobs:
   - Line 1-14 heading `## Customer-platform foundation and accounts — product Phases1–3` and the sentence `The temporary server smoke for product Phase2 was cleaned up; no persistent\nplatform listener/customer activation was installed.` -> `The customer platform is installed and live on the Hostinger VPS (agentai-platform-app, request-worker, cell-bridge, supervisor-native, browse, tool-relay, billing-worker, mail timer; list: platform/OPERATIONS.md section 12). Existing owner services (OpenClaw gateway, LiteLLM, PostgreSQL in /opt/openclaw-production) also remain.`
   - Line 36 `No account-layer live service exists yet.` -> delete.
   - Line 28-29 `Retention\nmaintenance/alerts are prepared, not scheduled:180-day minimal audit,90-day chat\nprojection tombstones.` keep but append ` (still not scheduled as of 2026-10-29; see P3-5)` until P3-5 lands.
-  - Line 49 `Production belongs on the IONOS VPS and must work while the Mac is off.` -> `Production is the Hostinger VPS (179.236.71.203) and must work while the Mac is off. The former IONOS VPS (69.48.206.62) is retired.`
-  - Line 96 `ssh -S openclaw-project/tmp/control-ui-ssh.sock -O exit root@69.48.206.62` -> `ssh -S openclaw-project/tmp/control-ui-ssh.sock -O exit lumina`
-  - Line 427 `\`ssh -N -L 8000:127.0.0.1:8000 <ssh-user>@69.48.206.62\`` -> `\`ssh -N -L 8000:127.0.0.1:8000 lumina\``
-  - Line 557 `\`ssh -L 18795:127.0.0.1:18795 <user>@69.48.206.62\`` -> `\`ssh -L 18795:127.0.0.1:18795 lumina\``
+  - Line 49 `Production belongs on the IONOS VPS and must work while the Mac is off.` -> `Production is the Hostinger VPS (<PROD_IP>) and must work while the Mac is off. The former IONOS VPS (<OLD_IP>) is retired.`
+  - Line 96 `ssh -S openclaw-project/tmp/control-ui-ssh.sock -O exit root@<OLD_IP>` -> `ssh -S openclaw-project/tmp/control-ui-ssh.sock -O exit lumina`
+  - Line 427 `\`ssh -N -L 8000:127.0.0.1:8000 <ssh-user>@<OLD_IP>\`` -> `\`ssh -N -L 8000:127.0.0.1:8000 lumina\``
+  - Line 557 `\`ssh -L 18795:127.0.0.1:18795 <user>@<OLD_IP>\`` -> `\`ssh -L 18795:127.0.0.1:18795 lumina\``
 
   `SERVER_DEPLOYMENT.md`
-  - Line 9-10 `The owner already has an IONOS VPS at \`69.48.206.62\` with Ubuntu 24.04,\n2 vCPUs, 4 GiB RAM, and a 120 GiB disk.` -> `Historical: the first host was an IONOS VPS at 69.48.206.62 (retired). Production is now the Hostinger VPS srv2054170 (179.236.71.203). Read the rest of this file as the original deployment plan; the live layout is described in platform/OPERATIONS.md.` Keep the host-key fingerprint paragraph but prefix it with "(IONOS, historical)".
+  - Line 9-10 `The owner already has an IONOS VPS at \`<OLD_IP>\` with Ubuntu 24.04,\n2 vCPUs, 4 GiB RAM, and a 120 GiB disk.` -> `Historical: the first host was an IONOS VPS at <OLD_IP> (retired). Production is now the Hostinger VPS <vps-host> (<PROD_IP>). Read the rest of this file as the original deployment plan; the live layout is described in platform/OPERATIONS.md.` Keep the host-key fingerprint paragraph but prefix it with "(IONOS, historical)".
 
   `ARCHITECTURE.md`
   - Line 31 `Status: Phase 3 (trust-separated workers) is live on the IONOS VPS.` -> `Status (2026-10-29): the owner stack and the Lumina customer platform run on the Hostinger VPS. The paragraph below is the 2026-10-12 owner-stack status and is kept as history.`
-  - Line 44 `The IONOS Ubuntu 24.04.4 VPS is \`69.48.206.62\`; SSH access works.` -> `The Hostinger Ubuntu VPS is \`179.236.71.203\` (\`ssh lumina\`); the former IONOS VPS (69.48.206.62) is retired.`
+  - Line 44 `The IONOS Ubuntu 24.04.4 VPS is \`<OLD_IP>\`; SSH access works.` -> `The Hostinger Ubuntu VPS is \`<PROD_IP>\` (\`ssh lumina\`); the former IONOS VPS (<OLD_IP>) is retired.`
 
   `platform/OPERATIONS.md`
   - Line 161 sentence `In this version it **only records**; requests run exactly as before.` -> append ` This is the routing classifier only (jev_routing, off in production). The browser service has its own JEV decision path (\`--jev-mode live\`), described under "Browser".` (OP-015: JEV has two separate uses.)
@@ -244,24 +244,24 @@ jobs:
   `platform/deploy/README.md`
   - Lines 78-85: `Schedule \`retention_accounts\` every15min ... No schedule/worker was installed this phase.` -> keep until P3-5; then replace with the real unit/timer name.
 
-  The other 10 tracked files naming `69.48.206.62` and the policy for each (`git ls-files | xargs grep -l 69.48.206.62`; 17 total):
+  The other 10 tracked files naming `<OLD_IP>` and the policy for each (`git ls-files | xargs grep -l <OLD_IP>`; 17 total):
   | File | Policy |
   |---|---|
   | `ARCHITECTURE.md`, `RUNBOOK.md`, `SERVER_DEPLOYMENT.md` | edit as above |
   | `plans/product/CLI_HANDOFF.md:124` | file removed 2026-10-29 (obsolete continuation prompt); no edit needed, so the list below is 16 live files |
-  | `BUILD_LOG.md:1092,1545` | historical record: do NOT edit; add ONE line under the title: `> IP 69.48.206.62 in entries below is the retired IONOS host; production is 179.236.71.203 (Hostinger).` |
-  | `bin/ssh-server:25`, `scp-server:24`, `activate-telegram.py:33`, `open-ops-dashboard.py:31`, `open-control-ui.py:27`, `owner-console.py:56` | code, owned by P1-14: replace `values.get(pfx + "HOST") or "69.48.206.62"` with `values.get(pfx + "HOST") or sys.exit("set OPENCLAW_NEW_SSH_HOST (or use ssh lumina)")` (use the file's existing exit idiom) |
+  | `BUILD_LOG.md:1092,1545` | historical record: do NOT edit; add ONE line under the title: `> IP <OLD_IP> in entries below is the retired IONOS host; production is <PROD_IP> (Hostinger).` |
+  | `bin/ssh-server:25`, `scp-server:24`, `activate-telegram.py:33`, `open-ops-dashboard.py:31`, `open-control-ui.py:27`, `owner-console.py:56` | code, owned by P1-14: replace `values.get(pfx + "HOST") or "<OLD_IP>"` with `values.get(pfx + "HOST") or sys.exit("set OPENCLAW_NEW_SSH_HOST (or use ssh lumina)")` (use the file's existing exit idiom) |
   | `evidence/phase-4/20260926T220330Z/manifest.json`, `phase-5/.../manifest.json`, `phase-6/...`, `phase-7/...`, `phase-8/.../manifest.json` and `phase-8/.../summary.md` | evidence is immutable (checksummed records): do NOT edit; the banner in BUILD_LOG covers them |
-  Replacement policy in one line: live host is Hostinger `179.236.71.203` reached with `ssh lumina`; prose uses the SSH alias, never the raw IP, except in historical records which get a banner instead of an edit.
+  Replacement policy in one line: live host is Hostinger `<PROD_IP>` reached with `ssh lumina`; prose uses the SSH alias, never the raw IP, except in historical records which get a banner instead of an edit.
 
   `/Users/parsa/AgentAI/CLAUDE.local.md` (PROPOSE ONLY; owner applies):
   - Current (line 19): `` `ServiceRouter.choose` shows 0 callers (`self.services.choose`), `` -> delete this clause; `ServiceRouter` and `routing/services.py` were deleted in commit `5db9636`. Replace with: `` `ChatDriver` still accepts a `services=` argument but nothing production passes one (P36 router era removed); `RequestWorker -> driver.execute` is missing from the graph. ``
   - Current (line 23): `(e.g. `platform/tests/test_service_handoff.py`)` -> replace with `(e.g. `platform/tests/test_request_worker.py`, `test_native_run.py`)`; `test_service_handoff.py` does not exist.
-  - Add: `Production is the Hostinger VPS (ssh lumina); the IONOS IP 69.48.206.62 is dead.`
+  - Add: `Production is the Hostinger VPS (ssh lumina); the IONOS IP <OLD_IP> is dead.`
 - **Current behaviour**: see quotes above (each quote was read from the file today).
 - **Change**: apply each edit with `Edit` using the exact quoted string as `old_string`; if a quote no longer matches (file moved on), re-read the paragraph and keep the intent. One commit for docs, one for the `bin/` code (P1-14).
-- **Tests to add/update**: add `platform/tests/test_docs_no_dead_host.py`: `git ls-files`-free (tests must not shell out to git): walk `$P` for `*.md`, `*.py`, `*.sh`, `*.service`, `*.conf`, `*.example`, skipping `evidence/`, `BUILD_LOG.md`, `node_modules`, `.venv`, and assert the string `69.48.206.62` does not occur (allowlist: files that carry the word `IONOS` on the same line or the retired banner). Regression case that fails before the fix: today `bin/ssh-server` and RUNBOOK fail it. Keep the allowlist in the test so adding a new mention is a conscious act.
-- **Commands to run**: `rg -nF "69.48.206.62" /Users/parsa/AgentAI/openclaw-project --glob '!evidence' --glob '!BUILD_LOG.md'` should be empty (or only banner lines); `cd $P/platform && .venv/bin/python -m unittest tests.test_docs_no_dead_host`.
+- **Tests to add/update**: add `platform/tests/test_docs_no_dead_host.py`: `git ls-files`-free (tests must not shell out to git): walk `$P` for `*.md`, `*.py`, `*.sh`, `*.service`, `*.conf`, `*.example`, skipping `evidence/`, `BUILD_LOG.md`, `node_modules`, `.venv`, and assert the string `<OLD_IP>` does not occur (allowlist: files that carry the word `IONOS` on the same line or the retired banner). Regression case that fails before the fix: today `bin/ssh-server` and RUNBOOK fail it. Keep the allowlist in the test so adding a new mention is a conscious act.
+- **Commands to run**: `rg -nF "<OLD_IP>" /Users/parsa/AgentAI/openclaw-project --glob '!evidence' --glob '!BUILD_LOG.md'` should be empty (or only banner lines); `cd $P/platform && .venv/bin/python -m unittest tests.test_docs_no_dead_host`.
 - **Acceptance criteria**: rg above clean; README no longer claims "Next implementation phase4"; privacy.md names both doors.
 - **Rollback**: `git revert` (docs only).
 - **Risks**: do not "correct" statements you cannot verify (for example the exact container list on the host); quote the audit doc instead. Do not touch `evidence/`.

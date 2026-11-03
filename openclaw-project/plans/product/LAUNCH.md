@@ -1,6 +1,6 @@
 # Launch readiness (Lumina, getlumina.pro)
 
-Status as of 2026-10-13. Production (179.236.71.203) runs this branch: app release `launch1`, supervisor `p16-n`, Lumina bundle current. Merge to `main` deploys the website through Vercel.
+Status as of 2026-10-13. Production (<PROD_IP>) runs this branch: app release `launch1`, supervisor `p16-n`, Lumina bundle current. Merge to `main` deploys the website through Vercel.
 
 ## Done and live
 Sign-in and accounts, isolated per-customer assistants, chat with history, plans and forms, data cards, web search, files, Activity window, browser tasks (switch ON), JEV routing (switch ON, record-only), serial task queue, budget caps ($79/mo, $25 included, $5 task cap, 7-day $1 trial, no auto overage), nightly backups on the server, monitor every 5 minutes.

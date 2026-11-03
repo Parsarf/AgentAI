@@ -1,3 +1,4 @@
+import { Emojified } from './Emoji';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -50,7 +51,7 @@ export default function ActivityPanel({ taskId, active, startedAt, onStop, onClo
           <li key={r.key} className={`act-row ${r.category} ${r.status}`}>
             <span className="act-ico" aria-hidden="true">{ICON[r.category] ?? ICON.other}</span>
             <div className="act-body">
-              <div className="act-label">{r.label}{r.status === 'running' && <span className="dot-s running" aria-label="in progress" />}{r.status === 'failed' && r.category !== 'error' && <span className="act-bad"> · failed</span>}</div>
+              <div className="act-label"><Emojified text={r.label} />{r.status === 'running' && <span className="dot-s running" aria-label="in progress" />}{r.status === 'failed' && r.category !== 'error' && <span className="act-bad"> · failed</span>}</div>
               {r.detail && <code className="act-detail">{r.detail}</code>}
               {r.output && <details><summary className="faint small">Output</summary><pre className="act-out">{r.output}</pre></details>}
             </div>

@@ -3,7 +3,7 @@
   "run_id": "20261012T002000Z",
   "recorded_at": "2026-10-12T00:20:00Z",
   "base_revision": "158bce0",
-  "target": "new service-operated VPS 179.236.71.203 (4 vCPU, 15.6 GiB, 193 GB, Ubuntu 26.04.1, kernel 7.0.0-34); two invite-only accounts, one global running customer task",
+  "target": "new service-operated VPS <PROD_IP> (4 vCPU, 15.6 GiB, 193 GB, Ubuntu 26.04.1, kernel 7.0.0-34); two invite-only accounts, one global running customer task",
   "build_result": "READY",
   "native_acceptance": "NOT_RUN (Phase 15)",
   "customer_execution_enabled": false,

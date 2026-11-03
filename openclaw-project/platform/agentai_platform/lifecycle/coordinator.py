@@ -151,8 +151,11 @@ class Coordinator:
             self._audit(con,account,'host-operator',operation,'create','pending')
             return self._public(con,account,operation)
 
-    def request_system(self, account, *, key, generation, kind='stop'):
+    def request_system(self, account, *, key, generation, kind='stop', presence=False):
         """System-originated host maintenance: `stop` (idle drain, running cell), `backup` (nightly, stopped cell) or `start` (wake a stopped cell that has a waiting customer request).
+
+        `presence` (start only): the customer just opened the app, so a stopped cell is started ahead of their first message. It still waits for the cell slot
+        like any start (it never stops another customer's cell), and it does not need a waiting request.
 
         Used by the lifecycle worker's sleep policy. It has no operator grant (none
         exists for a machine decision) so it is limited to the one operation that
@@ -161,7 +164,10 @@ class Coordinator:
         identifier(account);identifier(key)
         if kind not in {'stop','backup','start'}: raise ValueError('system requests may only stop, back up or start')
         if type(generation) is not int or generation<1: raise ValueError('invalid generation')
-        body=json.dumps({'kind':kind,'generation':generation,'profile':None,'backup':None,'system':True},sort_keys=True,separators=(',',':'))
+        if presence and kind!='start': raise ValueError('presence applies to start only')
+        payload={'kind':kind,'generation':generation,'profile':None,'backup':None,'system':True}
+        if presence: payload['presence']=True
+        body=json.dumps(payload,sort_keys=True,separators=(',',':'))
         digest=hashlib.sha256(body.encode()).hexdigest()
         with self.transaction() as con:
             existing=con.execute('SELECT * FROM operations WHERE account_id=? AND idempotency_key=?',(account,key)).fetchone()
@@ -174,7 +180,7 @@ class Coordinator:
             if not cell: raise NotFound()
             if cell['generation']!=generation: raise Conflict('stale generation')
             if cell['observed_state']!={'stop':'running','backup':'stopped','start':'stopped'}[kind]: raise Conflict('cell is not in the required state')
-            if kind=='start' and not con.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting' AND paused=0",(account,)).fetchone():
+            if kind=='start' and not presence and not con.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting' AND paused=0",(account,)).fetchone():
                 raise Conflict('no waiting request needs this cell')
             if con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')",(account,)).fetchone():
                 raise Conflict('account operation unresolved')

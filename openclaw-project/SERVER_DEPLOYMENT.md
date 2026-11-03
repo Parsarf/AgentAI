@@ -6,7 +6,7 @@ for fresh-deployment instructions. Gate 1 still awaits owner access checks.
 
 ## Chosen host
 
-The owner already has an IONOS VPS at `69.48.206.62` with Ubuntu 24.04,
+The owner already has an IONOS VPS at `<OLD_IP>` with Ubuntu 24.04,
 2 vCPUs, 4 GiB RAM, and a 120 GiB disk. TCP port 22 responds. The current
 ED25519 host key matches the key already recorded on this Mac (fingerprint
 `SHA256:HBaF3x2ux+XYjWcTUFIuCHzueudk5GK0Gbe65zctehY`), but public-key

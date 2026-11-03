@@ -3,14 +3,14 @@
 **Supersedes** every "production UNVERIFIED" statement in the other audit documents for the items listed below. Anything not listed here is still unverified.
 
 ## Method and what was (not) changed
-- Connected as `root@179.236.71.203` (Hostinger VPS `srv2054170`, Ubuntu 26.04.1, up 12 days) with a new dedicated key (`~/.ssh/lumina_ed25519`, alias `ssh lumina`), after the owner installed it via the Hostinger web terminal.
+- Connected as `root@<PROD_IP>` (Hostinger VPS `<vps-host>`, Ubuntu 26.04.1, up 12 days) with a new dedicated key (`~/.ssh/<lumina-key>`, alias `ssh lumina`), after the owner installed it via the Hostinger web terminal.
 - Ran the read-only script from `DEPLOYMENT_AUDIT.md` §6 (36 sections, checked beforehand for mutating commands) plus three small follow-ups (masked `systemctl cat` of two units, read-only `sqlite3` counts, a `cat` of `/etc/caddy/Caddyfile`). Raw output: `_findings/vps_readonly_2026-10-29.txt`. No secret values were printed (names and file modes only).
 - **Nothing was changed on the server by the auditor.** Server-side changes in this session were made by the owner in the web terminal: `/root/.ssh/authorized_keys` now holds only the new key, and `/root/authorized_keys.bak-*` holds the old copy (public keys only; delete when convenient).
-- Local changes (owner-approved): deleted `ssk-key`, `ssk-key.pub`, `~/.ssh/id_ed25519(.pub)`; generated `~/.ssh/lumina_ed25519`; rewrote the `lumina` entry in `~/.ssh/config` (backup `~/.ssh/config.bak-20261029`).
+- Local changes (owner-approved): deleted `ssk-key`, `ssk-key.pub`, `~/.ssh/id_ed25519(.pub)`; generated `~/.ssh/<lumina-key>`; rewrote the `lumina` entry in `~/.ssh/config` (backup `~/.ssh/config.bak-20261029`).
 - The private key `ssk-key` was displayed in the session transcript when the owner asked for it to be read; it is deleted, was never authorized on this server, and was never in git.
 
 ## Which server is production (L-01 resolved)
-`backend.getlumina.pro` → `179.236.71.203` (reverse DNS `srv2054170.hstgr.cloud`); `getlumina.pro` → Vercel. The IONOS address `69.48.206.62` (named in 17 tracked files) has ports 22 and 443 closed and nothing in DNS points at it. **The repo's runbooks target the wrong server.** The owner may delete the old IONOS server only after confirming nothing unique remains on it (see `CLEANUP_PLAN.md`).
+`backend.getlumina.pro` → `<PROD_IP>` (reverse DNS `<vps-host>.hstgr.cloud`); `getlumina.pro` → Vercel. The IONOS address `<OLD_IP>` (named in 17 tracked files) has ports 22 and 443 closed and nothing in DNS points at it. **The repo's runbooks target the wrong server.** The owner may delete the old IONOS server only after confirming nothing unique remains on it (see `CLEANUP_PLAN.md`).
 
 ## Results against findings
 | Finding | Production result | Effect |

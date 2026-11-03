@@ -15,7 +15,7 @@ PV-09 (quarantined restores) ─ independent, read-only first
 ```
 Recommended execution order: P0-1, P0-3, P0-4, P0-2, P0-6, P0-5 (gate), P2-0, P2-1, P2-2, P2-3, P2-5, P2-4, PV-09.
 
-NEW prerequisite found while writing this (called **P2-0** below): every operator helper in `openclaw-project/bin` (`ssh-server`, `scp-server`, and through them `pull-backups.py`, `deploy-lumina.py`, `update-ops-dashboard.py`, `connect-tool`, `platform/deploy/billing_install.py`) logs in with a PASSWORD from `openclaw-project/.env` and defaults to the dead IONOS host `69.48.206.62` (`bin/ssh-server:20-22`, `bin/scp-server:20-22`). Turning off SSH password login (P2-1) breaks all of them, and today `pull-backups.py` cannot reach the Hostinger server at all unless `.env` overrides the host. P2-0 must land first.
+NEW prerequisite found while writing this (called **P2-0** below): every operator helper in `openclaw-project/bin` (`ssh-server`, `scp-server`, and through them `pull-backups.py`, `deploy-lumina.py`, `update-ops-dashboard.py`, `connect-tool`, `platform/deploy/billing_install.py`) logs in with a PASSWORD from `openclaw-project/.env` and defaults to the dead IONOS host `<OLD_IP>` (`bin/ssh-server:20-22`, `bin/scp-server:20-22`). Turning off SSH password login (P2-1) breaks all of them, and today `pull-backups.py` cannot reach the Hostinger server at all unless `.env` overrides the host. P2-0 must land first.
 
 ## Pre-flight checklist (do before ANY task here)
 1. `cd /Users/parsa/AgentAI && git branch --show-current` must print `product-phases-6-11`. `git log --oneline -1` must start with `03662de` (or later commits made by this plan).
@@ -29,7 +29,7 @@ node --test tests/tool_origin_plugin.test.mjs 2>&1 | tail -8
 .venv/bin/python -m unittest tests.test_request_queue tests.test_lifecycle tests.test_supervisor tests.test_budget tests.test_capacity tests.test_foundation tests.test_fleet_driver tests.test_chat tests.test_gateway tests.test_telegram tests.test_files tests.test_events tests.test_native tests.test_policy_check tests.test_durable tests.test_phase10_assets tests.test_connectors tests.test_optimization tests.test_phase12_assets tests.test_switches 2>&1 | tail -5
 ```
 `tests/e2e/*` skip without OpenClaw/Chrome; say so in reports. Known older failures on a clean checkout are listed in `RELEASE_NOTES.md` ("Known limits": `accounts.test_streams`, `tests.test_chat_history`).
-5. Server work: `ssh lumina` is the only approved route (alias in `~/.ssh/config`, key `~/.ssh/lumina_ed25519`, `ControlMaster auto` is ON, which matters for P2-1). Production is the Hostinger VPS `srv2054170` (`179.236.71.203`).
+5. Server work: `ssh lumina` is the only approved route (alias in `~/.ssh/config`, key `~/.ssh/<lumina-key>`, `ControlMaster auto` is ON, which matters for P2-1). Production is the Hostinger VPS `<vps-host>` (`<PROD_IP>`).
 
 ---
 
@@ -294,7 +294,7 @@ git worktree prune -v
 ## Phase 2 (server). Every command needs the owner's explicit yes for that command
 
 ### P2-0 (new prerequisite): make the operator helpers use the SSH key
-- **Findings**: IS-002 (follow-up), IS-016. **Finding check**: new, HIGH. `bin/ssh-server:14-22` and `bin/scp-server:14-22` read `OPENCLAW_NEW_SSH_USER/PASSWORD` from `openclaw-project/.env`, force `PreferredAuthentications=password` and `PubkeyAuthentication=no`, and fall back to host `69.48.206.62` (dead). `pull-backups.py:21` uses `ssh-server`.
+- **Findings**: IS-002 (follow-up), IS-016. **Finding check**: new, HIGH. `bin/ssh-server:14-22` and `bin/scp-server:14-22` read `OPENCLAW_NEW_SSH_USER/PASSWORD` from `openclaw-project/.env`, force `PreferredAuthentications=password` and `PubkeyAuthentication=no`, and fall back to host `<OLD_IP>` (dead). `pull-backups.py:21` uses `ssh-server`.
 - **Goal**: all helpers work with `ssh lumina` (key, no password) so P2-1 does not break deploys or backups.
 - **GATE**: none for the code change; the `.env` password can be deleted only after P2-1 is verified (owner action).
 - **Files to change**: `openclaw-project/bin/ssh-server` and `bin/scp-server` (whole files, about 45 lines each), `bin/pull-backups.py:19-21,28-29`. **Read first**: those three files, `~/.ssh/config` (the `lumina` alias exists).
@@ -316,7 +316,7 @@ git worktree prune -v
   2. In `pull-backups.py` leave `ssh = [sys.executable, str(here / 'ssh-server')]`; it now works through the alias. Make the stderr visible on failure: replace `stderr=subprocess.DEVNULL` with `stderr=None` only for the first `ls` (so a failed login says why).
   3. `owner-console.py:55,105` and `open-*.py` also use the password and the `SSH = [...]` list; they are listed in the audit as a separate item. Do not change them here; note them in P2-1 acceptance ("these still need the key").
 - **Tests**: none exist for `bin/` (confirm `git grep -n "ssh-server" -- '*test*'` is empty). Add `platform/tests/test_ops_scripts.py`? No: keep it a manual check (below).
-- **Commands**: `python3 openclaw-project/bin/ssh-server 'hostname; id -un'` prints `srv2054170` and `root`; `python3 openclaw-project/bin/scp-server /dev/null /root/.scp-test && python3 openclaw-project/bin/ssh-server 'rm -f /root/.scp-test'` (owner approves these two server writes).
+- **Commands**: `python3 openclaw-project/bin/ssh-server 'hostname; id -un'` prints `<vps-host>` and `root`; `python3 openclaw-project/bin/scp-server /dev/null /root/.scp-test && python3 openclaw-project/bin/ssh-server 'rm -f /root/.scp-test'` (owner approves these two server writes).
 - **Acceptance**: the two commands work with `OPENCLAW_SSH_TARGET` unset and with the `.env` password line removed.
 - **Rollback**: `git revert`. **Risks**: `ControlMaster auto` reuses a socket; fine. **Do not**: put the key path or any password into code or `.env`; do not delete `.env` values until P2-1 passes.
 - **Commit message**: `Operator helpers log in with the SSH key by default (IS-002, IS-016)`
@@ -327,7 +327,7 @@ git worktree prune -v
 - **GATE**: owner "yes" per command block. Question: "Confirm P2-0 is done and you have the Hostinger web-terminal open in a browser tab before we start."
 - **Depends on**: P2-0. **Blocks**: nothing.
 - **Step 0: safety net (before any edit)**
-  1. Open the Hostinger panel web terminal (VPS srv2054170) in a browser: this is the rollback path and works without SSH.
+  1. Open the Hostinger panel web terminal (VPS <vps-host>) in a browser: this is the rollback path and works without SSH.
   2. Open **terminal A** (keep it open to the end): `ssh -o ControlMaster=no -o ControlPath=none lumina`. (Your config has `ControlMaster auto`: a "new" ssh would silently reuse A's connection and prove nothing. Always add those two options when testing.)
   3. In A, back up and arm an automatic rollback:
 ```bash
@@ -365,7 +365,7 @@ systemctl reload ssh
 - **Step 4: verify from a SECOND session (terminal B, on the Mac) before touching A**
 ```bash
 ssh -o ControlMaster=no -o ControlPath=none lumina 'echo KEY_LOGIN_OK; id -un'                       # must print KEY_LOGIN_OK root
-ssh -o ControlMaster=no -o ControlPath=none -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 root@179.236.71.203 true
+ssh -o ControlMaster=no -o ControlPath=none -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 root@<PROD_IP> true
 #   expected: "Permission denied (publickey)." (no password prompt at all)
 python3 openclaw-project/bin/ssh-server 'hostname'                                                  # helper still works (P2-0)
 ```

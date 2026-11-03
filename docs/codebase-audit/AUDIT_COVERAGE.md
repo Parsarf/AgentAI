@@ -1,6 +1,6 @@
 # Audit coverage: what was and was not verified
 
-> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `179.236.71.203`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
+> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `<PROD_IP>`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
 
 Audit date 2026-10-29. Branch `product-phases-6-11`, HEAD `03662de`, 132 commits. Scan root `/Users/parsa/AgentAI` (git root); project `openclaw-project/`. This audit was read-only. Production is UNVERIFIED (L-01..L-03).
 

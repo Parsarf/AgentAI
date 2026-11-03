@@ -61,3 +61,7 @@ id_dsa*
 /*.zip
 /*.tgz
 /*.tar.gz
+
+# Server details and audit/plan artifacts kept out of the public repo
+docs/plan-history/
+output/reports/

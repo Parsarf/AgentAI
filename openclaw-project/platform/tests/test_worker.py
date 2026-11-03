@@ -116,6 +116,16 @@ class WorkerChecks(unittest.TestCase):
         with self.assertRaises(NotFound): self.engine.request_system('zzz',key='k5',generation=1)
         with self.assertRaises(ValueError): self.engine.request_system('a',key='bad key!',generation=1)
 
+    def test_presence_starts_a_stopped_cell_without_a_waiting_request(self):
+        quiet=lambda:self.worker(idle_after=10**12)
+        self.request('create');quiet().tick()
+        with self.assertRaises(Conflict): self.engine.request_system('a',key='p0',generation=1,kind='start')                    # no waiting request, not presence
+        op=self.engine.request_system('a',key='p1',generation=1,kind='start',presence=True)
+        self.assertEqual(op,self.engine.request_system('a',key='p1',generation=1,kind='start',presence=True))                  # same key: same operation
+        with self.assertRaises(ValueError): self.engine.request_system('a',key='p2',generation=1,kind='stop',presence=True)    # presence is start-only
+        quiet().tick()
+        with self.store.connect() as con: self.assertEqual(con.execute("SELECT observed_state FROM lifecycle_cells WHERE account_id='a'").fetchone()[0],'running')
+
 class CapacityChecks(unittest.TestCase):
     def cap(self,mem_gib,cpus=4,disk_gib=100):
         return host_capacity(now=datetime.now(timezone.utc),available=lambda:int(mem_gib*GIB),cpus=lambda:cpus,disk_free=lambda:disk_gib*GIB)

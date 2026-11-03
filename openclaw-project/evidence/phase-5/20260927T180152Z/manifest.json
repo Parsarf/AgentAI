@@ -6,7 +6,7 @@
   "gate": "BLOCKED",
   "implementation_status": "applied; acceptance deferred",
   "target": {
-    "host": "69.48.206.62",
+    "host": "<OLD_IP>",
     "deployment": "/opt/openclaw-production"
   },
   "versions": {

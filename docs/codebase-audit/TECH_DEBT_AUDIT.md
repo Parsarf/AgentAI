@@ -1,6 +1,6 @@
 # Tech debt audit: Lumina (openclaw-project)
 
-> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `179.236.71.203`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
+> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `<PROD_IP>`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
 
 > **Run 2 (2026-10-29)**, repeat-run status: VERIFIED in production: L-01 (live host is Hostinger), IS-002, AG-006 (production == uncommitted tree), IS-016, M-08 (runner.mjs is the production engine). RESOLVED in production: IS-004. CHANGED: M-01 is latent (0 stuck reservations). NEW: 58 gap findings (BG-001..030, GX-001..028) and PV-01..09, indexed in `TECHNICAL_DEBT.md` Supplement A. The task queue for cleanup is `HANDOFF.md`.
 
@@ -34,7 +34,7 @@ Severity is approximate. Effort: S under a day, M days, L a week or more. IDs as
 | M-02 | Security hygiene | `browse/ladder.py:333,397,606`; `loop.py:208-216` | High | M | Screenshots sent to TypeSafe each step; text-only scrub; consent switch not wired | Decide gate (opt-in or no-controls only); wire `browser_optimization`; update privacy text |
 | M-01 | Error handling | `request_queue.py:107-115`; `chat_driver.py:785-799` | High | M | Waiting-cancel leaks reservation and queued task | Release in `cancel`, revoked path, unfunded; sweep; tests |
 | M-03 | Security hygiene | repo root `ssk-key*`; `.gitignore` | High | S | Untracked un-ignored private key and 800 MB clutter | Ignore rules; move key; relocate logs |
-| L-01 | Doc drift | 17 files naming `69.48.206.62` | High | S | Deployment target drift IONOS vs Hostinger | Verify host (Phase 2) then fix docs |
+| L-01 | Doc drift | 17 files naming `<OLD_IP>` | High | S | Deployment target drift IONOS vs Hostinger | Verify host (Phase 2) then fix docs |
 | M-10 | Test debt | `.github/workflows/platform.yml` | High | M | About 20 of 73 test modules; no frontend job | `unittest discover` + lumina job |
 | M-04 | Security hygiene | `middleware.py:14-19`; `Caddyfile.getlumina:24-25` | High | S-M | Global per-IP buckets behind Vercel | Real client IP at Caddy |
 | BE-002 | Performance | `accounts/streams.py:60-121` | High | S-M | SSE blocks the only worker | Remove or isolate |
@@ -230,7 +230,7 @@ Run `discover` locally once first: tests needing `age`, Chrome, OpenClaw or Linu
 
 ## Open questions for the maintainer
 
-1. Which host is production today: Hostinger `179.236.71.203` or the IONOS `69.48.206.62` in the docs (L-01)? Is the IONOS server decommissioned?
+1. Which host is production today: Hostinger `<PROD_IP>` or the IONOS `<OLD_IP>` in the docs (L-01)? Is the IONOS server decommissioned?
 2. What does `ssk-key` open (L-02)? Was it ever shared or deployed to a server or GitHub? Should it be rotated?
 3. Is SSH password and root login still enabled, and when will key login be adopted (IS-002)?
 4. Is the TypeSafe key installed in production, and did the customer-facing terms cover sending screenshots as well as text (M-02)? Should `browser_optimization` gate it?

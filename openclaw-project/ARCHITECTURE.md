@@ -41,7 +41,7 @@ are running on the VPS. The old Mac staging installation is historical only.
 
 The final Gateway, sandbox, state, backups, and Telegram polling must run on an
 always-on server. The owner's laptop must be able to turn off without affecting
-the agent. The IONOS Ubuntu 24.04.4 VPS is `69.48.206.62`; SSH access works.
+the agent. The IONOS Ubuntu 24.04.4 VPS is `<OLD_IP>`; SSH access works.
 The live Compose deployment is `/opt/openclaw-production`. An isolated OpenClaw 2026.9.6
 installation was used on this Mac for configuration checks only; it must not
 become the production service. The owner selected Anthropic API-key billing,

@@ -1,6 +1,6 @@
 # Lumina: System Overview
 
-> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `179.236.71.203`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
+> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `<PROD_IP>`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
 
 Audit date 2026-10-29. Branch `product-phases-6-11`, HEAD `03662de`, plus uncommitted tool_origin / tool_relay / cell_bridge / cell_config work (IN PROGRESS, not judged). **Production is UNVERIFIED throughout** (no SSH or network was used; see L-01 to L-03 in `_findings/00_RECONCILIATION.md`). Everything below describes the repo as intended.
 
@@ -57,7 +57,7 @@ Host (one VPS): request-worker, lifecycle-worker, supervisor-native, cell-bridge
                 owner compose stack, dashboard, ops backup/monitor timers
 ```
 
-Deployment target drift (L-01): 17 tracked files name an IONOS VPS (69.48.206.62); the owner's SSH config names a different Hostinger host for "Lumina production". Treat the whole topology as a design description until re-verified. Also: a single global running slot, one active cell per host (AG-004, BE-013).
+Deployment target drift (L-01): 17 tracked files name an IONOS VPS (<OLD_IP>); the owner's SSH config names a different Hostinger host for "Lumina production". Treat the whole topology as a design description until re-verified. Also: a single global running slot, one active cell per host (AG-004, BE-013).
 
 ## 6. Current phase status (from OP-014; production side unverified)
 

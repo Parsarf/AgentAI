@@ -119,7 +119,7 @@ Class labels (as used by the investigators, inferred): A = safe cleanup after ve
 | `RUNBOOK.md:1-35`, `ARCHITECTURE.md:1-45` | stale headers | "no persistent platform listener installed", "next build phase4" | ST-014 |
 | `BUILD_LOG.md` | last entry 2026-10-12 | work continued to 10-27 | ST-016 |
 | `RELEASE_NOTES.md` | out of order | "Latest: live8" below newer sections; "Running release" stale; GitHub-suspended note 14 Oct unclear | IS-015(e), IS-017 |
-| `SERVER_DEPLOYMENT.md` | stale | "Gate 1 still awaits owner access checks"; targets IONOS 69.48.206.62 (17 tracked files name it) vs owner's `lumina` host | IS-015(d), L-01 |
+| `SERVER_DEPLOYMENT.md` | stale | "Gate 1 still awaits owner access checks"; targets IONOS <OLD_IP> (17 tracked files name it) vs owner's `lumina` host | IS-015(d), L-01 |
 | `plans/phase-4..10.md`, `plans/remaining-build-items.md` | LEGACY (Sep, pre-product) | owner-runtime numbering | ST-021 |
 | `plans/product/privacy.md` | drift | "only host door" (now 4000 and 4100); "server login key-only" vs password SSH | IS-015(a), IS-002 |
 | `deploy/README.md` | drift | says LiteLLM has no published host port (published on 127.0.0.1:4000) | IS-015(b) |

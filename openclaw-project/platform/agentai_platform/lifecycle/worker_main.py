@@ -25,8 +25,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--db', type=Path, default=Path('/var/lib/agentai-platform/platform.sqlite3'))
     parser.add_argument('--socket', type=Path, default=Path('/run/agentai-supervisor/control.sock'))
-    parser.add_argument('--interval', type=int, default=15)
-    parser.add_argument('--idle-after', type=int, default=900)
+    parser.add_argument('--interval', type=int, default=5)
+    # A cell with nothing running is stopped after this long. The service passed no value, so it used 15 minutes (the 45 minute figure in sleep.py was never in effect).
+    # Two hours keeps the one customer's cell warm between visits; a different customer's waiting request still takes the seat after a short idle (handover_idle).
+    parser.add_argument('--idle-after', type=int, default=2 * 3600)
     parser.add_argument('--switches-file', default=os.environ.get('AGENTAI_SWITCHES_FILE', ''))
     parser.add_argument('--switch-facts-file', default=os.environ.get('AGENTAI_SWITCH_FACTS_FILE', ''))
     parser.add_argument('--bridge-socket', type=Path, default=Path('/run/agentai-cell-bridge/bridge.sock'))
@@ -48,7 +50,9 @@ def main():
                              wake=lambda: switches.is_on('customer_execution'), observe=observe, events=EventService(Store(args.db)))
     while True:
         # Counts only: no account, tenant, token or path ever reaches the journal.
-        print(json.dumps(worker.tick(), sort_keys=True), flush=True)
+        report = worker.tick()
+        if any(report.values()) or args.once:
+            print(json.dumps(report, sort_keys=True), flush=True)
         if args.once:
             return
         time.sleep(args.interval)

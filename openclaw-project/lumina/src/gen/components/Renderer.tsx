@@ -1,3 +1,4 @@
+import { Emojified } from '../../components/Emoji';
 // Deterministic, registry-driven renderer: a validated document in, React out. No model-written code, markup or styles ever reaches the DOM.
 import '../gen.css';import { Component, lazy, Suspense, memo, useEffect, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { ALIASES, FAMILIES } from '../catalog';
@@ -62,8 +63,8 @@ function BlockShell({ block: original, fallback, onDiagnostic }: { block: Block;
   const nested = (list: unknown[]) => list.map(raw => <SlotView key={(raw as any)?.id} slot={slotFor(raw)} onDiagnostic={onDiagnostic} />);
   return <div className={cx('gen-block', `t-${block.type}`, block.appearance && `ap-${block.appearance}`, block.density && `d-${block.density}`, block.size && `sz-${block.size}`, block.emphasis && `em-${block.emphasis}`, block.disabled && 'is-disabled', layoutClasses(block))}
     data-block={block.id} style={layoutStyle(block)} aria-label={block.accessibilityLabel} aria-busy={block.loading || undefined}>
-    {block.props.title && !['heading', 'section', 'form', 'info_card'].includes(block.type) && <h4 className="gen-title">{block.props.title}</h4>}
-    {block.props.description && !['section', 'form', 'callout'].includes(block.type) && <p className="gen-desc faint">{block.props.description}</p>}
+    {block.props.title && !['heading', 'section', 'form', 'info_card'].includes(block.type) && <h4 className="gen-title"><Emojified text={block.props.title} /></h4>}
+    {block.props.description && !['section', 'form', 'callout'].includes(block.type) && <p className="gen-desc faint"><Emojified text={block.props.description} /></p>}
     {block.loading ? <Skeleton /> : (
       <Boundary fallback={fallback} id={block.id} type={block.type} onError={onDiagnostic}><NodeProvider value={block}><fieldset className="gen-shell" disabled={block.disabled} aria-label={block.accessibilityLabel ?? block.props.title ?? block.type.replaceAll('_', ' ')}><Draw draw={draw} block={block} nested={nested} /></fieldset></NodeProvider></Boundary>)}
   </div>;

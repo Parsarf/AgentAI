@@ -1,6 +1,6 @@
 # Deployment audit: repository vs production
 
-> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `179.236.71.203`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
+> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `<PROD_IP>`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
 
 Audit date 2026-10-29. Branch `product-phases-6-11`, HEAD `03662de`.
 
@@ -8,8 +8,8 @@ Audit date 2026-10-29. Branch `product-phases-6-11`, HEAD `03662de`.
 
 - No production fact in this audit is confirmed. Every statement about servers is reconstructed from repository files and dated evidence records.
 - **L-03**: production SSH was attempted read-only, twice (only `hostname`, `date`, `uptime`). Both attempts failed. No command ran on any server.
-- **L-01**: the old IONOS address `69.48.206.62` named by 17 tracked files (README, RUNBOOK, SERVER_DEPLOYMENT, OPERATIONS, `bin/ssh-server`) timed out on port 22 from the audit machine. The owner's `~/.ssh/config` has `Host lumina` pointing to a Hostinger VPS `179.236.71.203` (user root, key `~/.ssh/id_ed25519`), commented "Lumina production server"; no repo document mentions that host.
-- **L-02**: the provided `ssk-key` was rejected by `179.236.71.203` (server offered publickey and password). Its public fingerprint (SHA256:NItwjEf8...) differs from `~/.ssh/id_ed25519.pub` (SHA256:Rnb3Iaou...). The configured `~/.ssh/id_ed25519` key was not used because it was not authorized for this task.
+- **L-01**: the old IONOS address `<OLD_IP>` named by 17 tracked files (README, RUNBOOK, SERVER_DEPLOYMENT, OPERATIONS, `bin/ssh-server`) timed out on port 22 from the audit machine. The owner's `~/.ssh/config` has `Host lumina` pointing to a Hostinger VPS `<PROD_IP>` (user root, key `~/.ssh/id_ed25519`), commented "Lumina production server"; no repo document mentions that host.
+- **L-02**: the provided `ssk-key` was rejected by `<PROD_IP>` (server offered publickey and password). Its public fingerprint (SHA256:NItwjEf8...) differs from `~/.ssh/id_ed25519.pub` (SHA256:Rnb3Iaou...). The configured `~/.ssh/id_ed25519` key was not used because it was not authorized for this task.
 - `getlumina.pro` resolves to `216.198.79.1` (Vercel front). The API origin `backend.getlumina.pro` was not resolved. Conclusion: either production moved from IONOS to Hostinger, or the runbooks target an old server. Everything VPS-dependent stays UNVERIFIED, including IS-002 (password SSH to root), the whole IONOS-vs-Hostinger topology, and whether the dated 2026-10-27 deployment evidence describes the host that serves customers today.
 
 ## 1. Intended topology (from the repository)
@@ -27,7 +27,7 @@ Reconstructed from `platform/deploy/*`, `SERVER_DEPLOYMENT.md`, `OPERATIONS.md`,
 
 | ID | Contradiction | Where |
 |---|---|---|
-| L-01 | IONOS `69.48.206.62` in 17 tracked files vs owner's Hostinger `lumina` host; IONOS unreachable | README, RUNBOOK:96, SERVER_DEPLOYMENT:19-20, OPERATIONS, `bin/ssh-server` |
+| L-01 | IONOS `<OLD_IP>` in 17 tracked files vs owner's Hostinger `lumina` host; IONOS unreachable | README, RUNBOOK:96, SERVER_DEPLOYMENT:19-20, OPERATIONS, `bin/ssh-server` |
 | ST-014 | README says Phases 1-2 delivered and phase 4 next; RUNBOOK header says no persistent listener installed; BUILD_LOG stops 2026-10-12 while work continued to 10-27 | README.md, RUNBOOK.md:1-35, ARCHITECTURE.md:1-45 |
 | M-11 | ServiceRouter described as live; deleted in 5db9636 | CLAUDE.local.md, docs/architecture/*, docs/orchestration-audit/* |
 | IS-015 | Privacy doc says one host door (now two: 4000 and 4100); deploy README says LiteLLM has no published port (compose publishes 127.0.0.1:4000); `RELEASE_NOTES.md` out of chronological order; `SERVER_DEPLOYMENT.md` still says "Gate 1 still awaits owner access checks" | privacy.md:6-7, deploy/README.md:19-20 |
@@ -185,7 +185,7 @@ Caveats: `stat`/`ls` of key files show names and modes only. `cat` is used only 
 Pick one; do not paste private key material into chat.
 
 1. **(a) Authorize `ssk-key` on the target server.** Append the contents of `ssk-key.pub` (the PUBLIC key; safe to copy) to `~/.ssh/authorized_keys` of the intended user on the target server, using the host provider's web console or browser terminal, or an already-working session. Then tell the assistant which user and host to use.
-2. **(b) Use the existing owner key.** Tell the assistant explicitly to use the `lumina` alias and `~/.ssh/id_ed25519` (the alias already points to `179.236.71.203`, user root). It was not used so far because it was not authorized for this task.
-3. **(c) Confirm the correct server and network path.** Confirm which IP is production (Hostinger `179.236.71.203` vs the old IONOS `69.48.206.62`; check where `backend.getlumina.pro` resolves), that port 22 is open to the audit machine's current public IP in the provider firewall and not blocked by fail2ban, and that the IONOS host still exists (its port 22 timed out).
+2. **(b) Use the existing owner key.** Tell the assistant explicitly to use the `lumina` alias and `~/.ssh/id_ed25519` (the alias already points to `<PROD_IP>`, user root). It was not used so far because it was not authorized for this task.
+3. **(c) Confirm the correct server and network path.** Confirm which IP is production (Hostinger `<PROD_IP>` vs the old IONOS `<OLD_IP>`; check where `backend.getlumina.pro` resolves), that port 22 is open to the audit machine's current public IP in the provider firewall and not blocked by fail2ban, and that the IONOS host still exists (its port 22 timed out).
 
 After access exists: run section 6 (single script), then replace each UNVERIFIED label in `TECHNICAL_DEBT.md` and `SECURITY_AND_RELIABILITY.md` with the observed result, and update the docs per L-01.

@@ -103,7 +103,7 @@ Method (IS): `rg` for each name in units, tests, docs, bin scripts (IS-023). "Do
 
 ## 6. Hygiene orphans that are a safety issue (not a cleanup)
 
-- `ssk-key`, `ssk-key.pub` at repo root: untracked, NOT gitignored, purpose unknown, never in history, key body never read by any investigator (M-03, IS-001/OP-001/ST-003/GH-009). Reconciliation L-02: its public fingerprint differs from `~/.ssh/id_ed25519.pub` and it was rejected by 179.236.71.203. Action is protective (F: ignore rule or move out of the tree), not removal.
+- `ssk-key`, `ssk-key.pub` at repo root: untracked, NOT gitignored, purpose unknown, never in history, key body never read by any investigator (M-03, IS-001/OP-001/ST-003/GH-009). Reconciliation L-02: its public fingerprint differs from `~/.ssh/id_ed25519.pub` and it was rejected by <PROD_IP>. Action is protective (F: ignore rule or move out of the tree), not removal.
 - `lumina-character/node_modules` untracked symlink (GH-002): fix the ignore pattern (`node_modules` without trailing slash).
 - 14 stale worktrees under `.claude/worktrees` (573 MB): class A only after each is checked for uncommitted files (GH-014, OP-013).
 

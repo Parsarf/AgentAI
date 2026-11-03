@@ -1,3 +1,4 @@
+import { Emojified } from '../../components/Emoji';
 import { useEffect, useState } from 'react';
 import { ICON, type ActivityItem } from '../../lib/activity';
 import { cx, type P } from './types';
@@ -7,7 +8,7 @@ import { Missing } from './data';
 import { Prose } from './text';
 
 /** Shown on every agent-native block when its data is sample data, so a fixture can never pass for a real run. */
-function Provenance() { const g = useGen(); return g.exec.label ? <p className="gen-fixture">{g.exec.label}</p> : null; }
+function Provenance() { const g = useGen(); return g.exec.label ? <p className="gen-fixture"><Emojified text={g.exec.label} /></p> : null; }
 const stateWord = (s: string) => (s === 'running' ? 'Working' : s === 'queued' ? 'Queued' : s === 'completed' || s === 'succeeded' || s === 'done' ? 'Done' : s === 'failed' || s === 'error' ? 'Failed' : s === 'cancelled' ? 'Stopped' : s);
 const toStatus = (s: string) => (['completed', 'succeeded', 'done'].includes(s) ? 'success' : ['failed', 'error'].includes(s) ? 'error' : ['running', 'queued'].includes(s) ? 'active' : 'idle') as 'success' | 'error' | 'active' | 'idle';
 
@@ -19,7 +20,7 @@ export function AgentStatus({ block }: P<'agent_status'>) {
 function Rows({ rows, expanded }: { rows: ActivityItem[]; expanded?: boolean }) {
   if (!rows.length) return <Missing what="No steps recorded yet." />;
   return <ol className="gen-exec">{rows.map(r => <li key={r.key} className={r.status}><span className="ico" aria-hidden>{ICON[r.category] ?? '•'}</span>
-    <div><strong>{r.label}</strong><span className="sr"> ({r.status})</span>{r.detail && <p className="faint">{r.detail}</p>}{expanded && r.output && <pre tabIndex={0} aria-label="Output">{r.output}</pre>}</div></li>)}</ol>;
+    <div><strong><Emojified text={r.label} /></strong><span className="sr"> ({r.status})</span>{r.detail && <p className="faint"><Emojified text={r.detail} /></p>}{expanded && r.output && <pre tabIndex={0} aria-label="Output">{r.output}</pre>}</div></li>)}</ol>;
 }
 export function ExecutionTimeline({ block }: P<'execution_timeline'>) {
   const g = useGen(); const r = g.exec.request(block.props.requestId);
@@ -38,8 +39,8 @@ export function ToolCallInspector({ block }: P<'tool_call_inspector'>) {
 export function PlanViewer({ block }: P<'plan_viewer'>) {
   const g = useGen(); const plan = g.exec.plan(block.props.planBlockId);
   if (!plan) return <Missing what="That plan is not part of this chat." />;
-  return <div className="gen-agent"><strong>{plan.title}</strong><ol className="gen-exec">{plan.phases.map(p => { const st = plan.run[p.id]?.state ?? 'pending';
-    return <li key={p.id} className={st}><span className="ico" aria-hidden>{st === 'completed' ? '✓' : st === 'failed' ? '!' : st === 'running' ? '…' : '○'}</span><div><strong>{p.title}</strong><span className="sr"> ({st.replace('_', ' ')})</span>{plan.run[p.id]?.summary && block.variant === 'expanded' && <p className="faint">{plan.run[p.id].summary}</p>}</div></li>; })}</ol><Provenance /></div>;
+  return <div className="gen-agent"><strong><Emojified text={plan.title} /></strong><ol className="gen-exec">{plan.phases.map(p => { const st = plan.run[p.id]?.state ?? 'pending';
+    return <li key={p.id} className={st}><span className="ico" aria-hidden>{st === 'completed' ? '✓' : st === 'failed' ? '!' : st === 'running' ? '…' : '○'}</span><div><strong><Emojified text={p.title} /></strong><span className="sr"> ({st.replace('_', ' ')})</span>{plan.run[p.id]?.summary && block.variant === 'expanded' && <p className="faint">{plan.run[p.id].summary}</p>}</div></li>; })}</ol><Provenance /></div>;
 }
 /** pending, approved, rejected (skipped), failed, expired (the plan stopped before this step was decided). Only `pending` offers buttons. */
 export function approvalView(state: string | undefined, runStatus?: string): { label: string; tone: 'idle' | 'active' | 'success' | 'warning' | 'error'; can: boolean } {
@@ -60,8 +61,8 @@ export function ApprovalRequest({ block }: P<'approval_request'>) {
   if (!plan || !phase) return <Missing what="That step is not part of this chat." />;
   const v = expiresEpoch && now >= expiresEpoch ? { label: 'Expired', tone: 'idle' as const, can: false } : approvalView(plan.run[phaseId]?.state, plan.run_status);
   return <div className="gen-approval" role="group" aria-label={`Approval: ${phase.title}`}>
-    <div className="gen-agent-h"><strong>{phase.title}</strong><StatusPill status={v.tone} label={v.label} /></div>
-    {phase.description && <p>{phase.description}</p>}{reason && <p className="faint">Why: {reason}</p>}
+    <div className="gen-agent-h"><strong><Emojified text={phase.title} /></strong><StatusPill status={v.tone} label={v.label} /></div>
+    {phase.description && <p><Emojified text={phase.description} /></p>}{reason && <p className="faint">Why: {reason}</p>}
     {v.can && <div className="gen-row"><ActionButton style="primary" label="Approve" action={{ kind: 'agent.approve', planBlockId, phaseId }} /><ActionButton style="ghost" label="Skip this step" action={{ kind: 'agent.deny', planBlockId, phaseId }} /></div>}<Provenance /></div>;
 }
 export function ErrorRetry({ block }: P<'error_retry'>) {

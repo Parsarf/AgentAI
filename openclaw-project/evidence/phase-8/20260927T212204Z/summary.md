@@ -57,7 +57,7 @@ every mutating control is server-side disabled and labeled truthfully.
 
 ## Access (owner)
 
-`ssh -L 18795:127.0.0.1:18795 <user>@69.48.206.62` → http://127.0.0.1:18795
+`ssh -L 18795:127.0.0.1:18795 <user>@<OLD_IP>` → http://127.0.0.1:18795
 — password is `/opt/openclaw-production/dashboard/owner-secret` (read it
 over SSH; the app never displays it).
 

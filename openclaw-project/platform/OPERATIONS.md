@@ -1,7 +1,7 @@
 # Operations runbook (Phase 14)
 
 Single operator: the owner. "Escalation" below therefore means which outside party to contact. Everything here is
-for the current single server (`179.236.71.203`) and the invitation-only beta. Commands run on the server as root
+for the current single server (`<PROD_IP>`) and the invitation-only beta. Commands run on the server as root
 unless noted; the safe way is `python3 openclaw-project/bin/ssh-server '<command>'` from your computer.
 Set `PYTHONPATH=/opt/agentai-platform/current` and `cd /opt/agentai-platform/current` before `python3 -m agentai_platform.ops.cli ...`.
 
