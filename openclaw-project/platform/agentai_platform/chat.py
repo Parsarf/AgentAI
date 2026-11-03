@@ -209,7 +209,7 @@ class ChatService:
         return amount, price_version, project_id
 
     def send(self, principal: Principal, *, conversation_id: str, message: str, key: str,
-             provenance: str = 'customer', mode: str = 'auto', goal: bool = False, ui: str = 'basic', ui_event: dict | None = None, surface: str | None = None):
+             provenance: str = 'customer', mode: str = 'auto', goal: bool = False, ui: str = 'basic', ui_event: dict | None = None, surface: str | None = None, panel_context: dict | None = None):
         """One actionable request per send; admission via Phase 5 before any native effect. A repeat with the same key never starts a second task.
 
         While a task of this conversation is still running, a plain message joins that run as a steer (the runtime's own steering) instead of waiting behind it.
@@ -240,6 +240,8 @@ class ChatService:
             context = {**(context or {}), 'ui': ui}                 # answer style: which composed blocks the assistant may write (genui/document.py)
         if ui_event is not None:
             context = {**(context or {}), 'ui_artifact': ui_event}
+        if panel_context:
+            context = {**(context or {}), 'panel': panel_context}      # what the extension saw in the customer's browser (accounts/panel.py cleans it); the driver words it for the assistant
         result = self.queue.submit(principal, message=message, key=key, conversation_id=conversation_id,
                                    intent=kind if kind in ('plan', 'browse') else 'chat', context=context, goal_mode=goal)
         with self.coordinator.transaction() as con:

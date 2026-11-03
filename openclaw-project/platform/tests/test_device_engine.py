@@ -98,6 +98,24 @@ class LocalEngineChecks(unittest.TestCase):
         self.assertTrue(shots and s.shot('acct', RID, shots[0]).startswith(b'\xff\xd8'))
         self.assertTrue(self.link.alive, 'the extension stays connected for the next task')
 
+    def test_a_job_on_a_tab_the_customer_granted_attaches_to_it_instead_of_opening_an_address(self):
+        self.connect(); s = self.service(['{"action":"click","ref":2}', '{"action":"click","ref":1}'])
+        s.start('acct', RID, 'buy a paddle in my own tab', tab='g1')
+        p = wait(s, ('handoff',))
+        cmds = [m['cmd'] for m in self.ext.log]
+        self.assertEqual(cmds[0], 'attach'); self.assertNotIn('open', cmds)
+        self.assertEqual(self.ext.log[0]['tab'], 'g1')
+        self.assertEqual(s.jobs[RID].tab, 'g1')
+        self.assertEqual(p['pending_action']['label'], 'Checkout')
+
+    def test_a_tab_needs_the_customers_own_browser_and_a_plain_grant_name(self):
+        s = self.service(['{"action":"stop"}'], engine='runner')
+        with self.assertRaises(svc.BrowseError): s.start('acct', RID, 'do it in my tab', tab='g1')            # the hosted browser cannot reach their tab
+        self.assertNotIn(RID, s.jobs)
+        s = self.service(['{"action":"stop"}'])
+        for bad in ['G 1', '../x', 'a' * 40, 5, '']:
+            with self.assertRaises(svc.BrowseError): s.start('acct', RID, 'do it in my tab', tab=bad)
+
     def test_the_extension_is_told_to_close_its_tabs_when_the_job_is_over(self):
         self.connect(); s = self.service(['{"action":"click","ref":2}', '{"action":"click","ref":1}'])
         s.start('acct', RID, 'buy a paddle at https://shop.example/'); wait(s, ('handoff',)); s.cancel('acct', RID)

@@ -35,13 +35,26 @@ class FakeService:
         self.request = request or {'id': RID, 'state': 'running', 'paused': 0, 'outcome': None}
 
     def conversation(self, principal, conversation_id):
-        if conversation_id != 'conversation-a' or principal.account_id != 'a':
+        if conversation_id not in ('conversation-a', 'conversation-new') or principal.account_id != 'a':
             raise NotFound('unavailable')
         return {'id': conversation_id}
 
     def panel_view(self, principal, conversation_id, *, limit=30):
         return {'conversation_id': conversation_id, 'messages': [{'id': 1, 'request_id': RID, 'provenance': 'customer', 'content': 'hello', 'created_at': 'now', 'surface': 'panel'}],
                 'request': self.request, 'live': self.live, 'live_request_id': RID if self.live else None}
+
+    def projects(self, principal):
+        return [{'id': 'project-a', 'name': 'Main'}]
+
+    def create_conversation(self, principal, project_id):
+        self.created = getattr(self, 'created', []) + [(principal.account_id, project_id)]
+        return {'id': 'conversation-new', 'project_id': project_id}
+
+    def rename_conversation(self, principal, conversation_id, title):
+        self.renamed = (conversation_id, title)
+
+    def conversations(self, principal, project_id=None, *, limit=500, **kw):
+        return [{'id': 'conversation-a', 'title': None, 'created_at': 'c1', 'last_activity': 'l1'}, {'id': 'conversation-old', 'title': 'Hotels in Paris', 'created_at': 'c0', 'last_activity': None}][:limit]
 
     def send(self, principal, **kwargs):
         if self.send_error:
@@ -185,20 +198,61 @@ class PanelEndpointChecks(PanelBase):
     # ---- writing
     def test_send_steers_this_conversation_and_labels_the_message(self):
         r = self.call('POST', '/v1/panel/send', body={'message': 'also check the price', 'key': 'abcdefgh1234'})
-        self.assertEqual((r.status_code, r.json()), (202, {'ok': True, 'request': RID}))
+        self.assertEqual((r.status_code, r.json()), (202, {'ok': True, 'request': RID, 'started': False}))
         principal, kwargs = self.svc.sent[0]
         self.assertEqual((principal.account_id, principal.actor_id, principal.role), ('a', self.actor, 'customer'))
         self.assertEqual((kwargs['conversation_id'], kwargs['message'], kwargs['key'], kwargs['surface'], kwargs['mode']), ('conversation-a', 'also check the price', 'abcdefgh1234', 'panel', 'auto'))
 
-    def test_send_never_starts_a_new_task_when_no_run_is_going(self):
+    def test_send_starts_a_task_when_no_run_is_going_and_wakes_the_assistant(self):
         self.svc.live = False
-        r = self.call('POST', '/v1/panel/send', body={'message': 'hello', 'key': 'abcdefgh1234'})
-        self.assertEqual((r.status_code, r.json()), (409, {'error': 'no_active_run'}))
+        with mock.patch('accounts.panel.prewarm') as warm:
+            r = self.call('POST', '/v1/panel/send', body={'message': 'find me a hotel', 'key': 'abcdefgh1234', 'mode': 'browse',
+                                                          'context': {'target': 'this_tab', 'tabs': [{'title': 'Hotels', 'url': 'https://example.com/h', 'grant': 'g1'}], 'selection': 'Paris', 'page': 'page text'}})
+        self.assertEqual((r.status_code, r.json()), (202, {'ok': True, 'request': RID, 'started': True}))
+        kwargs = self.svc.sent[0][1]
+        self.assertEqual((kwargs['mode'], kwargs['surface']), ('browse', 'panel'))
+        self.assertEqual(kwargs['panel_context'], {'target': 'this_tab', 'tabs': [{'title': 'Hotels', 'url': 'https://example.com/h', 'grant': 'g1'}], 'selection': 'Paris', 'page': 'page text'})
+        warm.assert_called_with('a')
+
+    def test_a_steer_carries_no_page_context(self):
+        self.call('POST', '/v1/panel/send', body={'message': 'also red', 'key': 'abcdefgh1234', 'context': {'page': 'x'}})
+        self.assertIsNone(self.svc.sent[0][1]['panel_context'])
+
+    def test_context_and_mode_are_checked(self):
+        good = {'message': 'hi', 'key': 'abcdefgh1234'}
+        bad = [{'mode': 'plan'}, {'mode': 5}, {'context': 'x'}, {'context': {'target': 'elsewhere'}}, {'context': {'extra': 1}}, {'context': {'tabs': 'x'}},
+               {'context': {'tabs': [{'title': 't', 'url': 'u'}] * 9}}, {'context': {'tabs': [{'title': 't', 'url': 'u', 'grant': 'Bad Grant!'}]}},
+               {'context': {'tabs': [{'title': 't', 'url': 'u', 'other': 1}]}}, {'context': {'selection': 5}}, {'context': {'page': 'a\x00b'}}]
+        for extra in bad:
+            self.assertEqual(self.call('POST', '/v1/panel/send', body={**good, **extra}).status_code, 400, extra)
         self.assertEqual(self.svc.sent, [])
+
+    def test_history_lists_recent_chats_without_their_text(self):
+        r = self.call('GET', '/v1/panel/history')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['conversations'], [{'id': 'conversation-a', 'title': 'New chat', 'at': 'l1', 'current': True}, {'id': 'conversation-old', 'title': 'Hotels in Paris', 'at': 'c0', 'current': False}])
+        self.assertEqual(self.call('POST', '/v1/panel/history').status_code, 405)
+        self.assertEqual(self.call('GET', '/v1/panel/history', ticket='garbage').status_code, 401)
+
+    def test_extra_tabs_may_carry_their_own_text_within_limits(self):
+        self.svc.live = False
+        tabs = [{'title': 'A', 'url': 'https://a.example/', 'text': 'a' * 7000}, {'title': 'B', 'url': 'https://b.example/', 'text': 'b' * 100}]
+        self.call('POST', '/v1/panel/send', body={'message': 'compare them', 'key': 'abcdefgh1234', 'context': {'tabs': tabs}})
+        got = self.svc.sent[0][1]['panel_context']['tabs']
+        self.assertEqual((len(got[0]['text']), len(got[1]['text'])), (6000, 100))
+        many = [{'title': str(i), 'url': 'https://x.example/', 'text': 'z' * 6000} for i in range(5)]       # 30,000 in all: over the total
+        self.assertEqual(self.call('POST', '/v1/panel/send', body={'message': 'x', 'key': 'abcdefgh5678', 'context': {'tabs': many}}).status_code, 400)
+        self.assertEqual(self.call('POST', '/v1/panel/send', body={'message': 'x', 'key': 'abcdefgh9012', 'context': {'tabs': [{'title': 't', 'url': 'u', 'text': 5}]}}).status_code, 400)
+
+    def test_oversized_page_text_is_cut_not_refused(self):
+        self.svc.live = False
+        self.call('POST', '/v1/panel/send', body={'message': 'hi', 'key': 'abcdefgh1234', 'context': {'page': 'p' * 50_000, 'selection': 's' * 9_000}})
+        context = self.svc.sent[0][1]['panel_context']
+        self.assertEqual((len(context['page']), len(context['selection'])), (20_000, 4_000))
 
     def test_send_rejects_bad_bodies_and_any_attempt_to_pick_a_conversation(self):
         good = {'message': 'hi', 'key': 'abcdefgh1234'}
-        for body in [{**good, 'conversation_id': 'conversation-b'}, {**good, 'goal': True}, {'message': 'hi'}, {'key': 'abcdefgh1234'}, {**good, 'message': 5}, {**good, 'key': 'bad key!'}, {**good, 'key': 'short'}]:
+        for body in [{**good, 'conversation_id': 'conversation-b'}, {**good, 'goal': True}, {**good, 'ui_event': {}}, {'message': 'hi'}, {'key': 'abcdefgh1234'}, {**good, 'message': 5}, {**good, 'key': 'bad key!'}, {**good, 'key': 'short'}]:
             self.assertEqual(self.call('POST', '/v1/panel/send', body=body).status_code, 400, body)
         for raw in ['not json', '[]', '"x"']:
             self.assertEqual(self.call('POST', '/v1/panel/send', raw=raw).status_code, 400, raw)
@@ -252,7 +306,7 @@ class PanelEndToEndChecks(PanelBase):
         self.store, self.hub = dv.DeviceStore(Path(self.tmp.name) / 'd.json'), dv.DeviceHub()
         self.store.set_wants_local('a', True)
         device = self.store.redeem(self.store.pair('a'), 'Mac')
-        self.device = device['device_id']
+        self.device, self.token = device['device_id'], device['token']
         self.sent = []
         class Conn:
             def send_text(conn, text): self.sent.append(json.loads(text))
@@ -293,3 +347,72 @@ class PanelEndToEndChecks(PanelBase):
         self.assertTrue(self.offer.tick(self.claim))
         forged = pt.mint(SECRET, 'a', self.actor, 'conversation-a', 'b' * 16)                      # right account and conversation, a computer that is not the connected one
         self.assertEqual(self.call('GET', '/v1/panel/state', ticket=forged).status_code, 409)
+
+    # ---- the extension on its own: its device token starts a fresh session
+    def session(self, token='default', origin=ORIGIN, body=None, raw=None):
+        token = self.token if token == 'default' else token
+        headers = {}
+        if origin is not None: headers['HTTP_ORIGIN'] = origin
+        if token: headers['HTTP_AUTHORIZATION'] = 'Device ' + token
+        data = raw if raw is not None else json.dumps(body if body is not None else {})
+        return self.new_client().post('/v1/panel/session', data, content_type='application/json', secure=True, **headers)
+
+    def test_a_device_token_starts_a_new_session_wakes_the_assistant_and_the_ticket_works(self):
+        with mock.patch('accounts.panel.prewarm') as warm:
+            r = self.session()
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.json()
+        self.assertEqual((data['conversation'], data['expires_in'], data['cell']), ('conversation-new', 90, 'unknown'))
+        self.assertEqual(self.svc.created, [('a', 'project-a')])
+        self.assertEqual(self.svc.renamed, ('conversation-new', 'Browser extension'))
+        warm.assert_called_once_with('a')
+        claims = pt.verify(SECRET, data['ticket'])
+        self.assertEqual((claims['account'], claims['actor'], claims['conversation'], claims['device']), ('a', self.actor, 'conversation-new', self.device))
+        state = self.call('GET', '/v1/panel/state', ticket=data['ticket'])
+        self.assertEqual(state.status_code, 200)
+        self.assertEqual(r['Access-Control-Allow-Origin'], ORIGIN)
+        self.assertFalse(r.cookies)
+
+    def test_every_open_is_a_new_conversation_but_a_renewal_keeps_the_one_it_names(self):
+        with mock.patch('accounts.panel.prewarm'):
+            self.session(); self.session()
+            self.assertEqual(len(self.svc.created), 2)
+            r = self.session(body={'conversation': 'conversation-new'})
+        self.assertEqual((r.status_code, r.json()['conversation']), (200, 'conversation-new'))
+        self.assertEqual(len(self.svc.created), 2)
+        with mock.patch('accounts.panel.prewarm'):
+            self.assertEqual(self.session(body={'conversation': 'conversation-b'}).status_code, 404)        # not this customer's
+
+    def test_using_the_extension_switches_use_my_own_browser_on(self):
+        self.store.set_wants_local('a', False)
+        with mock.patch('accounts.panel.prewarm'):
+            self.assertEqual(self.session().status_code, 200)
+        self.assertTrue(self.store.wants_local('a'))
+
+    def test_session_refuses_unknown_tokens_foreign_origins_and_a_computer_that_is_not_connected(self):
+        with mock.patch('accounts.panel.prewarm') as warm:
+            for token in [None, '', 'short', 'x' * 40, self.token[:-1] + ('a' if self.token[-1] != 'a' else 'b')]:
+                self.assertEqual(self.session(token=token).status_code, 401 if token else 400, token)
+            for origin in [None, 'https://evil.example', 'https://getlumina.pro']:
+                self.assertEqual(self.session(origin=origin).status_code, 403, origin)
+            self.link.close('gone')
+            r = self.session()
+            self.assertEqual((r.status_code, r.json()), (409, {'error': 'browser_off'}))
+            warm.assert_not_called()
+        self.assertFalse(hasattr(self.svc, 'created'))
+
+    def test_session_checks_its_body(self):
+        with mock.patch('accounts.panel.prewarm'):
+            for body in [{'conversation': 5}, {'conversation': 'bad id!'}, {'other': 1}]:
+                self.assertEqual(self.session(body=body).status_code, 400, body)
+            for raw in ['not json', '[]']:
+                self.assertEqual(self.session(raw=raw).status_code, 400, raw)
+        self.assertEqual(self.new_client().get('/v1/panel/session', secure=True, HTTP_ORIGIN=ORIGIN).status_code, 405)
+
+    def test_session_is_off_without_the_key_and_is_metered(self):
+        with override_settings(PANEL_ORIGINS=[]):
+            self.assertEqual(self.session().status_code, 404)
+        with mock.patch('accounts.panel.prewarm'):
+            codes = [self.session().status_code for _ in range(42)]
+        self.assertEqual(codes[:40], [200] * 40)
+        self.assertEqual(codes[40:], [429, 429])

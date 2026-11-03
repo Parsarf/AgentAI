@@ -291,6 +291,17 @@ class DeviceDesk:
             return {'allowed': False}
         return {'allowed': True, 'use': self.store.set_wants_local(account, bool(on))}
 
+    def authenticate(self, token):
+        """The extension's own sign-in for its side panel: a device token is traded for who it belongs to and whether that computer is connected right now.
+        -> {'ok': False} for an unknown, revoked or malformed token; otherwise the account, the device and the same flags `listing` reports. The token never leaves this process."""
+        found = self.store.authenticate(token)
+        if found is None:
+            return {'ok': False}
+        account, device_id = found
+        live = self.hub.link(account)
+        return {'ok': True, 'account': account, 'device_id': device_id, 'allowed': bool(self.allowed(account)), 'use': self.store.wants_local(account),
+                'connected': bool(live and live.device_id == device_id)}
+
     def revoke(self, account, device_id):
         done = self.store.revoke(account, device_id)
         if done:

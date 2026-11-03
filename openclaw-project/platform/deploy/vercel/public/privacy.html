@@ -31,7 +31,7 @@
 <main>
 <a class="brand" href="/">LUMINA</a>
 <h1>Lumina Privacy Policy</h1>
-<p class="meta">Last updated 1 November 2026</p>
+<p class="meta">Last updated 2 November 2026</p>
 
 <p>Lumina (“we”, “us”) is operated by Parsa Raouf. This policy covers the Lumina web app at getlumina.pro and the Lumina Browser extension for Chrome. Questions, requests or complaints: <a href="mailto:raouparsa@gmail.com">raouparsa@gmail.com</a>.</p>
 
@@ -40,7 +40,7 @@
 <ul>
   <li>We collect what we need to run your account and to do the tasks you ask for.</li>
   <li>We do not sell your data and we do not show ads.</li>
-  <li>The extension works only in tabs it opens itself, only while you have switched it on, and you can stop it at any moment.</li>
+  <li>The extension works in tabs it opens itself and, only when you press Allow on one, in that tab of your own Chrome. It runs only while you have switched it on, and you can stop it at any moment.</li>
   <li>If you choose to use your own model API key, your messages go to the company you chose instead of Anthropic.</li>
   <li>If long-term memory is switched on for your account, the assistant keeps short notes of preferences and facts you tell it, so it can use them in later conversations. You can see and delete every note in Settings.</li>
   <li>If you connect an MCP service, that service receives the arguments and task data you authorize the assistant to send to its tools.</li>
@@ -77,26 +77,33 @@
 <p>The extension lets Lumina do a browsing task in a tab of your own Chrome instead of in Lumina’s own browser. You switch it on from the extension’s button, and you choose in Lumina (the browser icon at the top of every chat) whether your tasks use it.</p>
 <h3>What it can reach</h3>
 <ul>
-  <li>Only tabs that it opens itself (and windows those tabs open). It groups them under the name “Lumina”. It does not read your other tabs, and it does not ask for permission to read all your websites.</li>
-  <li>While it is on, Lumina can use any site open in those tabs, including sites where you are signed in. We therefore suggest installing it in a separate Chrome profile that you use only for Lumina.</li>
+  <li>Tabs that it opens itself (and windows those tabs open). It groups them under the name “Lumina”.</li>
+  <li>A tab of your own that you allow: you press <em>Allow Lumina to use this tab</em> in the side chat, for that one tab. Lumina works in it only while a task is running, and lets go of it when the task ends (it never closes your tab). You can stop allowing it at any time, and switching the extension off lets go of every allowed tab.</li>
+  <li>The names and addresses of your open tabs, so you can pick one. Nothing about them is sent until you send a message that involves a tab.</li>
+  <li>The text of a page and the text you selected, only if you separately allow the extension to read pages (Chrome asks you, in the side chat’s settings) and only for the page you are looking at, the tab you picked, or other tabs you tick as extra context (up to 6,000 characters from each), when you send a message. You can leave the page text out of a message with the tick box above the message box.</li>
+  <li>While it is on, Lumina can use any site open in the tabs it works in, including sites where you are signed in. We therefore suggest installing it in a separate Chrome profile that you use only for Lumina, or allowing only tabs you are happy for it to use.</li>
 </ul>
 <h3>Why it asks for each permission</h3>
 <ul>
   <li><code>debugger</code>: to read and act on the tabs it opened. Chrome shows “Lumina is debugging this browser” on those tabs while it does.</li>
   <li><code>tabGroups</code>: to group its tabs under “Lumina” so you can see which ones they are.</li>
-  <li><code>sidePanel</code>: to show the side chat next to a tab Lumina is working in. The extension switches it on only for those tabs.</li>
+  <li><code>sidePanel</code>: to show the side chat beside any tab, opened from the toolbar button, a keyboard shortcut or the right-click menu.</li>
+  <li><code>tabs</code>: to list the names and addresses of your open tabs for the tab picker, and to tell which tab you are on.</li>
+  <li><code>scripting</code>: to read the text of a page, and the text you selected, when you send a message about it. It works only after you allow reading pages (below).</li>
+  <li><code>contextMenus</code>: to add “Ask Lumina” to the right-click menu on selected text, links and pages.</li>
+  <li>An optional permission to read all sites: the extension does not ask for it when you install it. It asks only if you press <em>Allow</em> for reading pages in the side chat’s settings, and Chrome shows you its own prompt. Without it, Lumina sees only the name and address of a tab.</li>
   <li><code>storage</code>: to keep the settings listed below on your computer.</li>
 </ul>
 <h3>What it sends to us</h3>
 <p>Only while a task is running, over an encrypted connection to <code>wss://backend.getlumina.pro/v1/device</code>: the address and title of the page, up to 80 controls with their labels, up to 6,000 characters of the page’s text, and pictures of the page. The text typed into password fields, and into card fields that the page marks as card fields, is not sent.</p>
-<p>If you open the side chat, the extension also talks, over an encrypted connection, to <code>https://backend.getlumina.pro/v1/panel</code>: it sends the messages you type there, and it receives the messages and the activity list of the task that is running, which it shows you. Those messages join the same chat you see in Lumina and are kept like any other chat message. To do this Lumina hands the extension a short-lived pass (valid for a minute and a half, renewed only while a task is running and your browser is connected); the extension holds it in memory only and never saves it on your computer. Both addresses belong to Lumina, and the extension talks to no other server.</p>
+<p>If you open the side chat, the extension also talks, over an encrypted connection, to <code>https://backend.getlumina.pro/v1/panel</code>. Every time you open the side chat it signs in with this browser’s own pairing token (sent in an Authorization header to that address, never in a link) and starts a new session, which is a new chat in Lumina titled “Browser extension”, and your assistant is woken up. The extension sends the messages you type there, the name and address of the tab you chose, and, only if you allowed reading pages, the text you selected and the text of that page (up to 4,000 and 20,000 characters). It receives the messages and the activity list of the chat, which it shows you. Those messages join the same chat you see in Lumina and are kept like any other chat message, so page text you send is kept with the message. Page text is treated as information, never as instructions. To do this Lumina hands the extension a short-lived pass (valid for a minute and a half and renewed while the side chat is open); the extension holds it in memory only and never saves it on your computer. Closing the side chat ends its session. Both addresses belong to Lumina, and the extension talks to no other server.</p>
 <h3>What it keeps on your computer</h3>
-<p>A pairing token (a random secret that identifies this browser to Lumina), a pairing code until it has been used, whether the extension is switched on, and three settings that only developers use for testing. Uninstalling the extension removes them.</p>
+<p>A pairing token (a random secret that identifies this browser to Lumina), a pairing code until it has been used, whether the extension is switched on, the side chat’s settings (where to work, browse or chat, whether to include page text) and the saved prompts you write there, and three settings that only developers use for testing. Uninstalling the extension removes them.</p>
 <h3>What it does not do</h3>
 <p>It contains no advertising, analytics or trackers, and it loads no code from the internet.</p>
 <h3>How to stop it</h3>
 <ul>
-  <li>Use <em>Turn off</em> in the extension’s popup, or press <em>Cancel</em> on Chrome’s “is debugging this browser” bar. Either ends the session at once and closes its tabs.</li>
+  <li>Use <em>Turn off</em> in the side chat’s settings, or press <em>Cancel</em> on Chrome’s “is debugging this browser” bar. Either ends the session at once, closes the tabs Lumina opened and lets go of any tab of yours you had allowed.</li>
   <li>Switch off the browser icon at the top of any chat.</li>
   <li>Remove a browser in Lumina under Settings, Your browser. That cuts its connection and makes its token useless.</li>
 </ul>

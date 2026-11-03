@@ -120,8 +120,9 @@ def clean_prefs(prefs):
 
 
 class Job:
-    def __init__(self, account, request_id, goal, start_url, max_cost, max_steps, max_seconds):
+    def __init__(self, account, request_id, goal, start_url, max_cost, max_steps, max_seconds, tab=None):
         self.account, self.id, self.goal, self.start_url = account, request_id, goal, start_url
+        self.tab = tab                                # a grant name: the job works in a tab the customer allowed in their own Chrome (engine 'local' only), where it already is
         self.max_cost, self.max_steps, self.max_seconds = max_cost, max_steps, max_seconds
         self.state, self.reason, self.answer, self.url, self.pending = 'queued', '', None, '', None
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
@@ -159,8 +160,10 @@ class BrowseService:
         self.takeover_seconds, self.jobs, self._slot, self._guard = takeover_seconds, {}, threading.Semaphore(1), threading.Lock()
 
     # ------------------------------------------------------------------ public operations (all scoped to the caller's account)
-    def start(self, account, request_id, goal, *, start_url=None, max_cost_microusd=1_000_000, max_steps=25, max_seconds=600, prefs=None, vault=None):
+    def start(self, account, request_id, goal, *, start_url=None, max_cost_microusd=1_000_000, max_steps=25, max_seconds=600, prefs=None, vault=None, tab=None):
         if not REQUEST_ID.fullmatch(request_id or '') or not isinstance(goal, str) or not 3 <= len(goal) <= MAX_GOAL_CHARS:
+            raise BrowseError('invalid job')
+        if tab is not None and not (isinstance(tab, str) and re.fullmatch(r'[a-z0-9]{1,24}', tab)):
             raise BrowseError('invalid job')
         max_cost = min(int(max_cost_microusd), 5_000_000)
         with self._guard:
@@ -169,10 +172,12 @@ class BrowseService:
                 if existing.account != account:
                     raise BrowseError('unavailable')
                 return {'ok': True, 'state': existing.state}            # idempotent
-            job = Job(account, request_id, goal, start_url, max_cost, min(int(max_steps), 40), min(int(max_seconds), 900))
+            job = Job(account, request_id, goal, start_url, max_cost, min(int(max_steps), 40), min(int(max_seconds), 900), tab=tab)
             job.prefs = clean_prefs(prefs)
             job.vault = clean_vault(vault)
             job.engine = self._engine(account)
+            if job.tab and job.engine != 'local':
+                raise BrowseError('a tab needs your own browser')      # a granted tab is something only the extension can reach
             self.jobs[request_id] = job
             self._make_room(job)
         threading.Thread(target=self._run, args=(job,), daemon=True).start()
@@ -526,6 +531,8 @@ class BrowseService:
 
     def _pick_start(self, job):
         """Where the browser begins: the address the task names. The assistant always names the site (the tool requires it), so nothing here has to guess one."""
+        if job.tab:
+            return 'tab:' + job.tab                     # the page the customer is on: the runner attaches to it instead of opening an address
         found = URL_IN_TEXT.search(goal_parts(job.goal)[0])
         candidate = job.start_url or (found.group(0).rstrip('.,;') if found else None)
         if candidate:
@@ -593,7 +600,7 @@ class BrowseService:
                 live_now.write(out_dir, now_seq[0], by, mode, note)      # who is deciding, for the live view (codes only)
 
             result = BrowseRunner(session, ladder, policy=Policy(read_only=True, switch=self.switch_for(job.account)), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
-                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), hand_gate=self._hand_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault).run(job.goal, start)
+                                  max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), hand_gate=self._hand_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault, attached=job.tab).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
             job.url = result.url or job.url
@@ -650,7 +657,7 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
                 rid = req.get('request_id')
                 if op == 'start':
                     out = service.start(account, rid, req['goal'], start_url=req.get('start_url'), max_cost_microusd=req.get('max_cost_microusd', 1_000_000),
-                                        max_steps=req.get('max_steps', 25), max_seconds=req.get('max_seconds', 600), prefs=req.get('prefs'), vault=req.get('vault'))
+                                        max_steps=req.get('max_steps', 25), max_seconds=req.get('max_seconds', 600), prefs=req.get('prefs'), vault=req.get('vault'), tab=req.get('tab'))
                 elif op == 'poll':
                     out = service.poll(account, rid, int(req.get('since', 0)))
                 elif op == 'cancel':
@@ -671,12 +678,13 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
                     out = {'jpeg_b64': base64.b64encode(service.shot(account, rid, req.get('file'))).decode()}
                 elif op == 'control':
                     out = service.control(account, rid, req.get('action'), x=req.get('x'), y=req.get('y'), text=req.get('text'))
-                elif op in ('device_pair', 'device_list', 'device_revoke', 'device_use', 'device_push'):
+                elif op in ('device_pair', 'device_list', 'device_revoke', 'device_use', 'device_push', 'device_auth'):
                     if service.devices is None:
                         raise BrowseError('devices off')
                     out = (service.devices.pair(account) if op == 'device_pair' else service.devices.listing(account) if op == 'device_list'
                            else service.devices.use(account, req.get('on') is True) if op == 'device_use'
                            else service.devices.push_panel(account, req.get('payload')) if op == 'device_push'
+                           else service.devices.authenticate(req.get('token')) if op == 'device_auth'
                            else service.devices.revoke(account, str(req.get('device_id') or '')[:40]))
                 else:
                     raise BrowseError('unknown operation')

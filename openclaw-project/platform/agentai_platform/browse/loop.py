@@ -89,8 +89,9 @@ class Result:
 class BrowseRunner:
     def __init__(self, session, ladder: Ladder, *, policy: Policy | None = None, on_event=lambda kind, data: None, cancelled=lambda: False,
                  max_steps=25, max_seconds=600, shots=True, clock=time.monotonic, pause_gate=lambda: 0, wait=time.sleep, on_stat=lambda name, n=1: None, trace=NULL,
-                 on_now=lambda by, mode, note: None, ask_gate=None, prefs=None, vault=None, hand_gate=None):
+                 on_now=lambda by, mode, note: None, ask_gate=None, prefs=None, vault=None, hand_gate=None, attached=None):
         self.s, self.ladder, self.policy, self.on_event, self.cancelled = session, ladder, policy or Policy(), on_event, cancelled
+        self.attached = attached      # a grant name: start in the customer's own open tab, where it is, instead of opening an address (the extension answers `attach`)
         self.max_steps, self.max_seconds, self.shots, self.clock = max_steps, max_seconds, shots, clock
         self.trace = trace
         self.wait, self.on_stat = wait, on_stat      # on_stat(name): a counter the service keeps for the run (who decided what, how often JEV missed)
@@ -130,11 +131,19 @@ class BrowseRunner:
 
     def _run(self, goal: str, start_url: str) -> Result:
         res = Result('error')
-        if not self.policy.url_ok(start_url):
-            return Result('blocked', 'that site is not allowed')
-        opened = self.s.open(start_url)
-        if not opened.get('ok'):
-            return Result('error', f'could not open the page ({opened.get("error")})')
+        if self.attached:
+            opened = self.s.call('attach', tab=self.attached)
+            if not opened.get('ok'):
+                return Result('error', f'could not use that tab ({opened.get("error")})')
+            start_url = opened.get('url') or ''
+            if not self.policy.url_ok(start_url):
+                return Result('blocked', 'that site is not allowed')
+        else:
+            if not self.policy.url_ok(start_url):
+                return Result('blocked', 'that site is not allowed')
+            opened = self.s.open(start_url)
+            if not opened.get('ok'):
+                return Result('error', f'could not open the page ({opened.get("error")})')
         self.on_event('opened', {'url': opened.get('url'), 'title': opened.get('title')})
         started, history, seen, failures, forced = self.clock(), [], {}, 0, False
         reopens = 0          # times the browser fell off the site (a `back` from the first page lands on a blank page) and the start page was opened again

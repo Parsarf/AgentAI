@@ -19,6 +19,25 @@ class FakeConn:
 
 
 class DeskChecks(unittest.TestCase):
+    def test_authenticate_trades_a_device_token_for_who_it_is_and_whether_it_is_connected(self):
+        device = self.store.redeem(self.store.pair('acct'), 'Mac')
+        self.assertEqual(self.desk.authenticate(device['token']), {'ok': True, 'account': 'acct', 'device_id': device['device_id'], 'allowed': True, 'use': False, 'connected': False})
+        self.hub.attach('acct', device['device_id'], FakeConn())
+        self.assertTrue(self.desk.authenticate(device['token'])['connected'])
+        self.store.set_wants_local('acct', True)
+        self.assertTrue(self.desk.authenticate(device['token'])['use'])
+        for bad in [None, '', 'short', 'z' * 40, 5]:
+            self.assertEqual(self.desk.authenticate(bad), {'ok': False})
+        self.store.revoke('acct', device['device_id'])
+        self.assertEqual(self.desk.authenticate(device['token']), {'ok': False})
+
+    def test_authenticate_is_reachable_over_the_private_socket_without_naming_an_account(self):
+        device = self.store.redeem(self.store.pair('acct'), 'Mac')
+        path = self.serve()
+        out = BrowseRpc('', path)('device_auth', token=device['token'])
+        self.assertEqual((out['ok'], out['account']), (True, 'acct'))
+
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.store = dv.DeviceStore(Path(self.tmp.name) / 'd.json'); self.hub = dv.DeviceHub(); self.allowed = {'acct'}

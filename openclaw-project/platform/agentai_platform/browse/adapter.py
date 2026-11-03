@@ -37,7 +37,8 @@ TOOL = {
         'type': 'object',
         'properties': {
             'task': {'type': 'string', 'description': 'What to do on the website, in plain words (for example: Order the spiciest chicken wings on Uber Eats).'},
-            'site': {'type': 'string', 'description': 'Exact starting URL, including the product path and query when supplied; or a domain such as ubereats.com.'},
+            'site': {'type': 'string', 'description': 'Exact starting URL, including the product path and query when supplied; or a domain such as ubereats.com. When you pass tab, give the address of that tab here; it is not opened, the tab stays where it is.'},
+            'tab': {'type': 'string', 'description': 'Only when the customer message names a granted tab (tab="g1"): work in that open tab of their own browser, exactly where it is now, instead of opening a new one.'},
             'steps': {'type': 'array', 'items': {'type': 'string'}, 'description': '3 to 10 short plain steps, one sentence each, in order.'},
             'search': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Up to 3 short phrases to type into the site\'s search box.'},
             'done_when': {'type': 'string', 'description': 'Observable checkpoint for this stage, e.g. report all visible colours and stop; do not combine comparison, cart and checkout in one stage.'},
@@ -98,17 +99,28 @@ def clean_task(args, neutral=neutralize) -> dict:
     task = args.get('task')
     if not isinstance(task, str) or not 8 <= len(task.strip()) <= 1200:
         raise BadTask('task')
+    tab = args.get('tab')
+    if tab is not None and not (isinstance(tab, str) and re.fullmatch(r'[a-z0-9]{1,24}', tab)):
+        raise BadTask('tab')
     raw_site = args.get('site')
     if not isinstance(raw_site, str) or not raw_site.strip() or len(raw_site) > 2048 or re.search(r'[\x00-\x20\x7f\\]', raw_site):
-        raise BadTask('site (a public website URL or domain)')
+        if not tab:
+            raise BadTask('site (a public website URL or domain)')
+        raw_site = None
     try:
+        if raw_site is None:
+            raise StopIteration
         parsed = urlsplit(raw_site if '://' in raw_site else 'https://' + raw_site)
         site = (parsed.hostname or '').lower()
         if parsed.scheme not in ('https', 'http') or parsed.username is not None or parsed.password is not None or parsed.port is not None or not SITE.fullmatch(site):
             raise ValueError('site')
         start_url = urlunsplit((parsed.scheme, site, parsed.path or '/', parsed.query, parsed.fragment))
+    except StopIteration:
+        site, start_url = '', None
     except ValueError:
-        raise BadTask('site (a public website URL or domain)') from None
+        if not tab:
+            raise BadTask('site (a public website URL or domain)') from None
+        site, start_url = '', None             # a granted tab starts where the customer already is: its address need not be one we could open
     steps = []
     if args.get('steps') is not None:
         if not isinstance(args['steps'], list) or not 1 <= len(args['steps']) <= MAX_STEPS:
@@ -131,13 +143,15 @@ def clean_task(args, neutral=neutralize) -> dict:
         for k, v in list(args['choices'].items())[:12]:
             if isinstance(k, str) and isinstance(v, (str, int, float)) and not isinstance(v, bool) and k.strip():
                 choices[neutral(k.strip(), 40)] = neutral(str(v).strip(), 120)
-    return {'task': neutral(task.strip(), 1200), 'steps': steps, 'search': search, 'site': site.removeprefix('www.'), 'start_url': start_url, 'done_when': neutral(str(args.get('done_when') or '').strip(), 300), 'choices': choices}
+    return {'task': neutral(task.strip(), 1200), 'steps': steps, 'search': search, 'site': site.removeprefix('www.'), 'start_url': start_url, 'tab': tab or None, 'done_when': neutral(str(args.get('done_when') or '').strip(), 300), 'choices': choices}
 
 
 def build_goal(task: dict) -> str:
     """The text the browser works from. Lumina's own lines come last, so nothing in a task can override them."""
     lines = ['Task: ' + task['task']]
-    if task['site']:
+    if task.get('tab'):
+        lines.append("Start in the customer's own open browser tab: it is already on the page they are looking at. Do not open a new address first.")
+    elif task['site']:
         lines.append('Start at: ' + task.get('start_url', 'https://' + task['site'] + '/'))
     if task['steps']:
         lines.append('Steps, in order (do them one at a time; each is done when the page shows it):')
@@ -289,9 +303,9 @@ class BrowserTool:
             return 'The browsing budget for this task is used up. Answer the customer with what you have and say what is left to do; they can ask for the rest next.', True
         session = 1 + sessions + (1 if first else 0)               # session 1 is the request's own job; every later call is a job of its own
         goal = build_goal(task)
-        return self._run(account_id, request_id, session, goal, int(reserved * share), spent, closed, start_url=task['start_url'])
+        return self._run(account_id, request_id, session, goal, int(reserved * share), spent, closed, start_url=task['start_url'], tab=task.get('tab'))
 
-    def _run(self, account_id, request_id, session, goal, max_cost, spent_before, closed, *, start_url=None):
+    def _run(self, account_id, request_id, session, goal, max_cost, spent_before, closed, *, start_url=None, tab=None):
         rpc = self.browse_factory(account_id)
         now = int(self.clock())
         with self.coordinator.transaction() as con:
@@ -301,7 +315,7 @@ class BrowserTool:
                 con.execute("UPDATE browse_runs SET status='queued',updated_epoch=? WHERE account_id=? AND request_id=?", (now, account_id, request_id))
         self._say(account_id, request_id, 'activity', {'ref': 'service-browser', 'tool': 'browser', 'category': 'browse', 'label': 'Used the browser', 'detail': 'Lumina browser', 'status': 'running'})
         try:
-            rpc('start', request_id=job, goal=goal, start_url=start_url, max_cost_microusd=max_cost, prefs=self._saved_choices(account_id), vault=self._saved_items(account_id))
+            rpc('start', request_id=job, goal=goal, start_url=start_url, tab=tab, max_cost_microusd=max_cost, prefs=self._saved_choices(account_id), vault=self._saved_items(account_id))
         except CapabilityUnavailable:
             return self._give_up(account_id, request_id, base, spent_before, 'failed', 'The browser could not start. Please try again in a moment.')
         self._spent[job] = spent_before

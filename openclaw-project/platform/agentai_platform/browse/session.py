@@ -65,7 +65,7 @@ class ProcessTransport:
 
 
 class Session:
-    DEADLINES = {'open': 40, 'snapshot': 20, 'act': 30, 'screenshot': 20, 'view': 20, 'probe': 10}
+    DEADLINES = {'open': 40, 'attach': 20, 'snapshot': 20, 'act': 30, 'screenshot': 20, 'view': 20, 'probe': 10}
 
     def __init__(self, transport, trace=NULL):
         self.t, self._id, self.trace = transport, 0, trace

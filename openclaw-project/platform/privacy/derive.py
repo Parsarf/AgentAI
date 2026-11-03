@@ -86,7 +86,7 @@ def extension():
         'page_text_limit_chars': int(re.search(r'\.slice\(0,\s*(\d+)\)\s*,\s*scroll', page.replace('\n', ' ')).group(1)) if re.search(r'\.slice\(0,\s*(\d+)\)\s*,\s*scroll', page.replace('\n', ' ')) else None,
         'max_controls_listed': int(re.search(r'MAX_ELEMENTS = (\d+)', code['rules.js']).group(1)),
         'secret_field_values_withheld': "secret = type === 'password'" in page and 'if (!secret)' in page,
-        'loads_remote_code': any(re.search(r'\beval\(|new Function\(|importScripts\(|<script[^>]+src="https?:', text) for text in list(code.values()) + [_read(EXTENSION / 'popup.html')]),
+        'loads_remote_code': any(re.search(r'\beval\(|new Function\(|importScripts\(|<script[^>]+src="https?:', text) for text in list(code.values()) + [_read(EXTENSION / 'panel.html')]),
         'network_calls_other_than_the_server': [name for name, text in code.items() if re.search(r'\bfetch\(|XMLHttpRequest|navigator\.sendBeacon', text) and not (name == 'panel-link.js' and same_host)],
     }
 

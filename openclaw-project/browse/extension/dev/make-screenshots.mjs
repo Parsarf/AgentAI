@@ -1,7 +1,8 @@
 // Renders the Chrome Web Store screenshots (1280x800 JPEG) into store/screenshots/. Everything shown is the real code:
-//   - the toolbar popup is popup.html + popup.js as shipped, with only chrome.runtime.sendMessage stubbed to report a state;
+//   - the side panel is panel.html + panel.js as shipped, with only the chrome.* calls stubbed to report a state;
 //   - the Lumina pages are the built app (lumina/dist) served by lumina/dev-mock.mjs, with /v1/devices answered in the browser.
 // Needs Chrome, `npm run build` in lumina/, and port 5199 free.        node dev/make-screenshots.mjs
+// Only the side panel pictures (no app build needed):                 ONLY=panel node dev/make-screenshots.mjs
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -14,10 +15,11 @@ const CHROME = process.env.BROWSE_CHROME || '/Applications/Google Chrome.app/Con
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
 
 // a static server for the extension folder (a popup's module scripts will not load from file://)
-const files = createServer((req, res) => { try { const p = new URL(req.url, 'http://x').pathname.replace(/^\/+/, '') || 'popup.html'; const data = readFileSync(join(EXT, p)); res.writeHead(200, { 'Content-Type': MIME[extname(p)] || 'application/octet-stream' }); res.end(data); } catch { res.writeHead(404); res.end(); } });
-await new Promise(r => files.listen(0, '127.0.0.1', r)); const popupUrl = `http://127.0.0.1:${files.address().port}/popup.html`;
-const mock = spawn('node', [join(EXT, '..', '..', 'lumina', 'dev-mock.mjs')], { stdio: 'ignore' });
-await new Promise(r => setTimeout(r, 1200));
+const files = createServer((req, res) => { try { const p = new URL(req.url, 'http://x').pathname.replace(/^\/+/, '') || 'panel.html'; const data = readFileSync(join(EXT, p)); res.writeHead(200, { 'Content-Type': MIME[extname(p)] || 'application/octet-stream' }); res.end(data); } catch { res.writeHead(404); res.end(); } });
+await new Promise(r => files.listen(0, '127.0.0.1', r)); const panelUrl = `http://127.0.0.1:${files.address().port}/panel.html`;
+const ONLY_PANEL = process.env.ONLY === 'panel';
+const mock = ONLY_PANEL ? null : spawn('node', [join(EXT, '..', '..', 'lumina', 'dev-mock.mjs')], { stdio: 'ignore' });
+await new Promise(r => setTimeout(r, ONLY_PANEL ? 0 : 1200));
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1, colorScheme: 'dark' });
@@ -33,29 +35,32 @@ async function compose(name, shot, caption, { height = 720 } = {}) {
   writeFileSync(join(OUT, name), await page.screenshot({ type: 'jpeg', quality: 95 })); await page.close(); console.log('wrote', name);
 }
 
-// ---- the popup, in two states
-async function popup(state, { code } = {}) {
-  const page = await context.newPage(); await page.setViewportSize({ width: 360, height: 420 });
-  await page.addInitScript(s => { window.chrome = { runtime: { sendMessage: async m => (m && m.type === 'status' ? s : { ok: true }) } }; }, state);
-  await page.goto(popupUrl); await page.waitForFunction(() => document.getElementById('status').textContent.length > 1);
-  if (code) await page.fill('#code', code);
-  await page.addStyleTag({ content: 'html{background:#17171c} body{margin:20px;border-radius:12px;border:1px solid #34343e}' });
-  const buffer = await page.locator('body').screenshot({ scale: 'device' }); await page.close(); return buffer;
-}
-const big = async (state, opts) => { const page = await context.newPage(); await page.close(); return popupBig(state, opts); };
-async function popupBig(state, opts) {       // drawn at 2x so the text stays sharp when it is shown large
-  const ctx = await browser.newContext({ viewport: { width: 360, height: 420 }, deviceScaleFactor: 2, colorScheme: 'dark' });
+// ---- the side panel, in two states: pairing a browser, and a chat about the page you are on
+async function panelShot(world, { code, typed } = {}) {       // drawn at 2x so the text stays sharp when it is shown large
+  const ctx = await browser.newContext({ viewport: { width: 400, height: 720 }, deviceScaleFactor: 2, colorScheme: 'dark' });
   const page = await ctx.newPage();
-  await page.addInitScript(s => { window.chrome = { runtime: { sendMessage: async m => (m && m.type === 'status' ? s : { ok: true }) } }; }, state);
-  await page.goto(popupUrl); await page.waitForFunction(() => document.getElementById('status').textContent.length > 1);
-  if (opts?.code) await page.fill('#code', opts.code);
-  await page.addStyleTag({ content: 'html{background:#17171c} body{margin:0 auto;border-radius:12px;border:1px solid #34343e}' });
-  const buffer = await page.locator('body').screenshot(); await ctx.close(); return buffer;
+  await page.addInitScript(w => {
+    const link = { enabled: true, connected: true, paired: true, hasTicket: true, offered: null, hasSites: true, ...w.link };
+    const tabs = [{ id: 11, title: 'Hotels in Paris', url: 'https://hotels.example/paris', active: true, grant: w.granted ? 'g1' : null, restricted: false }, { id: 13, title: 'Train times', url: 'https://trains.example/', active: false, grant: null, restricted: false }];
+    window.chrome = { runtime: { sendMessage: async m => {
+      if (m.type === 'panel:state') return link; if (m.type === 'tabs:list') return { ok: true, tabs };
+      if (m.type === 'tab:read') return { ok: true, title: 'Hotels in Paris', url: 'https://hotels.example/paris', text: 'Rooms from 120 euros', selection: '', read: true, grant: w.granted ? 'g1' : null };
+      if (m.type === 'panel:call') return m.endpoint === 'state' ? { status: 200, data: w.state } : m.endpoint === 'events' ? { status: 200, data: { events: w.events || [] } } : { status: 0, data: {} };
+      return { ok: true };
+    }, onMessage: { addListener() {} }, connect: () => ({ postMessage() {} }) }, storage: { local: { get: async () => ({ ui: w.ui || {} }), set: async () => {} } }, windows: { getCurrent: async () => ({ id: 1 }) }, permissions: { request: async () => true }, tabs: { onActivated: { addListener() {} }, onUpdated: { addListener() {} } } };
+  }, world);
+  await page.goto(panelUrl); await page.waitForTimeout(900);
+  if (code) await page.fill('#code', code);
+  if (typed) await page.fill('#text', typed);
+  const buffer = await page.screenshot(); await ctx.close(); return buffer;
 }
 
-await compose('01-connect-with-a-code.jpg', await popupBig({ enabled: false, connected: false, paired: false, pairing: false }, { code: 'ABCD-2345' }), 'Connect Chrome to Lumina with a one-time code', { height: 600 });
-await compose('02-on-only-when-you-want.jpg', await popupBig({ enabled: true, connected: true, paired: true, pairing: false }), 'Turn it on only when you want Lumina to use your browser', { height: 560 });
+await compose('01-connect-with-a-code.jpg', await panelShot({ link: { paired: false, enabled: false, connected: false, hasTicket: false }, state: null }, { code: 'ABCD-2345' }), 'Connect Chrome to Lumina with a one-time code', { height: 640 });
+await compose('02-on-only-when-you-want.jpg', await panelShot({ granted: true, ui: { target: 'this_tab', mode: 'browse' }, state: { live: true, cell: 'ready', request: { id: 'a'.repeat(32), state: 'running', paused: false },
+  messages: [{ id: 1, role: 'customer', text: 'Find the cheapest room for two nights and tell me about cancellation', surface: 'panel', at: 't' }, { id: 2, role: 'agent', text: 'On it. I am reading the prices on this page.', surface: null, at: 't' }],
+  }, events: [{ sequence: 1, kind: 'tool', payload: { summary: 'Opened the hotel page you allowed' } }, { sequence: 2, kind: 'tool', payload: { summary: 'Reading room prices' } }] }), 'Chat with Lumina beside any tab. It works in a tab only when you allow it', { height: 640 });
 
+if (!ONLY_PANEL) {
 // ---- the Lumina app
 const device = { device_id: 'a1b2c3d4e5f60718', label: 'Chrome (mac)', created: 1_790_000_000, last_seen: 1_790_000_000, connected: true };
 async function app(path, { devices, wait, act }) {
@@ -81,4 +86,6 @@ await compose('04-pair-in-settings.jpg', pairing, 'Pair your browser from Settin
 const listed = await app('/settings', { devices: { available: true, use: true, connected: true, devices: [device, { ...device, device_id: '0f0f0f0f0f0f0f0f', label: 'Chrome (windows)', connected: false }] }, wait: '.device-list', act: async page => { await page.locator('#your-browser').scrollIntoViewIfNeeded(); } });
 await compose('05-see-and-remove-your-browsers.jpg', listed, 'See your connected browsers and remove one any time');
 
-await browser.close(); files.close(); mock.kill();
+}
+
+await browser.close(); files.close(); mock?.kill();

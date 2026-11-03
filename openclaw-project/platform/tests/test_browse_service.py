@@ -27,7 +27,7 @@ class FakeTransport:
             self.closed = True; return
         r = {'id': obj['id'], 'ok': True}
         p = self.pages[self.at]
-        if obj['cmd'] == 'open': r.update(url=p['url'], title='T')
+        if obj['cmd'] in ('open', 'attach'): r.update(url=p['url'], title='T')
         elif obj['cmd'] == 'snapshot': r.update(url=p['url'], title='T', snapshot=p['snap'], text=p.get('text', ''), **({'window': 800} if p.get('window') else {}))
         elif obj['cmd'] == 'view': r.update(data='QUJD', width=1280, height=800, view={'w': 1280, 'h': 800})
         elif obj['cmd'] == 'act':
