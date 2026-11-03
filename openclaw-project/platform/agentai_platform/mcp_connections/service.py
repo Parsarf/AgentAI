@@ -14,7 +14,7 @@ import re
 import time
 import uuid
 from urllib.parse import urlsplit
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, validators
 from referencing import Registry
 from ..lifecycle.coordinator import Coordinator, identifier
 from ..security import NotFound
@@ -48,8 +48,6 @@ def bounded(value, limit=32768, depth=0, schema=False):
         if level > 20:
             raise ConnectionError('invalid_arguments', 'Nested tool data exceeds the supported depth.')
         if isinstance(item, dict):
-            if schema and any(k in item for k in ('pattern', 'patternProperties')):
-                raise ConnectionError('unsupported_schema', 'Regular-expression tool schemas are not supported.')
             if schema and (any(k in item for k in ('$dynamicRef', '$recursiveRef')) or ('$ref' in item and not str(item['$ref']).startswith('#/$defs/'))):
                 raise ConnectionError('unsupported_schema', 'Only local, non-recursive tool schema references are supported.')
             for child in item.values(): walk(child, level + 1)
@@ -99,12 +97,22 @@ def log_schema_rejection(connection_id, tools):
                                              len(problems), json.dumps(reasons, sort_keys=True)[:400], json.dumps(problems[:5])[:400])
 
 
+def _never_match(validator, value, instance, schema):
+    return ()
+
+
+# A remote server's regular expressions are never run here: a hostile pattern could hang a web worker (catastrophic backtracking). The schema keeps its `pattern` and
+# `patternProperties` (the assistant reads them as hints and the customer reviews the exact definition); the server that owns the tool is the one that enforces them.
+# Everything else (types, required fields, enums, lengths, ranges, nesting) is still checked here.
+ArgumentValidator = validators.extend(Draft202012Validator, {'pattern': _never_match, 'patternProperties': _never_match})
+
+
 def validate_arguments(schema, arguments):
     bounded(arguments, 14000)
     if not isinstance(arguments, dict):
         raise ConnectionError('invalid_arguments', 'Tool arguments must be a JSON object.')
     try:
-        Draft202012Validator(schema, registry=Registry()).validate(arguments)
+        ArgumentValidator(schema, registry=Registry()).validate(arguments)
     except Exception:
         raise ConnectionError('invalid_arguments', 'The arguments do not match this tool’s schema.') from None
 
