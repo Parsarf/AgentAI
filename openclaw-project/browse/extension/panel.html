@@ -7,86 +7,106 @@
 <link rel="stylesheet" href="src/panel.css">
 </head>
 <body>
-<header>
-  <div class="bar">
-    <h1>Lumina</h1>
-    <div class="tools">
-      <button id="new" type="button" class="icon" title="New session" aria-label="New session">New</button>
-      <button id="hist" type="button" class="icon" title="Earlier chats" aria-label="Earlier chats" aria-expanded="false">History</button>
-      <button id="gear" type="button" class="icon" title="Settings" aria-label="Settings" aria-expanded="false">Settings</button>
-      <button id="close" type="button" class="icon" title="Close" aria-label="Close the panel">Close</button>
-    </div>
-  </div>
-  <p id="status" role="status" aria-live="polite" data-tone="wait">Loading…</p>
-  <p id="detail" class="note" hidden></p>
-  <p id="banner" class="banner" hidden><span id="banner-text"></span> <button id="banner-use" type="button">Show it here</button></p>
-</header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.25v9.5M3.25 8h9.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.75"/><path d="M8 5v3.2l2.1 1.3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 16 16"><path d="M2.5 5h6.5M12 5h1.5M2.5 11h1.5M7 11h6.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><circle cx="10.5" cy="5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.75"/><circle cx="5.5" cy="11" r="1.5" fill="none" stroke="currentColor" stroke-width="1.75"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></symbol>
+  <symbol id="i-send" viewBox="0 0 16 16"><path d="M8 12.5v-9M4.25 7.25L8 3.5l3.75 3.75" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4.25" y="4.25" width="7.5" height="7.5" rx="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.75L10.25 8 6 12.25" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.5c.5 4.7 2.3 7.2 6.8 8.3 1.4.3 1.4 1.2 0 1.5-4.5 1.1-6.3 3.6-6.8 8.3-.5-4.7-2.3-7.2-6.8-8.3-1.4-.3-1.4-1.2 0-1.5 4.5-1.1 6.3-3.6 6.8-8.3z" fill="currentColor"/></symbol>
+</svg>
 
-<section id="history" class="settings" hidden aria-label="Earlier chats">
+<header class="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><svg width="14" height="14"><use href="#i-star"/></svg></span>
+    <h1>Lumina</h1>
+  </div>
+  <p id="status" class="pill" role="status" aria-live="polite" data-tone="wait">Loading…</p>
+  <div class="tools">
+    <button id="new" type="button" class="icon" title="New session" aria-label="New session"><svg width="16" height="16"><use href="#i-plus"/></svg></button>
+    <button id="hist" type="button" class="icon" title="Earlier chats" aria-label="Earlier chats" aria-expanded="false"><svg width="16" height="16"><use href="#i-clock"/></svg></button>
+    <button id="gear" type="button" class="icon" title="Settings" aria-label="Settings" aria-expanded="false"><svg width="16" height="16"><use href="#i-sliders"/></svg></button>
+    <button id="close" type="button" class="icon" title="Close" aria-label="Close the panel"><svg width="16" height="16"><use href="#i-x"/></svg></button>
+  </div>
+</header>
+<p id="detail" class="detail" hidden></p>
+<p id="banner" class="banner" hidden><span id="banner-text"></span><button id="banner-use" type="button" class="link">Show it here</button></p>
+
+<section id="history" class="sheet" hidden aria-label="Earlier chats">
+  <h2>Earlier chats</h2>
   <ol id="history-list"></ol>
   <p id="history-empty" class="note" hidden>No earlier chats yet.</p>
 </section>
 
-<section id="settings" class="settings" hidden aria-label="Settings">
+<section id="settings" class="sheet" hidden aria-label="Settings">
+  <h2>Settings</h2>
   <form id="pair" hidden>
     <label for="code">Pairing code from Lumina, Settings, Your browser</label>
-    <div class="row"><input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" placeholder="ABCD-2345" inputmode="text"><button type="submit" class="primary">Connect</button></div>
+    <div class="field"><input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" placeholder="ABCD-2345" inputmode="text"><button type="submit" class="primary">Connect</button></div>
     <p id="pair-error" class="error" role="alert" hidden></p>
   </form>
-  <div class="row between"><span id="power-text">Lumina is off.</span><button id="power" type="button"></button></div>
-  <div class="row between"><span id="sites-text">Reading pages is off.</span><button id="sites" type="button">Allow</button></div>
-  <fieldset class="saved">
-    <legend>Saved prompts</legend>
+  <div class="setting"><span id="power-text">Lumina is off.</span><button id="power" type="button"></button></div>
+  <div class="setting"><span id="sites-text">Reading pages is off.</span><button id="sites" type="button">Allow</button></div>
+  <div class="saved">
+    <h3>Saved prompts</h3>
     <ol id="saved"></ol>
-    <form id="saved-form" class="row"><input id="saved-name" maxlength="30" placeholder="Name" aria-label="Prompt name"><input id="saved-text" maxlength="2000" placeholder="What to send" aria-label="Prompt text"><button type="submit">Add</button></form>
-  </fieldset>
+    <form id="saved-form"><input id="saved-name" maxlength="30" placeholder="Name" aria-label="Prompt name"><input id="saved-text" maxlength="2000" placeholder="What to send" aria-label="Prompt text"><button type="submit">Add</button></form>
+  </div>
   <p class="note">Shortcut: Ctrl+Shift+L (Command+Shift+L on a Mac) opens and closes this panel. Right-click selected text and choose “Ask Lumina”.</p>
-  <p class="note">Lumina only acts in tabs it opens itself, or in a tab you press Allow on here. Press Cancel on Chrome’s “is debugging this browser” bar, or turn Lumina off, to stop it at once.</p>
+  <p class="note">Lumina acts only in tabs it opens itself, or in a tab you press Allow on here. Press Cancel on Chrome’s “is debugging this browser” bar, or turn Lumina off, to stop it at once.</p>
 </section>
 
 <main id="main">
-  <section aria-labelledby="trail-title" class="trail" id="trail-box" hidden>
-    <h2 id="trail-title">What it is doing</h2>
-    <ol id="trail" aria-live="off"></ol>
-  </section>
   <section aria-labelledby="chat-title" class="chat">
     <h2 id="chat-title" class="sr">Chat</h2>
     <ol id="messages" aria-live="polite" aria-relevant="additions"></ol>
     <div id="empty" class="empty">
-      <p><strong>What should we do?</strong></p>
-      <p class="note">Ask about the page you are on, or tell Lumina to do something in a new tab, in this tab, or in another one.</p>
+      <span class="mark big" aria-hidden="true"><svg width="22" height="22"><use href="#i-star"/></svg></span>
+      <p class="lead">What should we do?</p>
+      <p class="note">Ask about the page you are on, or have Lumina do something in a new tab, in this tab, or in another one.</p>
     </div>
   </section>
+  <details id="trail-box" class="trail" hidden>
+    <summary><span class="spin" aria-hidden="true"></span><span id="trail-now"></span><span id="trail-count" class="count"></span><svg class="chev" width="14" height="14" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+    <ol id="trail" aria-live="off"></ol>
+  </details>
 </main>
 
-<footer>
+<footer class="dock">
   <p id="error" role="alert" hidden></p>
-  <section class="context" aria-label="Where Lumina works">
-    <div class="seg" role="group" aria-label="Where to work">
-      <button type="button" data-target="new_tab" aria-pressed="true">New tab</button>
-      <button type="button" data-target="this_tab" aria-pressed="false">This tab</button>
-      <button type="button" data-target="tab" aria-pressed="false">Another tab</button>
-    </div>
-    <div id="picker" class="row" hidden><label for="tabs" class="sr">Tab</label><select id="tabs"></select></div>
-    <div id="tabline" class="tabline" hidden>
-      <span id="tabname"></span>
-      <button id="allow" type="button">Allow Lumina to use this tab</button>
-      <button id="revoke" type="button" hidden>Stop allowing</button>
-    </div>
-    <label class="check"><input id="withpage" type="checkbox" checked> <span id="withpage-text">Include what is on the page</span></label>
-    <details id="more" class="more"><summary id="more-sum">Add other tabs as context</summary><ol id="more-list"></ol></details>
-    <p id="ctxnote" class="note" hidden></p>
-  </section>
   <div id="quick" class="quick" role="group" aria-label="Quick actions"></div>
-  <form id="composer" autocomplete="off">
+  <form id="composer" class="composer" autocomplete="off">
+    <div class="where">
+      <div class="seg" role="group" aria-label="Where to work">
+        <button type="button" data-target="new_tab" aria-pressed="true" title="Lumina opens its own tab">New tab</button>
+        <button type="button" data-target="this_tab" aria-pressed="false" title="Work in the tab you are on">This tab</button>
+        <button type="button" data-target="tab" aria-pressed="false" title="Work in another open tab">Another tab</button>
+      </div>
+      <div id="picker" class="picker" hidden><label for="tabs" class="sr">Tab</label><select id="tabs"></select></div>
+      <div id="tabline" class="tabline" hidden>
+        <span id="tabname" class="tabname"></span>
+        <button id="allow" type="button" class="small">Allow this tab</button>
+        <button id="revoke" type="button" class="small" hidden>Stop allowing</button>
+      </div>
+      <div class="ctx">
+        <label class="check"><input id="withpage" type="checkbox" checked><span id="withpage-text">Include the page</span></label>
+        <details id="more" class="more"><summary id="more-sum">Other tabs</summary><ol id="more-list"></ol></details>
+      </div>
+      <p id="ctxnote" class="note" hidden></p>
+    </div>
     <label for="text" class="sr">Message to Lumina</label>
     <textarea id="text" rows="2" maxlength="16000" placeholder="Ask or tell Lumina…" disabled></textarea>
-    <div class="row between">
+    <div class="send-row">
       <div class="seg small" role="group" aria-label="Mode">
         <button type="button" data-mode="browse" aria-pressed="true" title="Lumina uses a browser to do it">Browse</button>
         <button type="button" data-mode="auto" aria-pressed="false" title="Lumina answers; it may still use tools">Chat</button>
       </div>
-      <div class="row"><button id="stop" type="button" hidden>Stop</button><button id="send" type="submit" class="primary" disabled>Send</button></div>
+      <div class="go">
+        <button id="stop" type="button" class="stop" hidden title="Stop the task"><svg width="14" height="14" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+        <button id="send" type="submit" class="primary" disabled title="Send (Enter)"><svg width="14" height="14" aria-hidden="true"><use href="#i-send"/></svg>Send</button>
+      </div>
     </div>
   </form>
 </footer>

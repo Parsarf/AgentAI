@@ -47,6 +47,8 @@ function paintHistory() {
 
 function paintSettings(v) {
   $('settings').hidden = !model.settings && !v.needsPair;
+  $('settings').classList.toggle('pairing', !!v.needsPair);       // not paired: the sheet shows the pairing code box and nothing else
+  document.body.classList.toggle('needs-pair', !!v.needsPair);
   $('pair').hidden = !(v.needsPair || !model.link.paired);
   $('gear').setAttribute('aria-expanded', String(!$('settings').hidden));
   $('power-text').textContent = model.link.enabled ? (model.link.connected ? 'Lumina is on.' : 'Lumina is on, connecting…') : 'Lumina is off.';
@@ -63,7 +65,10 @@ function paintSettings(v) {
 
 function paintTrail() {
   const lines = model.trail.map(stepLine).filter(Boolean).slice(-40);
-  $('trail-box').hidden = lines.length === 0;
+  const box = $('trail-box'); box.hidden = lines.length === 0;
+  box.classList.toggle('idle', !model.state?.live);
+  $('trail-now').textContent = lines[lines.length - 1] ?? '';
+  $('trail-count').textContent = lines.length > 1 ? `${lines.length} steps` : '';
   $('trail').replaceChildren(...lines.map(line => { const li = document.createElement('li'); li.textContent = line; return li; }));
 }
 
@@ -75,10 +80,11 @@ function paintMessages() {
   if (sig === shown) return;
   shown = sig;
   const main = $('main'); const stick = main.scrollTop + main.clientHeight >= main.scrollHeight - 40;
+  const mixed = messages.some(m => m.role === 'customer' && m.surface !== 'panel');      // the "sent from this panel" note only helps when the chat also holds messages from elsewhere
   $('messages').replaceChildren(...messages.map(m => {
     const li = document.createElement('li'); li.className = 'msg'; li.dataset.role = ['customer', 'agent', 'system'].includes(m.role) ? m.role : 'system';
     li.textContent = String(m.text ?? '');
-    if (m.surface === 'panel' && m.role === 'customer') { const tag = document.createElement('small'); tag.textContent = 'sent from this panel'; li.append(tag); }
+    if (mixed && m.surface === 'panel' && m.role === 'customer') { const tag = document.createElement('small'); tag.textContent = 'sent from this panel'; li.append(tag); }
     return li;
   }));
   if (stick) main.scrollTop = main.scrollHeight;
@@ -98,6 +104,7 @@ function paintContext() {
   const tab = contextTab();
   const acting = model.target !== 'new_tab';
   $('tabline').hidden = !acting || !tab;
+  $('tabline').classList.toggle('picked', picking);       // the picker already names the tab
   if (acting && tab) {
     $('tabname').textContent = tab.title || tab.url;
     $('allow').hidden = !!tab.grant || tab.restricted; $('revoke').hidden = !tab.grant;
@@ -106,7 +113,7 @@ function paintContext() {
   $('withpage').parentElement.hidden = !tab;
   const others = model.tabs.filter(t => !t.restricted && t.id !== tab?.id);
   for (const id of [...model.extra]) if (!others.some(t => t.id === id)) model.extra.delete(id);
-  $('more').hidden = others.length === 0; $('more-sum').textContent = model.extra.size ? `Other tabs as context (${model.extra.size})` : 'Add other tabs as context';
+  $('more').hidden = others.length === 0; $('more-sum').textContent = model.extra.size ? `Other tabs (${model.extra.size})` : 'Other tabs';
   $('more-list').replaceChildren(...others.map(t => {
     const li = document.createElement('li'); const label = document.createElement('label'); const box = document.createElement('input'); box.type = 'checkbox'; box.checked = model.extra.has(t.id);
     box.addEventListener('change', () => { if (box.checked && model.extra.size < 5) model.extra.add(t.id); else { box.checked = false; model.extra.delete(t.id); } paint(); });

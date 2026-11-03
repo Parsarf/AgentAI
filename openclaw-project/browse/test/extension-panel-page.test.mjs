@@ -32,8 +32,8 @@ const FRESH = { messages: [], live: false, request: null, cell: 'asleep' };
 const LIVE = { messages: [], live: true, request: { id: RID, state: 'running', paused: false, outcome: null }, cell: 'ready' };
 
 /** Opens the panel with a fake `chrome`. `world` is what the worker would say (link, state, tabs, what a tab reads as); `window.__calls` records everything the page asks the worker. */
-async function open(world = {}) {
-  const context = await browser.newContext(); const page = await context.newPage();
+async function open(world = {}, viewport = undefined) {
+  const context = await browser.newContext(viewport ? { viewport } : {}); const page = await context.newPage();
   await page.addInitScript(w => {
     window.__world = { link: {}, state: null, tabs: [], read: { read: true, text: 'Rooms from 120 euros', selection: 'two seats', title: 'Hotels in Paris', url: 'https://hotels.example/paris' }, events: [], sendStatus: 202, sendError: 'request_conflict', prompt: null, ...w };
     window.__calls = []; const listeners = [];
@@ -184,7 +184,7 @@ test('Stop asks the worker to stop', async () => {
 test('not paired, switched off or still connecting: the right control is offered and nothing can be sent', async () => {
   const unpaired = await open({ link: { ...LINK, paired: false, enabled: false, connected: false, hasTicket: false } });
   await settle(unpaired.page);
-  assert.equal(await unpaired.page.textContent('#status'), 'Connect this browser to Lumina'); assert.equal(await unpaired.page.isVisible('#pair'), true); assert.equal(await unpaired.page.isDisabled('#send'), true);
+  assert.equal(await unpaired.page.textContent('#status'), 'Not connected'); assert.equal(await unpaired.page.isVisible('#pair'), true); assert.equal(await unpaired.page.isDisabled('#send'), true);
   await unpaired.page.fill('#code', 'ab'); await unpaired.page.press('#code', 'Enter'); await settle(unpaired.page);
   assert.equal(await unpaired.page.isVisible('#pair-error'), true);
   await unpaired.page.fill('#code', 'abcd-2345'); await unpaired.page.press('#code', 'Enter'); await settle(unpaired.page);
@@ -253,4 +253,26 @@ test('other tabs can be ticked as context: their names, addresses and text go al
   const [sent] = await sends(page);
   assert.deepEqual(sent.context.tabs.map(t => [t.title, t.grant ?? null, (t.text ?? '').length > 0]), [['Hotels in Paris', null, false], ['Docs', null, true]]);
   await context.close();
+});
+
+test('the layout holds at every width the side panel can have: nothing wider than the frame, the composer on the bottom edge, long words wrapped', async () => {
+  const longTab = [{ id: 11, title: 'Hotels in Paris - Best prices guaranteed on over 2,000 hotels worldwide, free cancellation on most rooms', url: 'https://hotels.example/paris', active: true, grant: null, restricted: false }, ...TABS.slice(1)];
+  const wordy = { ...LIVE, messages: [{ id: 1, role: 'agent', text: 'x'.repeat(300) + ' https://example.com/' + 'a/'.repeat(80), surface: null, at: 't' }, { id: 2, role: 'customer', text: 'y'.repeat(200), surface: 'panel', at: 't' }] };
+  const scenarios = [
+    ['a running task with unbroken text', { state: wordy, events: [{ sequence: 1, kind: 'tool', payload: { summary: 'z'.repeat(250) } }] }, async () => {}],
+    ['this tab with a very long title', { state: FRESH, tabs: longTab.map((t, i) => (i === 0 ? { ...t, grant: 'g1' } : t)) }, async page => { await page.click('[data-target="this_tab"]'); }],
+    ['another tab with the picker and other tabs open', { state: FRESH, tabs: longTab }, async page => { await page.click('[data-target="tab"]'); await page.click('#more-sum'); }],
+    ['settings open', { state: FRESH }, async page => { await page.click('#gear'); }],
+    ['history open', { state: FRESH, history: [{ id: 'a', title: 'q'.repeat(200), at: 't', current: false }] }, async page => { await page.click('#hist'); }],
+    ['not paired', { link: { ...LINK, paired: false, enabled: false, connected: false, hasTicket: false }, state: null }, async () => {}],
+  ];
+  for (const width of [320, 400, 520]) for (const [name, world, act] of scenarios) {
+    const { page, context } = await open(world, { width, height: 720 });
+    await settle(page); await act(page); await page.waitForTimeout(150);
+    const m = await page.evaluate(() => { const r = document.getElementById('composer').getBoundingClientRect(); return { sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, bottom: Math.round(r.bottom), vh: innerHeight, over: [...document.querySelectorAll('body *')].filter(e => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > document.documentElement.clientWidth + 1 || b.left < -1) && !e.closest('.quick') && !e.closest('svg'); }).map(e => e.id || e.className || e.tagName).slice(0, 3) }; });
+    assert.ok(m.sw <= m.cw, `${name} @${width}: the page is ${m.sw}px wide in a ${m.cw}px frame`);
+    assert.deepEqual(m.over, [], `${name} @${width}: elements outside the frame`);
+    assert.ok(m.bottom <= m.vh && m.bottom >= m.vh - 16, `${name} @${width}: the composer ends at ${m.bottom} of ${m.vh}`);
+    await context.close();
+  }
 });
