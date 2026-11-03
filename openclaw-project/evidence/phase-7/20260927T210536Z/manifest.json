@@ -4,7 +4,7 @@
   "type": "operations-build",
   "generatedAtUtc": "2026-09-27T21:20:00Z",
   "target": {
-    "host": "69.48.206.62 (IONOS VPS, Ubuntu 24.04)",
+    "host": "<OLD_IP> (IONOS VPS, Ubuntu 24.04)",
     "deployment": "/opt/openclaw-production",
     "gateway": "openclaw-production-openclaw-gateway-1",
     "openclawVersion": "2026.9.6 (eb377ac), image openclaw-gateway:2026.9.6-sdk-peer",

@@ -1,6 +1,6 @@
 
 ===== identity =====
-srv2054170
+<vps-host>
 Thu Oct 29 21:09:50 UTC 2026
  21:09:50 up 12 days, 11:58,  2 users,  load average: 0.12, 0.14, 0.12
 PRETTY_NAME="Ubuntu 26.04.1 LTS"
@@ -182,7 +182,7 @@ Status for the jail: sshd
 
 ===== authkeys =====
 bash: line 17: last: command not found
-256 SHA256:X1GGObCxsNfRqMQ3r6fXa6Sl6nMbpEw1/qfUkU1hMJg lumina-prod-2026-10-29 (ED25519)
+256 SHA256:<fingerprint> lumina-prod-2026-10-29 (ED25519)
 
 ===== caddy =====
 {"level":"info","ts":1793308190.7102005,"logger":"http","msg":"enabling automatic HTTP->HTTPS redirects","server_name":"srv0"}
@@ -519,7 +519,7 @@ openclaw-production-postgres-1 38471f330eb8 5432/tcp
     Trigger: Fri 2026-10-30 03:41:41 UTC; 6h left
    Triggers: ● agentai-ops-backup.service
 
-Oct 27 11:46:46 srv2054170 systemd[1]: Started agentai-ops-backup.timer - Nightly AgentAI backup set (after the owner archive at 03:17 UTC).
+Oct 27 11:46:46 <vps-host> systemd[1]: Started agentai-ops-backup.timer - Nightly AgentAI backup set (after the owner archive at 03:17 UTC).
 
 ● openclaw-ops-backup.timer - Daily OpenClaw operator backup at 03:17 UTC
      Loaded: loaded (/etc/systemd/system/openclaw-ops-backup.timer; enabled; preset: enabled)

@@ -6,7 +6,7 @@
   "gate": "BLOCKED",
   "implementation_status": "Revised deliverable complete: extensible connection base and connector manager installed; owner deliberately defers account setup; full Gate6 acceptance unpassed",
   "target": {
-    "host": "69.48.206.62",
+    "host": "<OLD_IP>",
     "deployment": "/opt/openclaw-production"
   },
   "versions": {

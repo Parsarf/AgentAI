@@ -1,6 +1,6 @@
 # Lumina codebase audit (2026-10-29)
 
-Start here. Scope: everything under `/Users/parsa/AgentAI`. Method: seven scoped investigators + two gap-closing investigators + read-only SSH verification of production (Hostinger `srv2054170`).
+Start here. Scope: everything under `/Users/parsa/AgentAI`. Method: seven scoped investigators + two gap-closing investigators + read-only SSH verification of production (Hostinger `<vps-host>`).
 
 | Read this | When |
 |---|---|

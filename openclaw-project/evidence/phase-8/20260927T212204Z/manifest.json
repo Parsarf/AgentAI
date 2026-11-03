@@ -4,7 +4,7 @@
   "type": "dashboard-build",
   "generatedAtUtc": "2026-09-27T21:30:00Z",
   "target": {
-    "host": "69.48.206.62 (IONOS VPS)",
+    "host": "<OLD_IP> (IONOS VPS)",
     "service": "openclaw-dashboard.service (host systemd, hardened)",
     "listener": "127.0.0.1:18795 (loopback only)",
     "stack": "Python 3.12.3 stdlib only — no third-party dependencies",

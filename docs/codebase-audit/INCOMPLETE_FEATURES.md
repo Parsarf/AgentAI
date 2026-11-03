@@ -1,6 +1,6 @@
 # Incomplete and in-progress features
 
-Audit date 2026-10-29, branch `product-phases-6-11`, HEAD `03662de`. Production UNVERIFIED (no SSH/network; repo runbooks target IONOS 69.48.206.62 while the owner's SSH config names a different host, L-01). Feature IDs refer to `FEATURE_INVENTORY.md`.
+Audit date 2026-10-29, branch `product-phases-6-11`, HEAD `03662de`. Production UNVERIFIED (no SSH/network; repo runbooks target IONOS <OLD_IP> while the owner's SSH config names a different host, L-01). Feature IDs refer to `FEATURE_INVENTORY.md`.
 
 For each feature: what exists, what is missing, the decision needed from the owner, and blockers. Owner priority recorded in memory: customer privacy and data-leak prevention over new task limits; items are ordered with that in mind where relevant.
 

@@ -5,7 +5,7 @@
   "updated_at": "2026-09-26T22:38:55.276732+00:00",
   "finished_at": null,
   "gate": "BLOCKED",
-  "target": "IONOS VPS 69.48.206.62 /opt/openclaw-production",
+  "target": "IONOS VPS <OLD_IP> /opt/openclaw-production",
   "versions": {
     "openclaw": "2026.9.6 eb377ac",
     "codex_bundled": "0.155.1",

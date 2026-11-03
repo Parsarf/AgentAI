@@ -93,7 +93,7 @@ See [native dashboard handoff](https://docs.openclaw.ai/cli/dashboard).
 Close the tunnel without stopping the server runtime:
 
 ```sh
-ssh -S openclaw-project/tmp/control-ui-ssh.sock -O exit root@69.48.206.62
+ssh -S openclaw-project/tmp/control-ui-ssh.sock -O exit root@<OLD_IP>
 ```
 
 ### Fresh deployment bundle
@@ -424,7 +424,7 @@ to finish sign-in; lightweight identity and scope readback are still necessary.
    shares host networking solely for its loopback OAuth callback; normal agent
    connector execution uses the default isolated Docker network.
 3. From the browser computer, forward the callback port to the VPS:
-   `ssh -N -L 8000:127.0.0.1:8000 <ssh-user>@69.48.206.62`.
+   `ssh -N -L 8000:127.0.0.1:8000 <ssh-user>@<OLD_IP>`.
    Keep the trusted operator auth process alive while completing consent.
    Check the printed callback port; if the connector selects another port,
    forward that exact port instead. Do not paste callback codes/URLs into chat.
@@ -554,7 +554,7 @@ and unrun acceptance. Existing enabled jobs may still incur unrelated spend.
   Python, hardened systemd unit (200 MB memory cap). Source:
   `openclaw-project/dashboard/app.py`, deployed to
   `/opt/openclaw-production/dashboard/`.
-- Owner access: SSH tunnel `ssh -L 18795:127.0.0.1:18795 <user>@69.48.206.62`,
+- Owner access: SSH tunnel `ssh -L 18795:127.0.0.1:18795 <user>@<OLD_IP>`,
   then http://127.0.0.1:18795. The app password is the file
   `/opt/openclaw-production/dashboard/owner-secret` (0600) — read it over
   SSH; it is never displayed by the app.

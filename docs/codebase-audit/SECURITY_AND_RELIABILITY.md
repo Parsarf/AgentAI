@@ -1,6 +1,6 @@
 # Security and reliability risks
 
-> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `179.236.71.203`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
+> **UPDATE 2026-10-29:** production was verified over SSH after this document was written. Statements below that production is "unverified" are superseded for the items in [PRODUCTION_VERIFICATION_2026-10-29.md](PRODUCTION_VERIFICATION_2026-10-29.md) (live host is Hostinger `<PROD_IP>`; IONOS is dead; IS-002 and the tool-origin v2 drift confirmed; IS-004 resolved; M-01 latent, not observed).
 
 Audit date 2026-10-29. Branch `product-phases-6-11`, HEAD `03662de` plus uncommitted tool_origin/tool_relay/cell_bridge/cell_config work (IN PROGRESS, not judged). **Production is UNVERIFIED**: SSH attempts failed (L-01..L-03), so every item below is derived from repository code and config. No secret values are quoted; `ssk-key` contents were never read (only its 40-byte PEM header was seen by the infra investigator). Severity totals are approximate. Master and source IDs match `TECHNICAL_DEBT.md`.
 
@@ -35,7 +35,7 @@ Owner priority (memory: privacy over task guardrails): customer privacy and data
 
 | ID | Risk | Sev | Conf | Evidence pointer | Mitigation |
 |---|---|---|---|---|---|
-| L-01 | Deployment target drift: repo runbooks name IONOS `69.48.206.62` (timed out 2026-10-29); owner `~/.ssh/config` `lumina` host is Hostinger `179.236.71.203`. Either production moved or the runbooks target a dead server; the password-SSH finding (IS-002) must be re-verified on the real host. | High | HIGH | 17 tracked files; `~/.ssh/config` | Phase 2 VPS checklist; then update docs. |
+| L-01 | Deployment target drift: repo runbooks name IONOS `<OLD_IP>` (timed out 2026-10-29); owner `~/.ssh/config` `lumina` host is Hostinger `<PROD_IP>`. Either production moved or the runbooks target a dead server; the password-SSH finding (IS-002) must be re-verified on the real host. | High | HIGH | 17 tracked files; `~/.ssh/config` | Phase 2 VPS checklist; then update docs. |
 | IS-002 | Operator access is root over SSH with a password kept in `openclaw-project/.env`; docs list key login as follow-up; `privacy.md` says key-only; root reads all tenant data. | High | MEDIUM | `bin/ssh-server:21-24`; `OPERATIONS.md:97` | On the real host: `sshd -T`; adopt key login, then disable password and root-password login; keep console access. |
 | IS-013 | Root units (`agentai-browse`, `cell-bridge`, `supervisor-native`, `ops-*`) lack `ProtectSystem/ProtectHome/PrivateTmp/PrivateDevices`; browse parses customer web content as root with `CAP_DAC_OVERRIDE`. | Medium | HIGH | unit files | Add sandbox directives on a canary; review capability need. |
 | IS-012 | Owner gateway mounts `docker.sock` (by design); `cap_drop` only NET_RAW/NET_ADMIN; postgres lacks `cap_drop`. | Medium | HIGH | `docker-compose.production.yml:55-56` | Preserve; optional `cap_drop: ALL` + `read_only` after testing. |

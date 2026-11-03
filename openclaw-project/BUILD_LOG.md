@@ -1089,7 +1089,7 @@ template was validated against OpenClaw 2026.9.6 before removal.
 
 - Provision and access the always-on server, then perform the deployment and
   restart/recovery acceptance checks there.
-- The owner supplied an existing IONOS Ubuntu 24.04 VPS at `69.48.206.62`
+- The owner supplied an existing IONOS Ubuntu 24.04 VPS at `<OLD_IP>`
   (2 vCPU, 4 GiB RAM, 120 GiB disk). SSH port 22 responds and its ED25519
   host key matches this Mac's recorded key. Password-only SSH rejected the
   initial password displayed by IONOS; the same login failed at the IONOS
@@ -1540,9 +1540,9 @@ Django 67. Nothing installed on the server; the server's research toggle still r
   host a customer cell; the 16 GiB / 4 vCPU proposal (or equivalent) is required for Phase 4 execution.
 - `git push` of branch product-phases-6-11 was refused by the permission classifier; nothing pushed.
 
-## 2026-10-11 — Server migration to 179.236.71.203 (4 vCPU / 15 GiB / 193 GB, Ubuntu 26.04)
+## 2026-10-11 — Server migration to <PROD_IP> (4 vCPU / 15 GiB / 193 GB, Ubuntu 26.04)
 
-- Full verified backup of the old server (69.48.206.62) taken first and kept outside the repo
+- Full verified backup of the old server (<OLD_IP>) taken first and kept outside the repo
   (`~/openclaw-migration-backup-20261011/`; contains secrets, never commit).
 - Restored: /opt/openclaw-production (state, workspace, secrets, dashboard, feature switches),
   /opt/agentai-*, LiteLLM Postgres (pg_dumpall), customer account SQLite, Caddy + systemd units.
