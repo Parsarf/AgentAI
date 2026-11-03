@@ -4,7 +4,7 @@
  "contact_email": "raouparsa@gmail.com",
  "policy_file": "deploy/vercel/public/privacy.html",
  "policy_url": "https://getlumina.pro/privacy",
- "policy_updated": "2026-11-01",
+ "policy_updated": "2026-11-02",
  "derived": {
   "retention": {
    "browse_pictures_and_trace_hours": 24.0,
@@ -29,12 +29,17 @@
   },
   "extension": {
    "permissions": [
+    "contextMenus",
     "debugger",
+    "scripting",
     "sidePanel",
     "storage",
-    "tabGroups"
+    "tabGroups",
+    "tabs"
    ],
-   "host_permissions": [],
+   "host_permissions": [
+    "<all_urls>"
+   ],
    "page_may_message_it": [
     "https://getlumina.pro/*"
    ],
@@ -46,7 +51,9 @@
     "enabled",
     "pairCode",
     "panelApi",
-    "token"
+    "prompts",
+    "token",
+    "ui"
    ],
    "page_text_limit_chars": 6000,
    "max_controls_listed": 80,
@@ -187,7 +194,7 @@
   "tabGroups",
   "storage",
   "wss://backend.getlumina.pro",
-  "1 November 2026",
+  "2 November 2026",
   "6,000",
   "80 controls",
   "until you ask us to delete",
@@ -208,7 +215,16 @@
   "side chat",
   "long-term memory",
   "Settings, Memory",
-  "Our memory service"
+  "Our memory service",
+  "tabs",
+  "scripting",
+  "contextMenus",
+  "Allow Lumina to use this tab",
+  "optional permission to read all sites",
+  "new session",
+  "Browser extension",
+  "saved prompts",
+  "lets go of"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -274,6 +290,11 @@
    "date": "2026-11-01",
    "by": "long-term memory (Hindsight), written by Claude Code for the owner to review; not yet published",
    "note": "New table longterm_memories: the plain text of short notes the assistant saved for a customer (preference/fact, one sentence, secrets refused), per account, visible and deletable by the customer, never restored from backups (LIVE in ops/restore.py). Notes are also indexed in a self-hosted Hindsight server (one bank per account, bank id = keyed hash computed on the server, never chosen by the assistant), configured with retain_extraction_mode=chunks and observations off, so it stores each note verbatim, calls no language model on notes and derives no text from them; embeddings and reranking must run locally on the same server (deploy/LONG_TERM_MEMORY.md). No new third party receives notes. Policy updated: short version, collect list, recipients (our memory service, same server), retention row, choices. Feature stays off (long-term-memory.json) until this policy is published and Hindsight is deployed per deploy/LONG_TERM_MEMORY.md."
+  },
+  {
+   "date": "2026-11-02",
+   "by": "owner goal: the extension becomes a standalone side chat like other assistants' extensions",
+   "note": "New permissions tabs, scripting, contextMenus and an OPTIONAL all-sites permission asked for only inside the side chat. New behaviours the policy now states: the side chat opens on any tab and every open is a new session (a new chat titled \"Browser extension\", the assistant woken); the extension signs in to /v1/panel/session with its own device token; Lumina can work in a tab of the customer's own Chrome only after they press Allow on it (attached while a task runs, released after, never closed); tab names/addresses are sent only with a message that involves a tab; selected text (4,000) and page text (20,000) are sent only after the customer allows reading pages and are kept with the chat message; saved prompts and panel settings stay on the computer; the popup is gone (controls moved into the side chat). Checked against code: derive.py output, panel.py clean_context, browse/extension tests. Publish the page after merge."
   }
  ],
  "assistant_recipients": {

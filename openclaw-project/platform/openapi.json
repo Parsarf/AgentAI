@@ -5120,7 +5120,7 @@
   },
   "/v1/panel/state": {
    "get": {
-    "summary": "Side panel in the customer's own Chrome: the conversation's last messages and whether its run is going. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
+    "summary": "Side panel in the customer's own Chrome: the conversation's last messages whether its run is going, and whether the customer's assistant is ready, waking or asleep. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
     "parameters": [],
     "responses": {
      "200": {
@@ -5206,7 +5206,7 @@
   },
   "/v1/panel/send": {
    "post": {
-    "summary": "Side panel: add a message to the run that is going on in this conversation (steers it; never starts a new task). Labelled as sent from the panel. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
+    "summary": "Side panel: send a message. Starts a task in this conversation when none is running (and wakes the customer's assistant if it is asleep); when a run is going it is added to it as a steer. Labelled as sent from the panel. Authenticated by a short-lived panel ticket (Authorization: Panel <ticket>), not by the session cookie; CORS allows only the configured extension origins.",
     "parameters": [],
     "requestBody": {
      "content": {
@@ -5221,6 +5221,60 @@
          "key": {
           "type": "string",
           "description": "Idempotency key, 8 to 64 letters, digits, - or _"
+         },
+         "mode": {
+          "type": "string",
+          "enum": [
+           "auto",
+           "browse",
+           "text"
+          ],
+          "description": "auto answers (it may still use tools), browse uses the browser, text answers in plain text. Default auto."
+         },
+         "context": {
+          "type": "object",
+          "description": "What the extension saw in the customer's browser, ignored when the message only steers a running task: where the work should happen, up to eight tabs (title, address and a grant name for a tab the customer allowed), the selected text (4,000 characters) and the page text (20,000). Quoted to the assistant as untrusted data.",
+          "properties": {
+           "target": {
+            "type": "string",
+            "enum": [
+             "new_tab",
+             "this_tab",
+             "tab"
+            ]
+           },
+           "tabs": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+             "type": "object",
+             "properties": {
+              "title": {
+               "type": "string",
+               "maxLength": 200
+              },
+              "url": {
+               "type": "string",
+               "maxLength": 2000
+              },
+              "grant": {
+               "type": "string",
+               "pattern": "^[a-z0-9]{1,24}$"
+              }
+             },
+             "additionalProperties": false
+            }
+           },
+           "selection": {
+            "type": "string",
+            "maxLength": 4000
+           },
+           "page": {
+            "type": "string",
+            "maxLength": 20000
+           }
+          },
+          "additionalProperties": false
          }
         },
         "required": [
@@ -5237,7 +5291,7 @@
       "description": "Successful scoped result"
      },
      "202": {
-      "description": "Message added"
+      "description": "Message added or task started (started tells which)"
      },
      "400": {
       "description": "Invalid input"
@@ -5255,7 +5309,7 @@
       "description": "Feature off, or not this ticket's conversation"
      },
      "409": {
-      "description": "No active run, the computer is not connected, or the message conflicts"
+      "description": "The computer is not connected, or the message conflicts"
      },
      "429": {
       "description": "Rate limited"
@@ -5390,6 +5444,54 @@
      },
      "429": {
       "description": "Rate limited"
+     }
+    }
+   }
+  },
+  "/v1/panel/session": {
+   "post": {
+    "summary": "Side panel: start a new session from the extension's own sign-in (Authorization: Device <device token>, no cookie, no panel ticket). Creates a NEW conversation (or, with `conversation`, renews the ticket for one made earlier), wakes the customer's assistant, switches on use of their own browser, and returns the ticket the other panel calls use. CORS allows only the configured extension origins.",
+    "parameters": [],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "conversation": {
+          "type": "string",
+          "description": "Renew the ticket for this conversation instead of starting a new one"
+         }
+        },
+        "additionalProperties": false
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "ticket, conversation, expires_in and cell (ready, waking, asleep or unknown)"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Unknown, revoked or malformed device token"
+     },
+     "403": {
+      "description": "Origin is not one of the Lumina extensions"
+     },
+     "404": {
+      "description": "Feature off, or not this customer's conversation"
+     },
+     "409": {
+      "description": "The paired computer is not connected"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "The browser service is not reachable"
      }
     }
    }

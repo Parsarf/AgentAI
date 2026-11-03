@@ -65,3 +65,18 @@ bound to one account, the person it runs for, one conversation and one connected
 * **Residual risk:** a ticket stolen from the extension's memory within its 90 seconds can read that conversation and steer its running task; it cannot reach other conversations, start tasks, or
   work after the computer disconnects. Someone controlling the browser itself controls the panel while a run is going. Page content can still try to steer the agent (prompt injection) exactly as before.
 
+### Standalone sessions and the customer's own tabs (extension 0.3.0)
+
+* **Another way to get a ticket.** `POST /v1/panel/session` trades the extension's **device token** (`Authorization: Device`, sent over HTTPS to our own host only) for a ticket on a NEW conversation. The web app never
+  stores or checks device tokens: it passes the token to the browse service (`device_auth`, over the private socket) which alone holds their hashes, and gets back the account, the device, and whether that computer is
+  connected. The ticket is minted only if the exact extension origin called, the feature is on, the device is connected, and the account has an active customer; 40 sessions per 10 minutes per account. A leaked
+  token already lets its holder act as the computer (it is the WebSocket credential too); this adds no new power, and revoking the device in Settings kills both.
+* **The extension turns on "use my own browser" for the customer** when it starts a session (opening the panel is the customer using the extension). Switching it off again in the web chat ends panel writes at once.
+* **Working in a tab the customer owns.** A tab becomes usable only after the customer presses *Allow* for it in the panel (extension-side grant, a short name like `g1`; the platform never learns tab numbers).
+  The browse job asks to `attach` to a grant; DevTools attaches then (Chrome shows its bar) and detaches when the job ends; the tab is never closed and never resized. The address rules (no private or internal
+  addresses, on every request) apply to it as to Lumina's own tabs; a tab that has moved to a blocked address is released at once. The hosted-browser engines refuse a job that names a tab. Canceling the bar stops the session.
+* **Page text is untrusted.** Selected and page text the panel sends is cut (4,000 / 20,000 characters), quoted to the assistant as data, and scrubbed of sentences aimed at the AI (`neutralize`), like text the browser reads.
+  A page in an allowed tab can still try to steer the agent working in it: the same defences as any browse job apply (address rules, approval before payment/sign-in hand-offs, sensitive-action stops).
+* **What the extension may read without all-sites permission:** tab titles and addresses (`tabs`). Selection and page text need the optional all-sites permission, which Chrome asks the customer for from a button in the panel.
+* **Not reachable from the web page:** the Lumina web page can still only hand over a pairing code. The panel and its worker messages accept only the extension's own pages.
+
