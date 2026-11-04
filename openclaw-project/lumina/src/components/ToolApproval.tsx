@@ -48,12 +48,12 @@ export default function ToolApproval({ active, onDecided }: { active: boolean; o
       return <section className="approval" key={call.id} role="group" aria-label={`Permission to use ${words(call.tool_name)}`}>
         <span className="approval-mark" aria-hidden="true" />
         <div className="approval-body">
-          <p className="approval-title">Allow <strong>{words(call.tool_name)}</strong>{service && <> on <strong>{service.name}</strong></>}?</p>
+          <p className="approval-title">Lumina wants to use <strong>{words(call.tool_name)}</strong>{service && <> on <strong>{service.name}</strong></>}</p>
           {line && <p className="approval-line" title={line}>{line}</p>}
           <details className="approval-more"><summary>See the exact request</summary><pre tabIndex={0}>{JSON.stringify(call.arguments, null, 2)}</pre><p>{service?.recipient ?? 'Connected service'}. Allows this one request, for ten minutes.</p></details>
         </div>
         <div className="approval-actions">
-          <button className="btn tertiary small" disabled={!!busy} onClick={() => void decide(call, false)}>Not now</button>
+          <button className="btn tertiary small" disabled={!!busy} onClick={() => void decide(call, false)}>Cancel</button>
           <button className="btn primary small" disabled={!!busy} onClick={() => void decide(call, true)}>{busy === call.id ? 'Allowing…' : 'Allow'}</button>
         </div>
       </section>;
