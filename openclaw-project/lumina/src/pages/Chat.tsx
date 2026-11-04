@@ -20,6 +20,7 @@ import type { Block } from '../lib/genui/schema';
 import { isActive } from '../lib/tasks';
 import { useData } from '../state/data';
 import Orb from '../components/Orb';
+import ToolApproval from '../components/ToolApproval';
 import { Emojified } from '../components/Emoji';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
@@ -91,6 +92,11 @@ export default function Chat() {
   const current = chats.find(c => c.id === id) ?? detail;
 
   const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text', ui: getAnswerStyle() }); } finally { reload(); } };
+  /** The approval itself never runs the call: after the customer's click, tell the assistant the outcome so it carries on (or stops). */
+  const decided = async (approved: boolean, tool: string) => {
+    const name = tool.replace(/[_-]+/g, ' ').trim() || 'that tool';
+    await askAgain(approved ? `I approved the request to use ${name}. Please continue.` : `I declined the request to use ${name}. Do not run it; carry on without it.`);
+  };
   const lastAgent = [...msgs].reverse().find(m => m.provenance === 'agent');
   const fresh = !id || (loaded && !msgs.length && !err);          // nothing said yet: the composer floats in the middle, then settles at the bottom
   const sent = (r: any) => {
@@ -127,6 +133,7 @@ export default function Chat() {
             </div>))}
           {drafting && !tasks.some(t => isActive(t)) && <div className="agent-thinking" role="status" data-orb-state="weaving"><Orb state="weaving" size={48} /><span>Planning…</span></div>}
           {blocks.filter(b => !msgs.some(m => m.id === b.anchor_message_id)).map(b => <BlockView key={b.id} block={b} onChanged={reload} bridge={bridge} />)}
+          {id && app?.features.mcp && <ToolApproval active={working} onDecided={decided} />}
           <div ref={bottom} />
         </div>
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }}>Jump to latest ↓</button>}
