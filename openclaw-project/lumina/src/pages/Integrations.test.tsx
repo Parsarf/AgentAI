@@ -14,7 +14,7 @@ describe('Built-in integrations', () => {
     const { container } = render(<Integrations />);
     await screen.findByRole('button', { name: 'Gmail, not connected' });
     expect(screen.getByRole('button', { name: 'GitHub, not connected' })).toBeTruthy();
-    expect(container.querySelector('.dot.success')).toBeNull();
+    expect(container.querySelector('.status-dot.success')).toBeNull();
   });
   it('marks only the services that are connected, and says who they are connected as', async () => {
     vi.mocked(api).mockResolvedValue({ connections: [row('gmail', 'Gmail', 'connected', 'me@example.com'), row('github', 'GitHub', 'not_connected')] } as any);

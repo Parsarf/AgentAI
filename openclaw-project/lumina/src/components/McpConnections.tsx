@@ -66,19 +66,19 @@ function ConnectionSheet({ item, busy, act, onClose }: { item: Connection; busy:
   const state = busy ? 'connecting' : item.state;
   const title = <div className="sheet-id"><ServiceIcon name={item.name} url={item.url} size="lg" />
     <div>{renaming
-      ? <form className="rename" onSubmit={e => { e.preventDefault(); setRenaming(false); void act(item.id, 'update', { name }); }}><label className="sr" htmlFor={`mcp-name-${item.id}`}>Name</label><input className="input" id={`mcp-name-${item.id}`} value={name} maxLength={80} autoFocus onChange={e => setName(e.target.value)} /><button className="btn small primary" disabled={busy || !name.trim()}>Save</button></form>
+      ? <form className="name-edit" onSubmit={e => { e.preventDefault(); setRenaming(false); void act(item.id, 'update', { name }); }}><label className="sr" htmlFor={`mcp-name-${item.id}`}>Name</label><input className="input" id={`mcp-name-${item.id}`} value={name} maxLength={80} autoFocus onChange={e => setName(e.target.value)} /><button className="btn small primary" disabled={busy || !name.trim()}>Save</button></form>
       : <h2>{item.name}<button type="button" className="iconbtn small" aria-label="Rename" onClick={() => setRenaming(true)}><Edit /></button></h2>}
       <p className="host">{item.recipient}</p></div></div>;
   return <Sheet title={title} onClose={onClose} footer={<>
     <p className="faint">What you ask Lumina to do with these tools is shared with {item.recipient}.</p>
-    {confirm ? <div className="row"><span>Disconnect {item.name}?</span><button className="btn small danger" disabled={busy} onClick={() => void act(item.id, 'disconnect').then(onClose)}>Yes, disconnect</button><button className="btn small" onClick={() => setConfirm(false)}>Keep</button></div>
+    {confirm ? <div className="int-row"><span>Disconnect {item.name}?</span><button className="btn small danger" disabled={busy} onClick={() => void act(item.id, 'disconnect').then(onClose)}>Yes, disconnect</button><button className="btn small" onClick={() => setConfirm(false)}>Keep</button></div>
       : <button className="btn small tertiary danger-text" disabled={busy} onClick={() => setConfirm(true)}>Disconnect</button>}</>}>
-    <div className="status-row"><span className={`badge ${TONE[state] ?? 'alt'}`} role="status"><i className="dot" />{STATE[state] ?? 'Not reachable'}</span>
+    <div className="status-row"><span className={`badge ${TONE[state] ?? 'alt'}`} role="status"><i className="status-dot" />{STATE[state] ?? 'Not reachable'}</span>
       <Toggle label={`Turn ${item.name} on`} checked={item.enabled} disabled={busy} onChange={enabled => void act(item.id, 'update', { enabled })} /></div>
     {item.error_code && <div className="notice warning" role="status"><p>{ERRORS[item.error_code] ?? 'Test or reconnect this service to restore access.'}</p></div>}
-    <div className="row"><button className="btn small" disabled={busy || !item.enabled} onClick={() => void act(item.id, 'test')}>Check connection</button>
+    <div className="int-row"><button className="btn small" disabled={busy || !item.enabled} onClick={() => void act(item.id, 'test')}>Check connection</button>
       <button className="btn small" disabled={busy} onClick={() => { if (item.auth_method === 'bearer') setReplacing(v => !v); else void act(item.id, 'reconnect'); }}>{item.auth_method === 'bearer' ? 'New token' : 'Sign in again'}</button></div>
-    {replacing && <form className="row" onSubmit={e => { e.preventDefault(); const next = token; setToken(''); setReplacing(false); void act(item.id, 'reconnect', { token: next }); }} autoComplete="off">
+    {replacing && <form className="int-row" onSubmit={e => { e.preventDefault(); const next = token; setToken(''); setReplacing(false); void act(item.id, 'reconnect', { token: next }); }} autoComplete="off">
       <label className="sr" htmlFor={`mcp-token-${item.id}`}>Replacement bearer token</label><input className="input" id={`mcp-token-${item.id}`} type="password" autoComplete="new-password" placeholder="New API token" value={token} onChange={e => setToken(e.target.value)} maxLength={4096} />
       <button className="btn small primary" disabled={!token || busy}>Save</button></form>}
     {item.tools.length > 0 && <section aria-labelledby={`tools-${item.id}`}>
@@ -109,7 +109,7 @@ function AddSheet({ data, busy, onClose, onAdd }: { data: Listing | null; busy: 
       <div className="seg" role="radiogroup" aria-labelledby="mcp-auth-label">{([['oauth', 'Sign in'], ['bearer', 'API token'], ['none', 'Nothing']] as const).map(([id, label]) =>
         <button key={id} type="button" role="radio" aria-checked={auth === id} className="seg-item" onClick={() => { setAuth(id); setToken(''); }}>{label}</button>)}</div>
       {auth === 'bearer' && <><label htmlFor="mcp-token">API token</label><input className="input" id="mcp-token" type="password" autoComplete="new-password" value={token} onChange={e => setToken(e.target.value)} required maxLength={4096} /><p className="faint">Stored encrypted. Never shown again.</p></>}
-      <div className="row"><button className="btn primary" disabled={busy}>{busy ? 'Connecting…' : 'Connect'}</button><button className="btn" type="button" onClick={() => setMode('pick')}>Back</button></div>
+      <div className="int-row"><button className="btn primary" disabled={busy}>{busy ? 'Connecting…' : 'Connect'}</button><button className="btn" type="button" onClick={() => setMode('pick')}>Back</button></div>
     </form></Sheet>;
 }
 
@@ -152,19 +152,19 @@ export default function McpConnections({ adding, onAdding }: { adding?: boolean;
     <div className="sec-head"><h2 id="mcp-heading">MCP connections</h2>{connected > 0 && <span className="badge success">{connected} connected</span>}</div>
     {error && <div className="notice danger" role="alert"><p>{error}</p><button className="btn small" onClick={() => { setError(''); void load(); }}>Refresh</button></div>}
     {notice && <div className="notice success" role="status"><p>{notice}</p></div>}
-    {data?.pending_calls.length ? <div className="waiting" aria-label="Waiting for you">{data.pending_calls.map(call => {
+    {data?.pending_calls.length ? <div className="wait-list" aria-label="Waiting for you">{data.pending_calls.map(call => {
       const svc = data.connections.find(c => c.id === call.connection_id);
       return <article className="wait-card" key={call.id}>
         <ServiceIcon name={svc?.name ?? 'Service'} url={svc?.url} />
         <div className="wait-text"><b>{humanize(call.tool_name)}</b><small>{svc ? `on ${svc.name}` : 'Disconnected service'} · waiting for you</small>{summary(call.arguments) && <small className="wait-sum">{summary(call.arguments)}</small>}</div>
         {call.state === 'uncertain' ? <small className="err">Outcome unknown. Check {svc?.name ?? 'the service'}.</small>
-          : <div className="row"><button className="btn small primary" disabled={!!busy} onClick={() => void decide(call.id, true)}>Approve</button><button className="btn small" disabled={!!busy} onClick={() => void decide(call.id, false)}>Decline</button></div>}
+          : <div className="int-row"><button className="btn small primary" disabled={!!busy} onClick={() => void decide(call.id, true)}>Approve</button><button className="btn small" disabled={!!busy} onClick={() => void decide(call.id, false)}>Decline</button></div>}
         <details className="wait-args"><summary>All details</summary><pre tabIndex={0}>{JSON.stringify(call.arguments, null, 2)}</pre></details>
       </article>; })}</div> : null}
     {!data && !error && <p role="status" className="faint">Loading…</p>}
     {data && <div className="tiles">
       {data.connections.map(c => <button key={c.id} type="button" className="tile" aria-label={`${c.name}, ${STATE[c.enabled ? c.state : 'disabled'] ?? 'Not reachable'}`} onClick={() => setOpen(c.id)}>
-        <span className="tile-art"><ServiceIcon name={c.name} url={c.url} /><i className={`dot ${c.enabled ? TONE[c.state] ?? 'idle' : 'idle'}`} /></span><span className="tile-label">{c.name}</span></button>)}
+        <span className="tile-art"><ServiceIcon name={c.name} url={c.url} /><i className={`status-dot ${c.enabled ? TONE[c.state] ?? 'idle' : 'idle'}`} /></span><span className="tile-label">{c.name}</span></button>)}
       <button type="button" className="tile add" onClick={() => setAdding(true)}><span className="tile-art"><span className="svc add"><Plus /></span></span><span className="tile-label">Custom server</span></button>
     </div>}
     {current && <ConnectionSheet key={current.id} item={current} busy={busy === current.id} act={act} onClose={() => setOpen(null)} />}
