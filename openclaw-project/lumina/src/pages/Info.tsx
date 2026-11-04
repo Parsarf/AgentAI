@@ -2,13 +2,6 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { useData } from '../state/data';
-import Toggle from '../components/ui/Toggle';
-import { useSettings } from '../state/settings';
-import { STYLES, STYLE_INFO, useAnswerStyle } from '../lib/answerStyle';
-import Credits from '../components/Credits';
-import YourBrowser from '../components/YourBrowser';
-import OwnModel from '../components/OwnModel';
-import MemoryNotes from '../components/MemoryNotes';
 import McpConnections from '../components/McpConnections';
 import ServiceIcon from '../components/ServiceIcon';
 
@@ -46,28 +39,4 @@ export function Integrations() {
     </div>);
 }
 
-export function Settings() {
-  const { app, signOut } = useData(); const s = useSettings(); const [style, setStyle] = useAnswerStyle();
-  const [usage, setUsage] = useState<any>(null);
-  useEffect(() => { api('GET', '/v1/costs').then(setUsage).catch(() => setUsage(null)); }, []);
-  const usd = (m?: number) => (m == null ? '—' : `$${(m / 1e6).toFixed(2)}`);
-  return (
-    <div className="center"><h1 className="page-title">Settings</h1>
-      <section className="panel card" style={{ marginBottom: 14 }}><h2>Appearance</h2>
-        <div className="toggle-list"><Toggle label="Reduce motion" hint="Stops the planet and animations" checked={s.reducedMotion} onChange={s.setReducedMotion} />
-          <Toggle label="Compact layout" hint="Tighter spacing throughout" checked={s.compact} onChange={s.setCompact} /></div></section>
-      <section className="panel card" style={{ marginBottom: 14 }} aria-labelledby="answer-style-h"><h2 id="answer-style-h">Answer style</h2>
-        <p className="muted">How much interface Lumina may put in an answer. Longer instructions cost a little more on every message.</p>
-        <div className="style-choices" role="radiogroup" aria-labelledby="answer-style-h">{STYLES.map(k => <label key={k} className={`style-choice${style === k ? ' on' : ''}`}><input type="radio" name="answer-style" value={k} checked={style === k} onChange={() => setStyle(k)} /><span>{STYLE_INFO[k].label}</span></label>)}</div>
-        <p className="muted" aria-live="polite">{STYLE_INFO[style].hint}</p>
-        <p className="muted">Ultra (generated code in a sandbox) is planned and not available.</p></section>
-      <section className="panel card" style={{ marginBottom: 14 }}><h2>Usage this period</h2>
-        {usage ? <p className="muted" style={{ marginTop: 10 }}>Used {usd(usage.reported_microusd)} · held {usd(usage.held_microusd)} · remaining {usd(usage.period_remaining_microusd)} of {usd(usage.period_limit_microusd)}</p> : <p className="faint" style={{ marginTop: 10 }}>Usage is not available right now.</p>}
-        <p className="faint" style={{ marginTop: 6 }}>Plan access: {app?.features.billing_mode === 'open' ? 'free access' : app?.features.billing_mode === 'paid_required' ? 'subscription' : 'invitation'}</p></section>
-      <YourBrowser />
-      <OwnModel />
-      <MemoryNotes />
-      <Credits />
-      <section className="panel card"><h2>Account</h2><p className="muted" style={{ marginTop: 10 }}>{app?.user.email}</p>
-        <p style={{ marginTop: 12 }}><button className="btn" onClick={signOut}>Sign out</button> <a className="btn" href="/account/">Classic view</a></p></section></div>);
-}
+export { Settings } from './Settings';

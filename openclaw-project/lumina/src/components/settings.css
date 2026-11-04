@@ -1,0 +1,21 @@
+/* Settings: a few cards per tab instead of one long scroll. Tokens only. */
+.tabs { display: flex; gap: var(--space-1); margin: var(--space-4) 8px var(--space-5); padding-bottom: 0; border-bottom: 1px solid var(--border-subtle); overflow-x: auto; }
+.tab { position: relative; min-height: var(--control-md); padding: 0 var(--space-4); background: none; border: 0; color: var(--text-secondary); font: inherit; font-size: var(--text-base); cursor: pointer; white-space: nowrap; border-radius: var(--radius-sm) var(--radius-sm) 0 0; transition: color var(--dur) var(--ease); }
+.tab:hover { color: var(--text-primary); }
+.tab[aria-selected='true'] { color: var(--text-primary); font-weight: var(--weight-medium); }
+.tab[aria-selected='true']::after { content: ''; position: absolute; left: var(--space-3); right: var(--space-3); bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+.tab:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.set-panel { display: grid; gap: var(--space-4); padding-inline: 8px; max-width: 720px; }
+.set-card { display: grid; gap: var(--space-3); align-content: start; }
+.set-card h2 { font-size: var(--text-lg); }
+.set-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.set-big { font-size: var(--text-3xl); font-weight: var(--weight-semibold); letter-spacing: -.03em; line-height: var(--leading-tight); font-variant-numeric: tabular-nums; }
+.set-big span { font-size: var(--text-md); font-weight: var(--weight-regular); letter-spacing: 0; color: var(--text-secondary); }
+.meter { height: 8px; border-radius: var(--radius-pill); background: var(--fill-pressed); overflow: hidden; }
+.meter > i { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: var(--accent); transition: width var(--dur-slow) var(--ease); }
+.set-facts { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: 0; }
+.set-facts dt { color: var(--text-muted); font-size: var(--text-xs); } .set-facts dd { margin: 2px 0 0; font-size: var(--text-md); font-variant-numeric: tabular-nums; }
+.seg.wide { justify-self: start; } .seg.wide .seg-item { min-height: 34px; padding: 0 var(--space-4); }
+.set-id { display: flex; align-items: center; gap: var(--space-3); min-width: 0; } .set-id b { overflow-wrap: anywhere; }
+.avatar { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--weight-semibold); font-size: var(--text-md); }
+@media (max-width: 640px) { .set-big { font-size: var(--text-2xl); } }
