@@ -96,7 +96,7 @@ export function cellLine(cell, live = false) {
 /** The panel's status. link: what the service worker says ({ enabled, connected, paired, hasTicket }); state: what the server last said; error: the last code; sending: a send is under way. */
 export function view({ link = {}, state = null, error = null, sending = false } = {}) {
   const none = { canSend: false, canStop: false };
-  if (!link.paired) return { tone: 'off', headline: 'Connect this browser to Lumina', detail: 'Enter the pairing code from Lumina, Settings, Your browser.', needsPair: true, ...none };
+  if (!link.paired) return { tone: 'off', headline: 'Not connected', detail: 'Enter the pairing code from Lumina, Settings, Your browser.', needsPair: true, ...none };
   if (!link.enabled) return { tone: 'off', headline: 'Lumina is off in this browser', detail: 'Turn it on to chat and let Lumina work here.', canTurnOn: true, ...none };
   if (!link.connected) return { tone: 'wait', headline: 'Connecting to Lumina…', detail: '', ...none };
   if (error === 'device') return { tone: 'off', headline: 'This browser needs pairing again', detail: ERROR_TEXT.device, needsPair: true, ...none };

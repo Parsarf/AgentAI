@@ -43,7 +43,7 @@ test('every import in the shipped scripts resolves to a file inside the zip, and
   }
   for (const page of ['panel.html']) {
     const html = file(zip, page).toString();
-    for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) assert.ok(names.has(m[1]), `${page} uses ${m[1]}`);
+    for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) if (!m[1].startsWith('#')) assert.ok(names.has(m[1]), `${page} uses ${m[1]}`);      // #i-send and friends are icons in the page's own sprite
   }
 });
 
