@@ -235,7 +235,8 @@ class ConnectionService:
         for t in json.loads(row['tools_json']):
             choice = choices.get(t['name'])
             tools.append({'name': t['name'], 'description': t.get('description', ''), 'inputSchema': t['inputSchema'], 'unusable': t.get('unusable'),
-                          'enabled': bool(not t.get('unusable') and choice and choice['enabled'] and choice['schema_hash'] == schema_digest(t))})
+                          'enabled': bool(not t.get('unusable') and choice and choice['enabled'] and choice['schema_hash'] == schema_digest(t)),
+                          'auto_approve': bool(not t.get('unusable') and choice and choice['enabled'] and choice['auto_approve'] and choice['schema_hash'] == schema_digest(t))})
         return {'id': row['id'], 'name': row['name'], 'url': row['url'], 'recipient': urlsplit(row['url']).hostname,
                 'auth_method': row['auth_method'], 'enabled': bool(row['enabled']), 'state': row['state'] if row['enabled'] else 'disabled',
                 'error_code': row['error_code'], 'checked_epoch': row['checked_epoch'], 'tools': tools}
@@ -306,7 +307,7 @@ class ConnectionService:
             if not changed: raise ConnectionError('connection_changed', 'The connection was changed or disconnected. Try again.')
             for t in tools:
                 con.execute('INSERT OR IGNORE INTO mcp_tool_choices(account_id,connection_id,tool_name,schema_hash) VALUES (?,?,?,?)', (row['account_id'], row['id'], t['name'], schema_digest(t)))
-                con.execute('UPDATE mcp_tool_choices SET enabled=0,schema_hash=? WHERE account_id=? AND connection_id=? AND tool_name=? AND schema_hash<>?',
+                con.execute('UPDATE mcp_tool_choices SET enabled=0,auto_approve=0,schema_hash=? WHERE account_id=? AND connection_id=? AND tool_name=? AND schema_hash<>?',
                             (schema_digest(t), row['account_id'], row['id'], t['name'], schema_digest(t)))
 
     @staticmethod
@@ -415,7 +416,7 @@ class ConnectionService:
             cid = row['id']
         return self.test(principal, cid, session=session, resume={'state': state, 'code': code, 'iss': issuer})
 
-    def update(self, principal, connection, *, name=None, enabled=None, tools=None):
+    def update(self, principal, connection, *, name=None, enabled=None, tools=None, auto=None):
         with self.coordinator.transaction() as con:
             row = self.row(con, principal, connection)
             if name is not None:
@@ -435,11 +436,25 @@ class ConnectionService:
                     if on and known[name_].get('unusable'):
                         raise ConnectionError('tool_unusable', 'This tool cannot be used: ' + known[name_]['unusable'] + '.')
                 for name_, on in tools.items():
-                    con.execute('UPDATE mcp_tool_choices SET enabled=? WHERE account_id=? AND connection_id=? AND tool_name=?', (int(on), principal.account_id, connection, name_))
+                    con.execute('UPDATE mcp_tool_choices SET enabled=?,auto_approve=CASE WHEN ?=0 THEN 0 ELSE auto_approve END WHERE account_id=? AND connection_id=? AND tool_name=?', (int(on), int(on), principal.account_id, connection, name_))
                 if con.execute('SELECT count(*) FROM mcp_tool_choices WHERE account_id=? AND enabled=1', (principal.account_id,)).fetchone()[0] > MAX_ENABLED:
                     raise ConnectionError('tool_limit', f'Enable up to {MAX_ENABLED} MCP tools across your connections.')
                 con.execute('UPDATE mcp_connections SET generation=generation+1,busy_until=0 WHERE account_id=? AND id=?', (principal.account_id, connection))
                 con.execute("UPDATE mcp_calls SET state='rejected' WHERE account_id=? AND connection_id=? AND state IN ('pending','approved')", (principal.account_id, connection))
+
+    def set_auto_approve(self, principal, connection, auto):
+        """The owner's own choice to run an enabled tool without asking each time. Only the signed-in customer can set it; the assistant and the remote server cannot."""
+        if not isinstance(auto, dict) or not auto or len(auto) > 100 or any(type(v) is not bool for v in auto.values()): raise ValueError('invalid auto')
+        with self.coordinator.transaction() as con:
+            row = self.row(con, principal, connection)
+            known = {t['name']: t for t in json.loads(row['tools_json'])}
+            if set(auto) - set(known): raise ConnectionError('tool_removed', 'A selected tool is no longer available.')
+            for name_, on in auto.items():
+                if on:
+                    choice = con.execute('SELECT enabled,schema_hash FROM mcp_tool_choices WHERE account_id=? AND connection_id=? AND tool_name=?', (principal.account_id, connection, name_)).fetchone()
+                    if known[name_].get('unusable') or not choice or not choice['enabled'] or choice['schema_hash'] != schema_digest(known[name_]):
+                        raise ConnectionError('tool_disabled', 'Enable this tool first.')
+                con.execute('UPDATE mcp_tool_choices SET auto_approve=? WHERE account_id=? AND connection_id=? AND tool_name=?', (int(on), principal.account_id, connection, name_))
 
     def reconnect(self, principal, connection, token=None):
         with self.coordinator.transaction() as con:
@@ -596,6 +611,12 @@ class ConnectionService:
             if any(p['state'] == 'rejected' and p['request_id'] == request_id for p in prior):
                 raise ConnectionError('approval_rejected', 'This exact call was declined or invalidated. Wait for a new customer instruction.')
             approved = next((p for p in prior if p['state'] == 'approved' and p['expires_epoch'] >= self.clock()), None)
+            if approved is None and choice['auto_approve']:
+                # The customer chose, for this tool, to run without asking. Same row and same one-use consumption as a click, so the record is identical.
+                call_id = uuid.uuid4().hex
+                con.execute("INSERT INTO mcp_calls(account_id,id,connection_id,tool_name,payload_hash,schema_hash,request_id,arguments_json,state,expires_epoch,created_epoch) VALUES (?,?,?,?,?,?,?,?,'approved',?,?)",
+                            (account, call_id, row['id'], tool['name'], target_hash, schema_digest(tool), request_id, packed(arguments), int(self.clock()) + 600, int(self.clock())))
+                approved = {'id': call_id, 'state': 'approved'}
             if approved is None:
                 pending = next((p for p in prior if p['state'] == 'pending' and p['expires_epoch'] >= self.clock()), None)
                 if pending is None:

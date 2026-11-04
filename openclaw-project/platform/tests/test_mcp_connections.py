@@ -72,6 +72,27 @@ class ConnectionChecks(unittest.TestCase):
         self.assertEqual(first.exception.code,'uncertain_result')
         with self.assertRaises(ConnectionError):self.service.call('a',name,{'text':'write'},'r2')
         self.assertEqual(len(self.fixture.calls),1)
+    def test_run_without_asking_is_the_owners_per_tool_choice_and_resets_when_anything_changes(self):
+        cid=self.connect();name=namespaced(cid,'echo')
+        with self.assertRaises(ConnectionError):self.service.set_auto_approve(self.a,cid,{'echo':True})   # a tool must be enabled first
+        self.service.update(self.a,cid,tools={'echo':True})
+        self.assertFalse(self.service.listing(self.a)['connections'][0]['tools'][0]['auto_approve'])
+        self.assertTrue(self.service.call('a',name,{'text':'x'},'r1')['isError'])                          # default is still to ask
+        with self.assertRaises(NotFound):self.service.set_auto_approve(self.b,cid,{'echo':True})
+        self.service.set_auto_approve(self.a,cid,{'echo':True})
+        result=self.service.call('a',name,{'text':'hi'},'r2')
+        self.assertEqual(result['structuredContent'],{'text':'hi'});self.assertEqual(len(self.fixture.calls),1)
+        self.assertEqual(self.service.call('a',name,{'text':'hi'},'r2'),result)                            # same request is not run twice
+        self.assertEqual(len(self.fixture.calls),1)
+        self.service.call('a',name,{'text':'again'},'r3');self.assertEqual(len(self.fixture.calls),2)
+        self.service.update(self.a,cid,tools={'echo':False})                                              # disabling clears it
+        self.service.update(self.a,cid,tools={'echo':True})
+        self.assertFalse(self.service.listing(self.a)['connections'][0]['tools'][0]['auto_approve'])
+        self.service.set_auto_approve(self.a,cid,{'echo':True})
+        self.fixture.tools[0]['description']='Changed definition';self.service.test(self.a,cid)           # a changed tool must be reviewed again
+        self.service.update(self.a,cid,tools={'echo':True})
+        self.assertFalse(self.service.listing(self.a)['connections'][0]['tools'][0]['auto_approve'])
+        self.assertTrue(self.service.call('a',name,{'text':'z'},'r4')['isError'])
     def test_changed_tools_are_disabled_and_removed_without_deployment(self):
         cid=self.connect();self.service.update(self.a,cid,tools={'echo':True})
         self.fixture.tools[0]['description']='Changed definition'
