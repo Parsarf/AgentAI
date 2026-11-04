@@ -17,56 +17,79 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe('MCP connections', () => {
-  it('creates a custom server, waits for discovery, clears the token and lets the user enable tools', async () => {
-    const { container }=render(<McpConnections />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Add custom server' }));
-    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'My service' } });
+  const addCustom = async (auth: string, extra?: () => void) => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Custom server' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Custom server/ }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'My service' } });
     fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://service.example.com/mcp' } });
-    fireEvent.change(screen.getByLabelText('Authentication'), { target: { value: 'bearer' } });
-    fireEvent.change(screen.getByLabelText('Bearer API token'), { target: { value: 'my-private-token' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect and discover tools' }));
+    fireEvent.click(screen.getByRole('radio', { name: auth }));
+    extra?.();
+  };
+  it('creates a custom server, waits for discovery, clears the token and lets the user choose what each tool may do', async () => {
+    const { container } = render(<McpConnections />);
+    await addCustom('API token', () => fireEvent.change(screen.getByLabelText('API token'), { target: { value: 'my-private-token' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     await screen.findByText('Connected');
-    expect(api).toHaveBeenCalledWith('POST','/v1/account/mcp',{ name: 'My service', url: 'https://service.example.com/mcp', auth_method: 'bearer', token: 'my-private-token' });
-    expect(container.textContent).not.toContain('my-private-token');
+    expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp', { name: 'My service', url: 'https://service.example.com/mcp', auth_method: 'bearer', token: 'my-private-token' });
+    expect(document.body.textContent).not.toContain('my-private-token');
     expect(container.querySelector('script')).toBeNull();
     expect(screen.getByText('<script>untrusted()</script>')).toBeTruthy();
-    fireEvent.click(screen.getByRole('switch', { name: 'echo' }));
-    await waitFor(() => expect(api).toHaveBeenCalledWith('POST','/v1/account/mcp/c1/update',{ tools: { echo: true } }));
+    const group = screen.getByRole('radiogroup', { name: 'Echo: how Lumina uses it' });
+    fireEvent.click(within(group).getByRole('radio', { name: 'Ask' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp/c1/update', { tools: { echo: true }, auto: { echo: false } }));
+    fireEvent.click(within(group).getByRole('radio', { name: 'Auto' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp/c1/update', { tools: { echo: true }, auto: { echo: true } }));
   });
-  it('shows a tool the server sent but Lumina cannot use as off, with the reason, while the others stay usable', async () => {
-    data.connections=[{id:'c1',name:'Asana',url:'https://mcp.asana.com/v2/mcp',recipient:'mcp.asana.com',state:'connected',enabled:true,auth_method:'oauth',error_code:null,tools:[
-      {name:'get_task',description:'Read a task',enabled:false,inputSchema:{type:'object'},unusable:null},
-      {name:'loopy',description:'Recursive',enabled:false,inputSchema:{},unusable:'its schema refers back to itself (recursive)'}]}];
-    render(<McpConnections />);
+  it('shows what each tool is currently set to and turning one off is a single choice', async () => {
+    data.connections = [{ id: 'c1', name: 'Asana', url: 'https://mcp.asana.com/v2/mcp', recipient: 'mcp.asana.com', state: 'connected', enabled: true, auth_method: 'oauth', error_code: null, tools: [
+      { name: 'get_my_tasks', description: 'Your tasks', enabled: true, auto_approve: true, inputSchema: { type: 'object' } },
+      { name: 'create_project', description: 'Make a project', enabled: true, auto_approve: false, inputSchema: { type: 'object' } },
+      { name: 'delete_task', description: 'Remove a task', enabled: false, inputSchema: { type: 'object' } }] }];
+    render(<McpConnections />); fireEvent.click(await screen.findByRole('button', { name: /^Asana, Connected/ }));
+    const checked = (tool: string) => within(screen.getByRole('radiogroup', { name: `${tool}: how Lumina uses it` })).getByRole('radio', { checked: true }).textContent;
+    expect(checked('Get my tasks')).toBe('Auto'); expect(checked('Create project')).toBe('Ask'); expect(checked('Delete task')).toBe('Off');
+    expect(screen.getByText('2 of 3 on')).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Get my tasks: how Lumina uses it' })).getByRole('radio', { name: 'Off' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp/c1/update', { tools: { get_my_tasks: false } }));
+  });
+  it('shows a tool the server sent but Lumina cannot use as unavailable, with the reason, while the others stay usable', async () => {
+    data.connections = [{ id: 'c1', name: 'Asana', url: 'https://mcp.asana.com/v2/mcp', recipient: 'mcp.asana.com', state: 'connected', enabled: true, auth_method: 'oauth', error_code: null, tools: [
+      { name: 'get_task', description: 'Read a task', enabled: false, inputSchema: { type: 'object' }, unusable: null },
+      { name: 'loopy', description: 'Recursive', enabled: false, inputSchema: {}, unusable: 'its schema refers back to itself (recursive)' }] }];
+    render(<McpConnections />); fireEvent.click(await screen.findByRole('button', { name: /^Asana/ }));
     await screen.findByText(/Can’t be used: its schema refers back to itself/);
-    expect(screen.getByRole('switch',{name:'loopy'}).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('switch',{name:'get_task'}).hasAttribute('disabled')).toBe(false);
-    fireEvent.click(screen.getByRole('switch',{name:'get_task'}));
-    await waitFor(() => expect(api).toHaveBeenCalledWith('POST','/v1/account/mcp/c1/update',{ tools: { get_task: true } }));
+    expect(screen.queryByRole('radiogroup', { name: 'Loopy: how Lumina uses it' })).toBeNull();
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Get task: how Lumina uses it' })).getByRole('radio', { name: 'Ask' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp/c1/update', { tools: { get_task: true }, auto: { get_task: false } }));
   });
-  it('shows Asana registration requirements and never claims OAuth is ready without operator setup', async () => {
-    render(<McpConnections />);fireEvent.click(await screen.findByRole('button', { name: 'Choose a service' }));
-    expect(screen.getByDisplayValue('https://mcp.asana.com/v2/mcp')).toBeTruthy();
-    expect(screen.getByText(/OAuth setup is not available/)).toBeTruthy();
+  it('never claims Asana is ready without operator setup', async () => {
+    render(<McpConnections />); fireEvent.click(await screen.findByRole('button', { name: 'Custom server' }));
+    const asana = screen.getByRole('button', { name: /Asana/ });
+    expect(asana.hasAttribute('disabled')).toBe(true); expect(asana.textContent).toContain('Not set up on this Lumina yet');
     expect(screen.queryByText('Connected')).toBeNull();
   });
   it('keeps discovery failures visible without displaying Connected', async () => {
-    const original=vi.mocked(api).getMockImplementation()!;
-    vi.mocked(api).mockImplementation(async (method,url,body) => { if (url.endsWith('/test')) throw new ApiError('timeout',409); return original(method,url,body); });
-    render(<McpConnections />);fireEvent.click(await screen.findByRole('button', { name: 'Add custom server' }));
-    fireEvent.change(screen.getByLabelText('Connection name'),{target:{value:'Slow service'}});
-    fireEvent.change(screen.getByLabelText('Server URL'),{target:{value:'https://service.example.com/mcp'}});
-    fireEvent.change(screen.getByLabelText('Authentication'),{target:{value:'none'}});
-    fireEvent.click(screen.getByRole('button',{name:'Connect and discover tools'}));
-    await screen.findByRole('alert');expect(screen.queryByText('Connected')).toBeNull();
+    const original = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (method, url, body) => { if (url.endsWith('/test')) throw new ApiError('timeout', 409); return original(method, url, body); });
+    render(<McpConnections />); await addCustom('Nothing');
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByRole('alert'); expect(screen.queryByText('Connected')).toBeNull();
   });
-  it('requires a customer decision for the exact tool arguments and reports failed provider revocation honestly', async () => {
-    data.connections=[{id:'c1',name:'Service',url:'https://service.example.com/mcp',recipient:'service.example.com',state:'connected',enabled:true,tools:[],auth_method:'none'}];
-    data.pending_calls=[{id:'p1',connection_id:'c1',tool_name:'create_task',state:'pending',arguments:{title:'Fixture task'}}];
-    render(<McpConnections />);await screen.findByText('Fixture task',{exact:false});
-    fireEvent.click(screen.getByRole('button',{name:'Approve this exact call'}));
-    await waitFor(() => expect(api).toHaveBeenCalledWith('POST','/v1/account/mcp-approvals/p1',{approved:true}));
-    fireEvent.click(within(screen.getByRole('article',{name:'Service'})).getByRole('button',{name:'Disconnect'}));
+  it('shows the exact arguments next to the approval and reports failed provider revocation honestly', async () => {
+    data.connections = [{ id: 'c1', name: 'Service', url: 'https://service.example.com/mcp', recipient: 'service.example.com', state: 'connected', enabled: true, tools: [], auth_method: 'none' }];
+    data.pending_calls = [{ id: 'p1', connection_id: 'c1', tool_name: 'create_task', state: 'pending', arguments: { title: 'Fixture task' } }];
+    render(<McpConnections />); expect((await screen.findAllByText(/Fixture task/)).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp-approvals/p1', { approved: true }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Service/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, disconnect' }));
     await screen.findByText(/Provider revocation failed/);
+  });
+  it('closes the sheet with Escape', async () => {
+    data.connections = [{ id: 'c1', name: 'Service', url: 'https://service.example.com/mcp', recipient: 'service.example.com', state: 'connected', enabled: true, tools: [], auth_method: 'none' }];
+    render(<McpConnections />); fireEvent.click(await screen.findByRole('button', { name: /^Service/ }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });

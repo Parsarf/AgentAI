@@ -69,6 +69,9 @@
   --ease: cubic-bezier(.2, .7, .2, 1);
   --dur-fast: 120ms; --dur: 180ms; --dur-slow: 320ms;
 
+  /* Third-party brand marks (service tiles only). Kept here so no component hardcodes a colour. */
+  --brand-asana: #f06a6a; --brand-red: #ea4335; --brand-blue: #4285f4; --brand-green: #34a853; --brand-yellow: #fbbc04;
+
   /* Stacking */
   --z-sticky: 10; --z-nav: 30; --z-drawer: 40; --z-modal: 50; --z-menu: 60;
 
