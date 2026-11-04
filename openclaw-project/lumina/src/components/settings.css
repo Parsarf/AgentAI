@@ -17,5 +17,5 @@
 .set-facts dt { color: var(--text-muted); font-size: var(--text-xs); } .set-facts dd { margin: 2px 0 0; font-size: var(--text-md); font-variant-numeric: tabular-nums; }
 .seg.wide { justify-self: start; } .seg.wide .seg-item { min-height: 34px; padding: 0 var(--space-4); }
 .set-id { display: flex; align-items: center; gap: var(--space-3); min-width: 0; } .set-id b { overflow-wrap: anywhere; }
-.avatar { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--weight-semibold); font-size: var(--text-md); }
+.set-avatar { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--weight-semibold); font-size: var(--text-md); }
 @media (max-width: 640px) { .set-big { font-size: var(--text-2xl); } }

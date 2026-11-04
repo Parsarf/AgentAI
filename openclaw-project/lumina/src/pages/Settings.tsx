@@ -55,8 +55,8 @@ export function Settings() {
         {tab === 'assistant' && <><YourBrowser /><OwnModel /><MemoryNotes /></>}
         {tab === 'usage' && <><UsageCard /><Credits /></>}
         {tab === 'account' && <section className="panel card set-card" aria-labelledby="acct-h"><h2 id="acct-h" className="sr">Account</h2>
-          <div className="set-id"><span className="avatar" aria-hidden="true">{(app?.user.email?.[0] ?? '?').toUpperCase()}</span><div><b>{app?.user.email}</b><p className="faint">Signed in</p></div></div>
-          <div className="row"><button className="btn" onClick={signOut}>Sign out</button><a className="btn tertiary" href="/account/">Classic view</a></div></section>}
+          <div className="set-id"><span className="set-avatar" aria-hidden="true">{(app?.user.email?.[0] ?? '?').toUpperCase()}</span><div><b>{app?.user.email}</b><p className="faint">Signed in</p></div></div>
+          <div className="int-row"><button className="btn" onClick={signOut}>Sign out</button><a className="btn tertiary" href="/account/">Classic view</a></div></section>}
       </div>
     </div>);
 }
