@@ -42,23 +42,23 @@ export default function ToolApproval({ active, onDecided }: { active: boolean; o
   const shown = calls.filter(c => !(c.id in done));
   const decided = Object.entries(done);
   if (!shown.length && !decided.length) return null;
-  return <div className="approvals" aria-live="polite">
+  return <div className="tool-approvals" aria-live="polite">
     {shown.map(call => {
       const service = services.find(s => s.id === call.connection_id); const line = summary(call.arguments);
-      return <section className="approval" key={call.id} role="group" aria-label={`Permission to use ${words(call.tool_name)}`}>
-        <span className="approval-mark" aria-hidden="true" />
-        <div className="approval-body">
-          <p className="approval-title">Lumina wants to use <strong>{words(call.tool_name)}</strong>{service && <> on <strong>{service.name}</strong></>}</p>
-          {line && <p className="approval-line" title={line}>{line}</p>}
-          <details className="approval-more"><summary>See the exact request</summary><pre tabIndex={0}>{JSON.stringify(call.arguments, null, 2)}</pre><p>{service?.recipient ?? 'Connected service'}. Allows this one request, for ten minutes.</p></details>
+      return <section className="tool-approval" key={call.id} role="group" aria-label={`Permission to use ${words(call.tool_name)}`}>
+        <span className="tool-approval-mark" aria-hidden="true" />
+        <div className="tool-approval-body">
+          <p className="tool-approval-title">Lumina wants to use <strong>{words(call.tool_name)}</strong>{service && <> on <strong>{service.name}</strong></>}</p>
+          {line && <p className="tool-approval-line" title={line}>{line}</p>}
+          <details className="tool-approval-more"><summary>See the exact request</summary><pre tabIndex={0}>{JSON.stringify(call.arguments, null, 2)}</pre><p>{service?.recipient ?? 'Connected service'}. Allows this one request, for ten minutes.</p></details>
         </div>
-        <div className="approval-actions">
+        <div className="tool-approval-actions">
           <button className="btn tertiary small" disabled={!!busy} onClick={() => void decide(call, false)}>Cancel</button>
           <button className="btn primary small" disabled={!!busy} onClick={() => void decide(call, true)}>{busy === call.id ? 'Allowing…' : 'Allow'}</button>
         </div>
       </section>;
     })}
-    {decided.slice(-1).map(([id, ok]) => <p className="approval-done" key={id}>{ok ? 'Allowed. Continuing…' : 'Declined. Nothing was run.'}</p>)}
+    {decided.slice(-1).map(([id, ok]) => <p className="tool-approval-done" key={id}>{ok ? 'Allowed. Continuing…' : 'Declined. Nothing was run.'}</p>)}
     {err && <p className="err" role="alert">{err}</p>}
   </div>;
 }

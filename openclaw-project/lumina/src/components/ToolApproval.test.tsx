@@ -18,6 +18,12 @@ describe('ToolApproval', () => {
     expect(await screen.findByText('Allowed. Continuing…')).toBeTruthy();
 
   });
+  it('uses its own class names, so the plan-approval box styled by app.css (.approval) is never touched', async () => {
+    listing([call]); const { container } = render(<ToolApproval active={false} onDecided={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Allow' });
+    expect(container.querySelector('.tool-approval')).not.toBeNull();
+    expect(container.querySelector('.approval, .approvals, [class*=" approval-"], [class^="approval-"]')).toBeNull();
+  });
   it('declining says nothing was run', async () => {
     listing([call]); const onDecided = vi.fn();
     render(<ToolApproval active={false} onDecided={onDecided} />);
