@@ -161,6 +161,13 @@ dispatch is blocked across tasks; inspect the provider before taking another act
 Authentication challenges after dispatch cannot cause SDK replay of the action.
 There is no automatic write retry or UI button to clear uncertainty.
 
+**Run without asking (opt-in, per tool).** An enabled tool can have "Run without asking"
+turned on by the signed-in customer in Integrations (`auto` field of the connection
+`update` action; it is not exposed to the assistant or derived from remote annotations).
+Calls to that tool then record the same one-use approval row without waiting for a click,
+so the audit trail is unchanged. It is cleared when the tool is disabled or its definition
+changes, and turning off the connection withdraws it. Everything else still asks.
+
 Descriptions/results are labeled untrusted data. Text, bounded structured content,
 PNG/JPEG/WebP images and MCP error flags survive the relay. Remote HTML is escaped
 as text, not rendered. Unsupported content blocks are omitted. Known stored

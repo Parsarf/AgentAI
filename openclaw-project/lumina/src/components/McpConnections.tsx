@@ -4,7 +4,7 @@ import Toggle from './ui/Toggle';
 import './mcp.css';
 
 type Auth = 'oauth' | 'bearer' | 'none';
-interface Tool { name: string; description: string; enabled: boolean; inputSchema: Record<string, unknown>; unusable?: string | null }
+interface Tool { name: string; description: string; enabled: boolean; auto_approve?: boolean; inputSchema: Record<string, unknown>; unusable?: string | null }
 interface Connection { id: string; name: string; url: string; recipient: string; auth_method: Auth; enabled: boolean; state: string; error_code: string | null; tools: Tool[] }
 interface Preset { id: string; name: string; url: string; auth_method: Auth; configured: boolean; setup: string }
 interface Pending { id: string; connection_id: string; tool_name: string; arguments: unknown; state: string }
@@ -51,8 +51,9 @@ function ConnectionItem({ item, busy, act }: { item: Connection; busy: boolean; 
     {replacing && <form className="mcp-row" onSubmit={e => { e.preventDefault(); const next = token; setToken(''); setReplacing(false); void act(item.id, 'reconnect', { token: next }); }} autoComplete="off">
       <label htmlFor={`mcp-token-${item.id}`}>Replacement bearer token</label><input className="input" id={`mcp-token-${item.id}`} type="password" autoComplete="new-password" value={token} onChange={e => setToken(e.target.value)} maxLength={4096} />
       <button className="btn" disabled={!token || busy}>Save token and reconnect</button></form>}
-    {item.tools.length > 0 && <div className="mcp-tools"><h4>Tools</h4><p className="muted">Enable the tools Lumina can discover. Each call still needs your approval of its exact arguments. The tools you use most are offered to your assistant directly; the rest it finds when it needs them.</p>
+    {item.tools.length > 0 && <div className="mcp-tools"><h4>Tools</h4><p className="muted">Enable the tools Lumina can discover. Unless you turn on “Run without asking” for a tool, each call needs your approval of its exact arguments. The tools you use most are offered to your assistant directly; the rest it finds when it needs them.</p>
       {item.tools.map(tool => <div key={tool.name} className="mcp-tool"><Toggle label={tool.name} hint={tool.description || 'No description supplied by this server.'} checked={tool.enabled} disabled={busy || !item.enabled || !!tool.unusable} onChange={enabled => void act(item.id, 'update', { tools: { [tool.name]: enabled } })} />
+        {tool.enabled && !tool.unusable && <Toggle label={`Run ${tool.name} without asking`} hint="Your assistant can use this tool right away, each time, without waiting for your approval. Only turn this on for tools you trust to run unattended." checked={!!tool.auto_approve} disabled={busy || !item.enabled} onChange={auto => void act(item.id, 'update', { auto: { [tool.name]: auto } })} />}
         {tool.unusable ? <p className="faint" role="note">Can’t be used: {tool.unusable}. The other tools on this server work normally.</p>
           : <details><summary className="faint">Tool parameters</summary><pre tabIndex={0}>{JSON.stringify(tool.inputSchema, null, 2)}</pre></details>}</div>)}
     </div>}

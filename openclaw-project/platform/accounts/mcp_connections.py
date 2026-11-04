@@ -78,7 +78,7 @@ def connections(request):
     except NotFound: raise Denied()
 
 
-@endpoint(['POST'], ['name', 'enabled', 'tools', 'token'], structured=True)
+@endpoint(['POST'], ['name', 'enabled', 'tools', 'auto', 'token'], structured=True)
 def change(request, connection_id, action):
     denied = customer(request)
     if denied: return denied
@@ -88,8 +88,10 @@ def change(request, connection_id, action):
         s, p = service(), principal(request)
         body = request.input
         if action == 'update':
-            if set(body) - {'name', 'enabled', 'tools'}: raise ValueError('invalid fields')
-            s.update(p, connection_id, **body)
+            if set(body) - {'name', 'enabled', 'tools', 'auto'}: raise ValueError('invalid fields')
+            auto = body.pop('auto', None)
+            if body or auto is None: s.update(p, connection_id, **body)   # an empty update still checks that the connection is the caller's
+            if auto is not None: s.set_auto_approve(p, connection_id, auto)
             result = {'updated': True}
         elif action in ('test', 'reconnect'):
             rate('mcp.discover', request.account_id, 10, 60)
