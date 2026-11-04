@@ -16,11 +16,12 @@ describe('ToolApproval', () => {
     await waitFor(() => expect(onDecided).toHaveBeenCalledWith(true, 'create_task'));
     expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp-approvals/p1', { approved: true });
     expect(await screen.findByText('Allowed. Continuing…')).toBeTruthy();
+
   });
   it('declining says nothing was run', async () => {
     listing([call]); const onDecided = vi.fn();
     render(<ToolApproval active={false} onDecided={onDecided} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Not now' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     expect(await screen.findByText('Declined. Nothing was run.')).toBeTruthy();
     expect(onDecided).toHaveBeenCalledWith(false, 'create_task');
   });
