@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 
-interface State { available: boolean; configured: boolean; host?: string; model?: string; hint?: string }
+interface State { available: boolean; configured: boolean; host?: string; model?: string; hint?: string; using?: 'own' | 'lumina'; applied?: boolean }
 
 const PRESETS = [
   { name: 'OpenAI', url: 'https://api.openai.com/v1' },
@@ -28,11 +28,25 @@ export default function OwnModel() {
     try {
       const r = await api<State & { applies?: string }>('POST', '/v1/model-key/save', { base_url: url, api_key: key, model });
       if (!alive.current) return;
-      setState({ available: true, configured: true, host: r.host, model: r.model, hint: r.hint }); setKey(''); setUrl(''); setModel('');          // the key leaves the page at once
+      setState({ available: true, configured: true, host: r.host, model: r.model, hint: r.hint, using: r.using ?? 'own', applied: r.applied ?? false }); setKey(''); setUrl(''); setModel('');          // the key leaves the page at once
       setNote(`Saved. Your assistant switches to it ${r.applies ?? 'the next time it starts'}.`);
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 0;
       setProblem(status === 422 && err instanceof ApiError && err.detail ? err.detail : status === 429 ? 'Too many tries. Wait a few minutes, then try again.' : status === 409 ? 'This is not available for your account.' : 'Could not save it. Try again.');
+    } finally { if (alive.current) setBusy(false); }
+  }
+
+  async function choose(use: 'own' | 'lumina') {
+    if (!state || busy || (state.using ?? 'own') === use) return;
+    setBusy(true); setProblem(''); setNote('');
+    try {
+      const r = await api<State & { applies?: string }>('POST', '/v1/model-key/use', { use });
+      if (!alive.current) return;
+      setState({ available: true, configured: true, host: r.host, model: r.model, hint: r.hint, using: r.using ?? use, applied: r.applied ?? false });
+      setNote(`${use === 'own' ? 'Your own model is chosen.' : 'Lumina’s models are chosen. Your key stays saved.'} Your assistant switches ${r.applies ?? 'the next time it starts'}.`);
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      if (alive.current) setProblem(status === 409 ? 'Save your own model key first.' : status === 429 ? 'Too many changes. Wait a few minutes, then try again.' : 'Could not change it. Try again.');
     } finally { if (alive.current) setBusy(false); }
   }
 
@@ -44,6 +58,7 @@ export default function OwnModel() {
   }
 
   if (!state || !state.available) return null;
+  const using = state.using ?? 'own';
   return (
     <section className="panel card" id="own-model" style={{ marginBottom: 14 }} aria-labelledby="own-model-h"><h2 id="own-model-h">Your own model</h2>
       <p className="muted" style={{ marginTop: 10 }}>Use your own API key, so your assistant answers with a model from the company you choose instead of Lumina’s. You pay that company directly, and Lumina’s spending limits do not apply to you.</p>
@@ -51,6 +66,13 @@ export default function OwnModel() {
       {state.configured ? (
         <div className="own-model-current" style={{ marginTop: 12 }}>
           <p><strong>{state.model}</strong> at {state.host}, key ending in <code>{state.hint}</code></p>
+          <div className="own-model-choice" role="group" aria-label="Which model answers you" style={{ marginTop: 10 }}>
+            <button type="button" className="chip small" aria-pressed={using === 'lumina'} disabled={busy} onClick={() => void choose('lumina')}>Lumina’s models</button>
+            <button type="button" className="chip small" aria-pressed={using === 'own'} disabled={busy} onClick={() => void choose('own')}>My own model</button>
+          </div>
+          <p className="faint" style={{ marginTop: 8 }}>{using === 'own'
+            ? (state.applied ? 'Your assistant is answering with your own model.' : 'Chosen. Until your assistant next starts it still answers with Lumina’s models, under Lumina’s limits.')
+            : 'Your key is saved but not used. Lumina’s models answer, under Lumina’s limits. Choose “My own model” to switch back without entering the key again.'}</p>
           <p style={{ marginTop: 10 }}><button type="button" className="btn small danger" disabled={busy} onClick={remove}>Remove my key</button></p>
         </div>) : (
         <form onSubmit={save} style={{ marginTop: 12, display: 'grid', gap: 10 }}>

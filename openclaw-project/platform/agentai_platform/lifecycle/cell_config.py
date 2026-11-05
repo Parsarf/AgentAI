@@ -349,7 +349,7 @@ class CellProvisioner:
 
 
 def own_model_reader(store_path=None, engine_path=None):
-    """account id -> {'model': name} when the account has saved its own model AND the feature is on for it, else None. Reads only the non-secret facts: no key, no decryption.
+    """account id -> {'model': name} when the account has saved its own model, chose to use it, AND the feature is on for it, else None. Reads only the non-secret facts: no key, no decryption.
     Called before every start of an assistant, so a change reaches it the next time it wakes."""
     from .. import model_keys
     store_path = store_path or model_keys.DEFAULT_STORE
@@ -359,5 +359,7 @@ def own_model_reader(store_path=None, engine_path=None):
         if not model_keys.enabled_for(model_keys.read_engine(engine_path), account_id):
             return None
         facts = model_keys.public_facts(store_path, account_id)
-        return {'model': facts['model']} if facts else None
+        if not facts or not facts.get('use_own', True):
+            return None                      # no key saved, or saved but the customer chose Lumina's models: the assistant is configured for Lumina's
+        return {'model': facts['model']}
     return read

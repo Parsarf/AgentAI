@@ -431,7 +431,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 
 /* Settings → Your own model */
 .own-model-field { display: grid; gap: var(--space-1); font-size: var(--text-sm); color: var(--text-secondary); }
-.own-model-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.own-model-presets, .own-model-choice { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 /* A turn skips paint outside its box (content-visibility above), which cropped glows and markers that reach past its left edge. Give it room at the sides and take the room back
    with a negative margin, so the text stays exactly where it was. */
