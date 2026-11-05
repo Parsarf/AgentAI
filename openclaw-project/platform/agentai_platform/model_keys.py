@@ -253,12 +253,36 @@ class ModelKeyStore:
         entry = {'host': endpoint.host, 'base_url': endpoint.base_url, 'model': model, 'hint': api_key[-4:], 'kid': kid,
                  'nonce': base64.b64encode(nonce).decode(), 'ct': base64.b64encode(blob).decode(), 'created': int(self.clock())}
         with self._txn(write=True) as db:
+            before = db['accounts'].get(account)
+            already = isinstance(before, dict) and before.get('use_own', True) and before.get('applied', True)      # the assistant is already running on a key: replacing it changes nothing about that
+            entry['use_own'], entry['applied'] = True, bool(already)
             db['accounts'][account] = entry
         return self._public(entry)
 
     @staticmethod
     def _public(entry):
-        return {'host': entry['host'], 'base_url': entry['base_url'], 'model': entry['model'], 'hint': entry['hint'], 'created': entry['created']}
+        # `use_own`: the customer chose their own model (False = Lumina's models, the key stays saved). `applied`: the assistant has been seen running on it. An entry written before
+        # the switch existed has neither and means "on, and running", which is what it was.
+        return {'host': entry['host'], 'base_url': entry['base_url'], 'model': entry['model'], 'hint': entry['hint'], 'created': entry['created'],
+                'use_own': entry.get('use_own', True) is not False, 'applied': entry.get('applied', True) is not False}
+
+    def set_use(self, account: str, use_own: bool):
+        """Choose which model answers: the customer's own (True) or Lumina's (False). The key stays saved either way. Any real change clears `applied`: the assistant only changes
+        model when it next starts, and until it is seen calling the relay again Lumina does not treat the account as running on its own key. -> public facts, or None (no key saved)."""
+        with self._txn(write=True) as db:
+            entry = db['accounts'].get(account)
+            if not isinstance(entry, dict):
+                return None
+            if (entry.get('use_own', True) is not False) != bool(use_own):
+                entry['use_own'], entry['applied'] = bool(use_own), False
+            return self._public(entry)
+
+    def mark_applied(self, account: str) -> None:
+        """The assistant has just called the relay with the customer's key, so it is running on it. Only counts while the customer still wants their own model."""
+        with self._txn(write=True) as db:
+            entry = db['accounts'].get(account)
+            if isinstance(entry, dict) and entry.get('use_own', True) is not False and entry.get('applied', True) is False:
+                entry['applied'] = True
 
     def public(self, account: str):
         """The non-secret facts, or None. Needs no key."""
@@ -276,11 +300,19 @@ class ModelKeyStore:
             raise ModelKeyError('no model key')
         secret = self.ring.open(entry['kid'], account, base64.b64decode(entry['nonce']), base64.b64decode(entry['ct']))
         endpoint = parse_endpoint(entry['base_url'])
-        return {'base_url': entry['base_url'], 'host': endpoint.host, 'port': endpoint.port, 'prefix': endpoint.prefix, 'model': entry['model'], 'key': secret['key']}
+        pub = self._public(entry)
+        return {'base_url': entry['base_url'], 'host': endpoint.host, 'port': endpoint.port, 'prefix': endpoint.prefix, 'model': entry['model'], 'key': secret['key'],
+                'use_own': pub['use_own'], 'applied': pub['applied']}
 
     def delete(self, account: str) -> bool:
         with self._txn(write=True) as db:
             return db['accounts'].pop(account, None) is not None
+
+
+def unmetered(facts) -> bool:
+    """May Lumina's spending limits be skipped for this account? Only when the customer chose their own model AND their assistant is seen running on it. Chosen but not yet running
+    (its cell has not restarted since the switch) still answers with Lumina's models, which Lumina pays for, so the limits stay."""
+    return bool(facts) and facts.get('use_own', True) is not False and facts.get('applied', True) is not False
 
 
 def public_facts(path, account):
@@ -470,6 +502,11 @@ class ModelRelay:
                 released.append(1)
                 self._release(account)
         up.close = close
+        if cfg.get('use_own', True) and not cfg.get('applied', True):
+            try:
+                self.store.mark_applied(account)                      # seen running on the customer's model: from now on their spending limits are theirs
+            except Exception:
+                log.warning('byok applied mark failed')
         log.info('byok call status=%s stream=%s', resp.status, streaming)
         return up
 

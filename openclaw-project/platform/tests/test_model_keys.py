@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from agentai_platform import model_keys as mk
-from agentai_platform.model_keys import ModelKeyError, ModelKeyStore, ModelKeyring, ModelRelay, RelayError, parse_endpoint, probe, resolve_public
+from agentai_platform.model_keys import ModelKeyError, ModelKeyStore, ModelKeyring, ModelRelay, RelayError, parse_endpoint, probe, resolve_public, unmetered
 
 HOST = 'models.example.org'
 SECRET = 'a-long-test-secret-that-is-at-least-48-characters-long!!'
@@ -132,7 +132,7 @@ class StoreChecks(unittest.TestCase):
     def test_the_key_is_encrypted_the_facts_are_not_and_the_file_is_private(self):
         key = 'sk-live-0123456789abcdefghij'
         pub = self.store.put('acct', self.ep, 'gpt-4o', key)
-        self.assertEqual(pub, {'host': 'models.example.org', 'base_url': 'https://models.example.org/v1', 'model': 'gpt-4o', 'hint': 'ghij', 'created': pub['created']})
+        self.assertEqual(pub, {'host': 'models.example.org', 'base_url': 'https://models.example.org/v1', 'model': 'gpt-4o', 'hint': 'ghij', 'created': pub['created'], 'use_own': True, 'applied': False})
         raw = self.path.read_text()
         self.assertNotIn(key, raw); self.assertNotIn('0123456789abcdef', raw); self.assertIn('models.example.org', raw)
         self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
@@ -146,6 +146,32 @@ class StoreChecks(unittest.TestCase):
         self.assertTrue(self.store.delete('a')); self.assertFalse(self.store.delete('a')); self.assertIsNone(self.store.public('a'))
         with self.assertRaises(ModelKeyError): self.store.open('a')
         self.assertNotIn('m2', self.path.read_text()); self.assertEqual(self.store.open('b')['model'], 'm3')
+
+    def test_choosing_lumina_keeps_the_key_and_any_change_waits_for_the_assistant_to_be_seen_on_it(self):
+        self.assertIsNone(self.store.set_use('acct', False))                                        # nothing saved: nothing to switch
+        self.store.put('acct', self.ep, 'gpt-4o', 'sk-live-0123456789abcdefghij')
+        self.assertEqual(self.store.public('acct')['use_own'], True); self.assertFalse(unmetered(self.store.public('acct')))     # chosen, but the assistant has not been seen on it yet
+        self.store.mark_applied('acct'); self.assertTrue(unmetered(self.store.public('acct')))
+        off = self.store.set_use('acct', False)
+        self.assertEqual((off['use_own'], off['applied']), (False, False)); self.assertFalse(unmetered(off))
+        self.assertEqual(self.store.open('acct')['key'], 'sk-live-0123456789abcdefghij')              # the key is still there
+        self.store.mark_applied('acct'); self.assertFalse(unmetered(self.store.public('acct')))      # a call that arrives after the switch to Lumina's models does not count
+        on = self.store.set_use('acct', True); self.assertEqual((on['use_own'], on['applied']), (True, False)); self.assertFalse(unmetered(on))
+        self.assertEqual(self.store.set_use('acct', True)['applied'], False)
+        self.store.mark_applied('acct'); self.assertTrue(unmetered(self.store.public('acct')))
+        self.assertEqual(self.store.set_use('acct', True)['applied'], True)                          # choosing what is already chosen changes nothing
+
+    def test_replacing_a_key_keeps_the_mode_already_running_and_turns_the_choice_on(self):
+        self.store.put('acct', self.ep, 'm1', 'sk-first-0000000000'); self.store.mark_applied('acct')
+        self.store.put('acct', self.ep, 'm2', 'sk-second-111111111'); self.assertTrue(unmetered(self.store.public('acct')))          # was already running on a key: still is
+        self.store.set_use('acct', False); pub = self.store.put('acct', self.ep, 'm3', 'sk-third-2222222222')
+        self.assertEqual((pub['use_own'], pub['applied']), (True, False))                           # saving a key means "use it", but the assistant is not on it yet
+
+    def test_an_entry_from_before_the_switch_existed_means_on_and_running(self):
+        self.store.put('acct', self.ep, 'm', 'sk-first-0000000000')
+        db = json.loads(self.path.read_text()); db['accounts']['acct'].pop('use_own'); db['accounts']['acct'].pop('applied'); self.path.write_text(json.dumps(db))
+        pub = self.store.public('acct'); self.assertEqual((pub['use_own'], pub['applied']), (True, True)); self.assertTrue(unmetered(pub))
+        self.assertTrue(self.store.open('acct')['use_own'])
 
     def test_a_copied_or_tampered_record_does_not_open(self):
         self.store.put('a', self.ep, 'm', 'sk-aaaaaaaaaaaaaaaa'); self.store.put('b', self.ep, 'm', 'sk-bbbbbbbbbbbbbbbb')
@@ -207,6 +233,16 @@ class RelayChecks(unittest.TestCase):
         self.assertEqual(body['model'], 'my-model'); self.assertEqual(body['temperature'], 0.2)               # their model, whatever the assistant asked for; other fields untouched
         self.assertEqual(sent['headers']['User-Agent'], 'Lumina-BYOK/1'); self.assertEqual(sent['headers']['Host'], f'{HOST}:{up.port}' if False else sent['headers']['Host'])
         self.assertTrue(sent['headers']['Host'].startswith(HOST))                                              # TLS and Host use the customer's name, not the address connected to
+
+    def test_the_first_call_after_choosing_the_key_marks_the_assistant_as_running_on_it_but_not_after_choosing_lumina(self):
+        up = self.upstream(); relay = self.relay(up)
+        self.assertFalse(unmetered(self.store.public('acct')))
+        self.assertEqual(self.call(relay)[0], 200); self.assertTrue(unmetered(self.store.public('acct')))
+        self.store.set_use('acct', False)
+        self.assertEqual(self.call(relay)[0], 200)                                                  # a cell that has not restarted yet keeps working on the customer's model
+        self.assertFalse(unmetered(self.store.public('acct'))); self.assertFalse(self.store.public('acct')['applied'])
+        self.store.set_use('acct', True); self.assertFalse(unmetered(self.store.public('acct')))
+        self.call(relay); self.assertTrue(unmetered(self.store.public('acct')))
 
     def test_streaming_replies_pass_through_whole(self):
         events = b'data: {"choices":[{"delta":{"content":"a"}}]}\n\ndata: {"choices":[{"delta":{"content":"b"}}]}\n\ndata: [DONE]\n\n'

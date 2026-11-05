@@ -18,15 +18,16 @@ def enabled(account_id) -> bool:
 
 
 def active(account_id) -> bool:
-    """Does this account run on its own model key? Asked on every send: if anything is unreadable the answer is no, and Lumina's own limits apply."""
+    """Is this account running on its own model key right now? Asked on every send: true only when they chose it AND their assistant is seen running on it. If anything is
+    unreadable the answer is no, and Lumina's own limits apply."""
     try:
-        return enabled(account_id) and mk.ModelKeyStore(settings.MODEL_KEY_STORE).public(account_id) is not None
+        return enabled(account_id) and mk.unmetered(mk.ModelKeyStore(settings.MODEL_KEY_STORE).public(account_id))
     except Exception:
         return False
 
 
 def _facts(pub):
-    return {'host': pub['host'], 'model': pub['model'], 'hint': pub['hint']}
+    return {'host': pub['host'], 'model': pub['model'], 'hint': pub['hint'], 'using': 'own' if pub['use_own'] else 'lumina', 'applied': pub['applied']}
 
 
 @endpoint(['GET'])
@@ -57,6 +58,25 @@ def save(request):
     except mk.ModelKeyError as exc:
         return JsonResponse({'error': 'model_key_invalid', 'message': str(exc), 'detail': str(exc)}, status=422)
     audit(request.user.pk, request.account_id, 'model_key', 'model_key.save', 'completed', request.request_id)      # the fact that it was saved; never what it was
+    return JsonResponse({'configured': True, **_facts(pub), 'applies': 'the next time your assistant starts'})
+
+
+@endpoint(['POST'], ['use'])
+def use(request):
+    """Switch between the saved own model ('own') and Lumina's models ('lumina'). The key stays saved. Takes effect when the assistant next starts."""
+    denied = customer(request)
+    if denied:
+        return denied
+    rate('model_key.use', request.account_id, 30, 600)
+    if not enabled(request.account_id):
+        return JsonResponse({'error': 'not_available'}, status=409)
+    choice = request.input.get('use')
+    if choice not in ('own', 'lumina'):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    pub = mk.ModelKeyStore(settings.MODEL_KEY_STORE).set_use(request.account_id, choice == 'own')
+    if pub is None:
+        return JsonResponse({'error': 'no_key', 'message': 'Save your own model key first.'}, status=409)
+    audit(request.user.pk, request.account_id, 'model_key', 'model_key.use_' + choice, 'completed', request.request_id)
     return JsonResponse({'configured': True, **_facts(pub), 'applies': 'the next time your assistant starts'})
 
 

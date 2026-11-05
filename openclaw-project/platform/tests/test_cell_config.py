@@ -104,6 +104,8 @@ class CellConfigChecks(unittest.TestCase):
         self.assertIsNone(read('acct'))                                                       # saved, but the feature is not switched on: still Lumina's models
         engine.write_text(json.dumps({'own_model_keys': ['acct']})); self.assertEqual(read('acct'), {'model': 'gpt-4o'}); self.assertIsNone(read('other'))
         engine.write_text(json.dumps({'own_model_keys': True})); self.assertEqual(read('acct'), {'model': 'gpt-4o'}); self.assertIsNone(read('nobody-saved'))
+        store.set_use('acct', False); self.assertIsNone(read('acct'))                         # key saved, but the customer chose Lumina's models: configured for those
+        store.set_use('acct', True); self.assertEqual(read('acct'), {'model': 'gpt-4o'})
         store.delete('acct'); self.assertIsNone(read('acct'))
 
     def test_an_existing_assistant_is_brought_up_to_date_before_each_start(self):

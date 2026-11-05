@@ -50,11 +50,12 @@ class ModelKeyEndpointChecks(TestCase):
         args = probe.call_args.args; self.assertEqual((args[0].base_url, args[1], args[2]), ('https://models.example.org/v1', 'gpt-4o-mini', KEY))     # the endpoint was tested with exactly what was typed
         self.assertNotIn(KEY, r.content.decode()); self.assertNotIn(KEY, json.dumps(dict(r.headers)))
         self.assertNotIn(KEY, self.store_path.read_text()); self.assertNotIn('0123456789', self.store_path.read_text())
-        shown = a.get('/v1/model-key', secure=True).json(); self.assertEqual(shown, {'available': True, 'configured': True, 'host': 'models.example.org', 'model': 'gpt-4o-mini', 'hint': KEY[-4:]}); self.assertNotIn(KEY, json.dumps(shown))
+        shown = a.get('/v1/model-key', secure=True).json(); self.assertEqual(shown, {'available': True, 'configured': True, 'host': 'models.example.org', 'model': 'gpt-4o-mini', 'hint': KEY[-4:], 'using': 'own', 'applied': False}); self.assertNotIn(KEY, json.dumps(shown))
         audits = list(Audit.objects.filter(action='model_key.save')); self.assertEqual(len(audits), 1)
         self.assertNotIn(KEY, ' '.join(str(vars(row)) for row in Audit.objects.all()))                                                                      # the audit trail records that it happened, never what
         from .model_key import active
-        self.assertTrue(active('a')); self.assertFalse(active('b'))
+        self.assertFalse(active('a'))                                                                                                                       # chosen, but not yet seen running: Lumina's limits stay
+        mk.ModelKeyStore(str(self.store_path)).mark_applied('a'); self.assertTrue(active('a')); self.assertFalse(active('b'))
 
     def test_a_key_that_fails_the_test_or_a_bad_entry_stores_nothing(self):
         self.configure({'own_model_keys': True}); a = self.signed()
@@ -82,6 +83,31 @@ class ModelKeyEndpointChecks(TestCase):
         from .model_key import active
         self.assertFalse(active('a'))                                                                                                                       # back under Lumina's limits at once
 
+    def test_switching_to_lumina_keeps_the_key_and_back_again_waits_for_the_assistant(self):
+        self.configure({'own_model_keys': True}); a = self.signed(); self.saved(a); mk.ModelKeyStore(str(self.store_path)).mark_applied('a')
+        from .model_key import active
+        self.assertTrue(active('a'))
+        r = self.post(a, '/v1/model-key/use', {'use': 'lumina'}); self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual((r.json()['using'], r.json()['applied'], r.json()['configured']), ('lumina', False, True)); self.assertFalse(active('a'))             # Lumina's limits apply at once
+        shown = a.get('/v1/model-key', secure=True).json(); self.assertEqual((shown['configured'], shown['using'], shown['hint']), (True, 'lumina', KEY[-4:]))
+        self.assertNotIn(KEY, self.store_path.read_text())
+        r = self.post(a, '/v1/model-key/use', {'use': 'own'}); self.assertEqual((r.json()['using'], r.json()['applied']), ('own', False)); self.assertFalse(active('a'))   # not until it is seen running
+        mk.ModelKeyStore(str(self.store_path)).mark_applied('a'); self.assertTrue(active('a'))
+        self.assertEqual(Audit.objects.filter(action='model_key.use_lumina').count(), 1); self.assertEqual(Audit.objects.filter(action='model_key.use_own').count(), 1)
+
+    def test_the_switch_needs_a_saved_key_a_valid_choice_the_feature_and_a_signed_in_customer(self):
+        self.configure({'own_model_keys': True}); a = self.signed()
+        r = self.post(a, '/v1/model-key/use', {'use': 'own'}); self.assertEqual((r.status_code, r.json()['error']), (409, 'no_key')); self.assertFalse(self.store_path.exists())
+        self.saved(a)
+        for body in ({'use': 'both'}, {'use': ''}, {}, {'use': 'own', 'extra': 'x'}): self.assertEqual(self.post(a, '/v1/model-key/use', body).status_code, 400, body)
+        self.assertEqual(self.post(self.new_client(), '/v1/model-key/use', {'use': 'own'}).status_code, 401)
+        self.configure({'own_model_keys': ['someone-else']}); a2 = self.signed('a'); self.assertEqual(self.post(a2, '/v1/model-key/use', {'use': 'lumina'}).status_code, 409)
+
+    def test_one_account_cannot_switch_anothers(self):
+        self.configure({'own_model_keys': True}); a, b = self.signed('a'), self.signed('b'); self.saved(a)
+        self.assertEqual(self.post(b, '/v1/model-key/use', {'use': 'lumina'}).status_code, 409)                                                           # b has no key; a's is untouched
+        self.assertEqual(a.get('/v1/model-key', secure=True).json()['using'], 'own')
+
     def test_one_account_never_sees_or_removes_anothers(self):
         self.configure({'own_model_keys': True}); a, b = self.signed('a'), self.signed('b'); self.saved(a)
         self.assertFalse(b.get('/v1/model-key', secure=True).json()['configured']); self.assertFalse(self.post(b, '/v1/model-key/remove').json()['removed'])
@@ -93,7 +119,7 @@ class ModelKeyEndpointChecks(TestCase):
         self.assertEqual(codes[:6], [422] * 6); self.assertEqual(codes[6:], [429, 429])
 
     def test_anything_unreadable_means_lumina_limits_apply(self):
-        self.configure({'own_model_keys': True}); self.saved(self.signed())
+        self.configure({'own_model_keys': True}); self.saved(self.signed()); mk.ModelKeyStore(str(self.store_path)).mark_applied('a')
         from .model_key import active
         self.assertTrue(active('a')); self.store_path.write_text('{broken'); self.assertFalse(active('a'))
         with override_settings(ENGINE_FILE='/nonexistent/engine.json'): self.assertFalse(active('a'))
