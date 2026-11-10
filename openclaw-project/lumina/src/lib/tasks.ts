@@ -35,6 +35,7 @@ export const dotClass = (r: Row) => {
 
 /** One honest sentence under a finished task when it did not simply succeed (from Lumina's fixed vocabulary, never from the assistant): what stopped it, or what could not be confirmed. */
 export function outcomeLine(r: Row): string {
+  if (r.parked === 'location_permission') return 'Waiting for location permission in your browser.';
   if (phase(r.state) === 'running' && r.parked) return 'The task is paused until you answer or take over in the browser view.';
   if (phase(r.state) !== 'completed') return '';
   if (r.outcome === 'partial' || r.outcome === 'blocked') return r.outcome_note ?? '';

@@ -111,3 +111,22 @@ describe('pending assistant reply', () => {
     expect(screen.queryByTestId('thinking-orb')).toBeNull();
   });
 });
+
+describe('runnable app deliveries', () => {
+  it('keeps an app visible when the assistant adds a later summary for the same completed request', async () => {
+    const app = { version: 1, title: 'Saved calculator', runtime: 'html', code: '<button>Calculate</button>' };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/blocks')) return ok({ blocks: [] });
+      if (url.includes('/messages')) return ok({ messages: [
+        { ...msg(1, '```lumina-app\n' + JSON.stringify(app) + '\n```'), request_id: 'r' },
+        { ...msg(2, 'Your app is ready. ' + 'Use the calculator controls to calculate an expression. '.repeat(5)), request_id: 'r' },
+      ], tasks: [{ id: 'r', state: 'completed', created_epoch: 1 }] });
+      return ok({ conversation: { id: 'a', title: 'Saved chat' } });
+    }));
+    mount();
+    await screen.findByText(/Your app is ready/);
+    expect(screen.getByRole('button', { name: 'Open app' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Show the steps/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show as chart' })).toBeNull();
+  });
+});

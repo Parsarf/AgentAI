@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import time
 
+from agentai_platform import timing
 from agentai_platform.events import EventService
 from agentai_platform.store import Store
 from agentai_platform.switches import SwitchStore
@@ -50,7 +51,9 @@ def main():
                              wake=lambda: switches.is_on('customer_execution'), observe=observe, events=EventService(Store(args.db)))
     while True:
         # Counts only: no account, tenant, token or path ever reaches the journal.
+        began = time.monotonic()
         report = worker.tick()
+        timing.mark('lifecycle', 'lifecycle_tick', dur_ms=round((time.monotonic() - began) * 1000, 1), interval_s=args.interval, **{k: v for k, v in report.items() if isinstance(v, int)})
         if any(report.values()) or args.once:
             print(json.dumps(report, sort_keys=True), flush=True)
         if args.once:

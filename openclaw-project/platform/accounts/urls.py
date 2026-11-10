@@ -6,6 +6,7 @@ from . import streams as st
 from . import api as api
 from . import uishell as shell
 from . import genui as gen
+from . import app_views
 from . import media
 from . import browse as br
 from . import devices as dvc
@@ -34,6 +35,8 @@ urlpatterns += [
  path('v1/projects/<str:project_id>/files',fl.files_route),
  path('v1/projects/<str:project_id>/files/<str:file_id>/preview',fl.preview),
  path('v1/projects/<str:project_id>/bundle',fl.bundle),
+ path('v1/apps/player', app_views.player),
+ path('v1/artifacts/<str:artifact_id>/versions/<str:version>/app', app_views.source),
  path('v1/artifacts/<str:artifact_id>/versions/<str:version>/ticket',fl.ticket),
  path('v1/artifacts/<str:artifact_id>/versions/<str:version>/download',fl.download),
 ]
@@ -90,3 +93,9 @@ urlpatterns += [path('v1/account/mcp', mcp.connections),
                 path('v1/account/mcp/<str:connection_id>/<str:action>', mcp.change),
                 path('v1/account/mcp-approvals/<str:call_id>', mcp.approve)]
 urlpatterns += [path('v1/panel/session', pnl.session), path('v1/panel/state', pnl.state), path('v1/panel/events', pnl.events), path('v1/panel/history', pnl.history), path('v1/panel/send', pnl.send), path('v1/panel/stop', pnl.stop)]
+
+from . import location as loc
+urlpatterns += [path('v1/location', loc.pending), path('v1/location/<str:location_id>', loc.answer)]
+
+
+urlpatterns += [path('v1/model-key/select', mkv.select)]

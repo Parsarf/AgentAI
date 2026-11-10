@@ -5,6 +5,7 @@ LiteLLM only through the host relay (10.77.0.1:4000) with its own per-tenant
 virtual key; owner credentials are never used.
 """
 import hashlib
+from ..apps import delivery_prompt
 import json
 import os
 from pathlib import Path
@@ -18,7 +19,8 @@ import time
 # 100,000 tokens where that table is right; raise it only together with a tiered price in the gateway's config.
 HAIKU_CONTEXT_WINDOW = 100000
 OWN_MODEL_CONTEXT, OWN_MODEL_MAX_OUTPUT = 128000, 8192      # what Lumina assumes of a customer's own model (text only: a picture sent to a model that cannot read one is an error)
-MODELS = ('claude-sonnet-5-5', 'claude-haiku-5-5')
+from ..model_catalog import models as lumina_models
+MODELS = tuple(dict.fromkeys(['claude-sonnet-5-5', 'claude-haiku-5-5', *[m['model'] for m in lumina_models()]]))
 DEFAULT_MODEL = 'litellm/claude-sonnet-5-5'
 CELL_UID = CELL_GID = 1000
 # The runtime's own limit on one run is a backstop beyond Lumina's per-run limit (900 s): a run whose supervisor is gone must not run for the default 48 hours.
@@ -80,6 +82,15 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL,
                     'request': {'allowPrivateNetwork': True},
                     'models': [{'id': model, 'name': model, 'reasoning': False, 'input': ['text'], 'contextWindow': OWN_MODEL_CONTEXT, 'maxTokens': OWN_MODEL_MAX_OUTPUT}]}
                 config['agents']['defaults']['model'] = {'primary': f'byok/{model}'}
+    if tools:
+        from ..model_keys import SELECTION_PREFIX, SELECTION_MODEL
+        config['models']['providers']['selection'] = {
+            'baseUrl': tools[0].rsplit('/mcp', 1)[0] + SELECTION_PREFIX, 'api': 'openai-completions',
+            'apiKey': {'source': 'env', 'provider': 'default', 'id': 'LITELLM_API_KEY'},
+            'request': {'allowPrivateNetwork': True},
+            'models': [{'id': SELECTION_MODEL, 'name': 'Selected model', 'reasoning': False,
+                        'input': ['text', 'image'], 'contextWindow': OWN_MODEL_CONTEXT, 'maxTokens': OWN_MODEL_MAX_OUTPUT}]}
+        config['agents']['defaults']['model'] = {'primary': 'selection/' + SELECTION_MODEL}
     return config
 
 
@@ -140,6 +151,12 @@ Use plain text for simple answers. Composed answers use only the versioned `lumi
 Discover capabilities in `lumina-ui/index.json`; inspect `lumina-ui/components/<component-id>.json` only when needed.
 Never emit the retired `lumina` card protocol. Never execute code or expressions from a UI document.
 '''
+
+
+# Runtime workspace instructions apply to turns AND native goals without rewriting user objectives.
+WORKSPACE_RULES += '\n## Building usable apps\n' + delivery_prompt()
+from ..location import prompt as location_prompt
+WORKSPACE_RULES += location_prompt()
 
 
 class CellProvisioner:

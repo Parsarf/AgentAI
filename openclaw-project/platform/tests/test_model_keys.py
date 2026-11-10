@@ -165,10 +165,12 @@ class StoreChecks(unittest.TestCase):
         store.put('c', self.ep, 'm', 'sk-cccccccccccccccc'); self.assertEqual(json.loads(self.path.read_text())['accounts']['c']['kid'], 'k1')
         with self.assertRaises(ModelKeyError): ModelKeyStore(self.path, ModelKeyring.derived(SECRET)).open('c')   # without the file it is unreadable, never leaked
 
-    def test_without_a_ring_nothing_is_stored_or_opened_and_damage_reads_as_empty(self):
+    def test_without_a_ring_nothing_is_stored_and_damage_is_not_overwritten(self):
         with self.assertRaises(ModelKeyError): ModelKeyStore(self.path).put('a', self.ep, 'm', 'sk-aaaaaaaaaaaaaaaa')
         self.path.parent.mkdir(parents=True, exist_ok=True); self.path.write_text('{broken')
-        self.assertIsNone(self.store.public('a')); self.store.put('a', self.ep, 'm', 'sk-aaaaaaaaaaaaaaaa'); self.assertEqual(self.store.open('a')['model'], 'm')
+        with self.assertRaises(ModelKeyError): self.store.public('a')
+        with self.assertRaises(ModelKeyError): self.store.put('a', self.ep, 'm', 'sk-aaaaaaaaaaaaaaaa')
+        self.assertEqual(self.path.read_text(), '{broken')
 
     def test_two_writers_at_once_lose_nothing(self):
         errs = []

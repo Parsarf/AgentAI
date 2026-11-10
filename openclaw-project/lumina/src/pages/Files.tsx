@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import AppPlayer, { runnableFile } from '../components/apps/AppPlayer';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { groupFiles, humanSize, type ArtifactRow } from '../lib/files';
@@ -36,10 +37,10 @@ export default function Files() {
         {rows === null && <p className="muted" role="status" style={{ marginTop: 8 }}>Loading…</p>}
         {rows && groups.length === 0 && <p className="faint" style={{ marginTop: 8 }}>Nothing yet. When Lumina writes a file for you, such as code, a document or a spreadsheet, it appears here.</p>}
         {groups.map(g => (
-          <div key={g.name} className="filerow">
+          <div key={g.name}><div className="filerow">
             <div><b>{g.name}</b><div className="faint small">{humanSize(g.latest.size_bytes)} · {g.latest.created_at.slice(0, 16).replace('T', ' ')}{g.versions > 1 ? ` · version ${g.latest.version}` : ''}</div></div>
             <button className="btn small" disabled={busy} onClick={() => run(() => download(g.id, g.latest.version))}>Download</button>
-          </div>))}
+          </div>{runnableFile(g.latest) && <AppPlayer key={`${g.id}-${g.latest.version}`} file={g.latest} />}</div>))}
         {err && <p className="err" role="alert" style={{ marginTop: 8 }}>{err}</p>}
       </section></div>);
 }

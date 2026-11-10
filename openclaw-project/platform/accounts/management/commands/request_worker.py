@@ -58,8 +58,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         store = AccountStore(connection.settings_dict['NAME'])
         worker = build_worker(store)
+        from agentai_platform.location import Locations
+        locations = Locations(store)
         while True:
             try:
+                locations.cleanup()
                 report = worker.tick() if execution_on() else {'idle': 'customer_execution is off'}
             except Exception as exc:   # one failed request must not stop the loop; the queue marks it uncertain
                 report = {'error': type(exc).__name__}

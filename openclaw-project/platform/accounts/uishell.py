@@ -11,7 +11,7 @@ from django.conf import settings
 from django.http import FileResponse, HttpResponse, JsonResponse
 
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; "
-       "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+       "frame-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 
 
 def serve(request, path=''):

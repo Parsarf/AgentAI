@@ -71,7 +71,7 @@ class CellConfigChecks(unittest.TestCase):
         byok = cfg['models']['providers']['byok']
         self.assertEqual(byok['baseUrl'], 'http://10.77.0.1:4100/byok/v1'); self.assertEqual(byok['apiKey'], {'source': 'env', 'provider': 'default', 'id': 'LITELLM_API_KEY'})
         self.assertEqual([m['id'] for m in byok['models']], ['gpt-4o-mini']); self.assertEqual(byok['models'][0]['input'], ['text']); self.assertFalse(byok['models'][0]['reasoning'])
-        self.assertEqual(cfg['agents']['defaults']['model'], {'primary': 'byok/gpt-4o-mini'})
+        self.assertEqual(cfg['agents']['defaults']['model'], {'primary': 'selection/selected'})
         self.assertIn('litellm', cfg['models']['providers'])                                  # Lumina's own models are still configured beside it
         self.assertNotIn('sk-', json.dumps(cfg))                                              # no secret of any kind is written into the assistant's config
 
@@ -80,13 +80,13 @@ class CellConfigChecks(unittest.TestCase):
         for kwargs in ({'tools': tools}, {'tools': tools, 'own_model': None}, {'tools': tools, 'own_model': {'model': 'bad name;x'}}, {'tools': tools, 'own_model': {}}, {'tools': tools, 'own_model': 'gpt'},
                        {'own_model': {'model': 'gpt-4o'}}):                                  # the last: there is no relay to call
             cfg = patch({'gateway': {'mode': 'local'}}, **kwargs)
-            self.assertNotIn('byok', cfg['models']['providers'], kwargs); self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5')
+            self.assertNotIn('byok', cfg['models']['providers'], kwargs); self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'selection/selected' if kwargs.get('tools') else 'litellm/claude-sonnet-5-5')
 
     def test_removing_the_own_model_puts_the_assistant_back_on_lumina_models_at_its_next_start(self):
         tools = ('http://10.77.0.1:4100/mcp', 'lumina-cell-credential-0001')
         had = patch({'gateway': {'port': 1}}, tools=tools, own_model={'model': 'gpt-4o'})
         back = patch(had, tools=tools)
-        self.assertNotIn('byok', back['models']['providers']); self.assertEqual(back['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5')
+        self.assertNotIn('byok', back['models']['providers']); self.assertEqual(back['agents']['defaults']['model']['primary'], 'selection/selected')
 
     def test_the_provisioner_reads_only_the_facts_and_a_failure_changes_nothing(self):
         secrets = SecretStore(self.root / 'sec'); prov = CellProvisioner(ProviderKeys(lambda *a: (200, {}), secrets), secrets, self.root / 'cells', own_model=lambda account: {'model': 'm1'}, chown=lambda *a: None)
@@ -248,6 +248,8 @@ class RulesChecks(unittest.TestCase):
         binding = SimpleNamespace(tenant_ref=TENANT)
         prov.write_rules(binding); prov.write_rules(binding)
         text = (Path(tmp.name) / TENANT / 'workspace' / 'AGENTS.md').read_text()
+        self.assertIn('lumina-app', text)
+        self.assertIn('dist/ are not collected', text)
         self.assertIn('web_search', text); self.assertIn('never invent prices', text); self.assertIn('do not scrape search-engine pages', text)
         self.assertEqual({o[1:] for o in owners}, {(1000, 1000)})
 

@@ -21,15 +21,25 @@ def build(store):
         arguments = dict(arguments)
         nonce = arguments.pop('_lumina_origin', None)
         return BridgeRpc(account, settings.CELL_BRIDGE_SOCKET)('tools.origin', {'name': name, 'arguments': arguments, 'nonce': nonce})
+    def selection_admitted(account, personal):
+        from agentai_platform.budget import OWN_KEY_AMOUNT
+        with store.connect() as con:
+            rows = con.execute("""SELECT v.amount_microusd FROM task_reservations v
+                JOIN customer_requests r ON r.account_id=v.account_id AND r.id=v.task_id
+                JOIN accounts a ON a.id=r.account_id WHERE r.account_id=? AND a.status='active'
+                AND r.state IN ('starting','running') AND r.cancel_requested=0 AND r.closing=0
+                AND v.state='active' LIMIT 2""", (account,)).fetchall()
+        return len(rows) == 1 and (rows[0]['amount_microusd'] == OWN_KEY_AMOUNT) == personal
     own_models = model_keys.ModelRelay(model_keys.ModelKeyStore(settings.MODEL_KEY_STORE, model_keys.ModelKeyring.derived(settings.SECRET_KEY, settings.MODEL_KEY_FILE or None)),
-                                       lambda account: model_keys.enabled_for(model_keys.read_engine(settings.ENGINE_FILE), account))
+                                       lambda account: model_keys.enabled_for(model_keys.read_engine(settings.ENGINE_FILE), account), admission=selection_admitted)
     from accounts.mcp_connections import service as mcp_service
     from agentai_platform.mcp_connections.relay import RemoteTools
     from agentai_platform.mcp_connections import switch as mcp_switch
     from accounts import longterm
     from agentai_platform.longterm_memory import MemoryTools
     memory = longterm.build(store)                         # None unless fully configured; the tools then do not exist for anyone
-    return Relay(tool, progress=TaskProgressTool(store), origin=origin, memory=MemoryTools(memory) if memory is not None else None, remote=RemoteTools(mcp_service(store), enabled=lambda account: mcp_switch.enabled(settings.MCP_SWITCH_FILE, account))), Identity(identify), own_models
+    from agentai_platform.location import LocationTool
+    return Relay(tool, location=LocationTool(store), progress=TaskProgressTool(store), origin=origin, memory=MemoryTools(memory) if memory is not None else None, remote=RemoteTools(mcp_service(store), enabled=lambda account: mcp_switch.enabled(settings.MCP_SWITCH_FILE, account))), Identity(identify), own_models
 
 
 class Command(BaseCommand):

@@ -44,6 +44,9 @@ log = logging.getLogger('agentai.byok')
 DEFAULT_STORE = '/var/lib/agentai-platform/model-keys.json'
 DEFAULT_ENGINE_FILE = '/var/lib/agentai-platform/own-model-keys.json'      # not under /etc/agentai-supervisor: that folder is root-only and the web app and tool relay run as agentai-platform
 RELAY_PREFIX = '/byok/v1'
+SELECTION_PREFIX = '/model/v1'
+SELECTION_MODEL = 'selected'
+MAX_PROFILES = 20
 MAX_REQUEST_BYTES = 32 * 1024 * 1024        # large enough for pictures in a prompt (the same ceiling as Lumina's model proxy)
 MAX_REPLY_BYTES = 64 * 1024 * 1024
 CONNECT_SECONDS, READ_SECONDS = 10, 180
@@ -201,7 +204,7 @@ class ModelKeyring:
 
 
 class ModelKeyStore:
-    """One entry per account in a small JSON file (0600), safe for several processes. The non-secret facts (host, model, last four characters of the key) are readable
+    """Saved key profiles and selection per account in a small JSON file (0600), safe for several processes. The non-secret facts (host, model, last four characters of the key) are readable
     without any key: Lumina's supervisor uses them to set up the assistant. Only the key itself is encrypted."""
 
     def __init__(self, path=DEFAULT_STORE, ring: ModelKeyring | None = None, *, clock=time.time):
@@ -216,16 +219,20 @@ class ModelKeyStore:
             try:
                 fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600) if write else os.open(lock, os.O_RDONLY)
             except OSError:
+                if write:
+                    raise ModelKeyError('model key storage is unavailable') from None
                 fd = None                                                       # a reader with no lock file simply reads
             try:
                 if fd is not None:
                     fcntl.flock(fd, fcntl.LOCK_EX if write else fcntl.LOCK_SH)
                 try:
                     db = json.loads(self.path.read_text())
+                except FileNotFoundError:
+                    db = {}
                 except (OSError, ValueError):
-                    db = {}
-                if not isinstance(db, dict):
-                    db = {}
+                    raise ModelKeyError('model key storage cannot be read') from None
+                if not isinstance(db, dict) or not isinstance(db.get('accounts', {}), dict):
+                    raise ModelKeyError('model key storage is invalid')
                 db.setdefault('accounts', {})
                 before = json.dumps(db, sort_keys=True)
                 yield db
@@ -257,13 +264,73 @@ class ModelKeyStore:
         return self._public(entry)
 
     @staticmethod
+    def _profiles(entry):
+        if not isinstance(entry, dict):
+            return {}, 'lumina-default'
+        if 'profiles' in entry:
+            profiles, selected = entry['profiles'], entry.get('selected', 'lumina-default')
+            if not isinstance(profiles, dict) or not isinstance(selected, str) or any(not isinstance(k, str) or not isinstance(v, dict) for k, v in profiles.items()):
+                raise ModelKeyError('model key storage is invalid')
+            return profiles, selected
+        # Read legacy entries without rewriting or re-encrypting their ciphertext.
+        return {'legacy': entry}, 'key:legacy'
+
+    def choices(self, account):
+        with self._txn() as db:
+            profiles, selected = self._profiles(db['accounts'].get(account))
+            return {'selected': selected, 'keys': [{'id': 'key:' + pid, **self._public(e)} for pid, e in profiles.items()]}
+
+    def add(self, account, endpoint, model, api_key):
+        if self.ring is None:
+            raise ModelKeyError('model keys are not set up on this server')
+        kid, nonce, blob = self.ring.seal(account, {'key': api_key})
+        entry = {'host': endpoint.host, 'base_url': endpoint.base_url, 'model': model, 'hint': api_key[-4:], 'kid': kid,
+                 'nonce': base64.b64encode(nonce).decode(), 'ct': base64.b64encode(blob).decode(), 'created': int(self.clock())}
+        with self._txn(write=True) as db:
+            profiles, selected = self._profiles(db['accounts'].get(account))
+            if len(profiles) >= MAX_PROFILES:
+                raise ModelKeyError('Remove a saved key before adding another (maximum 20).')
+            pid = secrets.token_hex(16)
+            profiles[pid] = entry
+            db['accounts'][account] = {'profiles': profiles, 'selected': selected}
+        return {'id': 'key:' + pid, **self._public(entry)}
+
+    def select(self, account, choice):
+        from .model_catalog import find
+        if not isinstance(choice, str):
+            raise ModelKeyError('Choose an available model.')
+        with self._txn(write=True) as db:
+            profiles, _ = self._profiles(db['accounts'].get(account))
+            if (choice.startswith('key:') and choice[4:] not in profiles) or (not choice.startswith('key:') and not find(choice)):
+                raise ModelKeyError('Choose an available model.')
+            db['accounts'][account] = {'profiles': profiles, 'selected': choice}
+
+    def remove_profile(self, account, choice):
+        if not isinstance(choice, str) or not choice.startswith('key:'):
+            raise ModelKeyError('Choose a saved key.')
+        with self._txn(write=True) as db:
+            profiles, selected = self._profiles(db['accounts'].get(account))
+            removed = profiles.pop(choice[4:], None) is not None
+            if selected == choice:
+                selected = 'lumina-default'
+            db['accounts'][account] = {'profiles': profiles, 'selected': selected}
+        return removed
+
+    def _selected(self, db, account):
+        profiles, selected = self._profiles(db['accounts'].get(account))
+        return profiles.get(selected[4:]) if selected.startswith('key:') else None
+
+    @staticmethod
     def _public(entry):
-        return {'host': entry['host'], 'base_url': entry['base_url'], 'model': entry['model'], 'hint': entry['hint'], 'created': entry['created']}
+        fields = ('host', 'base_url', 'model', 'hint', 'created')
+        if any(k not in entry for k in fields) or any(not isinstance(entry[k], str) for k in fields[:-1]):
+            raise ModelKeyError('model key storage is invalid')
+        return {k: entry[k] for k in fields}
 
     def public(self, account: str):
         """The non-secret facts, or None. Needs no key."""
         with self._txn() as db:
-            entry = db['accounts'].get(account)
+            entry = self._selected(db, account)
         return self._public(entry) if isinstance(entry, dict) else None
 
     def open(self, account: str) -> dict:
@@ -271,10 +338,13 @@ class ModelKeyStore:
         if self.ring is None:
             raise ModelKeyError('model keys are not set up on this server')
         with self._txn() as db:
-            entry = db['accounts'].get(account)
+            entry = self._selected(db, account)
         if not isinstance(entry, dict):
             raise ModelKeyError('no model key')
-        secret = self.ring.open(entry['kid'], account, base64.b64decode(entry['nonce']), base64.b64decode(entry['ct']))
+        try:
+            secret = self.ring.open(entry['kid'], account, base64.b64decode(entry['nonce'], validate=True), base64.b64decode(entry['ct'], validate=True))
+        except (ValueError, KeyError, TypeError):
+            raise ModelKeyError('stored key cannot be opened') from None
         endpoint = parse_endpoint(entry['base_url'])
         return {'base_url': entry['base_url'], 'host': endpoint.host, 'port': endpoint.port, 'prefix': endpoint.prefix, 'model': entry['model'], 'key': secret['key']}
 
@@ -402,7 +472,8 @@ class Upstream:
 class ModelRelay:
     """The logic behind /byok/v1 (the HTTP wrapper is in tool_relay.py): who the caller is has already been established."""
 
-    def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic):
+    def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic, admission=None):
+        self.admission = admission
         self.store, self.enabled, self.resolver, self.public, self.context, self.clock = store, enabled, resolver, public, context, clock
         self._hits, self._busy, self._guard = {}, {}, threading.Lock()
 
@@ -428,6 +499,67 @@ class ModelRelay:
             return self.store.open(account)
         except ModelKeyError:
             raise RelayError(404, 'No own model key is saved for this account, or it can no longer be opened. Enter it again in Settings.', 'no_key') from None
+
+    def _lumina_connection(self):
+        return http.client.HTTPConnection('10.77.0.1', 4000, timeout=READ_SECONDS)
+
+    def selected_chat(self, account, credential, raw):
+        from .model_catalog import find
+        try:
+            selected = self.store.choices(account)['selected']
+        except ModelKeyError:
+            raise RelayError(503, 'Model settings could not be read. Try again shortly.', 'model_settings_unavailable') from None
+        if self.admission is not None:
+            try:
+                allowed = self.admission(account, selected.startswith('key:'))
+            except Exception:
+                raise RelayError(503, 'Task admission could not be checked.', 'admission_unavailable') from None
+            if not allowed:
+                raise RelayError(403, 'This model selection does not match an admitted live task. Start a new task after choosing your model.', 'admission_mismatch')
+        if selected.startswith('key:'):
+            # Do not fall back to a Lumina-funded model when a personal key fails.
+            return self.chat(account, raw)
+        target = find(selected)
+        if target is None:
+            raise RelayError(409, 'The selected Lumina model is unavailable. Choose another in Settings.', 'model_unavailable')
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            raise RelayError(400, 'Invalid model request.', 'bad_request') from None
+        if not isinstance(body, dict) or not isinstance(body.get('messages'), list):
+            raise RelayError(400, 'The request had no messages.', 'bad_request')
+        body['model'] = target['model']
+        self._admit(account)
+        conn = None
+        try:
+            # Fixed trusted proxy, with the CELL credential; never a customer's
+            # endpoint or API key. Proxy policy and usage metering still apply.
+            conn = self._lumina_connection()
+            conn.request('POST', '/v1/chat/completions', json.dumps(body).encode(),
+                         {'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json', 'Connection': 'close'})
+            response = conn.getresponse()
+            if 300 <= response.status < 400:
+                raise RelayError(502, 'The model proxy attempted a redirect.', 'redirect_refused')
+            up = Upstream(response.status, response.getheader('Content-Type') or 'application/json', conn, response)
+        except (OSError, http.client.HTTPException):
+            if conn is not None:
+                conn.close()
+            self._release(account)
+            raise RelayError(502, 'Lumina could not reach its model service. Try again shortly.', 'upstream_unreachable') from None
+        except BaseException:
+            if conn is not None:
+                conn.close()
+            self._release(account)
+            raise
+        original = up.close
+        released = []
+        def close():
+            original()
+            if not released:
+                released.append(True)
+                self._release(account)
+        up.close = close
+        return up
 
     def models(self, account):
         cfg = self._config(account)

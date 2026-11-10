@@ -28,3 +28,7 @@ test_mcp_network
 test_mcp_connections
 test_panel
 test_panel_chat
+test_location
+test_model_selection
+test_model_keys
+test_byok_http

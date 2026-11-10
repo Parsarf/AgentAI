@@ -17,7 +17,7 @@ import json
 import os
 import time
 import uuid
-from . import activity as activity_mod, outcome as outcome_mod
+from . import activity as activity_mod, outcome as outcome_mod, timing
 from .adapters import CapabilityUnavailable
 from .browse.untrusted import neutralize
 from .budget import BudgetLedger
@@ -206,16 +206,20 @@ class ChatDriver:
                 if other is None:
                     gateway.abort(turn['session_key'], turn['run_id'])
                     if any(t['run_id'] == turn['run_id'] for t in active()):
+                        timing.mark(claim.request_id, 'defer', reason='unowned_run_stopping')
                         return Defer('an unowned native run is still stopping')
                 elif not self._quiesced(claim, gateway, turn['session_key'], conversation_id=other['id']):
+                    timing.mark(claim.request_id, 'defer', reason='other_conversation_run')
                     return Defer('another conversation still owns a native run')
         if session is None:
             session, _started, _error = gateway.open_session(uuid.uuid4().hex, 'chat-' + claim.request_id[:16])
             with self.coordinator.transaction() as con:
                 con.execute('UPDATE conversations SET native_session_ref=? WHERE account_id=? AND id=?', (session, claim.account_id, claim.conversation_id))
         elif not self._quiesced(claim, gateway, session):
+            timing.mark(claim.request_id, 'defer', reason='session_run_not_ours')
             return Defer('the session still has a run that something else owns')
         self._mark_running(claim)
+        timing.mark(claim.request_id, 'prep_done', new_session=bool(info['session'] is None))
         self._emit(claim, 'task_started', {'summary': 'Your assistant is ready. Reading your message.'})
         kind, payload, goal_ms = self._plan_first_delivery(claim, gateway, session, info)
         with self.coordinator.transaction() as con:
@@ -364,6 +368,7 @@ class ChatDriver:
         except Exception:
             self._set_delivery(claim, delivery['attempt'], 'uncertain')
             raise
+        timing.mark(claim.request_id, 'send_ack', attempt=delivery['attempt'], kind=delivery['kind'], runtime_status=ack.get('status', ''))
         self._set_delivery(claim, delivery['attempt'], 'acknowledged', run_id=ack['run_id'], deadline=None if delivery['deadline_epoch'] else int(self.clock()) + self.run_timeout)       # presenting an input again never buys it more time
         if delivery['attempt'] == 1 and delivery['state'] == 'pending':
             self._emit(claim, 'progress', {'summary': 'The assistant has your message and is working on it.', 'step': 'working'}, 'gateway')
@@ -389,7 +394,9 @@ class ChatDriver:
                 self._present(claim, gateway, session, delivery)
                 continue
             try:
+                waited = time.monotonic()
                 result = gateway.wait(delivery['native_run_id'] or delivery['idempotency_key'], self.wait_ms)
+                timing.mark(claim.request_id, 'wait_return', dur_ms=round((time.monotonic() - waited) * 1000, 1), status=result['status'], slice_ms=self.wait_ms)
             except CapabilityUnavailable:
                 if self._cell_gone(gateway):
                     return self._interrupted(claim, gateway)
@@ -451,6 +458,7 @@ class ChatDriver:
             state, status = 'aborted', 'aborted'
         else:
             state, status = 'failed', 'error:' + str(result['error'] or 'error')[:150]
+        timing.mark(claim.request_id, 'run_end', outcome=state)
         self._set_delivery(claim, delivery['attempt'], state, ended=int(self.clock()), status=status, tools=json.dumps(result['tools']) if result['tools'] else None)
 
     # -- progress for the customer (display only; completion never comes from here) ------------------------------------------------------------
@@ -478,6 +486,8 @@ class ChatDriver:
         rows = [r for r in page['messages'] if r['role'] == 'agent' and mine(r)]
         with self.coordinator.transaction() as con:
             added = self._absorb(con, claim, rows)
+        if added:
+            timing.mark(claim.request_id, 'mirror', new_rows=added, history_rows=len(rows))      # a completed assistant row reached the database (what the UI can show next poll)
         for item in page.get('activity') or []:
             if not mine(item):
                 continue
@@ -502,6 +512,9 @@ class ChatDriver:
         """Is the run waiting for a person? The browser tool runs inside the runtime's tool call; its job says when it needs the customer (a question, or the customer driving)."""
         with self.store.connect() as con:
             row = con.execute('SELECT status FROM browse_runs WHERE account_id=? AND request_id=?', (claim.account_id, claim.request_id)).fetchone()
+        from .location import Locations
+        if Locations(self.store, self.clock).waiting(claim.account_id, claim.request_id):
+            return 'location_permission'
         return HUMAN_WAIT.get(row['status']) if row else None
 
     # -- limits --------------------------------------------------------------------------------------------------------------------------------

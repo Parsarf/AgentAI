@@ -13,6 +13,7 @@ from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.budget import BudgetLedger, BudgetDenied
 from agentai_platform.chat import ChatService, denial_category
 from agentai_platform.request_queue import RequestQueue
+from agentai_platform import timing
 from agentai_platform.security import Principal, NotFound
 from agentai_platform.lifecycle.types import Conflict
 from .lifecycle import AccountStore
@@ -178,6 +179,7 @@ def chat_send(request, conversation_id):
                                 message=request.input.get('message', ''), key=request.input.get('key', ''),
                                 mode=request.input.get('mode', 'auto'), goal=goal, ui=request.input.get('ui', 'basic'))
         request.form_redirect = '/account/chat/?conversation=' + conversation_id
+        timing.mark(result.get('id'), 'send_accepted', admission=result.get('admission', ''), steered=bool(result.get('steered')))
         return JsonResponse({'request': result}, status=202)
     except NotFound:
         raise Denied()

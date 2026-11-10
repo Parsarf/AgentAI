@@ -8,6 +8,7 @@ the Gateway on the cell's own loopback (the only path that grants operator
 scopes; a Docker-published port yields none). Usage comes from the cell's
 LiteLLM virtual key, never from the cell's own (zeroed) counters.
 """
+import hashlib
 import hmac
 import json
 import os
@@ -21,6 +22,8 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+
+from .. import timing
 
 PROTOCOL = 4
 SESSION_KEY = re.compile(r'^agent:main:[A-Za-z0-9_.:-]{1,120}$')
@@ -436,7 +439,9 @@ class CellBridge:
             if conn:
                 conn.close()
                 conns.pop(account, None)
+            began = time.monotonic()
             relay = self.spawn(tenant, token, scopes=scopes) if scopes else self.spawn(tenant, token)
+            spawned = time.monotonic()
             try:
                 deadline = self.clock() + self.ready_timeout
                 hello = None
@@ -452,6 +457,7 @@ class CellBridge:
                 raise
             conn = _Connection(tenant, relay, hello, self.clock)
             conns[account] = conn
+            timing.mark('acct-' + hashlib.sha256(str(account).encode()).hexdigest()[:8], 'bridge_connect', spawn_ms=round((spawned - began) * 1000, 1), ready_ms=round((time.monotonic() - spawned) * 1000, 1), browser=bool(scopes))      # the cell's gateway answered 'ready'
             return conn
 
     def call(self, account, method, params, caller=None):
