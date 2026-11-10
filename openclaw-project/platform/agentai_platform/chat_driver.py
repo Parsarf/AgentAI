@@ -69,6 +69,23 @@ def panel_note(panel):
     return '\n'.join(lines)
 
 
+
+MODEL_FAILURE = ('The model you chose could not be used for this task. Open Settings > Assistant > Models and choose another model, or switch back to Lumina, then send your message again. '
+                 'Nothing was run.')
+SELECTION_FAILURE = 'Your model choice changed while this task was starting. Send your message again and it will use the model you selected.'
+
+
+def failure_message(error) -> str:
+    """What the customer is told when a run ends in an error. The runtime's own wording is never shown (it can name providers or hosts); it only decides which fixed sentence applies."""
+    text = str(error or '').lower()
+    if 'timeout' in text:
+        return 'The assistant took too long and was stopped. Please try a smaller request.'
+    if 'model is unavailable' in text or 'model_unavailable' in text:
+        return MODEL_FAILURE
+    if 'admission_mismatch' in text or 'does not match an admitted' in text:
+        return SELECTION_FAILURE
+    return 'The assistant could not finish this request. Nothing more will run; please try again.'
+
 class ChatDriver:
     """Reference trusted-host execution sequence for chat requests.
 
@@ -692,7 +709,7 @@ class ChatDriver:
     def _failed(self, claim, gateway, session, native):
         self._stop_browser_jobs(claim)
         self._pause_goal(claim, gateway, session, 'The run ended with an error.')
-        message = 'The assistant took too long and was stopped. Please try a smaller request.' if 'timeout' in str(native['error']) else 'The assistant could not finish this request. Nothing more will run; please try again.'
+        message = failure_message(native['error'])
         self._emit(claim, 'error', {'summary': message, 'category': 'runtime'}, 'gateway')
         state = 'cancelled' if native['aborted'] and self._cancel_requested(claim) else 'failed'
         return self._close(claim, state, message if state == 'failed' else 'Cancelled during execution', gateway, self._before(claim),

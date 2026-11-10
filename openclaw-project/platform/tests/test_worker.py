@@ -74,6 +74,25 @@ class WorkerChecks(unittest.TestCase):
         self.start_cell();w=self.worker(idle_after=900)
         r=w.tick();self.assertEqual(r['drained'],1)
         r=w.tick();self.assertEqual(r['ran'],1);self.assertEqual(self.state(),'stopped')
+    def test_a_cell_configured_by_older_code_is_put_to_sleep_once_so_the_next_wake_reconfigures_it(self):
+        self.start_cell()
+        w=self.worker(idle_after=10**12,stale=lambda a:True,stale_cooldown=3600)
+        self.assertEqual(w.tick()['drained'],1)           # not idle long, but stale: the sleep does not wait
+        w.tick();self.assertEqual(self.state(),'stopped')
+        self.request('start','a',key='start-again');self.worker(idle_after=10**12).tick();self.assertEqual(self.state('a'),'running')   # woken again; if the config is still old it must not be stopped again straight away
+        self.assertEqual(w.tick()['drained'],0)
+    def test_a_current_or_unreadable_cell_is_left_alone(self):
+        self.start_cell()
+        self.assertEqual(self.worker(idle_after=10**12,stale=lambda a:False).tick()['drained'],0)
+        def broken(a): raise OSError('bridge down')
+        self.assertEqual(self.worker(idle_after=10**12,stale=broken).tick()['drained'],0)
+    def test_a_stale_cell_with_work_is_not_stopped(self):
+        self.start_cell()
+        with self.store.connect() as con:
+            con.execute("INSERT INTO projects(account_id,id,name) VALUES ('a','p','p')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) SELECT 'a','p','c',deployment_id FROM lifecycle_cells WHERE account_id='a'")
+            con.execute("INSERT INTO tasks(account_id,project_id,conversation_id,id,state,budget_microusd) VALUES ('a','p','c','t','running',1)")
+        self.assertEqual(self.worker(idle_after=10**12,stale=lambda a:True).tick()['drained'],0)
     def test_active_or_recent_work_prevents_sleep(self):
         self.start_cell()
         with self.store.connect() as con:

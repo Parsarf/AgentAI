@@ -32,3 +32,4 @@ test_location
 test_model_selection
 test_model_keys
 test_byok_http
+test_failure_message
