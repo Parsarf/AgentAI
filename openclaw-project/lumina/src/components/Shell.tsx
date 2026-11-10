@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Rail from './Rail';
+import LocationRequest from './LocationRequest';
 import * as I from './Icons';
 import Sidebar, { NAV } from './Sidebar';
 import ChatList from './ChatList';
@@ -50,7 +51,7 @@ function pageTitle(pathname: string) {
 export default function Shell() {
   const { pathname } = useLocation();
   const rail = pathname === '/home' || pathname.startsWith('/tasks');
-  const { requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
+  const { app, requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
   const [cmd, setCmd] = useState(false);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -76,6 +77,7 @@ export default function Shell() {
             trigger={({ open, props }) => <button className="iconbtn" aria-label="Notifications" aria-expanded={open} {...props}><I.Bell width={20} height={20} />{attention.length > 0 && <span className="dot" />}</button>} />
           <button className="iconbtn" aria-label={reducedMotion ? 'Turn animations on' : 'Reduce motion'} aria-pressed={reducedMotion} title={reducedMotion ? 'Animations off' : 'Animations on'} onClick={() => setReducedMotion(!reducedMotion)}><I.Motion width={20} height={20} /></button>
         </div>
+        {requests.some(r => ['starting', 'running'].includes(r.state)) && <LocationRequest key={app?.user.email} />}
         <Outlet />
       </main>
       {rail && <aside className="rail" aria-label="Activity"><Rail /></aside>}

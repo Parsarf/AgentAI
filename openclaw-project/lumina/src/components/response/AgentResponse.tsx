@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import AppPlayer, { parseApplication } from '../apps/AppPlayer';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Root, PhrasingContent } from 'mdast';
@@ -52,6 +53,10 @@ const COMPONENTS: Components = {
       const code = node?.children.find(c => c.type === 'element' && c.tagName === 'code');
       if (code?.type === 'element') {
         const language = String(code.properties.className ?? '').replace('language-', '').trim().toLowerCase();
+        if (language === 'lumina-app') {
+          const app = parseApplication(code.children.map(c => c.type === 'text' ? c.value : '').join(''));
+          if (app) return <AppPlayer key={app.code} app={app} />;
+        }
         if (['', 'json', 'chart', 'genui', 'lumina'].includes(language)) {
           const value = code.children.map(c => c.type === 'text' ? c.value : '').join('');
           const card = dataCard(value);

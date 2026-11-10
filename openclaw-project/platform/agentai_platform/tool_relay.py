@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .adapters import CapabilityUnavailable
 from .browse.adapter import STEP, STEP_NAME, TOOL, TOOL_NAME, BrowserTool
-from .model_keys import RELAY_PREFIX
+from .model_keys import RELAY_PREFIX, SELECTION_PREFIX, SELECTION_MODEL
 from .task_progress import TOOL as PROGRESS_TOOL, TOOL_NAME as PROGRESS_NAME
 
 PROTOCOL_VERSIONS = ('2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05')
@@ -65,10 +65,14 @@ class Identity:
 class Relay:
     """The MCP protocol and the tools; no sockets (the handler below owns those)."""
 
-    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None):
+    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None, location=None):
         self.tool, self.progress, self.origin, self.remote = tool, progress, origin, remote
+        self.location = location
         self.memory = memory                                        # longterm_memory.MemoryTools or None; its two tools exist for an account only while the owner's switch is on
         self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
+        if location is not None:
+            from .location import NAME, TOOL as LOCATION_TOOL
+            self.tools[NAME] = LOCATION_TOOL
         if remote is not None:
             from .mcp_connections.relay import DISCOVER, CALL
             self.tools.update({DISCOVER['name']: DISCOVER, CALL['name']: CALL})
@@ -115,13 +119,14 @@ class Relay:
                 return self._error(rid, -32602, 'invalid arguments')
             if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call and not memory_call):
                 return self._error(rid, -32602, 'unknown tool')
-            busy_key = (account, 'remote' if remote_call else 'memory' if memory_call else 'progress' if name == PROGRESS_NAME else 'browser')
+            location_call = self.location is not None and name == 'lumina_request_location'
+            busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:
                 if busy_key in self._busy:
                     return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
                 self._busy.add(busy_key)
             try:
-                handler = self.remote if remote_call else self.memory if memory_call else self.progress if name == PROGRESS_NAME else self.tool
+                handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.progress if name == PROGRESS_NAME else self.tool
                 arguments = params.get('arguments') or {}
                 bound = {}
                 if self.origin is not None:
@@ -231,12 +236,12 @@ def make_handler(relay: Relay, identity: Identity, byok=None):
             self._send(exc.status, error_body(exc.message, exc.code))
 
         def do_GET(self):
-            if byok is not None and self.path.split('?', 1)[0] == RELAY_PREFIX + '/models':
+            if byok is not None and self.path.split('?', 1)[0] in (RELAY_PREFIX + '/models', SELECTION_PREFIX + '/models'):
                 account = self._caller()
                 if account:
                     from .model_keys import RelayError
                     try:
-                        self._send(200, byok.models(account))
+                        self._send(200, {'object': 'list', 'data': [{'id': SELECTION_MODEL, 'object': 'model', 'owned_by': 'lumina'}]} if self.path.split('?', 1)[0] == SELECTION_PREFIX + '/models' else byok.models(account))
                     except RelayError as exc:
                         self._model_error(exc)
                 return
@@ -255,7 +260,7 @@ def make_handler(relay: Relay, identity: Identity, byok=None):
                 return self._send(413, {'error': 'bad length'})
             raw = self.rfile.read(int(length))
             try:
-                up = byok.chat(account, raw)
+                up = byok.selected_chat(account, self.headers.get('Authorization', '')[7:].strip(), raw) if self.path.split('?', 1)[0] == SELECTION_PREFIX + '/chat/completions' else byok.chat(account, raw)
             except RelayError as exc:
                 return self._model_error(exc)
             ctype = up.content_type if up.content_type.split(';')[0].strip().lower() in ('application/json', 'text/event-stream') else 'application/json'
@@ -276,7 +281,7 @@ def make_handler(relay: Relay, identity: Identity, byok=None):
 
         def do_POST(self):
             path = self.path.split('?', 1)[0]
-            if byok is not None and path == RELAY_PREFIX + '/chat/completions':
+            if byok is not None and path in (RELAY_PREFIX + '/chat/completions', SELECTION_PREFIX + '/chat/completions'):
                 return self._byok_chat()
             if path != '/mcp':
                 return self._send(404, {'error': 'not found'})

@@ -9,6 +9,7 @@ import time
 from .adapters import CapabilityUnavailable
 from .lifecycle.types import Conflict
 from .request_queue import Defer, Parked, Recover, RequestClaim, RequestReceipt
+from . import timing
 
 
 class RequestWorker:
@@ -61,6 +62,8 @@ class RequestWorker:
             done = self.queue.finish(claim, RequestReceipt(claim.account_id, claim.request_id, claim.fence, 'failed',
                                                            'This request could not be funded or started. Nothing ran and nothing was charged. Please send it again.', True))
             return {'ran': 0, 'failed_unfunded': bool(done)}
+        timing.bind(claim.request_id)
+        timing.mark(claim.request_id, 'claim', fence=claim.fence)
         if self.shadow is not None:
             self.shadow.before(claim)
         return self._run(claim)
@@ -78,9 +81,13 @@ class RequestWorker:
         if isinstance(receipt, Defer):
             self.queue.defer(claim)
             return {'ran': 0, 'deferred': True}
+        timing.mark(claim.request_id, 'finish_start', state=getattr(receipt, 'state', ''))
         finished = self.queue.finish(claim, receipt)
+        timing.mark(claim.request_id, 'finish_done', committed=bool(finished))      # the slot is free and the UI can read the final state from here on
         if self.shadow is not None and observed:
+            timing.mark(claim.request_id, 'shadow_join_start')
             self.shadow.after(claim, receipt)
+            timing.mark(claim.request_id, 'shadow_join_done')        # the single worker thread is busy until here: the next claim cannot start earlier
         return {'ran': 1, 'finished': bool(finished)}
 
     def _settle_uncertain(self, stuck):

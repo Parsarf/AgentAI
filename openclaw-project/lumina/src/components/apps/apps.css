@@ -1,0 +1,13 @@
+.app-player { min-width: 0; margin-block: var(--space-3); overflow: hidden; }
+.app-player-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); }
+.app-player-bar strong { overflow-wrap: anywhere; }
+.app-player-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.app-player-frame { width: 100%; height: min(65vh, 640px); min-height: 320px; border: 0; display: block; background: var(--surface); }
+.app-player-wide .app-player-frame { height: 82vh; }
+.app-player-source { padding: var(--space-3); }
+.app-player-source summary { cursor: pointer; }
+.app-player-source pre { max-height: 320px; overflow: auto; white-space: pre; font-family: var(--font-mono); }
+.app-player > .err { padding: var(--space-3); }
+
+/* Keep the composer below an open app so it cannot cover application controls. */
+.chatpage:has(.app-player-frame) .dock { position: static; }

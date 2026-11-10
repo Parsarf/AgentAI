@@ -114,3 +114,23 @@ class Http(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_selected_model_transport_switches_keys_and_lumina_without_restart(self):
+        port = self.start()
+        status, _, _ = self.request(port, 'POST', '/model/v1/chat/completions', self.CHAT)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.up.requests[-1]['headers']['Authorization'], 'Bearer sk-customer-key-0001')
+        self.store.select('acct', 'lumina-default')
+        self.model_relay._lumina_connection = lambda: mk._Pinned(HOST, '127.0.0.1', self.up.port, context=self.up.client_context, timeout=10)
+        status, _, _ = self.request(port, 'POST', '/model/v1/chat/completions', self.CHAT)
+        self.assertEqual(status, 200)
+        sent = self.up.requests[-1]
+        self.assertEqual(sent['headers']['Authorization'], 'Bearer ' + CELL_CREDENTIAL)
+        self.assertEqual(json.loads(sent['body'])['model'], 'claude-sonnet-5-5')
+        self.assertNotIn('sk-customer', sent['body'].decode())
+        listed = self.request(port, 'GET', '/model/v1/models')
+        self.assertEqual(json.loads(listed[2])['data'][0]['id'], 'selected')
+        before = len(self.up.requests)
+        self.model_relay.admission = lambda account, personal: False
+        self.assertEqual(self.request(port, 'POST', '/model/v1/chat/completions', self.CHAT)[0], 403)
+        self.assertEqual(len(self.up.requests), before)

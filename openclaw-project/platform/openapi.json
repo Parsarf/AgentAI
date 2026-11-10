@@ -2824,6 +2824,66 @@
     }
    }
   },
+  "/v1/apps/player": {
+   "get": {
+    "summary": "Authenticated app player HTML in a script-capable opaque-origin sandbox; accepts an app from its parent via postMessage",
+    "responses": {
+     "200": {
+      "description": "Sandboxed player HTML",
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Sign-in required"
+     }
+    }
+   }
+  },
+  "/v1/artifacts/{id}/versions/{version}/app": {
+   "get": {
+    "summary": "Read an owned immutable HTML, Python or browser JavaScript artifact as an application (512 KiB limit)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "version",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Authorized result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "404": {
+      "description": "Unavailable or owned by another account"
+     },
+     "422": {
+      "description": "Unsupported, invalid, corrupt or oversized app source"
+     },
+     "503": {
+      "description": "Private artifact storage unavailable"
+     }
+    }
+   }
+  },
   "/app/": {
    "get": {
     "summary": "Pluggable front-end shell: serves index.html from the installed UI bundle (own script-capable CSP); 404 until installed",
@@ -4738,7 +4798,7 @@
   },
   "/v1/model-key": {
    "get": {
-    "summary": "Whether you may use your own model API key, and which one is saved (host, model name and the last four characters only; the key is never returned)",
+    "summary": "List Lumina catalog, saved key metadata, personal-key availability and the selected model. Never returns keys. Legacy saved keys retain their selection.",
     "parameters": [],
     "responses": {
      "200": {
@@ -4767,7 +4827,7 @@
   },
   "/v1/model-key/save": {
    "post": {
-    "summary": "Test and save your own model API key, endpoint address and model name; the assistant uses them from its next start",
+    "summary": "Test and add a saved key profile (up to 20); preserve all keys and the current selection. Refused while work is pending.",
     "parameters": [],
     "responses": {
      "200": {
@@ -4799,7 +4859,7 @@
   },
   "/v1/model-key/remove": {
    "post": {
-    "summary": "Delete your saved model API key; the assistant goes back to Lumina's models from its next start",
+    "summary": "Remove only the saved profile named by id; removing the selected profile returns to Lumina. Without id, legacy clients remove all profiles. Refused while work is pending.",
     "parameters": [],
     "responses": {
      "200": {
@@ -4822,6 +4882,22 @@
      },
      "429": {
       "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        }
+       }
+      }
      }
     }
    }
@@ -5523,6 +5599,181 @@
      },
      "503": {
       "description": "The browser service is not reachable"
+     }
+    }
+   }
+  },
+  "/v1/location": {
+   "get": {
+    "summary": "Read the signed-in account\u2019s pending device-location request (or null). Expired and cancelled requests are excluded.",
+    "responses": {
+     "200": {
+      "description": "Account-scoped result; never returns coordinates"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required"
+     },
+     "404": {
+      "description": "Not owned or unavailable"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "Temporarily unavailable"
+     }
+    }
+   }
+  },
+  "/v1/location/{location_id}": {
+   "post": {
+    "summary": "Claim/renew a 15-second browser lease or submit a one-time location decision. Requires session authentication and CSRF.",
+    "parameters": [
+     {
+      "name": "location_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "client_id",
+         "action"
+        ],
+        "additionalProperties": false,
+        "properties": {
+         "client_id": {
+          "type": "string",
+          "maxLength": 64
+         },
+         "action": {
+          "enum": [
+           "claim",
+           "respond"
+          ]
+         },
+         "status": {
+          "enum": [
+           "granted",
+           "denied",
+           "unavailable",
+           "timeout"
+          ]
+         },
+         "position": {
+          "type": "object",
+          "required": [
+           "latitude",
+           "longitude",
+           "accuracy"
+          ],
+          "additionalProperties": false,
+          "properties": {
+           "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+           },
+           "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+           },
+           "accuracy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000000
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Account-scoped result; never returns coordinates"
+     },
+     "400": {
+      "description": "Invalid request"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required"
+     },
+     "404": {
+      "description": "Not owned or unavailable"
+     },
+     "429": {
+      "description": "Rate limited"
+     },
+     "503": {
+      "description": "Temporarily unavailable"
+     }
+    }
+   }
+  },
+  "/v1/model-key/select": {
+   "post": {
+    "summary": "Choose a host-catalog Lumina model or one of this account\u2019s saved key profiles. Applies to the next task without deleting keys. Refused while any work is pending.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "id"
+        ],
+        "properties": {
+         "id": {
+          "type": "string",
+          "description": "A Lumina catalog id or opaque key:<profile-id> returned by GET /v1/model-key."
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Updated model settings; keys remain saved"
+     },
+     "400": {
+      "description": "Invalid payload"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF required"
+     },
+     "409": {
+      "description": "Pending work or personal keys disabled"
+     },
+     "422": {
+      "description": "Model unavailable or not owned"
+     },
+     "429": {
+      "description": "Rate limited"
      }
     }
    }

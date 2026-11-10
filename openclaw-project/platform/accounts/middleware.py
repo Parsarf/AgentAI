@@ -32,7 +32,8 @@ class BoundaryMiddleware:
             response=JsonResponse({'error':'temporarily_unavailable'},status=503)
         response.setdefault('Cache-Control', 'no-store')
         response['X-Content-Type-Options']='nosniff'
-        response['X-Frame-Options']='DENY'
+        # The executable player alone may be framed by our own app. Keep all other routes unframeable.
+        response['X-Frame-Options'] = 'SAMEORIGIN' if request.path == '/v1/apps/player' and response.status_code == 200 else 'DENY'
         # The UI shell (/app/) sets its own policy because it must run scripts; every other response gets the strict one.
         response.setdefault('Content-Security-Policy',"default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         response.setdefault('Referrer-Policy','same-origin')
@@ -64,6 +65,8 @@ class AccountMiddleware:
                 limit=240 if scope=='api.read' else 30      # a live dashboard polls a few times per second at most
                 if scope=='api.mutate' and request.path.startswith('/v1/blocks/') and request.path.endswith('/state'):
                     scope,limit='api.autosave',90          # debounced draft saves while editing a plan
+                if request.method == 'POST' and request.path.startswith('/v1/location/'):
+                    scope,limit='api.location',60
                 rate(scope,str(request.user.pk)+'|'+request.client_ip,limit,60)
             except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'60'})
         return self.get_response(request)

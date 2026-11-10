@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumina app player</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface, Canvas); color: var(--text-primary, CanvasText); font: 14px var(--font, system-ui); }
+  main { padding: 16px; display: grid; gap: 12px; }
+  button, textarea { font: inherit; color: inherit; background: var(--surface-raised, ButtonFace); border: 1px solid var(--border-default, ButtonBorder); padding: 10px; }
+  button { border-radius: var(--radius-pill, 999px); cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent, Highlight); }
+  textarea { width: 100%; resize: vertical; border-radius: 10px; }
+  p { margin: 0; color: var(--text-secondary, CanvasText); }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 440px; overflow: auto; font-family: var(--font-mono, monospace); }
+  iframe { display: block; width: 100%; height: 100vh; border: 0; }
+  label { display: grid; gap: 8px; }
+  [hidden] { display: none !important; }
+</style>
+<iframe id="view" title="Application interface" sandbox="allow-scripts" hidden></iframe>
+<main id="console" hidden>
+  <p id="description"></p>
+  <label>Program input (one line per answer)
+    <textarea id="input" rows="3" placeholder="Enter input before Run. The program receives these lines, then end of input."></textarea>
+  </label>
+  <div><button id="run">Run</button> <button id="stop" disabled>Stop</button></div>
+  <p id="status" role="status">Ready</p>
+  <pre id="output" tabindex="0" aria-label="Program output"></pre>
+</main>
+<script>
+'use strict';
+const view = document.getElementById('view');
+const panel = document.getElementById('console');
+const output = document.getElementById('output');
+const status = document.getElementById('status');
+const runButton = document.getElementById('run');
+const stopButton = document.getElementById('stop');
+const OUTPUT_LIMIT = 100000;
+const THEME_TOKENS = ['--surface', '--surface-raised', '--text-primary', '--text-secondary', '--border-default', '--accent', '--font', '--font-mono', '--radius-pill'];
+let app = null;
+let worker = null;
+let timer = null;
+let workerUrl = null;
+
+function finish(message) {
+  if (worker) worker.terminate();
+  worker = null;
+  if (workerUrl) URL.revokeObjectURL(workerUrl);
+  workerUrl = null;
+  clearTimeout(timer);
+  runButton.disabled = false;
+  stopButton.disabled = true;
+  status.textContent = message;
+}
+
+function append(text) {
+  const remaining = OUTPUT_LIMIT - output.textContent.length;
+  output.textContent += String(text).slice(0, remaining);
+  if (output.textContent.length >= OUTPUT_LIMIT) {
+    finish('Stopped: output limit reached.');
+    return false;
+  }
+  return true;
+}
+
+window.addEventListener('message', event => {
+  if (app || event.source !== parent || event.data?.type !== 'lumina.app') return;
+  const value = event.data.app;
+  if (!value || value.version !== 1 || !['html', 'python', 'javascript'].includes(value.runtime)
+      || typeof value.title !== 'string' || !value.title.trim() || Array.from(value.title).length > 120
+      || typeof value.code !== 'string' || !value.code.trim() || new TextEncoder().encode(value.code).length > 524288) return;
+  app = value;
+  // Only presentation tokens are copied from the trusted parent. Apps never receive account data.
+  for (const token of THEME_TOKENS) {
+    const setting = event.data.theme?.[token];
+    if (typeof setting === 'string' && setting.length < 500) document.documentElement.style.setProperty(token, setting);
+  }
+  if (app.runtime === 'html') {
+    view.hidden = false;
+    const policy = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'";
+    const diagnostics = '<script>(' + reportHtmlErrors.toString() + ')()' + '</' + 'script>';
+    view.srcdoc = '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' + policy + '">' + diagnostics + app.code;
+  } else {
+    panel.hidden = false;
+    document.getElementById('description').textContent = app.runtime === 'python'
+      ? 'Python runs in your browser. Standard library supported; desktop windows, servers and native packages need a separate environment. The first run downloads Python.'
+      : 'Browser JavaScript console. Node.js modules and servers need a separate environment.';
+  }
+  parent.postMessage({ type: 'lumina.app.ready' }, '*');
+});
+
+// Listen only to the generated document we own; never accept a diagnostic from another window.
+window.addEventListener('message', event => {
+  if (app?.runtime !== 'html' || event.source !== view.contentWindow || event.data?.type !== 'lumina.app.error') return;
+  if (typeof event.data.message === 'string') parent.postMessage({ type: 'lumina.app.error', message: event.data.message.slice(0, 1000) }, '*');
+});
+function reportHtmlErrors() {
+  const report = message => parent.postMessage({ type: 'lumina.app.error', message: String(message).slice(0, 1000) }, '*');
+  window.addEventListener('error', event => report(event.message || 'The HTML app failed to run.'));
+  window.addEventListener('unhandledrejection', event => report(event.reason?.message || event.reason));
+}
+
+// Serialized into a worker: neither the program nor Python runs on Lumina's UI thread.
+function programWorker() {
+  self.onmessage = async ({ data }) => {
+    const LIMIT = 100000;
+    let total = 0;
+    let buffered = '';
+    let lastFlush = -Infinity;
+    let started = false;
+    function flush() {
+      if (buffered) self.postMessage({ output: buffered });
+      buffered = '';
+      lastFlush = performance.now();
+    }
+    function send(text) {
+      text = String(text);
+      buffered += text.slice(0, LIMIT - total);
+      total += text.length;
+      if (total >= LIMIT) { flush(); throw new RangeError('Output limit reached'); }
+      if (buffered.length >= 4096 || performance.now() - lastFlush > 16) flush();
+    }
+    try {
+      const lines = data.input === '' ? [] : data.input.split('\n');
+      if (data.runtime === 'python') {
+        importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js');
+        const py = await loadPyodide({
+          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/',
+          stdout: text => send(text + '\n'), stderr: text => send(text + '\n'),
+        });
+        py.setStdin({ stdin: () => lines.length ? lines.shift() : null });
+        started = true;
+        self.postMessage({ running: true });
+        await py.runPythonAsync(data.code);
+      } else {
+        self.prompt = () => lines.length ? lines.shift() : null;
+        self.console = Object.fromEntries(['log', 'error', 'warn', 'info', 'debug'].map(name => [name, (...args) => send(args.map(String).join(' ') + '\n')]));
+        started = true;
+        self.postMessage({ running: true });
+        await (new Function('return (async()=>{' + data.code + '\n})()'))();
+      }
+      flush();
+      self.postMessage({ done: true });
+    } catch (error) {
+      flush();
+      self.postMessage({ error: String(error), phase: started ? 'execution' : 'startup' });
+    }
+  };
+}
+
+stopButton.onclick = () => finish('Stopped');
+runButton.onclick = () => {
+  if (!app || worker) return;
+  output.textContent = '';
+  status.textContent = app.runtime === 'python' ? 'Loading Python…' : 'Running…';
+  runButton.disabled = true;
+  stopButton.disabled = false;
+  workerUrl = URL.createObjectURL(new Blob(['(' + programWorker.toString() + ')()'], { type: 'text/javascript' }));
+  let activeWorker;
+  try { activeWorker = new Worker(workerUrl); }
+  catch { finish('Could not start the program. Try again.'); return; }
+  worker = activeWorker;
+  timer = setTimeout(() => finish('Runtime loading timed out. Check your connection and try again.'), 90000);
+  let executionStarted = false;
+  activeWorker.onmessage = ({ data }) => {
+    // Ignore events queued by an earlier run or after an output-limit stop.
+    if (worker !== activeWorker || !data || typeof data !== 'object') return;
+    if (typeof data.output === 'string' && !append(data.output)) return;
+    if (data.running && !executionStarted) {
+      executionStarted = true;
+      clearTimeout(timer);
+      status.textContent = 'Running…';
+      timer = setTimeout(() => finish('Stopped after 30 seconds. You can run again.'), 30000);
+    }
+    if (data.error) {
+      if (append(String(data.error) + '\n')) finish(data.phase === 'startup' ? 'Runtime could not load. Check your connection and try again.' : 'Program error');
+    } else if (data.done) finish('Finished');
+  };
+  activeWorker.onerror = () => {
+    if (worker === activeWorker) finish('Runtime failed to load or run. Check your connection and try again.');
+  };
+  activeWorker.postMessage({ runtime: app.runtime, code: app.code, input: document.getElementById('input').value });
+};
+</script>
+</html>

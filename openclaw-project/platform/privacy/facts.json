@@ -4,7 +4,7 @@
  "contact_email": "raouparsa@gmail.com",
  "policy_file": "deploy/vercel/public/privacy.html",
  "policy_url": "https://getlumina.pro/privacy",
- "policy_updated": "2026-11-02",
+ "policy_updated": "2026-11-07",
  "derived": {
   "retention": {
    "browse_pictures_and_trace_hours": 24.0,
@@ -67,6 +67,7 @@
    "api.typesafe.ai",
    "app.asana.com",
    "backend.getlumina.pro",
+   "cdn.jsdelivr.net",
    "getlumina.pro",
    "mcp.asana.com",
    "openrouter.ai",
@@ -74,8 +75,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "ffa45c2dd906ccd74b6c8b645cc22c60bbb4a33f8e90920c5588ce2bbe42ef22",
-  "schema_columns": 666,
+  "schema_sha256": "9b61ea14ae2a695af29d9482e738d50efda5e769424b4eadb55d145c9ff99afe",
+  "schema_columns": 675,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -154,6 +155,12 @@
    "why": "customer-selected Asana MCP tools and their authorized arguments",
    "customer_data": true,
    "in_policy": "Asana"
+  },
+  "cdn.jsdelivr.net": {
+   "who": "jsDelivr",
+   "why": "Browser Python runtime download when a customer explicitly runs a Python delivery; receives client IP and download metadata.",
+   "customer_data": true,
+   "in_policy": "jsDelivr"
   }
  },
  "recipients_not_visible_in_code": {
@@ -194,7 +201,7 @@
   "tabGroups",
   "storage",
   "wss://backend.getlumina.pro",
-  "2 November 2026",
+  "7 November 2026",
   "6,000",
   "80 controls",
   "until you ask us to delete",
@@ -224,7 +231,11 @@
   "new session",
   "Browser extension",
   "saved prompts",
-  "lets go of"
+  "lets go of",
+  "Location you choose to share",
+  "latitude, longitude and accuracy",
+  "saved model selections",
+  "jsDelivr"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -295,6 +306,11 @@
    "date": "2026-11-02",
    "by": "owner goal: the extension becomes a standalone side chat like other assistants' extensions",
    "note": "New permissions tabs, scripting, contextMenus and an OPTIONAL all-sites permission asked for only inside the side chat. New behaviours the policy now states: the side chat opens on any tab and every open is a new session (a new chat titled \"Browser extension\", the assistant woken); the extension signs in to /v1/panel/session with its own device token; Lumina can work in a tab of the customer's own Chrome only after they press Allow on it (attached while a task runs, released after, never closed); tab names/addresses are sent only with a message that involves a tab; selected text (4,000) and page text (20,000) are sent only after the customer allows reading pages and are kept with the chat message; saved prompts and panel settings stay on the computer; the popup is gone (controls moved into the side chat). Checked against code: derive.py output, panel.py clean_context, browse/extension tests. Publish the page after merge."
+  },
+  {
+   "date": "2026-11-07",
+   "by": "User-authorized location/model-selection release preparation",
+   "note": "Reviewed location.py, request-worker cleanup, LocationRequest.tsx, saved-key profiles and app_player.html. Disclosed opt-in device coordinates, transient handoff versus conversation/backups, location metadata cleanup, multiple saved API keys and active selection, and conditional jsDelivr Python runtime download. No new Lumina model provider was enabled. Policy prepared for publication before feature rollout."
   }
  ],
  "assistant_recipients": {

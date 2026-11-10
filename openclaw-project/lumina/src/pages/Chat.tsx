@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Composer from '../components/Composer';
+import AppPlayer, { runnableFile } from '../components/apps/AppPlayer';
 import ChatActions from '../components/ChatActions';
 import BrowserToggle from '../components/BrowserToggle';
 import { loadMessages, type Message as Msg } from '../lib/conversations';
@@ -56,7 +57,7 @@ export default function Chat() {
   const reload = useCallback(() => { void loadThread(); void loadList(); void refresh(); }, [loadThread, loadList, refresh]);
   const bridge = useMemo<Bridge>(() => ({ conversationId: id ?? '', tasks: tasks as unknown as Bridge['tasks'], blocks, reload }), [id, tasks, blocks, reload]);
 
-  useEffect(() => { cachedMessages.current = []; setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); void loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
+  useEffect(() => { cachedMessages.current = []; setMade([]); setMsgs([]); setTasks([]); setBlocks([]); setDetail(null); setErr(''); setLoaded(false); lastCount.current = 0; stick.current = true; setNewBelow(false); void loadThread(); return () => { ++loadVersion.current; }; }, [loadThread]);
   useEffect(() => { void loadList(); }, [loadList]);
   const drafting = blocks.some(b => b.status === 'submitted');
   const working = tasks.some(t => isActive(t)) || drafting || blocks.some(b => b.run_status === 'running');
@@ -88,7 +89,7 @@ export default function Chat() {
     finally { if (threadId.current === id) { setStopping(null); reload(); } }
   };
   const byRequest = new Map(tasks.map(t => [t.id, t]));
-  const trail = useMemo(() => foldTrail(msgs, rid => { const t = byRequest.get(rid); return !!t && !isActive(t); }, m => blocks.some(b => b.anchor_message_id === m.id) || made.some(a => a.task_id === m.request_id)), [msgs, tasks, blocks, made]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const trail = useMemo(() => foldTrail(msgs, rid => { const t = byRequest.get(rid); return !!t && !isActive(t); }, m => blocks.some(b => b.anchor_message_id === m.id) || m.content.includes('```lumina-app')), [msgs, tasks, blocks]);   // eslint-disable-line react-hooks/exhaustive-deps
   const current = chats.find(c => c.id === id) ?? detail;
 
   const askAgain = async (message: string) => { if (!id) return; try { await api('POST', `/v1/conversations/${id}/send`, { message, key: crypto.randomUUID().replace(/-/g, ''), mode: 'text', ui: getAnswerStyle() }); } finally { reload(); } };
@@ -98,6 +99,7 @@ export default function Chat() {
     await askAgain(approved ? `I approved the request to use ${name}. Please continue.` : `I declined the request to use ${name}. Do not run it; carry on without it.`);
   };
   const lastAgent = [...msgs].reverse().find(m => m.provenance === 'agent');
+  const appRequests = new Set([...msgs.filter(m => m.content.includes('```lumina-app')).map(m => m.request_id), ...made.filter(a => runnableFile(a)).map(a => a.task_id)].filter(Boolean));
   const fresh = !id || (loaded && !msgs.length && !err);          // nothing said yet: the composer floats in the middle, then settles at the bottom
   const sent = (r: any) => {
     if (id) { reload(); return; }
@@ -121,10 +123,10 @@ export default function Chat() {
                   <button className="btn tertiary small read-more" aria-expanded={activityId === m.request_id} aria-controls={`activity-${m.request_id}`} onClick={() => setActivityId(cur => cur === m.request_id ? null : m.request_id)}>{activityId === m.request_id ? 'Read less' : 'Read more'}</button>
                   {activityId === m.request_id && <section className="chat-activity" id={`activity-${m.request_id}`} aria-label="Live task activity"><LiveRun key={m.request_id} id={m.request_id} inline taskState={byRequest.get(m.request_id)!.state} /></section>}
                 </div>)}
-              {m.provenance === 'agent' && m.request_id && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
-                <div className="filechips" aria-label="Files from this answer">{mine.map(a => <button key={a.display_name} className="chip small" title={humanSize(a.size_bytes)} onClick={() => download(a.id, a.version).catch(() => undefined)}>⬇ {a.display_name}</button>)}</div>); })()}
+              {m.provenance === 'agent' && m.request_id && !msgs.some(next => next.id > m.id && next.request_id === m.request_id && next.provenance === 'agent') && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
+                <div aria-label="Files from this answer"><div className="filechips">{mine.map(a => <button key={a.display_name} className="chip small" title={humanSize(a.size_bytes)} onClick={() => download(a.id, a.version).catch(() => undefined)}>⬇ {a.display_name}</button>)}</div>{mine.filter(a => runnableFile(a)).map(a => <AppPlayer key={`${a.id}-${a.version}`} file={a} />)}</div>); })()}
               {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} bridge={bridge} />)}
-              {m === lastAgent && !working && m.id > 0 && m.content.length > 160 && !blocks.some(b => b.anchor_message_id === m.id) && (
+              {m === lastAgent && !working && !appRequests.has(m.request_id) && !m.content.includes('```lumina-app') && m.id > 0 && m.content.length > 160 && !blocks.some(b => b.anchor_message_id === m.id) && (
                 <div className="quick" aria-label="Show this differently">
                   <button className="chip small" onClick={() => askAgain('Show your last answer as a table.')}>Show as table</button>
                   <button className="chip small" onClick={() => askAgain('Show your last answer as a chart.')}>Show as chart</button>

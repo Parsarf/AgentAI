@@ -27,6 +27,9 @@ class ModelKeyEndpointChecks(TestCase):
     def saved(self, client, body=None, probe=None):
         with mock.patch.object(mk, 'probe', probe or mock.Mock(return_value=None)) as p:
             r = self.post(client, '/v1/model-key/save', body or self.BODY)
+        if r.status_code == 200:
+            selected = self.post(client, '/v1/model-key/select', {'id': r.json()['saved_id']})
+            self.assertEqual(selected.status_code, 200, selected.content)
         return r, p
 
     def test_every_route_needs_a_signed_in_customer(self):
@@ -36,7 +39,7 @@ class ModelKeyEndpointChecks(TestCase):
 
     def test_it_is_off_until_it_is_turned_on_for_the_account(self):
         self.configure({}); a = self.signed()
-        self.assertEqual(a.get('/v1/model-key', secure=True).json(), {'available': False, 'configured': False})
+        self.assertFalse(a.get('/v1/model-key', secure=True).json()['available'])
         r, probe = self.saved(a); self.assertEqual((r.status_code, r.json()['error']), (409, 'not_available')); probe.assert_not_called(); self.assertFalse(self.store_path.exists())
         self.configure({'own_model_keys': ['a']}); a, b = self.signed('a'), self.signed('b')
         self.assertTrue(a.get('/v1/model-key', secure=True).json()['available']); self.assertFalse(b.get('/v1/model-key', secure=True).json()['available'])
@@ -50,7 +53,7 @@ class ModelKeyEndpointChecks(TestCase):
         args = probe.call_args.args; self.assertEqual((args[0].base_url, args[1], args[2]), ('https://models.example.org/v1', 'gpt-4o-mini', KEY))     # the endpoint was tested with exactly what was typed
         self.assertNotIn(KEY, r.content.decode()); self.assertNotIn(KEY, json.dumps(dict(r.headers)))
         self.assertNotIn(KEY, self.store_path.read_text()); self.assertNotIn('0123456789', self.store_path.read_text())
-        shown = a.get('/v1/model-key', secure=True).json(); self.assertEqual(shown, {'available': True, 'configured': True, 'host': 'models.example.org', 'model': 'gpt-4o-mini', 'hint': KEY[-4:]}); self.assertNotIn(KEY, json.dumps(shown))
+        shown = a.get('/v1/model-key', secure=True).json(); self.assertEqual({k: shown[k] for k in ('available', 'configured', 'host', 'model', 'hint')}, {'available': True, 'configured': True, 'host': 'models.example.org', 'model': 'gpt-4o-mini', 'hint': KEY[-4:]}); self.assertNotIn(KEY, json.dumps(shown))
         audits = list(Audit.objects.filter(action='model_key.save')); self.assertEqual(len(audits), 1)
         self.assertNotIn(KEY, ' '.join(str(vars(row)) for row in Audit.objects.all()))                                                                      # the audit trail records that it happened, never what
         from .model_key import active
@@ -71,10 +74,10 @@ class ModelKeyEndpointChecks(TestCase):
         self.assertEqual(self.post(a, '/v1/model-key/save', {**self.BODY, 'extra': 'x'}).status_code, 400)                                                  # unknown fields are refused
         self.assertEqual(self.post(a, '/v1/model-key/save', {'base_url': 'x'}).status_code, 422)
 
-    def test_saving_again_replaces_and_removing_deletes_for_good(self):
+    def test_saving_again_preserves_keys_and_legacy_remove_deletes_for_good(self):
         self.configure({'own_model_keys': True}); a = self.signed(); self.saved(a)
         self.saved(a, {**self.BODY, 'model': 'other-model', 'api_key': 'sk-second-key-9999999999'})
-        self.assertEqual(a.get('/v1/model-key', secure=True).json()['model'], 'other-model'); self.assertNotIn(KEY, self.store_path.read_text())
+        self.assertEqual(a.get('/v1/model-key', secure=True).json()['model'], 'other-model'); self.assertEqual(len(a.get('/v1/model-key', secure=True).json()['keys']), 2)
         r = self.post(a, '/v1/model-key/remove'); self.assertEqual((r.status_code, r.json()['removed'], r.json()['configured']), (200, True, False))
         self.assertFalse(a.get('/v1/model-key', secure=True).json()['configured']); self.assertNotIn('other-model', self.store_path.read_text())
         self.assertEqual(Audit.objects.filter(action='model_key.remove').count(), 1)
@@ -97,3 +100,38 @@ class ModelKeyEndpointChecks(TestCase):
         from .model_key import active
         self.assertTrue(active('a')); self.store_path.write_text('{broken'); self.assertFalse(active('a'))
         with override_settings(ENGINE_FILE='/nonexistent/engine.json'): self.assertFalse(active('a'))
+
+    def test_switching_preserves_keys_and_restores_lumina_budget_mode(self):
+        self.configure({'own_model_keys': True}); a = self.signed(); self.saved(a)
+        state = a.get('/v1/model-key', secure=True).json(); choice = state['selected']
+        from .model_key import active
+        self.assertTrue(active('a'))
+        r = self.post(a, '/v1/model-key/select', {'id': 'lumina-default'})
+        self.assertEqual(r.status_code, 200); self.assertFalse(active('a'))
+        self.assertEqual(len(r.json()['keys']), 1)
+        self.assertEqual(self.post(a, '/v1/model-key/select', {'id': choice}).status_code, 200)
+        self.assertTrue(active('a'))
+        b = self.signed('b')
+        self.assertEqual(self.post(b, '/v1/model-key/select', {'id': choice}).status_code, 422)
+        self.assertEqual(a.post('/v1/model-key/select', '{}', content_type='application/json', secure=True).status_code, 403)
+
+    def test_pending_work_blocks_mutation_before_probe_or_key_change(self):
+        self.configure({'own_model_keys': True}); a = self.signed(); self.saved(a)
+        before = self.store_path.read_bytes()
+        from django.db import connection
+        with connection.cursor() as c:
+            c.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch) VALUES ('a','pending','actor','project-a','key','hash','hello','waiting',1)")
+        self.assertEqual(self.post(a, '/v1/model-key/select', {'id': 'lumina-default'}).status_code, 409)
+        self.assertEqual(self.post(a, '/v1/model-key/remove').status_code, 409)
+        response, probe = self.saved(a)
+        self.assertEqual(response.status_code, 409); probe.assert_not_called()
+        self.assertEqual(self.store_path.read_bytes(), before)
+
+    def test_save_does_not_automatically_select_or_replace_a_key(self):
+        self.configure({'own_model_keys': True}); a = self.signed()
+        with mock.patch.object(mk, 'probe'):
+            first = self.post(a, '/v1/model-key/save', self.BODY)
+            second = self.post(a, '/v1/model-key/save', {**self.BODY, 'model': 'second'})
+        self.assertEqual(first.status_code, 200); self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()['selected'], 'lumina-default')
+        self.assertEqual(len(second.json()['keys']), 2)
