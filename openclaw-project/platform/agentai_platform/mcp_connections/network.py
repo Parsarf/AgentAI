@@ -6,11 +6,11 @@ redirects, compression, Unix sockets, or production private-address exception.
 """
 from __future__ import annotations
 import asyncio
-import ipaddress
 from urllib.parse import urlsplit
 import httpx2
 from httpcore2._backends.anyio import AnyIOBackend
-from ..model_keys import Endpoint, HOSTNAME, BLOCKED_SUFFIXES, is_public, resolve_public, ModelKeyError
+from ..model_keys import Endpoint, resolve_public, ModelKeyError        # the resolve-and-pin step, shared with the own-model relay
+from ..netsafe import HOSTNAME, BLOCKED_SUFFIXES, is_public_address
 
 MAX_RESPONSE = 2 * 1024 * 1024
 
@@ -42,13 +42,7 @@ def origin(url):
     return p.scheme, p.hostname, p.port or 443
 
 
-def public_address(value):
-    if not is_public(value):
-        return False
-    ip = ipaddress.ip_address(value)
-    if ip.version == 6 and (ip.sixtofour or ip.teredo or ip in ipaddress.ip_network('64:ff9b::/96') or ip in ipaddress.ip_network('64:ff9b:1::/48')):
-        return False
-    return True
+public_address = is_public_address          # the shared rule (netsafe.py): global, not multicast or reserved, no IPv4-in-IPv6 transition ranges
 
 
 class PublicBackend(AnyIOBackend):

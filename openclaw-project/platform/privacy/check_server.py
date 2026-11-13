@@ -74,7 +74,7 @@ def evaluate(state, facts=FACTS, today=None):
           f'a pre-update database copy is {snaps.get("oldest_days")} days old: the policy says at most {r["plaintext_snapshots_max_days"]} days. Deploy the cleanup fix and let the daily backup run')
     check('WARN', snaps.get('count', 0) <= r['plaintext_snapshots_keep_newest'], f'pre-update database copies: {snaps.get("count")} kept',
           f'{snaps.get("count")} pre-update database copies exist but the cleanup keeps only the newest {r["plaintext_snapshots_keep_newest"]}: the nightly backup removes the extras (the fix was deployed 2026-10-31); if this is still showing after the 03:40 UTC run on 2026-11-01, the cleanup is not working'
-          + (f' (the 30-day promise runs out {s["known_gap"].split("until ")[-1].strip(".")})' if 'until ' in s['known_gap'] else ''))
+          + (f' (the 30-day promise runs out {s["known_gap"].split("until ")[-1].strip(".")})' if 'until ' in s.get('known_gap', '') else ''))
     check('FAIL', state.get('model_providers') == s['model_providers'], f'every model goes to {", ".join(s["model_providers"])} (the policy names it)',
           f'the models now route to {state.get("model_providers")!r} but the policy and record say {s["model_providers"]!r}: a new company would receive chat content, so update the policy first')
     for key, label in (('uploads_on', 'file uploads'), ('telegram_configured', 'Telegram linking'), ('connectors_on', 'Google connectors')):

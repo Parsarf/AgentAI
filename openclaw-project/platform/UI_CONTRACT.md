@@ -26,7 +26,7 @@ Images and fonts: same origin or `data:`. Calls go to the same origin only (`con
 ```json
 {"api_version":"2026-10-13","user":{"email":"…","role":"customer"},"assistant":{"state":"ready|stopped|not_provisioned|…"},
  "features":{"chat":true,"execution":true,"files":false,"uploads":false,"telegram":false,"connectors":false,"billing_mode":"open","requests":true,"usage":true},
- "limits":{"max_message_chars":16000,"max_projects":10,"max_conversations_per_project":10},"links":{"classic_ui":"/account/","sign_out":"/auth/logout"}}
+ "limits":{"max_message_chars":16000,"max_projects":10,"max_conversations_per_project":100},"links":{"classic_ui":"/account/","sign_out":"/auth/logout"}}
 ```
 `features` is the **only** thing that should decide which screens and buttons exist. `execution:false` means messages are saved and wait. `billing_mode`: `invite_only` | `open` (free access) | `paid_required`.
 

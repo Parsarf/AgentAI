@@ -75,3 +75,41 @@ class SelectionChecks(unittest.TestCase):
         self.assertEqual(err.exception.status, 503)
         with self.assertRaises(mk.ModelKeyError): self.add()
         self.assertEqual(self.path.read_text(), '{broken')
+
+    def test_active_route_and_credentials_are_pinned_while_next_task_selection_changes(self):
+        first = self.add('first'); second = self.add('second')
+        self.store.select('a', second['id'])
+        current_task = [first['id']]
+        relay = mk.ModelRelay(self.store, lambda a: True, selection=lambda a: current_task[0], admission=lambda a, personal: personal,
+                              resolver=lambda *args, **kwargs: [(2, 1, 6, '', ('8.8.8.8', 443))])
+        response = Mock(status=200); response.getheader.return_value = 'application/json'
+        with patch.object(mk, 'open_upstream', return_value=(Mock(), response)) as upstream:
+            up = relay.selected_chat('a', 'cell', b'{"model":"ignored","messages":[]}'); up.close()
+            self.assertEqual(json.loads(upstream.call_args.args[3])['model'], 'first')
+            current_task[0] = second['id']
+            up = relay.selected_chat('a', 'cell', b'{"messages":[]}'); up.close()
+            self.assertEqual(json.loads(upstream.call_args.args[3])['model'], 'second')
+            current_task[0] = 'lumina-default'
+            with self.assertRaises(mk.RelayError) as err:
+                relay.selected_chat('a', 'cell', b'{"messages":[]}')
+            self.assertEqual(err.exception.code, 'admission_mismatch')
+            self.assertEqual(upstream.call_count, 2)
+
+    def test_proxy_budget_exhaustion_is_terminal_but_real_rate_limits_are_preserved(self):
+        relay = mk.ModelRelay(self.store, lambda a: True)
+        response = Mock(status=429); response.getheader.return_value = 'application/json'
+        response.read.return_value = b'{"error":{"message":"Budget has been exceeded! Key=private-secret","type":"BudgetExceededError"}}'
+        conn = Mock(); conn.getresponse.return_value = response
+        with patch.object(relay, '_lumina_connection', return_value=conn):
+            with self.assertRaises(mk.RelayError) as err:
+                relay.selected_chat('a', 'cell', b'{"messages":[]}')
+            self.assertEqual((err.exception.status, err.exception.code), (402, 'budget_exhausted'))
+            self.assertNotIn('private-secret', err.exception.message)
+            self.assertEqual(relay._busy['a'], 0)
+            response.close.assert_called()
+            response.read.return_value = b'{"error":{"message":"Too many requests"}}'
+            response.read1.return_value = b''
+            up = relay.selected_chat('a', 'cell', b'{"messages":[]}')
+            self.assertEqual(up.status, 429)
+            self.assertEqual(b''.join(up.chunks()), response.read.return_value)
+            up.close(); self.assertEqual(relay._busy['a'], 0)

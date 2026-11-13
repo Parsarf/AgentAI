@@ -20,7 +20,6 @@ import contextlib
 import fcntl
 import hashlib
 import http.client
-import ipaddress
 import json
 import logging
 import os
@@ -39,6 +38,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
+from . import netsafe, rollout
+
 log = logging.getLogger('agentai.byok')
 
 DEFAULT_STORE = '/var/lib/agentai-platform/model-keys.json'
@@ -53,9 +54,9 @@ CONNECT_SECONDS, READ_SECONDS = 10, 180
 PROBE_CONNECT_SECONDS, PROBE_READ_SECONDS = 5, 12        # the save-time test runs inside the web app's single worker: it must be quick (a real call is allowed far longer)
 RATE_PER_MINUTE, SIMULTANEOUS = 120, 6      # protect Lumina's servers from one runaway assistant; they are not spending limits
 MODEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}')
-HOSTNAME = re.compile(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]')
+HOSTNAME = netsafe.HOSTNAME                 # the rules for names and addresses are shared with the other outbound features: netsafe.py
 PATH = re.compile(r'(?:/[A-Za-z0-9._~-]{1,60}){0,6}')
-BLOCKED_SUFFIXES = ('.local', '.localhost', '.internal', '.lan', '.home', '.corp', '.intranet', '.arpa', '.test', '.invalid', '.example', '.onion')
+BLOCKED_SUFFIXES = netsafe.BLOCKED_SUFFIXES
 
 
 class ModelKeyError(ValueError):
@@ -106,14 +107,7 @@ def parse_endpoint(raw) -> Endpoint:
     return Endpoint(host, port, path)
 
 
-def is_public(ip) -> bool:
-    try:
-        address = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
-        address = address.ipv4_mapped
-    return address.is_global and not address.is_multicast
+is_public = netsafe.is_public_address        # one rule for every feature that connects out for a customer
 
 
 def resolve_public(endpoint: Endpoint, resolver=socket.getaddrinfo, public=is_public) -> list[str]:
@@ -148,20 +142,14 @@ def clean_key(raw) -> str:
 
 # --------------------------------------------------------------------------------------------------------------------- who may use it
 def read_engine(path=DEFAULT_ENGINE_FILE) -> dict:
-    try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    """The owner's own-model-keys.json. Unlike the newer rollout files this one has always been read whatever kind of file it is; that is kept."""
+    return rollout.read(path, follow_symlinks=True)
 
 
 def enabled_for(config, account) -> bool:
     """own-model-keys.json: `"own_model_keys": true` = every account, a list = those accounts, anything else (or no line) = nobody. Off until it is turned on, on purpose:
-    the privacy policy has to be published first."""
-    value = config.get('own_model_keys') if isinstance(config, dict) else None
-    if value is True:
-        return True
-    return isinstance(value, list) and account in value
+    the privacy policy has to be published first. The shared rule is rollout.py."""
+    return rollout.allows(config, 'own_model_keys', account)
 
 
 # --------------------------------------------------------------------------------------------------------------------- the encrypted store
@@ -316,8 +304,9 @@ class ModelKeyStore:
             db['accounts'][account] = {'profiles': profiles, 'selected': selected}
         return removed
 
-    def _selected(self, db, account):
+    def _selected(self, db, account, choice=None):
         profiles, selected = self._profiles(db['accounts'].get(account))
+        selected = selected if choice is None else choice
         return profiles.get(selected[4:]) if selected.startswith('key:') else None
 
     @staticmethod
@@ -333,12 +322,12 @@ class ModelKeyStore:
             entry = self._selected(db, account)
         return self._public(entry) if isinstance(entry, dict) else None
 
-    def open(self, account: str) -> dict:
+    def open(self, account: str, choice=None) -> dict:
         """-> {'base_url', 'host', 'port', 'prefix', 'model', 'key'} for one call. Raises ModelKeyError when there is none or it cannot be opened."""
         if self.ring is None:
             raise ModelKeyError('model keys are not set up on this server')
         with self._txn() as db:
-            entry = self._selected(db, account)
+            entry = self._selected(db, account, choice)
         if not isinstance(entry, dict):
             raise ModelKeyError('no model key')
         try:
@@ -449,11 +438,16 @@ def probe(endpoint: Endpoint, model: str, key: str, *, resolver=socket.getaddrin
 
 # --------------------------------------------------------------------------------------------------------------------- the relay
 class Upstream:
-    def __init__(self, status, content_type, conn, resp):
+    def __init__(self, status, content_type, conn, resp, prefix=b''):
         self.status, self.content_type, self._conn, self._resp, self.sent = status, content_type, conn, resp, 0
+        self._prefix = prefix
 
     def chunks(self, size=16384):
         try:
+            if self._prefix:
+                self.sent += len(self._prefix)
+                yield self._prefix
+                self._prefix = b''
             while True:
                 data = self._resp.read1(size) if hasattr(self._resp, 'read1') else self._resp.read(size)
                 if not data:
@@ -472,8 +466,9 @@ class Upstream:
 class ModelRelay:
     """The logic behind /byok/v1 (the HTTP wrapper is in tool_relay.py): who the caller is has already been established."""
 
-    def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic, admission=None):
+    def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic, admission=None, selection=None):
         self.admission = admission
+        self.selection = selection   # server-owned route of the one admitted live request
         self.store, self.enabled, self.resolver, self.public, self.context, self.clock = store, enabled, resolver, public, context, clock
         self._hits, self._busy, self._guard = {}, {}, threading.Lock()
 
@@ -492,11 +487,11 @@ class ModelRelay:
         with self._guard:
             self._busy[account] = max(0, self._busy.get(account, 1) - 1)
 
-    def _config(self, account):
+    def _config(self, account, choice=None):
         if not self.enabled(account):
             raise RelayError(403, 'Using your own model is not switched on for this account.', 'not_enabled')
         try:
-            return self.store.open(account)
+            return self.store.open(account, choice)
         except ModelKeyError:
             raise RelayError(404, 'No own model key is saved for this account, or it can no longer be opened. Enter it again in Settings.', 'no_key') from None
 
@@ -506,7 +501,7 @@ class ModelRelay:
     def selected_chat(self, account, credential, raw):
         from .model_catalog import find
         try:
-            selected = self.store.choices(account)['selected']
+            selected = self.selection(account) if self.selection is not None else self.store.choices(account)['selected']
         except ModelKeyError:
             raise RelayError(503, 'Model settings could not be read. Try again shortly.', 'model_settings_unavailable') from None
         if self.admission is not None:
@@ -518,7 +513,7 @@ class ModelRelay:
                 raise RelayError(403, 'This model selection does not match an admitted live task. Start a new task after choosing your model.', 'admission_mismatch')
         if selected.startswith('key:'):
             # Do not fall back to a Lumina-funded model when a personal key fails.
-            return self.chat(account, raw)
+            return self.chat(account, raw, choice=selected)
         target = find(selected)
         if target is None:
             raise RelayError(409, 'The selected Lumina model is unavailable. Choose another in Settings.', 'model_unavailable')
@@ -540,7 +535,22 @@ class ModelRelay:
             response = conn.getresponse()
             if 300 <= response.status < 400:
                 raise RelayError(502, 'The model proxy attempted a redirect.', 'redirect_refused')
-            up = Upstream(response.status, response.getheader('Content-Type') or 'application/json', conn, response)
+            prefix = b''
+            if response.status == 429:
+                prefix = response.read(65536)
+                # LiteLLM reports a permanent key-budget refusal as 429. Passing
+                # that through makes the runtime repeatedly retry an exhausted
+                # allowance. Distinguish it from a genuine temporary rate limit.
+                try:
+                    error = json.loads(prefix).get('error', {})
+                    budget = isinstance(error, dict) and any(s in str(error.get('message', '')).lower() + ' ' + str(error.get('type', '')).lower()
+                        for s in ('budget has been exceeded', 'budget_exceeded', 'budgetexceeded'))
+                except (ValueError, AttributeError):
+                    budget = False
+                if budget:
+                    close_upstream(conn, response)
+                    raise RelayError(402, 'Your Lumina model allowance is exhausted. Choose a saved personal model in Settings or contact the owner to review the allowance.', 'budget_exhausted')
+            up = Upstream(response.status, response.getheader('Content-Type') or 'application/json', conn, response, prefix)
         except (OSError, http.client.HTTPException):
             if conn is not None:
                 conn.close()
@@ -562,12 +572,20 @@ class ModelRelay:
         return up
 
     def models(self, account):
+        try:
+            selected = self.store.choices(account)['selected']
+        except ModelKeyError:
+            raise RelayError(503, 'Model settings could not be read. Try again shortly.', 'model_settings_unavailable') from None
+        if not selected.startswith('key:'):
+            # Warm clients may list models through their legacy URL after the
+            # customer returned to Lumina and no longer has a personal key.
+            return {'object': 'list', 'data': [{'id': SELECTION_MODEL, 'object': 'model', 'owned_by': 'lumina'}]}
         cfg = self._config(account)
         return {'object': 'list', 'data': [{'id': cfg['model'], 'object': 'model', 'owned_by': cfg['host']}]}
 
-    def chat(self, account, raw: bytes) -> Upstream:
+    def chat(self, account, raw: bytes, *, choice=None) -> Upstream:
         """Forward one chat-completions request. The model is always the customer's chosen one, whatever the assistant asked for."""
-        cfg = self._config(account)
+        cfg = self._config(account, choice)
         try:
             body = json.loads(raw)
         except ValueError:

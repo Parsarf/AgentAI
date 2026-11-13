@@ -14,7 +14,8 @@ from django_otp import verify_token, login as otp_login
 from django_otp.plugins.otp_totp.models import TOTPDevice
 from .models import Identity, Audit, EmailJob
 from .services import Denied, Limited, audit, rate, token_for, deliver, consume, create_invite, operator_scope, revoke, models_f_epoch
-from agentai_platform.security import Principal, NotFound
+from . import wiring
+from agentai_platform.security import NotFound
 
 def csrf_failure(request, reason=''):
     # Record only a fixed category, never raw headers, tokens or request data.
@@ -43,7 +44,12 @@ def assets(request,name='ui.css'):
     response['Cache-Control']='public, max-age=86400'
     return response
 
-def endpoint(methods, fields=(), field_limits=None, structured=False):
+FORM_RESULTS=(None,'connections','requests','json','chat','signin','login','pending')
+def endpoint(methods, fields=(), field_limits=None, structured=False, form=None):
+    """Wraps a JSON route: method and input shape, then one mapping from errors to statuses (Limited 429, Denied/NotFound audited 404, bad input 400, database 503).
+    `form` is what a classic HTML form post to this route gets back instead of JSON: a redirect to 'connections' | 'requests' | 'login', to the chat page
+    ('chat', honouring request.form_redirect), after sign-in ('signin'), the JSON itself ('json'), or the plain result page (None; 'pending' words it as "on its way")."""
+    if form not in FORM_RESULTS: raise ValueError('unknown form result')
     def decorate(fn):
         @wraps(fn)
         def view(request,*args,**kwargs):
@@ -67,17 +73,17 @@ def endpoint(methods, fields=(), field_limits=None, structured=False):
                     request.input=data
                 response=fn(request,*args,**kwargs)
                 if request.method=='POST' and request.content_type=='application/x-www-form-urlencoded' and response.status_code<400:
-                    if fn.__name__=='disconnect': return HttpResponseRedirect('/account/connections/')
-                    if fn.__name__ in ['requests','cancel']: return HttpResponseRedirect('/account/requests/')
-                    if fn.__name__ in {'link','ticket','checkout','portal'}: return response
-                    if fn.__name__.startswith('chat_'):
-                        return HttpResponseRedirect(getattr(request,'form_redirect','/account/chat/'))
-                    if fn.__name__=='signin': return HttpResponseRedirect('/account/mfa/' if request.user.identity.role=='operator' else '/account/')
-                    if fn.__name__ in ['signout','revoke_sessions','finish']: return HttpResponseRedirect('/account/login/')
-                    return render(request,'accounts/result.html',{'pending':fn.__name__=='recovery'})
+                    # What a classic HTML form post gets back is declared by the view (`form=`), never inferred from its name.
+                    if form=='connections': return HttpResponseRedirect('/account/connections/')
+                    if form=='requests': return HttpResponseRedirect('/account/requests/')
+                    if form=='json': return response
+                    if form=='chat': return HttpResponseRedirect(getattr(request,'form_redirect','/account/chat/'))
+                    if form=='signin': return HttpResponseRedirect('/account/mfa/' if request.user.identity.role=='operator' else '/account/')
+                    if form=='login': return HttpResponseRedirect('/account/login/')
+                    return render(request,'accounts/result.html',{'pending':form=='pending'})
                 return response
             except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'900'})
-            except Denied:
+            except (Denied, NotFound):      # one answer for "not yours" and "does not exist": a route cannot reveal which
                 try: audit(request.user.pk if request.user.is_authenticated else 'anonymous',request.account_id,'route','access.denied','denied',request.request_id)
                 except DatabaseError: return JsonResponse({'error':'temporarily_unavailable'},status=503)
                 return JsonResponse({'error':'unavailable'},status=404)
@@ -120,7 +126,7 @@ def account_page(request, page='home'):
         return render(request,'accounts/home.html',{'email':request.user.email,'deployment_state':row[0] if row else 'not provisioned','nav':True,'nav_here':'home',**overview_context(request)})
     return render(request,'accounts/form.html',{'page':page})
 
-@endpoint(['POST'], ['email','password'])
+@endpoint(['POST'], ['email','password'], form='signin')
 def signin(request):
     email=request.input.get('email','').strip().lower()
     rate('login.ip',request.client_ip,30,900)
@@ -148,7 +154,7 @@ def signin(request):
         audit(user.pk,identity.account_id,user.pk,'identity.login','completed',request.request_id,op)
     return JsonResponse({'signed_in':True,'mfa_required':identity.role=='operator','execution_enabled':False})
 
-@endpoint(['POST'])
+@endpoint(['POST'], form='login')
 def signout(request):
     if not request.user.is_authenticated: return JsonResponse({'signed_out':True})
     identity=request.user.identity
@@ -158,7 +164,7 @@ def signout(request):
         audit(identity.user_id,identity.account_id,identity.user_id,'identity.logout','completed',request.request_id,op)
     return JsonResponse({'signed_out':True})
 
-@endpoint(['POST'])
+@endpoint(['POST'], form='login')
 def revoke_sessions(request):
     denied=customer(request)
     if denied: return denied
@@ -170,7 +176,7 @@ def revoke_sessions(request):
         audit(actor,request.account_id,actor,'identity.revoke_sessions','completed',request.request_id,op)
     return JsonResponse({'sessions_revoked':True})
 
-@endpoint(['POST'], ['email'])
+@endpoint(['POST'], ['email'], form='pending')
 def recovery(request):
     email=request.input.get('email','').strip().lower()
     rate('recovery.ip',request.client_ip,20,900)
@@ -196,7 +202,7 @@ def recovery(request):
         except Denied: pass
     return JsonResponse({'status':'If eligible, account instructions will be sent.'},status=202)
 
-@endpoint(['POST'], ['code','password'])
+@endpoint(['POST'], ['code','password'], form='login')
 def finish(request,purpose):
     rate('token.ip',request.client_ip,5,900)
     code=''.join(request.input.get('code','').split())
@@ -235,7 +241,7 @@ def mfa(request):
 def me(request):
     denied=customer(request)
     if denied: return denied
-    return JsonResponse({'email':request.user.email,'role':'customer','account_id':request.account_id,'execution_enabled':__import__('accounts.chat',fromlist=['execution_on']).execution_on()})
+    return JsonResponse({'email':request.user.email,'role':'customer','account_id':request.account_id,'execution_enabled':wiring.switch_on('customer_execution')})
 
 @endpoint(['GET','POST'], ['name'], field_limits={'name':120})
 def projects(request, project_id=None):
@@ -243,20 +249,13 @@ def projects(request, project_id=None):
     if denied: return denied
     if request.method=='POST':
         if project_id: return JsonResponse({'error':'method_not_allowed'},status=405)
-        from agentai_platform.budget import BudgetLedger
-        from agentai_platform.chat import ChatService
         from agentai_platform.lifecycle.types import Conflict as NativeConflict
-        from agentai_platform.request_queue import RequestQueue
-        from .lifecycle import AccountStore
-        store=AccountStore(connection.settings_dict['NAME'])
-        service=ChatService(store,queue=RequestQueue(store),ledger=BudgetLedger(store))
         try:
-            created=service.create_project(Principal(request.account_id,str(request.user.pk),'customer'),request.input.get('name',''))
+            created=wiring.chat_service().create_project(wiring.principal(request),request.input.get('name',''))
         except NativeConflict:
             if request.content_type=='application/x-www-form-urlencoded':
                 return HttpResponseRedirect('/account/chat/?error=project_limit_reached')
             return JsonResponse({'error':'project_limit_reached'},status=409)
-        except NotFound: raise Denied()
         request.form_redirect='/account/chat/?project='+created['id']
         return JsonResponse({'project':created},status=201)
     with connection.cursor() as c:

@@ -142,7 +142,7 @@ export class Executor {
     await this.settle();
     const d = await this.ev(describe, { sel: SELECTOR, max: MAX_ELEMENTS });
     const lines = d.elements.map(e => `[${e.ref}] <${e.tag}${e.type ? ' type=' + e.type : ''}> "${e.label}"`).join('\n');
-    return { ok: true, url: await this.url(), title: d.title, snapshot: lines, text: d.text, pages: this.host.tabs().length || 1, elements: d.elements, page_fp: await this.fp(), scroll: d.scroll, height: d.height, window: d.window };
+    return { ok: true, url: await this.url(), title: d.title, snapshot: lines, text: d.text, pages: this.host.tabs().length || 1, elements: d.elements, page_fp: await this.fp(), scroll: d.scroll, height: d.height, window: d.window, focus: d.focus };
   }
 
   async act(msg) {

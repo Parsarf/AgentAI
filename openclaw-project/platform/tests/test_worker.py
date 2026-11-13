@@ -81,6 +81,19 @@ class WorkerChecks(unittest.TestCase):
         w.tick();self.assertEqual(self.state(),'stopped')
         self.request('start','a',key='start-again');self.worker(idle_after=10**12).tick();self.assertEqual(self.state('a'),'running')   # woken again; if the config is still old it must not be stopped again straight away
         self.assertEqual(w.tick()['drained'],0)
+    def test_stale_recovery_cooldown_starts_only_after_work_has_drained(self):
+        self.start_cell()
+        with self.store.connect() as con:
+            con.execute("INSERT INTO projects(account_id,id,name) VALUES ('a','p','p')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) SELECT 'a','p','c',deployment_id FROM lifecycle_cells WHERE account_id='a'")
+            con.execute("INSERT INTO tasks(account_id,project_id,conversation_id,id,state,budget_microusd) VALUES ('a','p','c','t','running',1)")
+        worker = self.worker(idle_after=10**12, stale=lambda account: True)
+        self.assertEqual(worker.tick()['drained'], 0)
+        self.now += 5
+        with self.store.connect() as con:
+            con.execute("UPDATE tasks SET state='completed' WHERE id='t'")
+        self.assertEqual(worker.tick()['drained'], 1)
+
     def test_a_current_or_unreadable_cell_is_left_alone(self):
         self.start_cell()
         self.assertEqual(self.worker(idle_after=10**12,stale=lambda a:False).tick()['drained'],0)

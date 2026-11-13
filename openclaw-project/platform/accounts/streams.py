@@ -11,15 +11,13 @@ import time
 import uuid
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from django.db import connection
 from django.http import JsonResponse, StreamingHttpResponse
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat import ChatService
-from agentai_platform.events import EventService
 from agentai_platform.request_queue import RequestQueue
-from agentai_platform.security import Principal, NotFound
+from agentai_platform.security import NotFound
 from agentai_platform.lifecycle.types import Conflict
-from .lifecycle import AccountStore
+from . import wiring
 from .services import Denied
 from .views import endpoint, customer
 
@@ -27,17 +25,11 @@ STREAM_WINDOW_SECONDS = 45
 STREAM_POLL_INTERVAL = 1.0
 
 
-def _store():
-    return AccountStore(connection.settings_dict['NAME'])
-
-
 def _service():
-    store = _store()
-    return EventService(store, clock=time.time)
+    return wiring.event_service(clock=time.time)
 
 
-def _principal(request):
-    return Principal(request.account_id, str(request.user.pk), 'customer')
+_principal = wiring.principal
 
 
 @endpoint(['GET'])
@@ -53,8 +45,6 @@ def events(request, request_id):
         return JsonResponse(_service().events(_principal(request), request_id, after=after, limit=limit))
     except ValueError:
         return JsonResponse({'error': 'invalid_request'}, status=400)
-    except NotFound:
-        raise Denied()
 
 
 def _sse(payload: dict, event: str = 'task_event', seq: int | None = None) -> str:

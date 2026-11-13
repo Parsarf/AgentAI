@@ -370,8 +370,17 @@ class CellBridge:
         bounded, and an address must be plain http(s). Anything else is refused before it reaches the cell."""
         from ..browse.native_scripts import SCRIPTS, expression
         query = {'profile': BROWSER_PROFILE}
+
+        def tab_of(source):
+            """The tab a command names (optional): one of the browser's own ids, by shape. Several tasks of an account each work in a tab of their own."""
+            target = (source or {}).get('targetId')
+            if target is None:
+                return {}
+            if not isinstance(target, str) or not TOKEN_ID.fullmatch(target):
+                raise BridgeError('invalid tab')
+            return {'targetId': target}
         if method == 'browser.shot':
-            return {'body': {'type': 'jpeg'}, 'query': query}
+            return {'body': {'type': 'jpeg', **tab_of(params)}, 'query': query}
         if method == 'browser.live':
             if type(params.get('on')) is not bool:
                 raise BridgeError('invalid live request')
@@ -392,7 +401,7 @@ class CellBridge:
             return value
 
         if path in ('/navigate', '/tabs/open'):
-            return {'method': verb, 'path': path, 'body': {'url': url(body.get('url'))}, 'query': query}
+            return {'method': verb, 'path': path, 'body': {'url': url(body.get('url')), **(tab_of(body) if path == '/navigate' else {})}, 'query': query}
         if path in ('/tabs/focus', '/tabs/close'):
             target = body.get('targetId')
             if not isinstance(target, str) or not TOKEN_ID.fullmatch(target):
@@ -405,21 +414,21 @@ class CellBridge:
             name, args = body.get('script'), body.get('args') or {}
             if name not in SCRIPTS or not isinstance(args, dict) or len(json.dumps(args)) > MAX_ARGS_BYTES:
                 raise BridgeError('invalid script')
-            return {'method': verb, 'path': path, 'body': {'kind': 'evaluate', 'fn': expression(name, args)}, 'query': query}
+            return {'method': verb, 'path': path, 'body': {'kind': 'evaluate', 'fn': expression(name, args), **tab_of(body)}, 'query': query}
         if kind == 'clickCoords':
             x, y = body.get('x'), body.get('y')
             if not all(type(v) in (int, float) and 0 <= v <= 4000 for v in (x, y)):
                 raise BridgeError('invalid coordinates')
-            return {'method': verb, 'path': path, 'body': {'kind': 'clickCoords', 'x': x, 'y': y}, 'query': query}
+            return {'method': verb, 'path': path, 'body': {'kind': 'clickCoords', 'x': x, 'y': y, **tab_of(body)}, 'query': query}
         if kind == 'press':
             if body.get('key') not in BROWSER_KEYS:
                 raise BridgeError('key not allowed')
-            return {'method': verb, 'path': path, 'body': {'kind': 'press', 'key': body['key']}, 'query': query}
+            return {'method': verb, 'path': path, 'body': {'kind': 'press', 'key': body['key'], **tab_of(body)}, 'query': query}
         if kind == 'resize':
             width, height = body.get('width'), body.get('height')
             if type(width) is not int or type(height) is not int or not 320 <= width <= 2000 or not 240 <= height <= 2000:
                 raise BridgeError('invalid size')
-            return {'method': verb, 'path': path, 'body': {'kind': 'resize', 'width': width, 'height': height}, 'query': query}
+            return {'method': verb, 'path': path, 'body': {'kind': 'resize', 'width': width, 'height': height, **tab_of(body)}, 'query': query}
         raise BridgeError('browser action not allowed')
 
     def _lock(self, account):

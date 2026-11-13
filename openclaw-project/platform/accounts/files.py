@@ -5,19 +5,12 @@ bundle views accept multipart/form posts directly and bypass the JSON-only
 endpoint wrapper on purpose."""
 from pathlib import Path
 from django.conf import settings
-from django.db import connection
 from django.http import JsonResponse, FileResponse
 from django.views.decorators.csrf import csrf_exempt
-from agentai_platform import safety as sf
-from agentai_platform.budget import BudgetLedger
-from agentai_platform.chat import ChatService
-from agentai_platform.files import FileService, Rejected, MAX_PREVIEW_BYTES
-from agentai_platform.artifacts import ArtifactService
-from agentai_platform.request_queue import RequestQueue
-from agentai_platform.security import Principal, NotFound
-from agentai_platform.storage import RootStore
+from agentai_platform.files import Rejected, MAX_PREVIEW_BYTES
+from agentai_platform.security import NotFound
 from agentai_platform.lifecycle.types import Conflict
-from .lifecycle import AccountStore
+from . import wiring
 from .services import Denied
 from .views import endpoint, customer
 
@@ -27,33 +20,17 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 def _limits_on(request):
     """The account's `upload_limits` switch (agentai_platform/safety.py). Fails closed: any error means the limit applies."""
-    try:
-        with AccountStore(connection.settings_dict['NAME']).connect() as con:
-            return sf.is_on(con, request.account_id, 'upload_limits')
-    except Exception:
-        return True
+    return wiring.safety_on(request.account_id, 'upload_limits')
 
 
-def _ready():
-    return bool(settings.STORAGE_DIR) and settings.STORAGE_READY
-
-
-def _store():
-    return AccountStore(connection.settings_dict['NAME'])
+_ready = wiring.storage_ready
+_store = wiring.store
+_principal = wiring.principal
 
 
 def _services():
     store = _store()
-    chat = ChatService(store, queue=RequestQueue(store), ledger=BudgetLedger(store))
-    files = FileService(store, storage=RootStore(settings.STORAGE_DIR))
-    key = settings.ARTIFACT_SIGNING_KEY
-    artifacts = ArtifactService(store, storage=RootStore(settings.STORAGE_DIR),
-                                signing_key=key.encode() if isinstance(key, str) else key)
-    return store, chat, files, artifacts
-
-
-def _principal(request):
-    return Principal(request.account_id, str(request.user.pk), 'customer')
+    return store, wiring.file_service(store), wiring.artifact_service(store)
 
 
 def _guard(request):
@@ -108,7 +85,7 @@ def upload(request, project_id):
             entries.append((name or 'upload.bin', getattr(item, 'content_type', '') or '', data))
 
     def run():
-        store, chat, files, artifacts = _services()
+        store, files, artifacts = _services()
         return JsonResponse({'result': files.upload(_principal(request), project_id, entries)}, status=201)
     return _mapped(run)
 
@@ -130,7 +107,7 @@ def listing(request, project_id):
         return JsonResponse({'error': 'storage_not_configured'}, status=503)
 
     def run():
-        store, chat, files, artifacts = _services()
+        store, files, artifacts = _services()
         return JsonResponse({'files': files.list_files(_principal(request), project_id),
                              'artifacts': artifacts.list_artifacts(_principal(request), project_id)})
     return _mapped(run)
@@ -157,7 +134,7 @@ def preview(request, project_id, file_id):
         return JsonResponse({'error': 'method_not_allowed'}, status=405)
 
     def run():
-        store, chat, files, artifacts = _services()
+        store, files, artifacts = _services()
         parts, media = files.open_parts(_principal(request), project_id, file_id)
         data = files.storage.read_private(parts, max_bytes=MAX_PREVIEW_BYTES)
         response = FileResponse(_Bytes(data), content_type=media)
@@ -180,7 +157,7 @@ def download(request, artifact_id, version):
     if not version.isdecimal() or not ticket_value:
         return JsonResponse({'error': 'unavailable'}, status=404)
     try:
-        artifacts = _services()[3]
+        artifacts = wiring.artifact_service()
         parts, name, media = artifacts.consume_ticket(artifact_id, int(version), ticket_value)
         data = artifacts.storage.read_private(parts)
     except (NotFound, ValueError):
@@ -192,7 +169,7 @@ def download(request, artifact_id, version):
     return response
 
 
-@endpoint(['POST'])
+@endpoint(['POST'], form='json')
 def ticket(request, artifact_id, version):
     denial = _guard(request)
     if denial:
@@ -201,7 +178,7 @@ def ticket(request, artifact_id, version):
         return JsonResponse({'error': 'invalid_request'}, status=400)
 
     def run():
-        artifacts = _services()[3]
+        artifacts = wiring.artifact_service()
         minted = artifacts.mint_ticket(_principal(request), artifact_id, int(version))
         if request.content_type == 'application/x-www-form-urlencoded':
             from django.http import HttpResponseRedirect
@@ -218,7 +195,7 @@ def bundle(request, project_id):
         return JsonResponse({'error': 'method_not_allowed'}, status=405)
 
     def run():
-        artifacts = _services()[3]
+        artifacts = wiring.artifact_service()
         result = artifacts.build_bundle(_principal(request), project_id)
         request.form_redirect = '/account/chat/?project=' + project_id
         if request.content_type == 'application/x-www-form-urlencoded':
@@ -242,7 +219,7 @@ def gen_asset(request, artifact_id):
         return JsonResponse({'error': 'invalid_file_reference'}, status=400)
 
     def run():
-        store, chat, files, artifacts = _services()
+        store, files, artifacts = _services()
         actor = _principal(request)
         with store.connect() as con:
             store._authorize(con, actor)

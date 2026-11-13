@@ -63,11 +63,28 @@ def url_allowed(raw, allow_loopback=False, allow_private=False) -> bool:
 
 
 class NativeRunner:
-    def __init__(self, call, out_dir, *, sleep=time.sleep, allow_loopback=False, allow_private=False):
-        """call(method, params) -> dict: the bridge for this account (BridgeRpc). A refusal or a browser error comes back under '__error__'."""
+    def __init__(self, call, out_dir, *, sleep=time.sleep, allow_loopback=False, allow_private=False, tabs=None, clock=time.monotonic):
+        """call(method, params) -> dict: the bridge for this account (BridgeRpc). A refusal or a browser error comes back under '__error__'.
+        tabs: the account's AccountTabs (tabs.py) when several tasks of the customer share this browser; alone, a runner has one of its own."""
+        from .tabs import AccountTabs
         self.call, self.out, self.sleep, self.allow_loopback, self.allow_private = call, Path(out_dir), sleep, allow_loopback, allow_private
-        self.shots, self.lock, self.started, self.tab = 0, threading.RLock(), False, None
-        self.known = set()
+        self.tabs_of = tabs or AccountTabs()
+        self.shots, self.lock, self.tab, self.clock = 0, self.tabs_of.lock, None, clock       # one lock for the whole account: tasks take their steps in turn
+        self.pages = []            # this task's own tabs, oldest first (a click may open a popup); `tab` is the one it is looking at
+        self.url, self.resume_url, self.reopened, self.last_used = '', None, False, 0.0
+        self.tabs_of.join(self)
+
+    @property
+    def started(self):
+        return self.tabs_of.started
+
+    @started.setter
+    def started(self, value):
+        self.tabs_of.started = bool(value)
+
+    @property
+    def known(self):
+        return set(self.pages)
 
     # ------------------------------------------------------------------ the browser, by request
     def bridge(self, method, params):
@@ -79,6 +96,8 @@ class NativeRunner:
 
     def req(self, verb, path, body=None):
         params = {'method': verb, 'path': path}
+        if path in ('/act', '/navigate') and self.tab:
+            body = {**(body or {}), 'targetId': self.tab}          # the command names this task's tab; a bridge that does not pass it on still acts on the right one, because the tab was brought to the front first
         if body is not None:
             params['body'] = body
         reply = self.bridge('browser.request', params)
@@ -97,31 +116,77 @@ class NativeRunner:
         if self.started:
             return
         self.req('POST', '/start')
+        for stray in self.tabs():                                 # tabs the profile restored belong to no task: closed, so every tab that exists is somebody's (the sign-ins are in the profile, not in a tab)
+            try:
+                self.req('POST', '/tabs/close', {'targetId': stray['targetId']})
+            except NativeError:
+                pass
+        self.tabs_of.started, self.tabs_of.front = True, None
+
+    def _open_tab(self, url):
+        """A tab of this task's own at `url`, made room for first. The tab that appears is this task's: steps are taken in turn, so nobody else opened it."""
+        self.tabs_of.make_room(self)
+        before = self.tabs_of.owned()
+        self.req('POST', '/tabs/open', {'url': url})
+        fresh = [t['targetId'] for t in self.tabs() if t['targetId'] not in before]
+        if not fresh:
+            raise NativeError('no tab')
+        self.pages, self.tab = self.pages + fresh[-1:], fresh[-1]
+        self.tabs_of.front = self.tab
         try:
             self.req('POST', '/act', {'kind': 'resize', 'width': WIDTH, 'height': HEIGHT})
         except NativeError:
-            pass                                                  # no tab yet: the first open sets it again
-        self.started = True
+            pass
+
+    def unload(self):
+        """Another task needs the room: this task's tabs are closed and it remembers where it was. Called with the account's lock held, never in the middle of one of its own steps."""
+        for page in self.pages:
+            try:
+                self.req('POST', '/tabs/close', {'targetId': page})
+            except NativeError:
+                pass
+        if self.tabs_of.front in self.pages:
+            self.tabs_of.front = None
+        self.resume_url = self.url if url_allowed(self.url, self.allow_loopback, self.allow_private) else None
+        self.pages, self.tab = [], None
+
+    def _turn(self):
+        """This task's step begins: its page is loaded (opened again where it was, if it had been closed to make room) and in front."""
+        self.last_used = self.clock()
+        if self.tab is None and self.resume_url:
+            self._open_tab(self.resume_url)
+            self.resume_url, self.reopened = None, True
+            self.settle()
+        elif self.tab and self.tabs_of.front != self.tab:
+            try:
+                self.req('POST', '/tabs/focus', {'targetId': self.tab})
+            except NativeError:
+                pass
+            self.tabs_of.front = self.tab
 
     def sync_tabs(self):
         """A click can open a tab (a login or payment popup) or close its own: the page the loop looks at is the newest one still open, and no more than MAX_PAGES stay."""
-        tabs = self.tabs()
-        ids = [t['targetId'] for t in tabs]
-        for extra in ids[MAX_PAGES:]:
+        ids = [t['targetId'] for t in self.tabs()]
+        others = self.tabs_of.owned() - set(self.pages)
+        fresh = [i for i in ids if i not in others and i not in self.pages]     # appeared during this task's step: its own popup
+        mine = [p for p in self.pages if p in ids] + fresh
+        for extra in mine[MAX_PAGES:]:
             try:
                 self.req('POST', '/tabs/close', {'targetId': extra})
             except NativeError:
                 pass
-        ids = ids[:MAX_PAGES]
-        fresh = [i for i in ids if i not in self.known]
-        newest = fresh[-1] if fresh else (self.tab if self.tab in ids else (ids[-1] if ids else None))
+        mine = mine[:MAX_PAGES]
+        fresh = [i for i in fresh if i in mine]
+        newest = fresh[-1] if fresh else (self.tab if self.tab in mine else (mine[-1] if mine else None))
         if newest and newest != self.tab:
             try:
                 self.req('POST', '/tabs/focus', {'targetId': newest})
             except NativeError:
                 pass
-        self.known, self.tab = set(ids), newest
-        return len(ids)
+        self.pages, self.tab = mine, newest
+        if newest:
+            self.tabs_of.front = newest
+        return len(mine)
 
     def settle(self):
         """Wait for the page to finish loading (bounded); a slow page is fine."""
@@ -155,8 +220,20 @@ class NativeRunner:
             try:
                 if cmd == 'close':
                     return self.close()
+                if not hasattr(self, 'cmd_' + str(cmd)):
+                    return self._unknown(msg)
                 self.ensure()
-                return getattr(self, 'cmd_' + str(cmd), self._unknown)(msg)
+                if cmd != 'open':
+                    if self.tab is None and not self.resume_url:
+                        return {'ok': False, 'error': 'action_failed', 'detail': 'no page'}
+                    self._turn()
+                reply = getattr(self, 'cmd_' + str(cmd), self._unknown)(msg)
+                if reply.get('url'):
+                    self.url = reply['url']
+                self.last_used = self.clock()
+                if self.tabs_of.shared and reply.get('ok') and cmd in ('snapshot', 'act', 'xy') and self.watched():
+                    self._live_frame()                             # sharing the browser: the one stream would show whichever task is stepping, so a watched task gets a picture of its own tab after each of its steps
+                return reply
             except NativeError as exc:
                 return {'ok': False, 'error': 'action_failed', 'detail': str(exc)[:80]}
 
@@ -167,17 +244,16 @@ class NativeRunner:
     def cmd_open(self, msg):
         if not url_allowed(msg.get('url'), self.allow_loopback, self.allow_private):
             return {'ok': False, 'error': 'url_blocked'}
+        self.last_used = self.clock()
         try:
-            if self.tab is None and not self.tabs():
-                self.req('POST', '/tabs/open', {'url': msg['url']})
+            if self.tab is None:
+                self._open_tab(msg['url'])
+                self.resume_url = None
             else:
+                self._turn()
                 self.req('POST', '/navigate', {'url': msg['url']})
         except NativeError as exc:
             return {'ok': False, 'error': 'navigation_failed', 'detail': str(exc)[:80]}
-        try:
-            self.req('POST', '/act', {'kind': 'resize', 'width': WIDTH, 'height': HEIGHT})
-        except NativeError:
-            pass
         self.sync_tabs()
         self.settle()
         url, title = self.info()
@@ -191,7 +267,27 @@ class NativeRunner:
             return {'ok': False, 'error': 'action_failed'}
         lines = '\n'.join(f'[{e["ref"]}] <{e["tag"]}{" type=" + e["type"] if e["type"] else ""}> "{e["label"]}"' for e in d['elements'])
         return {'ok': True, 'url': d.get('url', ''), 'title': d.get('title', ''), 'snapshot': lines, 'text': d.get('text', ''), 'pages': len(self.known) or 1, 'elements': d['elements'],
-                'page_fp': self.fp(), 'scroll': d.get('scroll'), 'height': d.get('height'), 'window': d.get('window')}
+                'page_fp': self.fp(), 'scroll': d.get('scroll'), 'height': d.get('height'), 'window': d.get('window'), 'focus': d.get('focus'), **self._reopened()}
+
+    def _reopened(self):
+        if not self.reopened:
+            return {}
+        self.reopened = False
+        return {'reopened': True}
+
+    def watched(self):
+        try:
+            return time.time() - os.stat(self.out / 'watching').st_mtime < LIVE['watch_seconds']
+        except OSError:
+            return False
+
+    def _live_frame(self):
+        try:
+            tmp = self.out / 'live.tmp'
+            tmp.write_bytes(self._picture())
+            os.replace(tmp, self.out / 'live.jpg')
+        except (NativeError, OSError):
+            pass
 
     def _point(self, msg):
         x, y = msg.get('x'), msg.get('y')
@@ -224,9 +320,9 @@ class NativeRunner:
         if action == 'scroll':
             if value not in (None, 'down', 'up'):
                 return {'ok': False, 'error': 'bad_value'}
-            self.ev('scroll', {'dy': -700 if value == 'up' else 700})
+            moved = self.ev('scroll', {'dy': -700 if value == 'up' else 700, 'x': WIDTH / 2, 'y': HEIGHT / 2}) or {}       # what is under the middle of the window: a popup scrolls before the page behind it
             self.sleep(0.15)
-            return self.done()
+            return self.done(**{k: moved[k] for k in ('moved', 'inner', 'at_end') if k in moved})
         if action == 'wait':
             self.sleep(1)
             self.settle()
@@ -300,7 +396,7 @@ class NativeRunner:
         return {'ok': True, 'url': self.info()[0]}
 
     def _picture(self):
-        reply = self.bridge('browser.shot', {})
+        reply = self.bridge('browser.shot', {'targetId': self.tab} if self.tab else {})
         if reply.get(BRIDGE_ERROR) or not reply.get('data_b64'):
             raise NativeError('no picture')
         return base64.b64decode(reply['data_b64'])
@@ -330,12 +426,21 @@ class NativeRunner:
 
     def close(self):
         """The job is over: the stream stops and the browser is shut down so a sleeping cell holds nothing. The profile (and so the customer's own sign-ins in it) stays on its disk."""
-        for call in (lambda: self.bridge('browser.live', {'on': False}), lambda: self.req('POST', '/stop')):
+        for page in self.pages:                                  # this task's own tabs only: another task of the customer may be working in the same browser
             try:
-                call()
+                self.req('POST', '/tabs/close', {'targetId': page})
             except Exception:
                 pass
-        self.started, self.tab, self.known = False, None, set()
+        if self.tabs_of.front in self.pages:
+            self.tabs_of.front = None
+        self.pages, self.tab, self.resume_url = [], None, None
+        if self.tabs_of.leave(self):                             # the customer's last browser task: now the browser itself stops
+            for call in (lambda: self.bridge('browser.live', {'on': False}), lambda: self.req('POST', '/stop')):
+                try:
+                    call()
+                except Exception:
+                    pass
+            self.tabs_of.started = False
         return {'ok': True}
 
 
@@ -407,7 +512,12 @@ class NativeTransport:
         tmp, dest = self.out / 'live.tmp', self.out / 'live.jpg'
         while not self.closed.is_set():
             try:
-                if self._watched():
+                if self.runner.tabs_of.shared:                  # several tasks in this browser: frames come from each task's own steps (NativeRunner._live_frame), not from the one stream
+                    if streaming:
+                        self.call('browser.live', {'on': False})
+                        streaming = False
+                    time.sleep(0.5)
+                elif self._watched():
                     if not streaming:
                         self.call('browser.live', {'on': True})
                         streaming, after = True, 0

@@ -258,8 +258,15 @@ class ToolChecks(Base):
         self.running_request()
         self.rpc.script = [BrowseJobUnknown('gone')]
         text, error = self.tool.call('a', self.ARGS)
-        self.assertTrue(error); self.assertIn('restarted', text)
-        self.assertEqual(self.rows('SELECT status FROM browse_runs')[0]['status'], 'error')
+        self.assertTrue(error); self.assertIn('restarted', text); self.assertIn('not resumed', text)
+        self.assertEqual(self.rows('SELECT status FROM browse_runs')[0]['status'], 'interrupted')       # an interruption is its own ending, not a failure of the task
+        ending = json.loads(self.rows("SELECT data_json FROM browse_steps WHERE kind='status' ORDER BY n DESC")[0][0])
+        self.assertEqual(ending['state'], 'interrupted')
+        self.rpc.script = [BrowseJobUnknown('gone')]
+        self.tool.call('a', self.ARGS)
+        self.rpc.script = [done()]
+        text, error = self.tool.call('a', self.ARGS)                                                      # two interruptions in a row do not count as "the last two attempts failed"
+        self.assertNotIn('last two browser attempts failed', text)
         self.setUp(); self.running_request()
         self.rpc.script = [CapabilityUnavailable('down')]
         text, error = self.tool.call('a', self.ARGS)

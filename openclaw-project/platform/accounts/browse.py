@@ -2,27 +2,26 @@
 import json
 import time
 from django.conf import settings
-from django.db import connection
 from django.http import HttpResponse, JsonResponse
 from agentai_platform.adapters import CapabilityUnavailable
-from agentai_platform.browse.client import BrowseRpc
-from agentai_platform.browse import sessions as browse_sessions
+from agentai_platform.browse import job_states, sessions as browse_sessions
+from agentai_platform.browse.client import BrowseJobUnknown
 from agentai_platform import saved, vault
 from agentai_platform.live import ticket as live_ticket
-from .lifecycle import AccountStore
+from . import wiring
 from .services import Denied, rate
 from .views import endpoint, customer
 from .vault import keyring
 
-LIVE = ('queued', 'running', 'handoff', 'paused', 'asking')
+LIVE = job_states.LIVE
 
 
 def _rpc(request):
-    return BrowseRpc(request.account_id, settings.BROWSE_SOCKET)
+    return wiring.browse_rpc(request.account_id)
 
 
 def _run(request, request_id):
-    with AccountStore(connection.settings_dict['NAME']).connect() as con:
+    with wiring.store().connect() as con:
         row = con.execute('SELECT * FROM browse_runs WHERE account_id=? AND request_id=?', (request.account_id, request_id)).fetchone()
     if not row:
         raise Denied()
@@ -31,7 +30,7 @@ def _run(request, request_id):
 
 def _job(request, request_id):
     """(the id the browse service knows the newest session by, how many steps of this request came before it). One session: (request id, 0), as it always was."""
-    with AccountStore(connection.settings_dict['NAME']).connect() as con:
+    with wiring.store().connect() as con:
         return browse_sessions.latest(con, request.account_id, request_id)
 
 
@@ -44,7 +43,7 @@ def runs(request):
     denied = customer(request)
     if denied:
         return denied
-    with AccountStore(connection.settings_dict['NAME']).connect() as con:
+    with wiring.store().connect() as con:
         rows = con.execute('SELECT * FROM browse_runs WHERE account_id=? ORDER BY created_epoch DESC LIMIT 30', (request.account_id,)).fetchall()
     return JsonResponse({'runs': [_public(dict(r)) for r in rows]})
 
@@ -64,10 +63,20 @@ def run(request, request_id):
             events, takeover, question = [{**e, 'n': e['n'] + base} for e in live['events']], bool(live.get('takeover')), live.get('question')
             needs_you = live.get('needs_you') or None      # the run is waiting for the customer to do something only they can (sign in, a password, a human check)
             row = {**row, 'status': live['state'], 'url': live.get('url') or row['url'], 'answer': live.get('answer') or row['answer'], 'reason': live.get('reason') or row['reason']}
+            if live['state'] in job_states.OVER:           # the job ended and nothing was following it (the tool call had gone): keep its ending and all its steps in the record now
+                whole = live if since <= base else _rpc(request)('poll', request_id=job, since=0)
+                with wiring.store().transaction() as con:
+                    job_states.record(con, request.account_id, request_id, whole, offset=base, spent_before=None, now=int(time.time()))
+        except BrowseJobUnknown:
+            # The service answers but does not know this job: it restarted. The task is not resumed; its history stays and the customer is told what happened.
+            live = None
+            with wiring.store().transaction() as con:
+                if job_states.mark_interrupted(con, request.account_id, request_id, now=int(time.time())):
+                    row = {**row, 'status': job_states.INTERRUPTED, 'reason': job_states.INTERRUPTED_REASON}
         except CapabilityUnavailable:
             live = None
     if events is None:
-        with AccountStore(connection.settings_dict['NAME']).connect() as con:
+        with wiring.store().connect() as con:
             events = [{'n': r['n'], 'kind': r['kind'], **json.loads(r['data_json'])} for r in con.execute(
                 'SELECT n,kind,data_json FROM browse_steps WHERE account_id=? AND request_id=? AND n>? ORDER BY n LIMIT 200', (request.account_id, request_id, since)).fetchall()]
     pending = json.loads(row['pending_json']) if row.get('pending_json') else None
@@ -123,12 +132,7 @@ def release(request, request_id):
     return JsonResponse({'ok': True})
 
 
-def _live_secret():
-    path = getattr(settings, 'LIVE_SECRET_FILE', '')
-    try:
-        return open(path, 'rb').read().strip() if path else b''
-    except OSError:
-        return b''
+_live_secret = wiring.live_secret
 
 
 @endpoint(['POST'], [])
@@ -210,7 +214,7 @@ def answer(request, request_id):
                 if ring is None:
                     return JsonResponse({'error': 'not_available'}, status=409)
                 try:
-                    with AccountStore(connection.settings_dict['NAME']).transaction() as con:
+                    with wiring.store().transaction() as con:
                         _kind, secret = vault.open_item(con, ring, request.account_id, chosen['item'])
                 except vault.VaultError:
                     return JsonResponse({'error': 'not_available'}, status=409)
@@ -222,7 +226,7 @@ def answer(request, request_id):
     remembered = None
     if data.get('remember') and out.get('field') and out.get('label'):
         try:
-            with AccountStore(connection.settings_dict['NAME']).transaction() as con:
+            with wiring.store().transaction() as con:
                 remembered = saved.remember(con, request.account_id, out['field'], out['label'])
         except ValueError:
             remembered = None
@@ -232,7 +236,7 @@ def answer(request, request_id):
         for fid in keep:
             if fid in fields and keys.get(fid):
                 try:
-                    with AccountStore(connection.settings_dict['NAME']).transaction() as con:
+                    with wiring.store().transaction() as con:
                         kept.append(saved.remember(con, request.account_id, keys[fid], fields[fid]))
                 except ValueError:
                     pass
@@ -244,7 +248,7 @@ def saved_list(request):
     denied = customer(request)
     if denied:
         return denied
-    with AccountStore(connection.settings_dict['NAME']).connect() as con:
+    with wiring.store().connect() as con:
         return JsonResponse({'saved': [{'field': k, 'value': v} for k, v in saved.choices(con, request.account_id).items()]})
 
 
@@ -254,6 +258,6 @@ def saved_forget(request, field):
     if denied:
         return denied
     rate('browse.saved', request.account_id, 60, 60)
-    with AccountStore(connection.settings_dict['NAME']).transaction() as con:
+    with wiring.store().transaction() as con:
         saved.forget(con, request.account_id, field)
     return JsonResponse({'ok': True})

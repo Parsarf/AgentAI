@@ -239,7 +239,14 @@ class BrowserMethodChecks(unittest.TestCase):
         b.call('acct', 'browser.live', {'on': True, 'profile': 'user'}, caller=0)
         b.call('acct', 'browser.frame', {'after': 3, 'waitMs': 1000, 'x': 1}, caller=0)
         sent = [m for r in relays for m in r.sent]
-        self.assertEqual(sent[0]['params'], {'method': 'POST', 'path': '/navigate', 'body': {'url': 'https://example.com/a?b=1'}, 'query': {'profile': 'openclaw'}})
+        self.assertEqual(sent[0]['params'], {'method': 'POST', 'path': '/navigate', 'body': {'url': 'https://example.com/a?b=1', 'targetId': 'x'}, 'query': {'profile': 'openclaw'}})      # the tab a task owns is passed on; the profile never is
+        for bad in ('', 'a b', '../x', 'x' * 200, 7, ['x']):
+            with self.assertRaises(Exception, msg=repr(bad)):
+                b.call('acct', 'browser.request', {**self.ACT, 'body': {'kind': 'press', 'key': 'Enter', 'targetId': bad}}, caller=0)
+        b.call('acct', 'browser.request', {**self.ACT, 'body': {'kind': 'press', 'key': 'Enter', 'targetId': 'TAB-1'}}, caller=0)
+        b.call('acct', 'browser.shot', {'targetId': 'TAB-1', 'path': '/etc/passwd'}, caller=0)
+        named = [m['params'] for r in relays for m in r.sent][-2:]
+        self.assertEqual(named[0]['body'], {'kind': 'press', 'key': 'Enter', 'targetId': 'TAB-1'}); self.assertEqual(named[1]['body'], {'type': 'jpeg', 'targetId': 'TAB-1'})
         self.assertIn('document.querySelectorAll(sel)', sent[1]['params']['body']['fn'])
         self.assertNotIn('document.cookie', sent[1]['params']['body']['fn'])
         self.assertIn('"max": 5', sent[1]['params']['body']['fn'])

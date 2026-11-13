@@ -25,7 +25,9 @@ def action_type(tag: str, input_type: str | None) -> str | None:
     return ACTIONS.get(tag)
 
 
-STATE_FIELDS = ('role', 'value', 'checked', 'expanded', 'in_view', 'covered', 'options')
+STATE_FIELDS = ('role', 'value', 'checked', 'expanded', 'in_view', 'covered', 'options', 'x', 'y')
+JEV_LIMIT = 80                 # controls the fast decider is offered at once: what is in the window, not what comes first in the page's code
+SNAP_RADIUS = 0.06             # how far (as a share of the window) a point chosen from the picture may be moved to reach a listed control
 
 
 def build(snapshot_text: str, limit: int = 20, elements: list | None = None) -> list[dict]:
@@ -66,6 +68,32 @@ def _within(cands: list[dict], limit: int) -> list[dict]:
     for i, c in zip(reversed(replace), free):
         head[i] = c
     return sorted(head, key=lambda c: c['ref'])
+
+
+def reachable(cands: list[dict], limit: int = JEV_LIMIT) -> list[dict] | None:
+    """What the fast decider is offered: the controls a person could click right now (in the window, nothing on top), in page order. It is shown the same window as a
+    picture, so the list and the picture describe the same thing. None when the engine does not say what is visible (an older one): the caller keeps its own list."""
+    if not any(c.get('in_view') is not None for c in cands):
+        return None
+    return [c for c in cands if c.get('in_view') and c.get('covered') is False][:limit]
+
+
+def nearest(cands: list[dict], x: float, y: float, width: float, height: float, radius: float = SNAP_RADIUS) -> dict | None:
+    """The listed clickable control closest to a point, if one is within `radius` of it (a share of the window). Never a secret field: a click is not steered onto one."""
+    best, best_d = None, radius
+    for c in cands:
+        if c.get('action') != 'click' or c.get('sensitive') or not isinstance(c.get('x'), (int, float)) or not isinstance(c.get('y'), (int, float)) or not width or not height:
+            continue
+        d = (((c['x'] - x) / width) ** 2 + ((c['y'] - y) / height) ** 2) ** 0.5
+        if d < best_d:
+            best, best_d = c, d
+    return best
+
+
+def with_focus(cands: list[dict], focus) -> list[dict]:
+    """Mark the control that has the keyboard (the engine names it by its number), so a decider can be told that typing would land there."""
+    ref = focus.get('ref') if isinstance(focus, dict) and focus.get('editable') else None
+    return [{**c, 'focused': True} if ref is not None and c['ref'] == ref else c for c in cands]
 
 
 def page_is_payment(url: str, snapshot_text: str, page_text: str) -> bool:

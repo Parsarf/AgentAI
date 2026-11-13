@@ -13,7 +13,7 @@ from .tests import AccountBoundaryTests, PASSWORD
 from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat import ChatService, FixedRoute
 from agentai_platform.request_queue import RequestQueue
-from .lifecycle import AccountStore
+from .store import AccountStore
 
 
 class ChatHTTPChecks(TestCase):
@@ -484,7 +484,7 @@ class BrowseHttpChecks(ChatHTTPChecks):
         self.assertEqual(self.post(b, url, {'question_id': 'q', 'option': 'o1'}).status_code, 404)           # someone else's task
         self.assertEqual(self.post(a, url, {'question_id': 'q', 'option': 'o1'}).status_code, 409)           # no browse service in tests
         from agentai_platform import saved
-        from accounts.lifecycle import AccountStore
+        from accounts.store import AccountStore
         with AccountStore(connection.settings_dict['NAME']).transaction() as con:
             saved.remember(con, self.account_ids[0], 'Size', 'M')
         self.assertEqual(a.get('/v1/saved', secure=True).json()['saved'], [{'field': 'size', 'value': 'M'}])
@@ -555,10 +555,42 @@ class BrowseHttpChecks(ChatHTTPChecks):
                     self.seed_other = None
                     self.assertEqual(self.post(b, '/v1/browse/br1/answer', {'question_id': 'q1', 'option': 'o1'}).status_code, 404)
 
+    def test_a_task_the_service_lost_reads_as_interrupted_with_its_history_and_a_finished_one_is_recorded_when_opened(self):
+        from unittest import mock
+        from agentai_platform.browse.client import BrowseJobUnknown
+        a = self.clients[0]
+        def seed(rid):
+            with connection.cursor() as c:
+                c.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch) VALUES (%s,%s,'a',%s,%s,'h','find a paddle','completed',1)", [self.account_ids[0], rid, self.project(), 'k-' + rid])
+                c.execute("INSERT INTO browse_runs(account_id,request_id,goal,status,url,created_epoch,updated_epoch) VALUES (%s,%s,'find a paddle','running','https://shop.test/',1,1)", [self.account_ids[0], rid])
+                c.execute("INSERT INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (%s,%s,1,'step','{\"action\": \"click\"}',1)", [self.account_ids[0], rid])
+        def status(rid):
+            with connection.cursor() as c:
+                c.execute('SELECT status FROM browse_runs WHERE request_id=%s', [rid]); return c.fetchone()[0]
+        seed('lost1')
+        def gone(op, **kw): raise BrowseJobUnknown('gone')
+        with mock.patch('accounts.browse._rpc', lambda request: gone):
+            body = a.get('/v1/browse/lost1', secure=True).json()
+        self.assertEqual(body['status'], 'interrupted'); self.assertIn('not resumed', body['reason'])
+        self.assertEqual([e['kind'] for e in body['events']], ['step', 'status'])          # what it had done is still shown, followed by how it ended
+        self.assertEqual(status('lost1'), 'interrupted')
+        seed('done1')
+        polls = []
+        def finished(op, **kw):
+            polls.append(kw.get('since'))
+            return {'state': 'done', 'url': 'https://shop.test/p', 'answer': 'Found it', 'reason': '', 'events': [{'n': 1, 'kind': 'step', 'action': 'click'}, {'n': 2, 'kind': 'status', 'state': 'done'}], 'cost_microusd': 9}
+        with mock.patch('accounts.browse._rpc', lambda request: finished):
+            body = a.get('/v1/browse/done1?since=1', secure=True).json()
+        self.assertEqual((body['status'], body['answer']), ('done', 'Found it'))
+        self.assertEqual(status('done1'), 'done')                                           # nothing was following the job any more: opening it wrote its ending down
+        with connection.cursor() as c:
+            c.execute("SELECT count(*) FROM browse_steps WHERE request_id='done1'"); self.assertEqual(c.fetchone()[0], 2)
+        self.assertEqual(polls, [1, 0])                                                     # the whole history is fetched once for the record, whatever the viewer already had
+
     def test_details_for_a_form_are_forwarded_and_saved_only_when_the_customer_ticked_save(self):
         from unittest import mock
         from agentai_platform import saved
-        from .lifecycle import AccountStore
+        from .store import AccountStore
         self.seed('asking')
         a, b = self.clients; url = '/v1/browse/br1/answer'
         sent = []

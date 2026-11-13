@@ -10,9 +10,10 @@ from . import candidates as cand
 from . import modes
 from agentai_platform import privacy
 from .untrusted import neutralize
-from .ladder import RUNNER_V2, Decision, Ladder, Look, Refused
+from .ladder import RUNNER_V2, RUNNER_V3, Decision, Ladder, Look, Refused
 from .trace import NULL
 
+CLICKABLE_TAGS = frozenset({'a', 'button', 'input', 'select', 'textarea', 'summary', 'label'})      # what a probe names when the point is on a real control
 LOGIN_REASON = 'this page needs you to sign in; I never type passwords'
 WALL_REASON = 'the site is asking to verify you are human, which I cannot pass for you'
 # What the customer is told while the run waits for them (the run stays alive, and carries on when they are done).
@@ -148,6 +149,8 @@ class BrowseRunner:
         started, history, seen, failures, forced = self.clock(), [], {}, 0, False
         reopens = 0          # times the browser fell off the site (a `back` from the first page lands on a blank page) and the start page was opened again
         jev_misses = 0       # JEV was asked and someone else took the step, in a row; resets only when a JEV step is acted on successfully
+        panel_moves = 0      # scrolls that moved a panel inside the page: the page's own fingerprint does not see them, so they are counted to tell a real repeat from progress
+        refocus = 0          # clicks in a row refused because the text field already had the keyboard; any step that really ran resets it
         unchanged = 0        # acted steps in a row (a wait does not count) after which the page looked exactly the same
         hold = None          # {'reason', 'url'} while the assistant, not JEV, decides the steps on this page; it ends when a Claude step moves the page or the page changes address
         picture_only = bool(getattr(self.ladder.jev, 'picture_only', False))      # the owner's navigation test (picture_only_brain.py): JEV is shown the window only, and no one else decides a step
@@ -164,6 +167,10 @@ class BrowseRunner:
             snap = self.s.snapshot()
             if not snap.get('ok'):
                 return self._end(res, 'error', 'could not read the page', history)
+            if snap.get('reopened'):                # this task's tab was closed to make room for another of the customer's tasks, and has been opened again where it was
+                self.trace.emit('tab_reopened')
+                history.append({'step': step, 'by': 'rule', 'action': 'reopen', 'label': '', 'result': 'ok', 'changed': None,
+                                'note': 'this page was closed for a while and has been opened again at the same address; anything typed or chosen on it before may be gone, so check before going on'})
             url = snap.get('url', '')
             if (not url or url.startswith('about:')) and reopens < 2:       # went back past the first page: that is not a site, so open the start page again instead of ending the run
                 reopens += 1
@@ -196,6 +203,10 @@ class BrowseRunner:
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
             fp_before = snap.get('page_fp')
             candidates = cand.build(snap.get('snapshot', ''), elements=snap.get('elements'))
+            focus_known = 'focus' in snap                                   # an engine that says what has the keyboard (None = nothing has it)
+            focus = snap.get('focus') if isinstance(snap.get('focus'), dict) else None
+            everything = cand.with_focus(cand.build(snap.get('snapshot', ''), limit=200, elements=snap.get('elements')), focus)        # every listed control: what a chosen number is looked up in
+            in_window = cand.reachable(everything)                          # what JEV is offered: the controls a person could click right now (None: the engine does not say, JEV gets `candidates`)
             self.trace.emit('snapshot', where=_where(url), candidates=len(candidates), text_chars=len(snap.get('text') or ''), page_fp=fp_before, v2=snap.get('elements') is not None)
             page = {'url': url, 'title': self._neutral(snap.get('title', ''), 300), 'text': self._neutral(snap.get('text', ''))}
             if self.policy.read_only and self.policy.on('payment_stop') and cand.page_is_payment(url, snap.get('snapshot', ''), page['text']):
@@ -216,6 +227,13 @@ class BrowseRunner:
                 if outcome != 'timeout':
                     continue
                 return self._end(res, 'handoff', LOGIN_REASON, history, url)       # before any model, so a sign-in page is never sent to a third party
+            # Say what the last click or typing did to the keyboard focus, now that the page has been read again: JEV cannot see a caret in a picture.
+            if history and focus_known and history[-1]['result'] == 'ok' and not history[-1].get('note'):
+                editable = bool(focus and focus.get('editable') and not focus.get('secret'))
+                if history[-1]['action'] == 'click':
+                    history[-1]['note'] = 'a text field is now focused and ready for typing' if editable else 'no text field has focus'
+                elif history[-1]['action'] == 'type' and editable:
+                    history[-1]['note'] = 'the field now reads "' + str(focus.get('value') or '')[:60] + '"'
             # Say what the last scroll did, now that the page has been read again: where it is, or that it was already at the bottom.
             if history and history[-1]['action'] == 'scroll' and not history[-1].get('note') and history[-1]['result'] == 'ok':
                 words, bottom = modes.position(snap)
@@ -232,10 +250,12 @@ class BrowseRunner:
             mode, mode_why = modes.choose_mode(snap, candidates, history)
             pos_words, _bottom = modes.position(snap)
             look = Look(position=pos_words, hint=modes.hint(snap, history), why=mode_why,
-                        claude=hold['reason'] if hold else '')
+                        claude=hold['reason'] if hold else '', jev_candidates=in_window, focus=focus if focus_known else None)
+            if focus_known and not focus:
+                look.focus = {}                                         # known: nothing has the keyboard
             visible, covered = modes.covered_share(snap)
             if snap.get('window') is not None:            # the deciders see the window on every step (a runner that cannot take a picture is the only exception)
-                only_picture = not candidates or picture_only         # no list to choose from: the picture is all there is, and it is kept with the run's pictures
+                only_picture = not (candidates if in_window is None else in_window) or picture_only         # no list to choose from: the picture is all there is, and it is kept with the run's pictures
                 view = self.s.view(save=self.shots and only_picture)
                 if view.get('ok'):
                     look.shot = {'data': view['data'], 'width': view['width'], 'height': view['height'], 'view': view['view']}
@@ -250,7 +270,7 @@ class BrowseRunner:
                 self._publish('claude' if look.claude else 'jev', now_mode, notice or 'picture')
             try:
                 d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures, jev_misses=jev_misses,
-                                                 caps=RUNNER_V2 if snap.get('elements') is not None else frozenset(), look=look)
+                                                 caps=(RUNNER_V3 if focus_known else RUNNER_V2) if snap.get('elements') is not None else frozenset(), look=look)
             except Refused as exc:
                 return self._end(res, 'budget', f'stopped: the spending limit was reached ({exc})', history, url)
             res.cost_microusd += d.cost_microusd
@@ -307,13 +327,21 @@ class BrowseRunner:
                 self.trace.emit('ask', outcome=note, field=d.question.get('field'), options=len(d.question['options']))
                 d = Decision('act', d.by, 'the user chose', action=dict(option['do']), cost_microusd=d.cost_microusd, meta={'ask': note})
             a = d.action
-            chosen = next((c for c in candidates if c['ref'] == a['ref']), None) if a['ref'] is not None else None
+            chosen = next((c for c in everything if c['ref'] == a['ref']), None) if a['ref'] is not None else None
+            hit = None
             if a['action'] in ('clickat', 'typeat'):      # chosen from a picture: name what is really under that point, then apply the same rules as to any control
                 probed = self.s.probe(a['x'], a['y'])
                 hit = probed.get('hit') if probed.get('ok') else None
                 a['label'] = (hit or {}).get('label', '')
                 chosen = {'sensitive': bool(hit and hit.get('secret')) or bool(cand.SENSITIVE.search(a['label'])), 'label': a['label'], 'password': bool(hit and hit.get('secret'))}
                 self.trace.emit('probe', found=hit is not None, tag=(hit or {}).get('tag'), editable=(hit or {}).get('editable'), secret=(hit or {}).get('secret'))
+                if a['action'] == 'clickat' and d.by == 'jev' and (hit is None or hit.get('tag') not in CLICKABLE_TAGS) and look.shot:
+                    near = cand.nearest(in_window or [], a['x'], a['y'], look.shot['view']['w'], look.shot['view']['h'])
+                    if near is not None:                # the point is on nothing a person would click, and a listed control is right beside it: click that control itself
+                        self.trace.emit('snap', to=near['ref'], dx=round(near['x'] - a['x']), dy=round(near['y'] - a['y']))
+                        self.on_stat('jev_snapped')
+                        a = d.action = {'action': 'click', 'ref': near['ref'], 'value': None, 'label': near['label']}
+                        chosen = near
                 if a['action'] == 'typeat' and hit is not None and not hit.get('editable'):
                     entry = {'step': step, 'by': d.by, 'action': 'type', 'label': a['label'], 'result': 'not_a_field', 'changed': None}      # nothing was typed: what JEV pointed at takes no text
                     history.append(entry)
@@ -332,9 +360,24 @@ class BrowseRunner:
                         continue
                 res.pending_action = {'action': a['action'], 'label': a['label'], 'url': url}
                 return self._end(res, 'handoff', f'next step is "{a["label"]}", which needs you', history, url)
+            has_keys = bool(focus and focus.get('editable'))
+            same_field = has_keys and ((a['action'] == 'click' and focus.get('ref') is not None and a['ref'] == focus['ref'])
+                                       or (a['action'] == 'clickat' and bool(hit and hit.get('editable')) and bool(a['label']) and a['label'] == focus.get('label')))
+            if d.by == 'jev' and same_field:           # a click (by number, or at a point in the picture) on the text field that already has the keyboard does nothing
+                refocus += 1
+                entry = {'step': step, 'by': d.by, 'action': 'click', 'label': a['label'], 'result': 'already_focused', 'changed': None,
+                         'note': 'not clicked again: this text field already has the keyboard focus. Type into it, or press Enter if the text is right'}
+                history.append(entry)
+                self.trace.emit('refused', why='the field already has focus', ref=a.get('ref'), refocus=refocus)
+                self.on_stat('jev_refocus_refused')
+                self.on_event('step', {**{k: v for k, v in entry.items() if k != 'note'}, 'url': url, 'confidence': d.confidence, **d.meta})
+                if refocus >= 3:
+                    forced = True                  # JEV keeps asking for the same dead click: the next step is the assistant's
+                continue
+            refocus = 0
             # A scroll or key press is the same step only if it is the same move from the same place on the page (the fingerprint includes the scroll position).
             spot = (round(a['x'] / 40), round(a['y'] / 40)) if a['action'] in ('clickat', 'typeat') else None          # the same place, give or take a few pixels
-            key = (url, a['action'], a['ref'], a.get('label'), a.get('value') if a['action'] in ('scroll', 'press') else None, fp_before if a['action'] == 'scroll' else None, spot)
+            key = (url, a['action'], a['ref'], a.get('label'), a.get('value') if a['action'] in ('scroll', 'press') else None, (fp_before, panel_moves) if a['action'] == 'scroll' else None, spot)
             seen[key] = seen.get(key, 0) + 1
             if seen[key] > 2:
                 if seen[key] > 3:
@@ -344,9 +387,16 @@ class BrowseRunner:
             out = self.s.act(a['action'], a['ref'], a.get('value'), a.get('label'), **({'x': a['x'], 'y': a['y']} if a['action'] in ('clickat', 'typeat') else {}))
             after = out.get('page_fp')
             changed = None if not (fp_before and after) else after != fp_before         # None = unknown (an older runner, or the page was mid-change)
+            if a['action'] == 'scroll' and out.get('moved') is True and changed is False:
+                panel_moves += 1
+                changed = True                    # a panel or popup scrolled inside the page: the page as a whole did not move, but what is shown did
             shown = {'clickat': 'click', 'typeat': 'type'}.get(a['action'], a['action'])      # the history and the customer's step list say what was done, not how
             entry = {'step': step, 'by': d.by, 'action': shown, 'label': a['label'], 'result': 'ok' if out.get('ok') else out.get('error', 'failed'), 'changed': changed,
                      **({'move': a.get('value')} if a['action'] == 'scroll' else {})}
+            if a.get('note'):
+                entry['note'] = a['note']         # why nothing was done on this step (JEV's own answer could not be used), so it is not asked the same way again
+            elif a['action'] == 'scroll' and out.get('ok') and out.get('inner'):
+                entry['note'] = ('scrolled the panel under the pointer' + (', which is now at its end' if out.get('at_end') else '')) if out.get('moved') else 'the panel under the pointer is already at its end'
             history.append(entry)
             self.on_stat({'jev': 'jev_acted', 'agent': 'agent_step'}.get(d.by, 'other_step'))        # every acted step is counted exactly once
             if d.text_src:
@@ -365,11 +415,11 @@ class BrowseRunner:
                 jev_misses = 0
             if a['action'] != 'wait':
                 unchanged = unchanged + 1 if changed is False else 0
-                if unchanged >= 4:                    # three steps changed nothing, and the next one (the assistant's) did not either
+                if unchanged >= 5:                    # three of JEV's steps changed nothing (the assistant then takes the page, modes.claude_reason), and neither did the assistant's next two
                     return self._end(res, 'stuck', 'the page is not changing', history, url)
-                if unchanged == 3:
+                if unchanged == 4:
                     forced = True                     # a loop signal: the next step goes to the assistant
-                    self.trace.emit('loop_signal', rule='three acted steps with the page unchanged')
+                    self.trace.emit('loop_signal', rule='four acted steps with the page unchanged')
                     self.on_stat('no_change_loops')
             if self.shots:
                 shot = self.s.screenshot()

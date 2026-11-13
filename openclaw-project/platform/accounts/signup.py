@@ -20,7 +20,7 @@ from django.core.validators import validate_email
 from django.db import connection, transaction
 from django.http import JsonResponse
 from django.utils import timezone
-from agentai_platform.switches import SwitchStore
+from . import wiring
 from .models import ActionToken, Identity
 from .services import Denied, audit, rate, token_for
 from .views import endpoint
@@ -32,7 +32,7 @@ ACCEPTED = {'accepted': True}
 
 
 def signups_open():
-    return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('open_signups')
+    return wiring.switch_on('open_signups')
 
 
 def _purge_unconfirmed(limit=20):

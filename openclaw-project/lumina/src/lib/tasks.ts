@@ -2,6 +2,11 @@ import type { RequestRow } from './api';
 
 export type Phase = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+/** The backend's request states in the groups the server names them (platform/agentai_platform/request_states.py). Ask these instead of listing states in a component. */
+export const REQUEST_ACTIVE: readonly string[] = ['waiting', 'starting', 'running', 'uncertain'];   // not finished yet (a paused one included)
+export const REQUEST_CLAIMED: readonly string[] = ['starting', 'running', 'uncertain'];             // a worker has it: effects may be in flight
+export const REQUEST_LIVE: readonly string[] = ['starting', 'running'];                             // a run is in progress right now
+
 /** Backend request states -> the few states a person needs. `uncertain` is the system reconciling: still in flight. */
 export function phase(state: string): Phase {
   switch (state) {

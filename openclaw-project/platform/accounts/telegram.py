@@ -8,37 +8,22 @@ import hmac
 import json
 import secrets
 from django.conf import settings
-from django.db import connection
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
-from agentai_platform.request_queue import RequestQueue
-from agentai_platform.budget import BudgetLedger
-from agentai_platform.chat import ChatService
-from agentai_platform.security import Principal, NotFound
-from agentai_platform.telegram import TelegramService, TelegramBotApi
-from .lifecycle import AccountStore
-from .services import Denied, rate
+from . import wiring
+from .services import rate
 from .views import endpoint, customer
 
 
-def _store():
-    return AccountStore(connection.settings_dict['NAME'])
-
-
 def service():
-    store = _store()
-    return TelegramService(store, chat=ChatService(store, queue=RequestQueue(store),
-                                                   ledger=BudgetLedger(store)),
-                           transport=TelegramBotApi(settings.TELEGRAM_BOT_TOKEN) if settings.TELEGRAM_ENABLED else None,
-                           bot_username=settings.TELEGRAM_BOT_USERNAME)
+    return wiring.telegram_service()
 
 
-def _principal(request):
-    return Principal(request.account_id, str(request.user.pk), 'customer')
+_principal = wiring.principal
 
 
-@endpoint(['POST'])
+@endpoint(['POST'], form='json')
 def link(request):
     denied = customer(request)
     if denied:
@@ -48,10 +33,7 @@ def link(request):
             return render(request, 'accounts/telegram_link.html', {'enabled': False})
         return JsonResponse({'error': 'telegram_not_enabled'}, status=503)
     rate('telegram.link', request.account_id, 5, 900)
-    try:
-        result = service().create_code(_principal(request))
-    except NotFound:
-        raise Denied()
+    result = service().create_code(_principal(request))
     if request.content_type == 'application/x-www-form-urlencoded':
         # The bearer code renders once on this page; it never enters a URL or log.
         return render(request, 'accounts/telegram_link.html',
@@ -64,10 +46,7 @@ def unlink(request):
     denied = customer(request)
     if denied:
         return denied
-    try:
-        service().unlink(_principal(request), request.input.get('chat_id') or None)
-    except NotFound:
-        raise Denied()
+    service().unlink(_principal(request), request.input.get('chat_id') or None)
     request.form_redirect = '/account/'
     return JsonResponse({'unlinked': True}, status=200)
 
@@ -77,10 +56,7 @@ def bindings(request):
     denied = customer(request)
     if denied:
         return denied
-    try:
-        return JsonResponse({'bindings': service().bindings(_principal(request))})
-    except NotFound:
-        raise Denied()
+    return JsonResponse({'bindings': service().bindings(_principal(request))})
 
 
 def _secret_ok(request):

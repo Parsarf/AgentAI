@@ -8,10 +8,9 @@ import os
 import time
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import connection
 from django.http import JsonResponse
 from agentai_platform import safety as sf
-from .lifecycle import AccountStore
+from . import wiring
 from .models import Identity
 from .services import Denied, audit, rate
 from .views import endpoint, customer
@@ -20,8 +19,7 @@ MAX_SECONDS = 7 * 24 * 3600
 SCOPES = ('mine', 'all')
 
 
-def _store():
-    return AccountStore(connection.settings_dict['NAME'])
+_store = wiring.store
 
 
 def _publish():

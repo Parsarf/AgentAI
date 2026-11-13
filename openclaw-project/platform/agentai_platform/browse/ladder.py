@@ -31,12 +31,13 @@ from .goals import goal_parts, instruction_text
 log = logging.getLogger('agentai.browse')       # lines go to the service journal; they carry reasons and numbers, never page text or typed values
 
 ACTIONS = ('click', 'type', 'select', 'press', 'scroll', 'back', 'wait', 'ask', 'done', 'stop')
-OPERATIONS = ('click', 'type', 'select', 'scroll_down', 'scroll_up', 'back', 'press_enter', 'wait', 'done', 'needs_user', 'ask_user', 'too_complex')
+OPERATIONS = ('click', 'type', 'select', 'scroll_down', 'scroll_up', 'back', 'press_enter', 'press_escape', 'wait', 'done', 'needs_user', 'ask_user', 'too_complex')
+RUNNER_V3 = frozenset({'scroll_up', 'wait', 'escape'})   # an engine that also says what has the keyboard (snapshot `focus`): Escape is offered, and typing/focus feedback is given
 RUNNER_V2 = frozenset({'scroll_up', 'wait'})     # moves only a runner that sends element state understands; an older runner would scroll down / reject them
 NONE = 'none'                                    # every follow-up question has it: a question needs at least two options, and "none fits" is a valid answer
 MAX_OPTIONS = 100                                # JEV answers at most 255 options per question; select options are the only list that can grow
 IMAGE_HEADERS = {'TypeSafe-Danger-Zone-Images': 'true'}      # JEV 1.14: images and `box` questions are an experimental feature and must be switched on per request
-PICTURE_DEADLINE_S = 12                          # a request with a picture is slower than a text one (the first can take a few seconds)
+PICTURE_DEADLINE_S = 20                          # a request with a picture is slower than a text one (the first can take a few seconds)
 MIN_FOUND, MIN_SPOT = 0.5, 0.2                   # a pointing answer is used only if JEV says something fits (yes/no) and is at least this sure of the spot; `box` always returns a box,
                                                  # even for something that is not there, and its number is not a calibrated probability. Both are in the trace so they can be tuned.
 BOX_INSTRUCTION = ('The one thing on the page that the next step uses: what to click, or the text field to type into. Answer for whatever step would make the most progress on the subgoal.')
@@ -75,6 +76,8 @@ class Look:
     shot: dict | None = None       # {'data' (base64 JPEG), 'width', 'height', 'view': {'w','h'}}: set when JEV is to be shown the window instead of the controls
     why: str = ''                  # why a picture (shown to JEV)
     claude: str = ''               # not empty: Claude, not JEV, decides this step, for this reason
+    jev_candidates: list | None = None   # what JEV is offered instead of the full list: only the controls a person could click right now (candidates.reachable); None = the full list
+    focus: dict | None = None      # what has the keyboard, as the engine reported it ({'editable','label','value','ref',...}); None = unknown or nothing
 
 
 def _finite01(v):
@@ -97,6 +100,8 @@ def describe(c):
         bits.append('checked' if c['checked'] else 'not checked')
     if c.get('expanded') is not None:
         bits.append('open' if c['expanded'] else 'closed')
+    if c.get('focused'):
+        bits.append('has the keyboard focus, ready for typing')
     if c.get('in_view') is False:
         bits.append('off screen')
     elif c.get('covered'):
@@ -152,6 +157,8 @@ def build_heads(candidates, caps=frozenset(), phrases=(), allow_enter=False, poi
     ops['back'] = 'Go back to the previous page'
     if allow_enter:
         ops['press_enter'] = 'Press Enter to submit what was just typed'
+    if 'escape' in caps:
+        ops['press_escape'] = 'Press Escape to close a popup, a menu or a list of suggestions that is in the way'
     if 'wait' in caps:
         ops['wait'] = 'Wait a moment for the page to finish loading'
     ops['done'] = 'The goal is achieved or the page already shows the answer'
@@ -244,6 +251,8 @@ def picture_heads(caps=frozenset(), phrases=(), allow_enter=False):
     ops['back'] = 'Go back to the previous page'
     if allow_enter:
         ops['press_enter'] = 'Press Enter to submit what was just typed'
+    if 'escape' in caps:
+        ops['press_escape'] = 'Press Escape to close a popup, a menu or a list of suggestions that is in the way'
     if 'wait' in caps:
         ops['wait'] = 'Wait a moment for the page to finish loading'
     ops['done'] = 'The goal is achieved or the page already shows the answer'
@@ -325,6 +334,17 @@ class JevChooser:
         return (f'Subgoal: {scrub(instruction_text(subgoal, context_chars=1000), 48000)}\n\nPage: {cls._where(page)}\n' + reason
                 + (f'Scroll position: {position}.\n' if position else '') + f'\nRecent steps (oldest first):\n{cls._history_lines(history)}\n\n'
                 + (f'{hint}\n\n' if hint else '') + f'What the browser window shows right now: {ref}')
+
+    @staticmethod
+    def focus_words(focus):
+        """One line about the keyboard for JEV ('' when the engine does not say): where typing would land, and what that field holds."""
+        if not isinstance(focus, dict):
+            return ''
+        if not focus.get('editable') or focus.get('secret'):
+            return 'Keyboard: no text field has focus. Click a text field before typing.'
+        name = f' "{scrub(focus.get("label", ""), 60)}"' if focus.get('label') else ''
+        holds = f'it reads "{scrub(focus.get("value", ""), 80)}"' if focus.get('value') else 'it is empty'
+        return f'Keyboard: the text field{name} has focus ({holds}). Do not click it again: type into it, or press Enter if the text is already right.'
 
     def choose(self, subgoal, page_text, candidates, *, page=None, history=(), caps=frozenset(), phrases=(), allow_enter=False, position='', hint='', shot=None):
         """JEV answers from the page's controls. With `shot` (the window as a picture) it sees the page as it is while choosing, and may point at a spot only when nothing listed fits."""
@@ -554,7 +574,9 @@ def _why(exc):
 
 
 # Why a miss goes straight to the assistant (for this step only) instead of being tried again; the words are what the assistant is told.
-MISS_TAKEOVER = {'error': "its service did not answer", 'timeout': "its service did not answer in time", 'no_spot': "it could not find where to click in the picture"}
+MISS_TAKEOVER = {'error': "its service did not answer", 'timeout': "its service did not answer in time"}
+MISS_LIMIT = 3                  # JEV misses in a row before the assistant takes the task for good
+NO_SPOT_NOTE = 'your last answer pointed at nothing usable in the picture; choose a listed control, scroll, or point at something that can be clicked'
 
 
 @dataclass
@@ -605,6 +627,10 @@ class Ladder:
         """Enter submits whatever form the field is in, so JEV may offer it only right after a typed field, and never on a page with a consequential-looking control."""
         return bool(history) and history[-1].get('action') == 'type' and history[-1].get('result') == 'ok' and not any(c['sensitive'] for c in candidates)
 
+    def _hints(self, look):
+        words = getattr(self.jev, 'focus_words', JevChooser.focus_words)(look.focus)
+        return '\n\n'.join(part for part in (words, look.hint) if part)
+
     def _jev_step(self, goal, history, page, candidates, caps, look=None):
         """Ask JEV once. A decision comes back for any valid, consistent answer: there is no confidence cut-off. Everything else is a `miss` (nothing ran)."""
         if not self.admit('jev') or (self.max_cost is not None and self.spent > self.max_cost):
@@ -612,15 +638,17 @@ class Ladder:
         self.on_call()
         started = time.monotonic()
         look = look or Look()
+        if look.jev_candidates is not None:                                  # JEV is offered what a person could click right now; the picture it is shown is of the same window
+            candidates = look.jev_candidates
         picture = look.shot is not None and not candidates                   # only the picture: the page lists no controls
         sight = look.shot is not None and bool(candidates)                   # the controls list and the picture together
         try:
             if picture:
                 pick = self.jev.choose_picture(goal, page, history, look.shot, why=look.why, caps=caps, phrases=goal_phrases(goal), allow_enter=self._enter_ok(history, candidates),
-                                               position=look.position, hint=look.hint)
+                                               position=look.position, hint=self._hints(look))
             else:
                 pick = self.jev.choose(goal, page.get('text', ''), candidates, page=page, history=history, caps=caps, phrases=goal_phrases(goal), allow_enter=self._enter_ok(history, candidates),
-                                       position=look.position, hint=look.hint, shot=look.shot if sight else None)
+                                       position=look.position, hint=self._hints(look), shot=look.shot if sight else None)
         except NoSpot as exc:
             log.warning('browse: JEV miss: %s', exc)
             self.trace.emit('jev', outcome='no_spot', mode='sight' if sight else 'picture', op=exc.op, found=round(exc.found, 3), spot=round(exc.spot, 3), min_found=MIN_FOUND, min_spot=MIN_SPOT,
@@ -648,8 +676,8 @@ class Ladder:
             return _Step(signal='ask', cost=cost)
         if op == 'done':
             return _Step(signal='done', cost=cost)
-        if op in ('scroll_down', 'scroll_up', 'back', 'press_enter', 'wait'):
-            action = {'scroll_down': ('scroll', 'down'), 'scroll_up': ('scroll', 'up'), 'back': ('back', None), 'press_enter': ('press', 'Enter'), 'wait': ('wait', None)}[op]
+        if op in ('scroll_down', 'scroll_up', 'back', 'press_enter', 'press_escape', 'wait'):
+            action = {'scroll_down': ('scroll', 'down'), 'scroll_up': ('scroll', 'up'), 'back': ('back', None), 'press_enter': ('press', 'Enter'), 'press_escape': ('press', 'Escape'), 'wait': ('wait', None)}[op]
             return _Step(Decision('act', 'jev', 'JEV choice', {'action': action[0], 'ref': None, 'value': action[1], 'label': ''}, confidence=pick.confidence, cost_microusd=cost, meta=meta))
         if picture or (sight and pick.point is not None):           # a click or typing from a picture: the spot is the decision; the loop names what is there (probe) and runs its rules before anything happens
             x, y = pick.point
@@ -713,9 +741,10 @@ class Ladder:
             return d
         # a miss: nothing ran. When JEV's service did not answer, or it found nothing to point at, asking again on the same page gets the same result: the assistant takes just this step now,
         # and JEV is asked again on the next one. An unusable answer is tried once more on a fresh look; the second miss in a row hands the task over for good.
-        if jev_misses + 1 >= 2:
+        if jev_misses + 1 >= MISS_LIMIT:
             return self._agent(goal, history, page, candidates, Handover('the planner could not choose a step'), look, step.cost, 'miss', miss=True)
         if step.why in MISS_TAKEOVER and not picture_only:
             hint = f'A quick planner could not decide this step ({MISS_TAKEOVER[step.why]}). Look at the page and the picture of the window and choose the next step yourself.'
             return self._agent(goal, history, page, candidates, Handover('the planner could not choose a step', hint, sticky=False), look, step.cost, 'miss', miss=True)
-        return Decision('act', 'rule', 'the planner had no answer; looked again', {'action': 'wait', 'ref': None, 'value': None, 'label': ''}, cost_microusd=step.cost, miss=True)
+        note = NO_SPOT_NOTE if step.why == 'no_spot' else ''          # JEV is told why nothing happened and asked again on a fresh look, the way a person would look twice
+        return Decision('act', 'rule', 'the planner had no answer; looked again', {'action': 'wait', 'ref': None, 'value': None, 'label': '', **({'note': note} if note else {})}, cost_microusd=step.cost, miss=True)

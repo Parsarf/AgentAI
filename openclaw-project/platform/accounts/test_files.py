@@ -103,7 +103,7 @@ class FileHTTPChecks(TestCase):
         self.seed_task()
         from agentai_platform.artifacts import ArtifactService
         from agentai_platform.security import Principal
-        from .lifecycle import AccountStore
+        from .store import AccountStore
         from agentai_platform.storage import RootStore
         from django.conf import settings as dj
         artifacts = ArtifactService(AccountStore(connection.settings_dict['NAME']),
@@ -136,7 +136,7 @@ class FileHTTPChecks(TestCase):
         response = self.post(a, f'/v1/projects/{project_id}/bundle', {})
         self.assertEqual(response.status_code, 409)  # no results yet -> no empty bundle
         from agentai_platform.artifacts import ArtifactService
-        from .lifecycle import AccountStore
+        from .store import AccountStore
         from agentai_platform.storage import RootStore
         from django.conf import settings as dj
         artifacts = ArtifactService(AccountStore(connection.settings_dict['NAME']),

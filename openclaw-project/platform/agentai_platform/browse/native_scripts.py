@@ -14,10 +14,10 @@ DESCRIBE = r"""(args) => {
   const { sel, max } = args;
   for (const el of document.querySelectorAll('[data-lumina-ref]')) { el.removeAttribute('data-lumina-ref'); el.removeAttribute('data-lumina-label'); }
   const clean = s => (s || '').replace(/\s+/g, ' ').replace(/"/g, "'").trim().slice(0, 100);
-  const out = []; let n = 0;
   const vw = window.innerWidth, vh = window.innerHeight;
+  const found = [];
   for (const el of document.querySelectorAll(sel)) {
-    if (n >= max) break;
+    if (found.length >= 600) break;
     const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
     if (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none' || el.disabled || el.closest('[aria-hidden=true]')) continue;
     const tag = el.tagName.toLowerCase(); const role = el.getAttribute('role');
@@ -27,7 +27,6 @@ DESCRIBE = r"""(args) => {
     let label = clean(el.getAttribute('aria-label') || (kind === 'input' || kind === 'select' || kind === 'textarea' ? ((el.labels && el.labels[0] && el.labels[0].innerText) || el.placeholder || (secret ? '' : el.value) || el.name || el.getAttribute('title')) : (el.innerText || el.value || el.getAttribute('title'))));
     if (!label && secret) label = type === 'password' ? 'Password' : 'Secret field';
     if (!label) continue;
-    n += 1; el.setAttribute('data-lumina-ref', String(n)); el.setAttribute('data-lumina-label', label);
     let value = '';
     if (!secret) {
       if (tag === 'select') value = el.selectedOptions && el.selectedOptions[0] ? el.selectedOptions[0].label : '';
@@ -43,12 +42,32 @@ DESCRIBE = r"""(args) => {
       const hit = document.elementFromPoint((vl + vr) / 2, (vt + vb) / 2);
       covered = !(hit && (hit === el || el.contains(hit) || (el.labels && [...el.labels].some(l => l === hit || l.contains(hit)))));
     }
-    out.push({ ref: n, tag: kind, type, label, role: role || '', value: clean(value), checked, expanded: ariaExpanded === 'true' ? true : ariaExpanded === 'false' ? false : null,
-      in_view: cx >= 0 && cy >= 0 && cx <= vw && cy <= vh, covered, options });
+    const seen = vr - vl > 1 && vb - vt > 1;
+    found.push({ el, label, secret, item: { ref: 0, tag: kind, type, label, role: role || '', value: clean(value), checked, expanded: ariaExpanded === 'true' ? true : ariaExpanded === 'false' ? false : null,
+      in_view: cx >= 0 && cy >= 0 && cx <= vw && cy <= vh, covered, options, x: Math.round(seen ? (vl + vr) / 2 : cx), y: Math.round(seen ? (vt + vb) / 2 : cy) } });
+  }
+  // A secret field is always listed (the host must see that the page needs the user); then what a person can see and reach, so a long header or a closed menu cannot crowd it out. Numbers still follow page order.
+  const reach = f => !f.secret && f.item.in_view && f.item.covered === false;
+  const shown = f => !reach(f) && f.item.in_view;      // in the window but under something: still listed next, because how much is covered tells the host a popup is in the way
+  const keep = new Set([...found.filter(f => f.secret), ...found.filter(reach), ...found.filter(f => !f.secret && shown(f)), ...found.filter(f => !f.secret && !reach(f) && !shown(f))].slice(0, max));
+  const out = []; let n = 0;
+  for (const f of found) {
+    if (!keep.has(f)) continue;
+    n += 1; f.item.ref = n; f.el.setAttribute('data-lumina-ref', String(n)); f.el.setAttribute('data-lumina-label', f.label); out.push(f.item);
+  }
+  // What has the keyboard right now: the host tells the decider whether typing would land in a text field, and what that field holds (never a secret).
+  let focus = null;
+  const act = document.activeElement;
+  if (act && act !== document.body && act !== document.documentElement) {
+    const atag = act.tagName.toLowerCase(), atype = atag === 'input' ? (act.getAttribute('type') || 'text').toLowerCase().replace(/[^a-z]/g, '') : '';
+    const asecret = atype === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((act.getAttribute('autocomplete') || '').toLowerCase());
+    const editable = (atag === 'textarea' || (atag === 'input' && !['checkbox', 'radio', 'submit', 'button', 'reset', 'image', 'file', 'range', 'color', 'hidden'].includes(atype)) || !!act.isContentEditable) && !act.readOnly && !act.disabled;
+    focus = { tag: atag, type: atype, editable, secret: asecret, ref: Number(act.getAttribute('data-lumina-ref')) || null,
+      label: asecret ? '' : clean(act.getAttribute('data-lumina-label') || act.getAttribute('aria-label') || act.placeholder || act.name), value: asecret || !editable ? '' : clean(act.value !== undefined ? act.value : act.innerText) };
   }
   const page = document.documentElement;
   return { elements: out, title: document.title.slice(0, 120), url: location.href, text: (document.body && document.body.innerText || '').replace(/\s+\n/g, '\n').slice(0, 6000),
-    scroll: Math.round(window.scrollY), height: Math.round(Math.max(page.scrollHeight, document.body ? document.body.scrollHeight : 0)), window: vh, width: vw };
+    scroll: Math.round(window.scrollY), height: Math.round(Math.max(page.scrollHeight, document.body ? document.body.scrollHeight : 0)), window: vh, width: vw, focus };
 }"""
 
 # What is at a point on the screen, with the name a person would give it (looks through open shadow roots).
@@ -162,7 +181,21 @@ VIEWPORT = r"""(args) => ({ w: window.innerWidth, h: window.innerHeight, url: lo
 HISTORY = r"""(args) => { if (args.delta === 0) location.reload(); else history.go(args.delta); return true; }"""
 
 # The wheel, as the runner's mouse.wheel did: down or up by a fixed amount, from wherever the page is (the loop's scroll step and the customer's takeover scroll).
-SCROLL = r"""(args) => { window.scrollBy({ top: args.dy, left: 0, behavior: 'instant' }); return { y: Math.round(window.scrollY) }; }"""
+# Scrolls what a person's mouse wheel would: the nearest scrollable area under the point (a popup, a side panel, a results list), else the page. Says whether anything moved.
+SCROLL = r"""(args) => {
+  const { dy, x, y } = args;
+  let box = null;
+  const start = typeof x === 'number' && typeof y === 'number' ? document.elementFromPoint(x, y) : null;
+  for (let n = start; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 4) { box = n; break; }
+  }
+  const sc = box || document.scrollingElement || document.documentElement;
+  const before = sc.scrollTop;
+  sc.scrollBy({ top: dy, left: 0, behavior: 'instant' });
+  const view = box ? box.clientHeight : window.innerHeight;
+  return { y: Math.round(window.scrollY), moved: Math.abs(sc.scrollTop - before) > 1, inner: !!box, at_end: dy > 0 && sc.scrollTop + view >= sc.scrollHeight - 4 };
+}"""
 
 # Text typed by the customer in a takeover goes to whatever has focus, as insertText (no shortcuts, no key chords).
 INSERT_TEXT = r"""(args) => {

@@ -58,7 +58,7 @@ class RegistryDocumentHTTP(TestCase):
         from django.test import override_settings
         from agentai_platform.artifacts import ArtifactService
         from agentai_platform.storage import RootStore
-        from .lifecycle import AccountStore
+        from .store import AccountStore
         conversation, path = self.artifact(); a, b = self.clients
         project = self.project()
         with connection.cursor() as con:

@@ -16,7 +16,7 @@ from django.test import Client, TestCase, override_settings
 from agentai_platform import longterm_memory as ltm
 from tests.test_longterm_memory import FakeIndex
 from . import longterm
-from .lifecycle import AccountStore
+from .store import AccountStore
 from .models import Identity
 from .services import consume, token_for
 from .tests import PASSWORD, AccountBoundaryTests

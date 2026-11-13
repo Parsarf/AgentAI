@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import re
+from . import request_states
 from .activity import clean
 from .events import EventService
 from .lifecycle.coordinator import Coordinator
@@ -90,10 +91,7 @@ class TaskProgressTool:
             if request_id is not None and task != request_id:
                 raise ValueError('This update belongs to a different task.')
             with self.coordinator.transaction() as con:
-                row = con.execute("""SELECT r.id FROM customer_requests r JOIN accounts a ON a.id=r.account_id
-                    WHERE r.account_id=? AND r.id=? AND a.status='active' AND r.state IN ('starting','running')
-                    AND r.closing=0 AND r.cancel_requested=0""", (account, task)).fetchone()
-                if not row:
+                if not request_states.is_live_run(con, account, task, active_account=True):
                     raise ValueError('This request is not running for this cell; progress was not changed.')
                 history = con.execute("SELECT public_payload FROM events WHERE account_id=? AND task_id=? AND kind='task_steps' ORDER BY sequence DESC", (account, task)).fetchall()
                 previous = json.loads(history[0][0]) if history else None
@@ -133,12 +131,10 @@ class TaskProgressTool:
     def current(self, account, request_id=None):
         """Read-only recovery for native goals/restarts, which retain the customer's raw objective."""
         with self.store.connect() as con:
-            rows = con.execute("""SELECT r.id FROM customer_requests r JOIN accounts a ON a.id=r.account_id
-                WHERE r.account_id=? AND a.status='active' AND r.state IN ('starting','running')
-                AND r.closing=0 AND r.cancel_requested=0 AND (? IS NULL OR r.id=?) LIMIT 2""", (account, request_id, request_id)).fetchall()
-            if len(rows) != 1:
+            running = request_states.live_runs(con, account, request_id, active_account=True)
+            if len(running) != 1:
                 return 'No single active request is available for this cell.', True
-            task = rows[0]['id']
+            task = running[0]
             saved = con.execute("SELECT public_payload FROM events WHERE account_id=? AND task_id=? AND kind='task_steps' ORDER BY sequence DESC LIMIT 1", (account, task)).fetchone()
             snapshot = json.loads(saved[0]) if saved else {'revision': 0, 'steps': []}
         return 'Current task progress (read only): ' + json.dumps({'task_id': task, **{k: v for k, v in snapshot.items() if k != 'source'}}) + '. Use this task_id and revision for your next update. Choose direct execution unless a concise checkpoint plan helps; update statuses as work actually changes.', False

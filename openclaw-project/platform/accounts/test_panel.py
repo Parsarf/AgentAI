@@ -101,7 +101,7 @@ class PanelEndpointChecks(PanelBase):
     def setUp(self):
         super().setUp()
         self.rpc, self.svc = FakeRpc(), FakeService()
-        for target, value in (('accounts.panel.BrowseRpc', lambda account, path: self.rpc), ('accounts.panel.service', lambda: self.svc)):
+        for target, value in (('agentai_platform.browse.client.BrowseRpc', lambda account, path: self.rpc), ('accounts.panel.service', lambda: self.svc)):
             p = mock.patch(target, value); p.start(); self.addCleanup(p.stop)
 
     # ---- the feature is off, or closed to strangers
@@ -185,7 +185,7 @@ class PanelEndpointChecks(PanelBase):
 
     def test_events_are_this_conversations_only_and_trimmed_to_public_fields(self):
         feed = {'task_state': 'running', 'events': [{'sequence': 4, 'kind': 'tool', 'source': 'worker', 'created_at': 't', 'payload': {'summary': 'Opened a page', 'tool': 'browser', 'secret': 'x', 'ref': 'r', 'status': 'ok'}}]}
-        with mock.patch('accounts.panel.EventService') as events:
+        with mock.patch('agentai_platform.events.EventService') as events:
             events.return_value.events.return_value = feed
             r = self.call('GET', f'/v1/panel/events?request={RID}&after=3&limit=50')
             self.assertEqual(r.status_code, 200)

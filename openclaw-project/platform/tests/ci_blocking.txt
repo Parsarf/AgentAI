@@ -33,3 +33,7 @@ test_model_selection
 test_model_keys
 test_byok_http
 test_failure_message
+test_shared_rules
+test_browse_reference
+test_browse_job_states
+test_browse_tabs

@@ -16,6 +16,7 @@ class FakeBridge:
     """Answers browser.request like a cell would for a tiny page; `fail` makes a call raise or refuse."""
     def __init__(self):
         self.calls, self.url, self.fail, self.live_on, self.frames = [], 'https://shop.example/', None, [], 0
+        self.open_tabs, self.made, self.urls, self.front = [], 0, {}, None        # the browser's tabs: ids in the order they were opened, and the address each is on
 
     def __call__(self, method, params):
         self.calls.append((method, params))
@@ -32,13 +33,26 @@ class FakeBridge:
             return {'data_b64': base64.b64encode(b'\xff\xd8\xff picture').decode()}
         path, body = params['path'], params.get('body') or {}
         if path == '/tabs':
-            return {'tabs': [{'targetId': 'T1', 'type': 'page'}]}
+            return {'tabs': [{'targetId': t, 'type': 'page'} for t in self.open_tabs]}
+        if path == '/tabs/open':
+            self.made += 1; tab = f'T{self.made}'
+            self.open_tabs.append(tab); self.urls[tab] = body['url']; self.front = tab
+        if path == '/tabs/close' and body['targetId'] in self.open_tabs:
+            self.open_tabs.remove(body['targetId'])
+        if path == '/tabs/focus':
+            self.front = body['targetId']
+        if path == '/stop':
+            self.open_tabs, self.front = [], None
         if path == '/navigate':
+            self.urls[body.get('targetId') or self.front] = body['url']
+        if path in ('/tabs/open', '/navigate'):
             self.url = body['url']
+        if path == '/act' and body.get('script') == 'viewport' and body.get('targetId') in self.urls:
+            return {'result': {'w': 1280, 'h': 800, 'url': self.urls[body['targetId']], 'title': 'Shop', 'ready': 'complete'}}
         if path == '/act' and body.get('script') == 'viewport':
             return {'result': {'w': 1280, 'h': 800, 'url': self.url, 'title': 'Shop', 'ready': 'complete'}}
         if path == '/act' and body.get('script') == 'describe':
-            return {'result': {'elements': [{'ref': 1, 'tag': 'a', 'type': '', 'label': 'Home'}], 'title': 'Shop', 'url': self.url, 'text': 'hi', 'scroll': 0, 'height': 800, 'window': 800}}
+            return {'result': {'elements': [{'ref': 1, 'tag': 'a', 'type': '', 'label': 'Home'}], 'title': 'Shop', 'url': self.urls.get(body.get('targetId'), self.url), 'text': 'hi', 'scroll': 0, 'height': 800, 'window': 800}}
         if path == '/act' and body.get('script') == 'fingerprint':
             return {'result': 'fp'}
         return {'ok': True}

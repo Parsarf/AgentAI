@@ -426,3 +426,42 @@ class ChatChecks(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_new_model_is_pinned_with_its_budget_and_old_send_retries_keep_their_route(self):
+        selected = ['lumina-default']
+        self.queue.model_selection = lambda account: selected[0]
+        first = self.send()
+        selected[0] = 'key:personal'
+        repeated = self.send()
+        second = self.send(key='second')
+        self.assertEqual(first['id'], repeated['id'])
+        with self.store.connect() as con:
+            amounts = dict(con.execute('SELECT task_id,amount_microusd FROM task_reservations').fetchall())
+        self.assertEqual(amounts[first['id']], 500)
+        self.assertEqual(amounts[second['id']], 1)
+        # The account chooses Lumina while the personal task remains queued.
+        selected[0] = 'lumina-default'
+        self.assertEqual(self.send(key='second')['id'], second['id'])
+        with self.store.connect() as con:
+            self.assertEqual(con.execute('SELECT amount_microusd FROM task_reservations WHERE task_id=?', (second['id'],)).fetchone()[0], 1)
+
+    def test_cancel_before_dispatch_closes_task_and_releases_its_hold_exactly_once(self):
+        sent = self.send()
+        self.queue.cancel(self.a, sent['id'])
+        self.queue.cancel(self.a, sent['id'])
+        with self.store.connect() as con:
+            self.assertEqual(con.execute('SELECT state FROM tasks WHERE id=?', (sent['id'],)).fetchone()[0], 'cancelled')
+            self.assertEqual(con.execute('SELECT state FROM task_reservations WHERE task_id=?', (sent['id'],)).fetchone()[0], 'cancelled')
+            self.assertEqual(con.execute("SELECT sum(amount_microusd) FROM usage_entries WHERE task_id=? AND kind='released'", (sent['id'],)).fetchone()[0], 500)
+        self.assertEqual(self.queue.reconcile_cancelled(), 0)
+
+    def test_legacy_cancelled_queued_row_is_reconciled_but_dispatched_work_is_preserved(self):
+        first = self.send(); second = self.send(key='second')
+        with self.store.connect() as con:
+            con.execute("UPDATE customer_requests SET state='cancelled'")
+            con.execute("INSERT INTO chat_deliveries(account_id,request_id,attempt,idempotency_key,payload_hash,state,created_epoch,updated_epoch) VALUES ('a',?,1,'delivery','hash','failed',1,1)", (second['id'],))
+        self.assertEqual(self.queue.reconcile_cancelled(), 1)
+        with self.store.connect() as con:
+            self.assertEqual(con.execute('SELECT state FROM tasks WHERE id=?', (first['id'],)).fetchone()[0], 'cancelled')
+            self.assertEqual(con.execute('SELECT state FROM tasks WHERE id=?', (second['id'],)).fetchone()[0], 'queued')
+            self.assertEqual(con.execute('SELECT state FROM task_reservations WHERE task_id=?', (second['id'],)).fetchone()[0], 'active')

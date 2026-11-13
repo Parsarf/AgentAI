@@ -1,29 +1,19 @@
 """Account-scoped saved model keys and active model choice."""
-from django.conf import settings
 from django.db import connection, transaction
 from django.http import JsonResponse
-from agentai_platform import model_keys as mk, model_catalog
+from agentai_platform import model_keys as mk, model_catalog, request_states
+from . import wiring
 from .services import audit, rate
 from .views import endpoint, customer
 
 
-def store():
-    return mk.ModelKeyStore(settings.MODEL_KEY_STORE, mk.ModelKeyring.derived(settings.SECRET_KEY, settings.MODEL_KEY_FILE or None))
-
-
-def enabled(account_id):
-    return mk.enabled_for(mk.read_engine(settings.ENGINE_FILE), account_id)
-
-
-def active(account_id):
-    try:
-        return enabled(account_id) and mk.ModelKeyStore(settings.MODEL_KEY_STORE).public(account_id) is not None
-    except Exception:
-        return False
+store = wiring.model_key_store            # the store that can seal and open keys
+enabled = wiring.own_model_on             # is the feature open to this account (the owner's rollout file)
+active = wiring.own_model_active          # ... and has the account selected a key of its own
 
 
 def _state(account):
-    choices = mk.ModelKeyStore(settings.MODEL_KEY_STORE).choices(account)
+    choices = wiring.model_key_store(sealed=False).choices(account)
     keys = [{k: row[k] for k in ('id', 'host', 'model', 'hint')} for row in choices['keys']]
     pub = next((row for row in keys if row['id'] == choices['selected']), None)
     return {'available': enabled(account), 'configured': bool(keys), 'keys': keys, 'selected': choices['selected'],
@@ -31,11 +21,12 @@ def _state(account):
             **({k: pub[k] for k in ('host', 'model', 'hint')} if pub else {})}
 
 
-def _busy(account):
+def _busy(account, *, unpinned=False):
     # Called inside the same IMMEDIATE database transaction used by enqueue.
     # Settings cannot change between admission and completion/settlement.
     with connection.cursor() as c:
-        c.execute("SELECT 1 FROM customer_requests WHERE account_id=%s AND state IN ('waiting','starting','running','uncertain') LIMIT 1", [account])
+        c.execute("SELECT 1 FROM customer_requests WHERE account_id=%s AND state IN " + request_states.sql_list(request_states.ACTIVE)
+                  + (" AND json_extract(context_json, '$.model_selection') IS NULL" if unpinned else '') + " LIMIT 1", [account])
         return c.fetchone() is not None
 
 
@@ -63,17 +54,12 @@ def save(request):
     if not enabled(request.account_id):
         return JsonResponse({'error': 'not_available'}, status=409)
     try:
-        with transaction.atomic():
-            if _busy(request.account_id):
-                return _conflict()
         data = request.input
         endpoint_ = mk.parse_endpoint(data.get('base_url'))
         model, key = mk.clean_model(data.get('model')), mk.clean_key(data.get('api_key'))
         mk.probe(endpoint_, model, key)
-        # Probe outside the transaction; recheck work admitted while it ran.
+        # Adding a profile does not replace or select any key used by pending work.
         with transaction.atomic():
-            if _busy(request.account_id):
-                return _conflict()
             saved = store().add(request.account_id, endpoint_, model, key)
     except mk.ModelKeyError as exc:
         return JsonResponse({'error': 'model_key_invalid', 'detail': str(exc), 'message': str(exc)}, status=422)
@@ -92,9 +78,11 @@ def select(request):
         return JsonResponse({'error': 'not_available'}, status=409)
     try:
         with transaction.atomic():
-            if _busy(request.account_id):
+            if _busy(request.account_id, unpinned=True):
                 return _conflict()
-            mk.ModelKeyStore(settings.MODEL_KEY_STORE).select(request.account_id, choice)
+            if choice.startswith('key:'):
+                store().open(request.account_id, choice)  # refuse unreadable credentials before confirming selection
+            wiring.model_key_store(sealed=False).select(request.account_id, choice)
     except mk.ModelKeyError:
         return JsonResponse({'error': 'model_unavailable', 'detail': 'Choose an available model.'}, status=422)
     audit(request.user.pk, request.account_id, 'model_key', 'model_key.select', 'completed', request.request_id)
@@ -111,7 +99,7 @@ def remove(request):
         with transaction.atomic():
             if _busy(request.account_id):
                 return _conflict()
-            storage = mk.ModelKeyStore(settings.MODEL_KEY_STORE)
+            storage = wiring.model_key_store(sealed=False)
             # Compatibility: old clients without an id remove all their keys.
             removed = storage.remove_profile(request.account_id, request.input['id']) if 'id' in request.input else storage.delete(request.account_id)
     except mk.ModelKeyError:

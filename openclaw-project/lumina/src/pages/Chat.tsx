@@ -18,7 +18,7 @@ import { api } from '../lib/api';
 import { download } from './Files';
 import { humanSize, type ArtifactRow } from '../lib/files';
 import type { Block } from '../lib/genui/schema';
-import { isActive } from '../lib/tasks';
+import { isActive, REQUEST_CLAIMED } from '../lib/tasks';
 import { useData } from '../state/data';
 import Orb from '../components/Orb';
 import ToolApproval from '../components/ToolApproval';
@@ -65,7 +65,7 @@ export default function Chat() {
   useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; if (stick.current) bottom.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); else setNewBelow(true); } }, [msgs.length, tasks.length]);
 
   const [activityId, setActivityId] = useState<string | null>(null);
-  const latest = tasks.find(t => ['starting', 'running', 'uncertain'].includes(t.state)) ?? [...tasks].reverse().find(t => isActive(t)) ?? tasks[tasks.length - 1];
+  const latest = tasks.find(t => REQUEST_CLAIMED.includes(t.state)) ?? [...tasks].reverse().find(t => isActive(t)) ?? tasks[tasks.length - 1];
   const toggleActivity = useCallback(() => setActivityId(cur => (cur ? null : latest?.id ?? null)), [latest?.id]);
   useEffect(() => { setActivityId(null); }, [id]);
   useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); toggleActivity(); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [toggleActivity]);

@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, ApiError, onUnauthorized, resetCsrf, type AppInfo, type RequestRow } from '../lib/api';
 import { clearDrafts } from '../lib/drafts';
 import type { ChatSummary } from '../lib/chats';
+import { REQUEST_ACTIVE } from '../lib/tasks';
 
 interface Data {
   status: 'loading' | 'anon' | 'in' | 'error';
@@ -48,7 +49,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const live = status === 'in';
   useEffect(() => { if (live) refreshChats(); }, [live, refreshChats]);
-  const anyActive = requests.some(r => ['waiting', 'starting', 'running', 'uncertain'].includes(r.state));
+  const anyActive = requests.some(r => REQUEST_ACTIVE.includes(r.state));
   useEffect(() => {
     if (!live) return;
     const t = setInterval(() => { if (document.visibilityState === 'visible') { refresh(); refreshChats(); } }, anyActive ? 3000 : 15000);

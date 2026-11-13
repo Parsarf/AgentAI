@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from agentai_platform import model_keys as mk
@@ -72,9 +73,47 @@ class Http(unittest.TestCase):
         port = self.start(); self.on = False
         status, _, data = self.request(port, 'POST', '/byok/v1/chat/completions', self.CHAT)
         body = json.loads(data); self.assertEqual((status, body['error']['code']), (403, 'not_enabled')); self.assertIn('message', body['error'])
-        self.on = True; self.store.delete('acct')
+        self.on = True
+        with self.store._txn(write=True) as db:
+            db['accounts']['acct'] = {'profiles': {}, 'selected': 'key:missing'}
         status, _, data = self.request(port, 'POST', '/byok/v1/chat/completions', self.CHAT); self.assertEqual((status, json.loads(data)['error']['code']), (404, 'no_key'))
         status, _, data = self.request(port, 'GET', '/byok/v1/models'); self.assertEqual(status, 404)
+
+    def test_warm_legacy_cell_routes_to_lumina_without_restart_or_a_personal_key(self):
+        port = self.start()
+        self.store.delete('acct')
+        status, _, listing = self.request(port, 'GET', '/byok/v1/models')
+        self.assertEqual((status, json.loads(listing)['data'][0]['id']), (200, 'selected'))
+        response = Mock(status=200)
+        response.getheader.return_value = 'application/json'
+        response.read1.side_effect = [b'{"choices":[{"message":{"content":"ready"}}]}', b'']
+        conn = Mock(); conn.getresponse.return_value = response
+        with patch.object(self.model_relay, '_lumina_connection', return_value=conn):
+            status, _, data = self.request(port, 'POST', '/byok/v1/chat/completions', {**self.CHAT, 'model': 'GLM-5.3-FlashX'})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)['choices'][0]['message']['content'], 'ready')
+        self.assertEqual(json.loads(conn.request.call_args.args[2])['model'], 'claude-sonnet-5-5')
+        self.assertEqual(conn.request.call_args.args[3]['Authorization'], 'Bearer ' + CELL_CREDENTIAL)
+        self.assertEqual(self.up.requests, [])
+
+    def test_proxy_allowance_refusal_is_not_exposed_as_a_retryable_rate_limit(self):
+        port = self.start(); self.store.delete('acct')
+        response = Mock(status=429)
+        response.read.return_value = b'{"error":{"message":"Budget has been exceeded! private-key","type":"BudgetExceededError"}}'
+        conn = Mock(); conn.getresponse.return_value = response
+        with patch.object(self.model_relay, '_lumina_connection', return_value=conn):
+            status, _, raw = self.request(port, 'POST', '/byok/v1/chat/completions', self.CHAT)
+        self.assertEqual((status, json.loads(raw)['error']['code']), (402, 'budget_exhausted'))
+        self.assertNotIn('private-key', raw.decode())
+        self.assertEqual(self.model_relay._busy['acct'], 0)
+
+    def test_model_calls_after_stop_cannot_use_the_legacy_alias_to_skip_admission(self):
+        port = self.start()
+        self.model_relay.admission = lambda account, personal: False
+        for path in ('/byok/v1/chat/completions', '/model/v1/chat/completions'):
+            status, _, data = self.request(port, 'POST', path, self.CHAT)
+            self.assertEqual((status, json.loads(data)['error']['code']), (403, 'admission_mismatch'))
+        self.assertEqual(self.up.requests, [])
 
     def test_bad_sizes_and_bodies_are_refused_before_anything_is_forwarded(self):
         port = self.start()

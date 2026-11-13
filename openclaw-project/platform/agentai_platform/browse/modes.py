@@ -8,8 +8,10 @@ from __future__ import annotations
 COVERED_SHARE, MIN_VISIBLE = 0.4, 3      # a picture when at least this share of at least this many controls in the window have something on top of them
 SCROLL_HINT_AFTER = 3                    # identical scrolls in a row before JEV is reminded that scrolling is not getting anywhere
 SCROLL_CLAUDE_AFTER = 6                  # ... and before Claude takes the page
-REPEAT_AFTER = 2                         # the same JEV step this many times in a row with nothing happening: Claude takes the page
-NOTHING_AFTER = 2                        # this many JEV steps in a row (any steps) that changed nothing or failed: Claude takes the page
+REPEAT_AFTER = 3                         # the same JEV step this many times in a row with nothing happening: Claude takes the page
+NOTHING_AFTER = 3                        # this many JEV steps in a row (any steps) that changed nothing or failed: Claude takes the page
+FAILS_AFTER = 2                          # this many JEV steps in a row that could not be carried out: Claude takes the page (after the first, JEV is told what went wrong and tries again)
+STALL_HINT_AFTER = 2                     # dead clicks in a row before JEV is reminded that clicking again is unlikely to help
 PICTURE_FAILS = frozenset({'covered'})   # a runner refusal that means "something is on top of it"
 JEV_FAILS = frozenset({'stale', 'no_option', 'not_a_field', 'action_failed', 'disabled', 'bad_coordinates'})   # JEV's step could not be carried out: Claude looks at this page
 
@@ -43,6 +45,10 @@ def scroll_run(history):
 def hint(snap, history):
     """A nudge, not a stop: after several scrolls in a row JEV is reminded that scrolling alone is not getting it anywhere. '' when there is nothing to say."""
     n = scroll_run(history)
+    tail = history[-STALL_HINT_AFTER:]
+    if len(tail) == STALL_HINT_AFTER and all(h.get('action') == 'click' and did_nothing(h) for h in tail):
+        return ('Hint: your last two clicks changed nothing. Clicking again is unlikely to help. If a text field has focus, type into it or press Enter; '
+                'otherwise try a different control, scroll, or say the user needs to take over.')
     if n < SCROLL_HINT_AFTER:
         return ''
     bottom = position(snap)[1]
@@ -97,8 +103,8 @@ def claude_reason(history):
             return 'JEV returned to a previously selected option; compare the observed choices before continuing'
     if len(tail) >= 3 and all(h.get('action') in ('click', 'select') and _same(h, tail[0]) for h in tail[:3]):
         return 'JEV selected the same control three times without advancing the task'
-    if tail and tail[0].get('result') in JEV_FAILS:
-        return f'JEV\'s last step could not be carried out ({tail[0]["result"]})'
+    if len(tail) >= FAILS_AFTER and all(h.get('result') in JEV_FAILS for h in tail[:FAILS_AFTER]):
+        return f'JEV\'s last {FAILS_AFTER} steps could not be carried out ({tail[0]["result"]})'
     if len(tail) >= REPEAT_AFTER and all(did_nothing(h) and _same(h, tail[0]) for h in tail[:REPEAT_AFTER]):
         return f'JEV repeated the same step {REPEAT_AFTER} times and nothing happened'
     if len(tail) >= NOTHING_AFTER and all(did_nothing(h) for h in tail[:NOTHING_AFTER]):

@@ -15,7 +15,7 @@ class StreamHTTPChecks(TestCase):
 
     def _service(self):
         from agentai_platform.events import EventService
-        from .lifecycle import AccountStore
+        from .store import AccountStore
         return EventService(AccountStore(connection.settings_dict['NAME']))
 
     def test_events_endpoint_scoped_and_validated(self):

@@ -10,15 +10,23 @@ model and OpenAI-compatible endpoint tested when it was added; add a separate
 profile to use another model with that key.
 
 The UI gets the catalog from GET /v1/model-key. POST /v1/model-key/select accepts
-an opaque id from that response. Save/remove/select reject accounts with waiting,
-starting, running or uncertain work. The check and setting write share the same
-SQLite IMMEDIATE transaction used by enqueue, with a second check after the
-network probe. This prevents switching funding sources after task admission.
+an opaque id from that response. Save and selection remain available while pinned tasks
+are waiting or running. Each newly submitted request records a server-owned
+`model_selection` snapshot in its context before budget admission. Idempotent
+retries preserve the original snapshot and funding mode. Selection writes and
+enqueue use the same SQLite IMMEDIATE transaction boundary; they cannot interleave.
+A new message after a switch becomes its own task rather than steering an older
+run using a different model. Existing tasks keep their provider and reservation.
+Deleting keys stays blocked until pending work finishes, so a pinned task's key
+cannot disappear. Legacy pending requests without a snapshot briefly retain the
+old selection guard until completion or migration; no wait for cell shutdown is needed.
 An active personal key bypasses Lumina’s model allowance as before; selecting
 Lumina restores it. Browser decision calls remain billed/routed as before.
 
 Customer cells use a stable `selection/selected` primary model at the native
-relay’s /model/v1 endpoint. The host resolves the selected model for each call.
+relay’s /model/v1 endpoint. The host resolves the admitted task’s model snapshot for each call. Both /model/v1
+and the compatibility /byok/v1 endpoint enter this same router: even an existing
+warm cell with an old model name follows the admitted route without restarting.
 Personal calls use the selected decrypted customer key and the existing public
 HTTPS/SSRF checks. Lumina calls use the cell credential at the existing fixed
 10.77.0.1:4000 model proxy, preserving usage reporting and provider budgets.
@@ -68,9 +76,11 @@ publication and allowlist activation coordinated in the normal release window.
 Deploy together with the pending location work. Quiesce admission and drain
 existing tasks before replacing model routing. Back up model-keys.json and its
 keyring using the normal private backup process. Release web, relay, UI and
-supervisor; refresh/restart existing cells so their primary is selection/selected
-before reopening admission. Existing warm cells still using old defaults must
-not be left running after the change. No additional schema migration is needed
+supervisor. Existing BYOK cells use the compatibility router immediately and are
+exempt from stale-primary restart. New cells use selection/selected. Legacy cells
+using the direct Lumina proxy need a one-time configuration refresh as part of
+that older runtime's migration; subsequent model changes never restart cells.
+No additional schema migration is needed
 for model selection; the pending location migration is still required.
 
 Verify a real Lumina task, two personal profiles, return to Lumina, and reported
@@ -95,3 +105,18 @@ rejection. Production build passed with existing bundle-size warnings.
 with synthetic keys. Both Chrome viewport checks passed: switching both directions,
 preserving keys, busy rejection and horizontal overflow. No production deployment or paid model calls
 were made.
+
+## Cancelled task consistency
+
+Cancelling a never-dispatched request atomically cancels its queued task row and
+releases its unused reservation. The request worker also repairs legacy cancelled
+requests whose task rows remain queued. The repair requires no delivery, no live
+slot, and no provider receipt; ambiguous or previously dispatched work is preserved
+for reconciliation. Stale-primary recovery starts its cooldown only after it
+actually schedules a safe drain.
+
+The model proxy’s exhausted-key-budget 429 is normalized to a terminal 402
+`budget_exhausted` with a fixed, actionable message. Genuine transient rate-limit
+429 replies are preserved, including their body. This prevents the runtime from
+spending minutes retrying an allowance that cannot recover on its own; neither
+limit increases nor provider fallback happen automatically.

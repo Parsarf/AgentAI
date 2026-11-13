@@ -7,32 +7,22 @@
     anything else, no line, no file, an unreadable file   nobody
 
 It is read on every request, so turning it off takes effect at once: the Integrations section disappears, the account routes answer "unavailable", and the assistant's remote tools are
-withdrawn. Connections and approvals already stored are left alone (nothing is deleted by switching off). Same shape as the own-model switch (model_keys.py).
+withdrawn. Connections and approvals already stored are left alone (nothing is deleted by switching off). The file format and its reader are shared: see rollout.py.
 """
-import json
-from pathlib import Path
+from .. import rollout
 
 DEFAULT_FILE = '/var/lib/agentai-platform/mcp-connections.json'
-MAX_BYTES = 65536
+MAX_BYTES = rollout.MAX_BYTES
+KEY = 'mcp_connections'
 
 
 def read(path):
-    try:
-        p = Path(path)
-        if p.is_symlink() or not p.is_file() or p.stat().st_size > MAX_BYTES:
-            return {}
-        data = json.loads(p.read_text())
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return rollout.read(path, max_bytes=MAX_BYTES)
 
 
 def enabled_for(config, account):
-    value = config.get('mcp_connections') if isinstance(config, dict) else None
-    if value is True:
-        return True
-    return isinstance(value, list) and isinstance(account, str) and account in value
+    return rollout.allows(config, KEY, account)
 
 
 def enabled(path, account):
-    return bool(path) and enabled_for(read(path), account)
+    return rollout.enabled(path, KEY, account, max_bytes=MAX_BYTES)

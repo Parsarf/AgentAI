@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 from django.http import HttpResponse, JsonResponse
 from .views import customer
-from . import files
+from . import files, wiring
 from agentai_platform.apps import application, MAX_APP_BYTES
 
 
@@ -34,7 +34,7 @@ def source(request, artifact_id, version):
     def run():
         if not version.isdecimal() or int(version) < 1:
             raise ValueError('invalid version')
-        artifacts = files._services()[3]
+        artifacts = wiring.artifact_service()
         with artifacts.store.connect() as con:
             row = artifacts._authorized_version(con, files._principal(request), artifact_id, int(version))
         runtime = {'.html': 'html', '.py': 'python', '.js': 'javascript'}.get(Path(row['display_name']).suffix.lower())

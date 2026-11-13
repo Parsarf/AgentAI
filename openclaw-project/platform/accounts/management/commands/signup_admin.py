@@ -18,6 +18,7 @@ from django.db import connection, transaction
 from accounts.lifecycle import coordinator
 from accounts.models import Identity
 from accounts.services import audit, models_f_epoch
+from agentai_platform import request_states
 from agentai_platform.lifecycle.capacity import max_cells, set_max_cells
 from agentai_platform.lifecycle.types import Conflict
 
@@ -61,7 +62,7 @@ def overview():
         out['cells'] = {k: v for k, v in c.fetchall()}
         c.execute("SELECT state,count(*) FROM customer_requests WHERE created_epoch>=%s GROUP BY 1", [now - 7 * 86400])
         out['tasks_7d'] = {k: v for k, v in c.fetchall()}
-        c.execute("SELECT count(*) FROM customer_requests WHERE state IN ('waiting','starting','running','uncertain')")
+        c.execute("SELECT count(*) FROM customer_requests WHERE state IN " + request_states.sql_list(request_states.ACTIVE))
         out['tasks_active'] = c.fetchone()[0]
         for key, since in (('today', now - now % 86400), ('d30', now - 30 * 86400)):
             c.execute("SELECT coalesce(sum(amount_microusd),0) FROM provider_receipts WHERE observed_epoch>=%s", [since])

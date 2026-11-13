@@ -55,7 +55,6 @@ X_FRAME_OPTIONS = 'DENY'
 SECURE_CONTENT_TYPE_NOSNIFF = True
 # Gunicorn runs behind a private loopback TLS proxy which overwrites this header.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-DATA_UPLOAD_MAX_MEMORY_SIZE = 200000
 FILE_UPLOAD_MAX_MEMORY_SIZE = 0
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 12
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

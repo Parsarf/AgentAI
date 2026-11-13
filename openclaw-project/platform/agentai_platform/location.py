@@ -8,6 +8,7 @@ import json
 import math
 import time
 import uuid
+from . import request_states
 from .lifecycle.coordinator import Coordinator, identifier
 from .security import NotFound
 
@@ -33,17 +34,14 @@ class Locations:
             now = int(self.clock())
             con.execute("UPDATE location_requests SET status='timeout',position_json=NULL WHERE status='pending' AND expires_epoch<=?", (now,))
             con.execute('UPDATE location_requests SET position_json=NULL WHERE position_json IS NOT NULL AND expires_epoch<=?', (now,))
-            con.execute("""UPDATE location_requests SET status='cancelled',position_json=NULL
+            con.execute(f"""UPDATE location_requests SET status='cancelled',position_json=NULL
                 WHERE status IN ('pending','granted') AND EXISTS
                 (SELECT 1 FROM customer_requests r WHERE r.account_id=location_requests.account_id
-                 AND r.id=location_requests.request_id AND (r.cancel_requested=1 OR r.closing=1 OR r.state NOT IN ('starting','running')))""")
+                 AND r.id=location_requests.request_id AND NOT ({request_states.live_run()}))""")
             con.execute("DELETE FROM location_requests WHERE expires_epoch<? AND status!='pending'", (now - 30 * 86400,))
 
     def live(self, con, account, request):
-        return con.execute("""SELECT 1 FROM customer_requests r JOIN accounts a ON a.id=r.account_id
-          JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
-          WHERE r.account_id=? AND r.id=? AND a.status='active' AND r.state IN ('starting','running')
-          AND r.cancel_requested=0 AND r.closing=0 AND v.state='active'""", (account, request)).fetchone() is not None
+        return request_states.is_live_run(con, account, request, funded=True, active_account=True)
 
     def sweep(self, con, account):
         now = int(self.clock())
