@@ -23,12 +23,13 @@ from .types import Conflict
 
 class LifecycleWorker:
     def __init__(self, store, driver, capacity, *, coordinator=None, clock=time.time,
-                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None, wake=False, handover_idle=60, observe=None, events=None):
+                 owner='lifecycle-worker', idle_after=IDLE_AFTER_SECONDS, batch=10, backup_max_age=None, wake=False, handover_idle=60, observe=None, events=None, stale=None, stale_cooldown=3600):
         self.events = events   # EventService: tells the waiting customer's live timeline that their assistant is being woken
         self.store, self.driver, self.capacity = store, driver, capacity
         self.coordinator = coordinator or Coordinator(store, clock=clock)
         self.clock, self.owner, self.idle_after, self.batch = clock, owner, idle_after, batch
         self.observe = observe   # observe(account)->True/False/None: is the cell's container really running?
+        self.stale, self.stale_cooldown, self._stale_at = stale, stale_cooldown, {}   # stale(account)->True only when the running cell is configured for an older model setup
         self.wake, self.handover_idle = wake, handover_idle   # wake: start cells for waiting customer requests
         self.backup_max_age = backup_max_age   # seconds; None leaves backup scheduling to the operator
 
@@ -130,6 +131,18 @@ class LifecycleWorker:
         with self.store.connect() as con:
             return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting' AND paused=0")}
 
+    def _stale_cell(self, account, now):
+        """At most one restart per cooldown: if a start cannot bring the config up to date, the cell must not be put to sleep after every message."""
+        if self.stale is None or now - self._stale_at.get(account, -1e12) < self.stale_cooldown:
+            return False
+        try:
+            if not self.stale(account):
+                return False
+        except Exception:
+            return False
+        self._stale_at[account] = now
+        return True
+
     def tick(self):
         report = {'reconciled': 0, 'ran': 0, 'waiting': 0, 'denied': 0, 'uncertain': 0, 'drained': 0, 'backups_queued': 0, 'woken': 0, 'realigned': 0}
         for account, operation in self._rows('uncertain'):
@@ -156,6 +169,8 @@ class LifecycleWorker:
         for facts, generation in self.facts():
             # Another account's request is waiting for the one cell slot: hand over after a short idle.
             idle = self.handover_idle if waiting - {facts.account_id} else self.idle_after
+            if self._stale_cell(facts.account_id, now):
+                idle = 0   # still needs the same drain point (nothing running, queued or awaiting approval); only the idle wait is skipped, so the next wake reconfigures it
             if can_sleep(facts, now, idle_after=idle):
                 try:
                     self.coordinator.request_system(facts.account_id, key=f'idle-{generation}-{int(facts.last_activity_epoch)}',

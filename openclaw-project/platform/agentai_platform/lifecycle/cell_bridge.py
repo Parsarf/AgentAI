@@ -480,7 +480,16 @@ class CellBridge:
             tenant = self.binding(account) if self.binding else None
             if tenant is None or self.probe is None:
                 raise BridgeError('no cell')
-            return {'running': bool(self.probe(tenant))}
+            status = {'running': bool(self.probe(tenant))}
+            if status['running'] and self.workspace_root is not None and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):
+                # Which model the cell is configured to call. A cell that was last configured by older code names a different one, which the lifecycle worker turns into a restart.
+                try:
+                    primary = json.loads((Path(self.workspace_root) / tenant / 'openclaw.json').read_text())['agents']['defaults']['model']['primary']
+                    if isinstance(primary, str) and len(primary) <= 200:
+                        status['primary'] = primary
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+            return status
         if method in ('tools.origin', 'tools.active'):
             tenant = self.binding(account) if self.binding else None
             if not tenant or self.workspace_root is None or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):

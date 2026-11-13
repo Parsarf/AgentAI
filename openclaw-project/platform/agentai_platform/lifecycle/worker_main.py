@@ -33,6 +33,8 @@ def main():
     parser.add_argument('--switches-file', default=os.environ.get('AGENTAI_SWITCHES_FILE', ''))
     parser.add_argument('--switch-facts-file', default=os.environ.get('AGENTAI_SWITCH_FACTS_FILE', ''))
     parser.add_argument('--bridge-socket', type=Path, default=Path('/run/agentai-cell-bridge/bridge.sock'))
+    # A running cell whose config names another primary model was configured by older code: it is put to sleep (when idle) so the next wake reconfigures it. Empty turns this off.
+    parser.add_argument('--expect-primary', default='selection/selected')
     parser.add_argument('--once', action='store_true')
     args = parser.parse_args()
     if not 1 <= args.interval <= 3600 or not 60 <= args.idle_after <= 86400:
@@ -45,10 +47,17 @@ def main():
         except Exception:
             return None   # unknown is never treated as 'gone'
 
+    def stale(account):
+        if not args.expect_primary:
+            return False
+        reply = BridgeRpc(account, args.bridge_socket, timeout=30)('cell.status', {})
+        primary = reply.get('primary')
+        return bool(reply.get('running')) and isinstance(primary, str) and primary != args.expect_primary
+
     switches = SwitchStore(args.switches_file or None, facts_path=args.switch_facts_file or None)
     worker = LifecycleWorker(Store(args.db), SocketDriver(args.socket, timeout_seconds=600), host_capacity,
                              idle_after=args.idle_after, backup_max_age=20 * 3600,
-                             wake=lambda: switches.is_on('customer_execution'), observe=observe, events=EventService(Store(args.db)))
+                             wake=lambda: switches.is_on('customer_execution'), observe=observe, events=EventService(Store(args.db)), stale=stale)
     while True:
         # Counts only: no account, tenant, token or path ever reaches the journal.
         began = time.monotonic()

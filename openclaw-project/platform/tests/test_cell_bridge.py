@@ -269,6 +269,21 @@ class StatusChecks(unittest.TestCase):
         self.assertEqual(b.call('acct', 'cell.status', {}), {'running': False})
         with self.assertRaises(BridgeError): b.call('nobody', 'cell.status', {})
 
+    def test_cell_status_reports_the_configured_primary_model_only_for_a_running_cell(self):
+        import json, tempfile
+        from pathlib import Path
+        tenant = 'aa-' + 'a' * 32
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / tenant).mkdir()
+            (Path(root) / tenant / 'openclaw.json').write_text(json.dumps({'agents': {'defaults': {'model': {'primary': 'byok/some-model'}}}}))
+            def bridge(running):
+                return CellBridge(lambda a: None, lambda t, k: None, lambda t: 0, binding=lambda a: tenant if a == 'acct' else None,
+                                  probe=lambda t: running, workspace_root=root)
+            self.assertEqual(bridge(True).call('acct', 'cell.status', {}), {'running': True, 'primary': 'byok/some-model'})
+            self.assertEqual(bridge(False).call('acct', 'cell.status', {}), {'running': False})
+            (Path(root) / tenant / 'openclaw.json').write_text('not json')
+            self.assertEqual(bridge(True).call('acct', 'cell.status', {}), {'running': True})
+
 
 class WorkspaceCollectChecks(unittest.TestCase):
     def test_bridge_collects_only_from_the_accounts_own_workspace(self):
