@@ -5777,6 +5777,109 @@
      }
     }
    }
+  },
+  "/v1/work": {
+   "get": {
+    "summary": "Every recent task as one customer-facing picture: phase (queued, paused, starting, working, needs_you, stopping, reconnecting, ended), a fixed-vocabulary label, what is waiting on the customer, the outcome and whether it was confirmed, and the controls that apply. `rev` changes exactly when something shown changes; pass it back as ?rev= to get {unchanged:true}.",
+    "parameters": [
+     {
+      "name": "rev",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/work/{id}": {
+   "get": {
+    "summary": "One task in full: the same view plus the assistant's own checklist (labelled as its report), evidence from Lumina's records (sites, commands, files, approvals, duration), and the timeline rows touched by events after the cursor (?after=, 0 = all). One row per tool call; overlapping calls share a `group`.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "after",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     {
+      "name": "rev",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
+  },
+  "/v1/work/ticket": {
+   "post": {
+    "summary": "A short-lived, read-only ticket for the push gateway (text/event-stream at the returned path: events list, task, draft, reopen, bye; reconnect with the cursors from `reopen`). 404 when this server runs no push gateway: poll /v1/work and /v1/work/{id} instead.",
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     }
+    }
+   }
   }
  },
  "components": {

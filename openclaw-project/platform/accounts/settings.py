@@ -118,6 +118,8 @@ GOAL_CHAIN_LIMIT = int(os.environ.get('AGENTAI_GOAL_CHAIN_LIMIT', '20'))      # 
 # Live view: the frame gateway is a separate process; this file holds the secret both sides use to sign and check watch tickets.
 LIVE_SECRET_FILE = os.environ.get('AGENTAI_LIVE_SECRET_FILE', '')
 LIVE_PATH = os.environ.get('AGENTAI_LIVE_PATH', '/v1/live')
+# The push gateway (agentai_platform/live/push.py) streams task state to open tabs. Empty = not running on this server: the app polls /v1/work instead.
+PUSH_PATH = os.environ.get('AGENTAI_PUSH_PATH', '')
 # Side panel in the customer's own Chrome: the key that signs its tickets (app user only, never readable by the browse service; no file = feature off) and the extension
 # origins allowed to call /v1/panel/* (comma separated, each exactly chrome-extension://<32 letters>; none = feature off).
 PANEL_SECRET_FILE = os.environ.get('AGENTAI_PANEL_SECRET_FILE', '')

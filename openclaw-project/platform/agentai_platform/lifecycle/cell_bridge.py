@@ -29,7 +29,7 @@ PROTOCOL = 4
 SESSION_KEY = re.compile(r'^agent:main:[A-Za-z0-9_.:-]{1,120}$')
 TOKEN_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
 ALLOWED = ('hello', 'sessions.create', 'sessions.describe', 'chat.send', 'chat.history', 'chat.abort', 'agent.wait', 'sessions.goal.update', 'sessions.goal.clear',
-           'usage.snapshot', 'cell.status', 'cell.identify', 'tools.origin', 'tools.active', 'workspace.collect', 'browser.request', 'browser.shot', 'browser.live', 'browser.frame')
+           'usage.snapshot', 'cell.status', 'cell.identify', 'tools.origin', 'tools.active', 'workspace.collect', 'chat.draft', 'browser.request', 'browser.shot', 'browser.live', 'browser.frame')
 # The cell's native browser. Its gateway method needs operator.admin, which the main connection never has: these calls travel on a second connection of their own, and only a
 # caller the socket server names (the browse service, root) may use them. The app itself cannot.
 BROWSER_METHODS = ('browser.request', 'browser.shot', 'browser.live', 'browser.frame')
@@ -66,6 +66,8 @@ function connect() {
       else { ws.close(); }
     } else if (d.type === 'res' && pending.has(d.id)) {
       const done = pending.get(d.id); pending.delete(d.id); done(d);
+    } else if (d.type === 'event' && d.event === 'agent') {
+      onAgent(d.payload);
     }
   });
   ws.addEventListener('close', () => { if (ready) process.exit(3); if (++attempts > 60) process.exit(4); setTimeout(connect, 2000); });
@@ -75,8 +77,42 @@ function gateway(method, params) {
   return new Promise(resolve => { const gid = 'g' + (++seq); pending.set(gid, resolve); ws.send(JSON.stringify({ type: 'req', id: gid, method, params })); });
 }
 function send(r) {
-  const gid = 'r' + r.id; pending.set(gid, d => out({ id: r.id, ok: !!d.ok, payload: d.payload, error: d.error ? { code: d.error.code } : undefined }));
+  const gid = 'r' + r.id; pending.set(gid, d => { waits.delete(gid); out({ id: r.id, ok: !!d.ok, payload: d.payload, error: d.error ? { code: d.error.code } : undefined }); });
+  if (r.method === 'agent.wait') waits.set(gid, r.id);
   ws.send(JSON.stringify({ type: 'req', id: gid, method: r.method, params: r.params }));
+}
+// The runtime tells this connection what its runs are doing as it happens (tool calls starting and ending, the reply being written). Nothing of that is passed on as written:
+//  * a tool call starting or ending ends the host's current agent.wait slice early ("still running"), so the host reads the history NOW instead of at the end of the slice.
+//    What the customer is shown still comes from that history, through the host's own redaction. The runtime's wait keeps running and its late answer is dropped.
+//  * the reply being written is kept as one draft (the newest text of the newest message of one run) for chat.draft below. Only the visible reply stream is read.
+const waits = new Map(); let nudgeTimer = null;
+const draft = { seq: 0, runId: '', itemId: '', text: '', done: true, waiters: [] };
+function nudge() {
+  if (nudgeTimer) return;
+  nudgeTimer = setTimeout(() => {
+    nudgeTimer = null;
+    for (const [gid, id] of waits) { waits.delete(gid); pending.delete(gid); out({ id, ok: true, payload: { status: 'timeout', nudged: true } }); }
+  }, 120);
+}
+function draftBump() { draft.seq += 1; const w = draft.waiters; draft.waiters = []; w.forEach(f => f()); }
+function onAgent(p) {
+  if (!p || typeof p.runId !== 'string' || !p.data || typeof p.data !== 'object') return;
+  const data = p.data;
+  if (p.stream === 'assistant' && typeof data.text === 'string') {
+    draft.runId = p.runId.slice(0, 200); draft.itemId = String(data.itemId || '').slice(0, 200); draft.text = data.text.slice(0, 20000); draft.done = false; draftBump();
+  } else if (p.stream === 'item' && data.kind === 'tool' && (data.phase === 'start' || data.phase === 'end')) {
+    nudge();
+  } else if (p.stream === 'lifecycle' && (data.phase === 'end' || data.phase === 'error')) {
+    if (draft.runId === p.runId && !draft.done) { draft.done = true; draftBump(); }
+    nudge();
+  }
+}
+function draftCmd(r) {
+  const p = r.params || {}; const after = Number.isInteger(p.after) ? p.after : 0;
+  const reply = () => out({ id: r.id, ok: true, payload: draft.seq > after ? { seq: draft.seq, runId: draft.runId, itemId: draft.itemId, text: draft.text, done: draft.done } : { seq: draft.seq } });
+  if (draft.seq > after || !p.waitMs) return reply();
+  let done = false; const fin = () => { if (!done) { done = true; reply(); } };
+  draft.waiters.push(fin); setTimeout(fin, Math.min(p.waitMs, 2000));
 }
 // The browser's picture is a file the browser plugin wrote inside the cell. Only the relay (which runs inside the cell) can read it: it hands the bytes back and deletes the file.
 async function shot(r) {
@@ -130,6 +166,7 @@ async function liveCmd(r) {
 function dispatch(r) {
   if (r.method === 'browser.shot') return void shot(r);
   if (r.method === 'browser.live' || r.method === 'browser.frame') return void liveCmd(r);
+  if (r.method === 'chat.draft') return void draftCmd(r);
   send(r);
 }
 rl.on('line', line => {
@@ -307,6 +344,11 @@ class CellBridge:
             if not isinstance(label, str) or not TOKEN_ID.fullmatch(label):
                 raise BridgeError('invalid label')
             return {'agentId': 'main', 'label': label}
+        if method == 'chat.draft':                              # answered by the relay itself (the reply being written right now); never reaches the runtime
+            after, wait = params.get('after', 0), params.get('waitMs', 0)
+            if type(after) is not int or after < 0 or type(wait) is not int or not 0 <= wait <= 2000:
+                raise BridgeError('invalid draft read')
+            return {'after': after, 'waitMs': wait}
         if method == 'agent.wait':
             run, wait = params.get('runId'), params.get('timeoutMs', 0)
             if not isinstance(run, str) or not TOKEN_ID.fullmatch(run) or type(wait) is not int or not 0 <= wait <= MAX_WAIT_MS:

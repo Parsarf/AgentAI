@@ -217,6 +217,43 @@ class NativeEndToEnd(unittest.TestCase):
             self.assertEqual(S.rows('SELECT count(*) AS n FROM chat_deliveries WHERE request_id=?', (p['request_id'],))[0]['n'], 1)
 
     # -- steering, stop, interruption -----------------------------------------------------------------------------------------------------------
+    # -- what the customer sees while it works -------------------------------------------------------------------------------------------------
+    def test_tool_use_reaches_the_timeline_as_it_happens_and_the_reply_can_be_read_while_it_is_written(self):
+        """The runtime tells the relay when a tool call starts and ends, which ends the driver's wait slice early: the call is in Lumina's own (redacted) timeline long before
+        the slice would have ended. The reply being written is readable as a draft, a piece at a time, and is the saved message in the end."""
+        S = self.S
+        S.driver.wait_ms = 6000                                    # a long slice: without the early wake the tool call could not be recorded before the reply
+        self.addCleanup(setattr, S.driver, 'wait_ms', 1500)
+        S.hold_cell('a')
+        sent = S.say('a', 'Do it. SCENARIO:work_then_write', 'k-live-1')
+        drafts, stop = [], threading.Event()
+
+        def watch():
+            seq = BridgeRpc('a', S.socket)('chat.draft', {'after': 0, 'waitMs': 0}).get('seq', 0)
+            while not stop.is_set():
+                got = BridgeRpc('a', S.socket)('chat.draft', {'after': seq, 'waitMs': 250})
+                if got.get('seq', 0) > seq:
+                    seq = got['seq']
+                    if got.get('runId') == sent['id'] + '-a1':
+                        drafts.append((got['text'], got['done'], bool(S.rows("SELECT 1 FROM chat_messages WHERE request_id=? AND provenance='agent'", (sent['id'],)))))
+        watcher = threading.Thread(target=watch, daemon=True)
+        watcher.start()
+        S.work(until=self.finished(sent['id']))
+        stop.set(); watcher.join(5)
+        self.assertEqual(S.request(sent['id'])['state'], 'completed')
+        events = S.rows("SELECT kind,public_payload,created_at FROM events WHERE task_id=? ORDER BY sequence", (sent['id'],))
+        stamp = lambda e: time.mktime(time.strptime(e['created_at'][:19], '%Y-%m-%dT%H:%M:%S')) + int(e['created_at'][20:23]) / 1000
+        tool = next(e for e in events if e['kind'] == 'activity')
+        result = next(e for e in events if e['kind'] == 'result')
+        self.assertGreater(stamp(result) - stamp(tool), 1.5)        # recorded while the run was still going (the scripted model waits 2.5 s after the tool before it writes)
+        texts = [text for text, _, _ in drafts]
+        self.assertGreaterEqual(len(set(texts)), 2)                 # it grew
+        self.assertTrue(all(b.startswith(a) for a, b in zip(texts, texts[1:])))
+        self.assertTrue(any(not saved for _, _, saved in drafts))   # read before the message was saved
+        self.assertTrue(drafts[-1][1])                              # and marked finished
+        message = S.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='agent' ORDER BY id DESC LIMIT 1", (sent['id'],))[0]['content']
+        self.assertEqual(texts[-1], message)
+
     def test_a_message_sent_while_the_task_runs_is_steered_into_that_run(self):
         S = self.S
         S.hold_cell('a')

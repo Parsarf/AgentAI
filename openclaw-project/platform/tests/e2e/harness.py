@@ -99,6 +99,10 @@ class Cell:
         origin_path = install(self.root / 'state')
         config = cell_config.patch(base, relay=f'http://127.0.0.1:{stack.model.port}', tools=(f'http://127.0.0.1:{stack.relay_port}/mcp', self.key), tool_origin_path=origin_path)
         config['agents']['defaults']['workspace'] = str(self.workspace)
+        if 'selection' in config['models']['providers']:
+            # Production cells reach their model through the selection relay (tool_relay /selection/v1), which picks the customer's chosen model and has its own tests.
+            # Here the chosen model is the scripted one, so the same provider entry points straight at it.
+            config['models']['providers']['selection']['baseUrl'] = f'http://127.0.0.1:{stack.model.port}'
         (self.root / 'state').mkdir(exist_ok=True)
         self.config = config
         (self.root / 'state' / 'openclaw.json').write_text(json.dumps(config, indent=2))

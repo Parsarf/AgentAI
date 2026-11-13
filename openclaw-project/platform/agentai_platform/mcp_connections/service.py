@@ -200,7 +200,8 @@ def namespaced(connection, tool):
 
 
 class ConnectionService:
-    def __init__(self, store, keyring, *, callback_url, registrations=None, remote=None, clock=time.time):
+    def __init__(self, store, keyring, *, callback_url, registrations=None, remote=None, clock=time.time, events=None):
+        self.events = events                     # EventService: permission prompts and their answers go on the task's timeline (None = not recorded there)
         self.store, self.ring, self.callback_url = store, keyring, callback_url
         self.registrations, self.remote, self.clock = registrations or {}, remote or RemoteClient(), clock
         self.coordinator = Coordinator(store, clock=clock)
@@ -581,6 +582,18 @@ class ConnectionService:
             if row['state'] != 'pending' or row['expires_epoch'] < self.clock():
                 raise ConnectionError('approval_expired', 'This exact-call approval is no longer available.')
             con.execute('UPDATE mcp_calls SET state=?,expires_epoch=? WHERE account_id=? AND id=?', ('approved' if approved else 'rejected', int(self.clock()) + 600, principal.account_id, call))
+            service = con.execute('SELECT name FROM mcp_connections WHERE account_id=? AND id=?', (principal.account_id, row['connection_id'])).fetchone()
+            self._timeline(con, principal.account_id, row['request_id'], 'approval_decision', {'request_id': call, 'decision': 'approved' if approved else 'declined'})
+            return {'request_id': row['request_id'], 'tool': row['tool_name'], 'service': service['name'] if service else '', 'approved': bool(approved)}
+
+    def _timeline(self, con, account, request_id, kind, payload):
+        """Put a permission prompt or its answer on the task's own timeline. Best effort: a call made outside a task (or a full timeline) is still decided."""
+        if self.events is None or not request_id:
+            return
+        try:
+            self.events.append_in(con, account, request_id, kind, payload, 'approval')
+        except Exception:
+            pass
 
     def call(self, account, name, arguments, request_id, *, closed=lambda: False):
         principal = self._principal_for(account)
@@ -625,7 +638,9 @@ class ConnectionService:
                     call_id = uuid.uuid4().hex
                     con.execute("INSERT INTO mcp_calls(account_id,id,connection_id,tool_name,payload_hash,schema_hash,request_id,arguments_json,state,expires_epoch,created_epoch) VALUES (?,?,?,?,?,?,?,?,'pending',?,?)",
                                 (account, call_id, row['id'], tool['name'], target_hash, schema_digest(tool), request_id, packed(arguments), int(self.clock()) + 600, int(self.clock())))
-                return {'content': [{'type': 'text', 'text': 'Customer approval required. Ask the customer to review the exact call in Integrations → MCP connections, then retry only after approval. No remote action has run.'}], 'isError': True}
+                    self._timeline(con, account, request_id, 'approval_request', {'request_id': call_id, 'expires_epoch': int(self.clock()) + 600,
+                                                                                 'summary': 'Asked for your permission to use ' + re.sub(r'[_-]+', ' ', tool['name'])[:80] + ' on ' + str(row['name'])[:60]})
+                return {'content': [{'type': 'text', 'text': 'Customer approval required. Lumina is showing the customer this exact call in the chat now, and will tell you their decision. Tell the customer briefly what you asked permission for and stop; do not retry until you are told it was allowed. No remote action has run.'}], 'isError': True}
             if con.execute("SELECT count(*) FROM mcp_calls WHERE account_id=? AND state='dispatching'", (account,)).fetchone()[0] >= 2:
                 raise ConnectionError('busy', 'Two MCP calls are already running for this account.')
             self._lease(con, row)

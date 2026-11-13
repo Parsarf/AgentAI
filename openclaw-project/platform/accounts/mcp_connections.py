@@ -123,7 +123,15 @@ def approve(request, call_id):
     rate('mcp.approve', request.account_id, 30, 60)
     try:
         if set(request.input) != {'approved'} or type(request.input['approved']) is not bool: raise ValueError('invalid decision')
-        service().approve(principal(request), call_id, request.input['approved'])
+        decided = service().approve(principal(request), call_id, request.input['approved'])
         audit(request.user.pk, request.account_id, call_id, 'mcp.approval', 'completed', request.request_id)
-        return JsonResponse({'decided': True})
+        # The decision stands whatever happens next. Telling the assistant is a second step: when it cannot be done (no chat behind the call, the plan cannot fund a turn,
+        # the cell is away) the answer says so, and the customer can simply send a message.
+        continued = False
+        try:
+            continued = wiring.chat_service().continue_after_decision(principal(request), decided['request_id'], approved=decided['approved'], tool=decided['tool'],
+                                                                      service=decided['service'], key='approval-' + call_id) is not None
+        except Exception:
+            continued = False
+        return JsonResponse({'decided': True, 'continued': continued})
     except ConnectionError as e: return failure(e)

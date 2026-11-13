@@ -256,8 +256,10 @@ def mcp_service(db=None):
     if settings.ASANA_MCP_CLIENT_ID and settings.ASANA_MCP_CLIENT_SECRET:
         registrations[ASANA_URL] = {'client_id': settings.ASANA_MCP_CLIENT_ID, 'client_secret': settings.ASANA_MCP_CLIENT_SECRET,
                                     'issuer': 'https://app.asana.com', 'token_endpoint_auth_method': 'client_secret_post'}
-    return ConnectionService(db or store(), ModelKeyring.derived(settings.SECRET_KEY, settings.MCP_KEY_FILE or settings.MODEL_KEY_FILE or None),
-                             callback_url=settings.PUBLIC_ORIGIN + '/v1/account/mcp/callback', registrations=registrations)
+    db = db or store()
+    return ConnectionService(db, ModelKeyring.derived(settings.SECRET_KEY, settings.MCP_KEY_FILE or settings.MODEL_KEY_FILE or None),
+                             callback_url=settings.PUBLIC_ORIGIN + '/v1/account/mcp/callback', registrations=registrations,
+                             events=event_service(db))
 
 
 def telegram_service(db=None):
