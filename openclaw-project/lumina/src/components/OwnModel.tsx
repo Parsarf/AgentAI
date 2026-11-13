@@ -39,8 +39,8 @@ export default function OwnModel() {
   if (!state) return problem ? <p role="alert">{problem}</p> : null;
   return <section className="panel card" id="own-model" style={{ marginBottom: 14 }} aria-labelledby="own-model-h">
     <h2 id="own-model-h">Models</h2>
-    <p className="muted" style={{ marginTop: 10 }}>Choose a Lumina model or a model using one of your saved API keys. Switching keeps your saved keys and applies to your next task. Finish or stop pending tasks before changing these settings.</p>
-    <form onSubmit={e => { e.preventDefault(); void change('/v1/model-key/select', { id: choice }, 'Selected. Your next task will use this model.'); }} style={{ marginTop: 12 }}>
+    <p className="muted" style={{ marginTop: 10 }}>Choose a Lumina model or use one of your saved API keys. New messages use your selection immediately. Tasks already queued or running keep their model. No assistant restart is needed.</p>
+    <form onSubmit={e => { e.preventDefault(); void change('/v1/model-key/select', { id: choice }, 'Selected. New messages will use this model.'); }} style={{ marginTop: 12 }}>
       <label>Assistant model<select className="input" aria-label="Assistant model" value={choice} disabled={busy} onChange={e => setChoice(e.target.value)}>
         {!known && <option value={state.selected} disabled>Previously selected model is unavailable</option>}
         <optgroup label="Lumina">{state.lumina_models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</optgroup>

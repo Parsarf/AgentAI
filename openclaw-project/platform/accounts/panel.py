@@ -12,20 +12,16 @@ import json
 import re
 from functools import wraps
 from django.conf import settings
-from django.db import connection
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from agentai_platform.adapters import CapabilityUnavailable
-from agentai_platform.browse.client import BrowseRpc
 from agentai_platform.budget import BudgetDenied
 from agentai_platform.chat import denial_category
-from agentai_platform.events import EventService
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.panel import ticket as panel_ticket
-from agentai_platform.panel.offer import read_secret
 from agentai_platform.security import Principal, NotFound
 from .chat import prewarm, service
-from .lifecycle import AccountStore
+from . import wiring
 from .services import Limited, rate
 
 REQUEST_ID = re.compile(r'^[a-f0-9]{32}$')
@@ -49,7 +45,7 @@ def _cors(response, origin):
 
 def _computer_ok(claims):
     """The one computer the ticket names is connected right now and the customer has "use my own browser" on. -> True / False; CapabilityUnavailable when the service is away."""
-    state = BrowseRpc(claims['account'], settings.BROWSE_SOCKET)('device_list')
+    state = wiring.browse_rpc(claims['account'])('device_list')
     return bool(state.get('allowed') and state.get('use') and any(d.get('device_id') == claims['device'] and d.get('connected') for d in state.get('devices') or []))
 
 
@@ -59,7 +55,7 @@ def panel_endpoint(methods, *, writes=False, status=False):
         @csrf_exempt
         @wraps(fn)
         def view(request):
-            if not settings.PANEL_ORIGINS or not read_secret(settings.PANEL_SECRET_FILE):
+            if not wiring.panel_secret():
                 return _fail('unavailable', 404)                                    # no key or no extension origin configured: the feature is off
             origin = request.headers.get('Origin', '')
             if origin not in settings.PANEL_ORIGINS:
@@ -72,7 +68,7 @@ def panel_endpoint(methods, *, writes=False, status=False):
             try:
                 rate('panel.ip', request.client_ip, 600, 60)                       # a flood of forged tickets from one address
                 header = request.headers.get('Authorization', '')
-                claims = panel_ticket.verify(read_secret(settings.PANEL_SECRET_FILE), header[6:] if header.startswith('Panel ') else '')
+                claims = panel_ticket.verify(wiring.panel_secret(), header[6:] if header.startswith('Panel ') else '')
                 principal = Principal(claims['account'], claims['actor'], 'customer')
                 rate('panel.write' if writes else 'panel.read', claims['account'], 30 if writes else 240, 60)
                 service().conversation(principal, claims['conversation'])           # still this person's own conversation, member still active
@@ -143,7 +139,7 @@ def clean_context(raw):
 
 def _cell_state(account):
     """Is this customer's assistant ready to work? 'ready' | 'waking' | 'asleep' | 'unknown'. For the panel's status line only."""
-    store = AccountStore(connection.settings_dict['NAME'])
+    store = wiring.store()
     with store.connect() as con:
         cell = con.execute('SELECT observed_state FROM lifecycle_cells WHERE account_id=?', (account,)).fetchone()
         starting = con.execute("SELECT 1 FROM operations WHERE account_id=? AND kind='start' AND state IN ('pending','running','uncertain')", (account,)).fetchone()
@@ -156,7 +152,7 @@ def _cell_state(account):
 
 def _customer(account):
     """The person this account's computer belongs to: its active customer. A device is paired by the signed-in customer, so this is who the panel acts as."""
-    store = AccountStore(connection.settings_dict['NAME'])
+    store = wiring.store()
     with store.connect() as con:
         row = con.execute("""SELECT m.actor_id FROM memberships m JOIN accounts a ON a.id=m.account_id
             WHERE m.account_id=? AND m.role='customer' AND m.status='active' AND a.status='active' ORDER BY m.actor_id LIMIT 1""", (account,)).fetchone()
@@ -167,7 +163,7 @@ def _customer(account):
 def session(request):
     """Start a panel session from the extension's own sign-in (its device token): a NEW conversation (or, with `conversation`, a fresh ticket for one made earlier), the assistant
     woken up, and the ticket the other panel calls use. Same gate as every panel call: the feature is on, the origin is one of our extensions, and the computer is connected."""
-    if not settings.PANEL_ORIGINS or not read_secret(settings.PANEL_SECRET_FILE):
+    if not wiring.panel_secret():
         return _fail('unavailable', 404)
     origin = request.headers.get('Origin', '')
     if origin not in settings.PANEL_ORIGINS:
@@ -186,7 +182,7 @@ def session(request):
         conversation = data.get('conversation')
         if conversation is not None and not (isinstance(conversation, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', conversation)):
             return _cors(_fail('invalid_request', 400), origin)
-        who = BrowseRpc('', settings.BROWSE_SOCKET)('device_auth', token=token)
+        who = wiring.browse_rpc('')('device_auth', token=token)
         if not who.get('ok'):
             return _cors(_fail('device', 401), origin)
         account, device = who['account'], who['device_id']
@@ -213,10 +209,9 @@ def session(request):
         else:
             s.conversation(principal, conversation)                                  # theirs and still there, or NotFound
         if not who.get('use'):
-            BrowseRpc(account, settings.BROWSE_SOCKET)('device_use', on=True)        # using the extension is the customer saying "use my own browser"
+            wiring.browse_rpc(account)('device_use', on=True)        # using the extension is the customer saying "use my own browser"
         prewarm(account)                                                             # the assistant starts waking now, not when the first message is sent
-        secret = read_secret(settings.PANEL_SECRET_FILE)
-        ticket = panel_ticket.mint(secret, account, actor, conversation, device)
+        ticket = panel_ticket.mint(wiring.panel_secret(), account, actor, conversation, device)
         response = JsonResponse({'ticket': ticket, 'conversation': conversation, 'expires_in': panel_ticket.TTL_SECONDS, 'cell': _cell_state(account)})
     except Limited:
         response = JsonResponse({'error': 'rate_limited'}, status=429, headers={'Retry-After': '60'})
@@ -261,7 +256,7 @@ def events(request, claims, principal):
         return _fail('invalid_request', 400)
     if service().task(principal, rid).get('conversation_id') != claims['conversation']:
         raise NotFound('unavailable')                                              # only this conversation's runs
-    out = EventService(AccountStore(connection.settings_dict['NAME'])).events(principal, rid, after=int(raw_after), limit=int(raw_limit))
+    out = wiring.event_service().events(principal, rid, after=int(raw_after), limit=int(raw_limit))
     rows = [{'sequence': e['sequence'], 'kind': e['kind'], 'payload': {k: str(e['payload'][k])[:300] for k in EVENT_FIELDS if isinstance(e['payload'].get(k), (str, int))}} for e in out['events']]
     return JsonResponse({'task_state': out['task_state'], 'events': rows})
 

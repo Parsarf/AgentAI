@@ -17,6 +17,13 @@ class FailureMessageChecks(unittest.TestCase):
         self.assertIn('could not finish', failure_message(None))
         self.assertIn('could not finish', failure_message('something else broke'))
 
+    def test_allowance_errors_are_actionable_and_do_not_suggest_repeated_retries(self):
+        for raw in ('402 budget_exhausted', 'Your Lumina model allowance is exhausted.', 'Billing error: insufficient credits'):
+            message = failure_message(raw)
+            self.assertIn('allowance is exhausted', message)
+            self.assertIn('Settings', message)
+            self.assertNotIn('try again', message)
+
     def test_runtime_text_is_never_echoed(self):
         for raw in ('model is unavailable api.z.ai 10.77.0.1', 'weird sk-secret host.internal'):
             self.assertNotIn('api.z.ai', failure_message(raw))

@@ -140,7 +140,6 @@ class LifecycleWorker:
                 return False
         except Exception:
             return False
-        self._stale_at[account] = now
         return True
 
     def tick(self):
@@ -169,13 +168,16 @@ class LifecycleWorker:
         for facts, generation in self.facts():
             # Another account's request is waiting for the one cell slot: hand over after a short idle.
             idle = self.handover_idle if waiting - {facts.account_id} else self.idle_after
-            if self._stale_cell(facts.account_id, now):
+            stale = self._stale_cell(facts.account_id, now)
+            if stale:
                 idle = 0   # still needs the same drain point (nothing running, queued or awaiting approval); only the idle wait is skipped, so the next wake reconfigures it
             if can_sleep(facts, now, idle_after=idle):
                 try:
                     self.coordinator.request_system(facts.account_id, key=f'idle-{generation}-{int(facts.last_activity_epoch)}',
                                                     generation=generation)
                     report['drained'] += 1
+                    if stale:
+                        self._stale_at[facts.account_id] = now
                 except (Conflict, NotFound):
                     pass
         if self._wake(): report['woken'] = self.enqueue_wakes()

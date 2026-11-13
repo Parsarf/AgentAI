@@ -1,24 +1,15 @@
 """Saved logins and cards: add (after the notice is accepted), list (no secrets), delete. Scoped to the signed-in account.
 
 Nothing here ever returns a secret. A saved item is opened only inside an approved fill for a running task (see browse.py)."""
-from django.conf import settings
-from django.db import connection
 from django.http import JsonResponse
 from agentai_platform import safety as sf, vault
-from .lifecycle import AccountStore
+from . import wiring
 from .services import rate
 from .views import endpoint, customer
 
 
-def keyring():
-    try:
-        return vault.Keyring.from_file(getattr(settings, 'VAULT_KEY_FILE', ''))
-    except vault.VaultOff:
-        return None
-
-
-def _store():
-    return AccountStore(connection.settings_dict['NAME'])
+keyring = wiring.vault_keyring
+_store = wiring.store
 
 
 @endpoint(['GET'])

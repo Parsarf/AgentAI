@@ -157,11 +157,14 @@ def main():
     from ..safety import Reader
     safety = Reader(args.safety_file)
 
+    from .tabs import TabDesk
+    tab_desk = TabDesk()                                   # which of an account's browser tasks owns which tab of its cell browser
+
     def native_spawn(account, job_id, out_dir):
         """The browser of the account's own cell, through the cell bridge (this process is root, the only caller the bridge lets use the browser methods).
         Its address rules follow the account's `ssrf_guard` switch, read when the job starts."""
         call = BridgeRpc(account, args.bridge_socket, timeout=75)
-        return NativeTransport(call, out_dir, runner=NativeRunner(call, out_dir, allow_private=not safety.on(account, 'ssrf_guard')))
+        return NativeTransport(call, out_dir, runner=NativeRunner(call, out_dir, allow_private=not safety.on(account, 'ssrf_guard'), tabs=tab_desk.account(account)))
 
     hub = DeviceHub()
     device_store = DeviceStore(args.device_store)

@@ -8,6 +8,8 @@ from django.db import connection
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 
+from agentai_platform import chat as chat_rules
+from . import wiring
 from .views import endpoint, customer
 
 API_VERSION = '2026-10-13'
@@ -20,21 +22,16 @@ def csrf(request):
 
 
 def features(request):
-    from .billing import access_mode
-    from .chat import browse_on, execution_on
-    from .connections import switch_on as connectors_on
-    from .mcp_connections import available as mcp_on
-    storage = bool(settings.STORAGE_DIR) and settings.STORAGE_READY
     return {
         'chat': True,
-        'execution': execution_on(),
-        'browse': browse_on(),                            # the browser agent may be chosen for interactive goals                      # false: messages are saved and wait; true: the assistant answers
-        'files': storage,
-        'uploads': storage and settings.UPLOADS_ENABLED,
+        'execution': wiring.switch_on('customer_execution'),      # false: messages are saved and wait; true: the assistant answers
+        'browse': wiring.switch_on('browse_tasks'),               # the browser agent may be chosen for interactive goals
+        'files': wiring.storage_ready(),
+        'uploads': wiring.uploads_on(),
         'telegram': bool(settings.TELEGRAM_ENABLED),
-        'connectors': connectors_on(),
-        'mcp': mcp_on(getattr(request, 'account_id', None)),           # remote MCP connections (the owner's mcp-connections.json); off until turned on
-        'billing_mode': access_mode(),                    # invite_only | open | paid_required
+        'connectors': wiring.switch_on('connectors_linking'),
+        'mcp': wiring.mcp_on(getattr(request, 'account_id', None)),           # remote MCP connections (the owner's mcp-connections.json); off until turned on
+        'billing_mode': wiring.access_mode(),             # invite_only | open | paid_required
         'requests': True,
         'usage': True,
     }
@@ -78,6 +75,6 @@ def app(request):
         'user': {'email': request.user.email, 'role': 'customer'},
         'assistant': {'state': row[0] if row else 'not_provisioned'},
         'features': features(request),
-        'limits': {'max_message_chars': 16000, 'max_projects': 10, 'max_conversations_per_project': 10},
+        'limits': {'max_message_chars': chat_rules.MAX_MESSAGE_CHARS, 'max_projects': chat_rules.MAX_PROJECTS, 'max_conversations_per_project': chat_rules.MAX_CONVERSATIONS_PER_PROJECT},
         'links': {'classic_ui': '/account/', 'sign_out': '/auth/logout'},
     })

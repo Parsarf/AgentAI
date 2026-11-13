@@ -131,18 +131,21 @@ class ModeRules(unittest.TestCase):
         step = lambda action='click', label='Next', result='ok', changed=False, by='jev', **kw: {'action': action, 'label': label, 'result': result, 'changed': changed, 'by': by, **kw}
         self.assertEqual(modes.claude_reason([]), '')
         self.assertEqual(modes.claude_reason([step()]), '')                                                           # once is not a pattern
-        self.assertIn('repeated the same step 2 times', modes.claude_reason([step(), step()]))
-        self.assertIn('last 2 JEV steps changed nothing', modes.claude_reason([step(), step(label='Other')]))         # two different steps in a row that changed nothing: JEV is lost
+        self.assertEqual(modes.claude_reason([step(), step()]), '')                                                   # twice: JEV is nudged (modes.hint) and tries again, as a person would
+        self.assertIn('same control three times', modes.claude_reason([step(), step(), step()]))
+        self.assertIn('repeated the same step 3 times', modes.claude_reason([step(action='press', label='')] * 3))
+        self.assertIn('last 3 JEV steps changed nothing', modes.claude_reason([step(), step(label='Other'), step(label='Third')]))         # three different steps in a row that changed nothing: JEV is lost
         self.assertEqual(modes.claude_reason([step(changed=True), step(changed=True)]), '')                           # the page moved: not stuck
         self.assertEqual(modes.claude_reason([step(), step(by='agent')]), '')                                         # the assistant's step ends JEV's run
-        self.assertIn('could not be carried out (stale)', modes.claude_reason([step(result='stale', changed=None)]))
+        self.assertEqual(modes.claude_reason([step(result='stale', changed=None)]), '')                               # one step that could not be carried out: JEV is told and looks again
+        self.assertIn('could not be carried out (stale)', modes.claude_reason([step(result='stale', changed=None), step(result='stale', changed=None, label='Other')]))
         self.assertEqual(modes.claude_reason([step(result='covered', changed=None)]), '')                             # a refused click gets a picture first, not Claude
-        self.assertIn('last 2 JEV steps changed nothing', modes.claude_reason([step(label='A'), step(label='B'), step(label='C')]))
+        self.assertIn('last 3 JEV steps changed nothing', modes.claude_reason([step(label='A'), step(label='B'), step(label='C')]))
         self.assertEqual(modes.claude_reason([step(label='A'), step(action='wait', label='', changed=False)]), '')       # a wait neither counts nor breaks the run
         self.assertEqual(modes.claude_reason([step(label='A', changed=True), step(label='B')]), '')                      # one that moved the page and one that did not: not stuck
         down, up = step('scroll', '', move='down'), step('scroll', '', move='up')
         self.assertNotIn('repeated the same step', modes.claude_reason([down, up]))                                   # scrolling down then up is not the same step
-        self.assertIn('repeated the same step', modes.claude_reason([down, down]))
+        self.assertEqual(modes.claude_reason([down, down]), ''); self.assertIn('repeated the same step', modes.claude_reason([down, down, down]))
         moving = [step('scroll', '', changed=True, move='down')] * 6
         self.assertIn('only scrolled for 6 steps', modes.claude_reason(moving)); self.assertEqual(modes.claude_reason(moving[:5]), '')
 
@@ -237,9 +240,10 @@ class PictureSteps(unittest.TestCase):
     def test_a_weak_spot_is_a_miss_and_claude_takes_that_step(self):
         s = PictureSession({'start': COVERED, 'shop': SHOP}, hits={})
         weak = {'operation': 'click', 'found': 0.1, 'spot': 0.9}
-        r, jev, _ = runner(s, [weak, weak], ['{"action":"scroll"}', '{"action":"scroll"}'], max_steps=2)
+        r, jev, _ = runner(s, [weak, weak, weak], ['{"action":"scroll"}'], max_steps=3)
         out = r.run('g', 'https://shop.example/')
-        self.assertEqual([h['by'] for h in out.steps], ['agent', 'agent']); self.assertEqual(s.acts[-1], ('scroll', None, None, None, None))      # the first weak spot was looked at again; the second handed over, and with no controls to name the assistant could only scroll
+        self.assertEqual([h['by'] for h in out.steps], ['rule', 'rule', 'agent']); self.assertEqual(s.acts[-1], ('scroll', None, None, None, None))      # a weak spot is looked at again, twice, and JEV is told why; the third hands over, and with no controls to name the assistant could only scroll
+        self.assertIn('pointed at nothing usable', jev.calls[1][0]['state'])                                                                         # JEV's second look says what went wrong with the first
 
     def test_when_the_picture_cannot_be_taken_claude_decides_instead(self):
         s = PictureSession({'start': COVERED}); s.view = lambda save=False: {'ok': False, 'error': 'no_picture'}
@@ -306,8 +310,8 @@ class WhoIsDeciding(unittest.TestCase):
         self.assertEqual(seen, [('claude', 'controls', 'help'), ('jev', 'controls', '')])
 
     def test_claude_taking_a_page_and_giving_it_back_are_both_announced(self):
-        s = FpSession(FLAT, iter([7, 7, 7, 8, 9, 10, 11]))
-        _, seen = self.calls(s, [{'operation': 'click', 'click_target': 'c1'}] * 2 + [{'operation': 'click', 'click_target': 'c2'}], ['{"action":"click","ref":3}'], max_steps=4)
+        s = FpSession(FLAT, iter([7, 7, 7, 7, 8, 9, 10, 11]))
+        _, seen = self.calls(s, [{'operation': 'click', 'click_target': c} for c in ('c1', 'c2', 'c3', 'c2')], ['{"action":"click","ref":3}'], max_steps=5)
         self.assertEqual(seen, [('jev', 'controls', ''), ('claude', 'controls', 'took'), ('jev', 'controls', 'back')])
 
     def test_a_broken_status_light_never_stops_a_task(self):
@@ -325,15 +329,15 @@ class ClaudeTakesThePage(unittest.TestCase):
         return r.run('g', 'https://shop.example/'), jev, events
 
     def test_jev_repeating_a_step_with_nothing_happening_hands_the_page_to_claude_until_a_claude_step_moves_it(self):
-        s = FpSession(FLAT, iter([7, 7, 7, 8, 9, 10, 11]))             # the page stays the same for JEV's two clicks, then the assistant's step changes it
-        out, jev, _ = self.run_loop([self.click('c1'), self.click('c1'), self.click('c2')], ['{"action":"click","ref":3}'], s, max_steps=4)     # the assistant does something else
-        self.assertEqual([h['by'] for h in out.steps], ['jev', 'jev', 'agent', 'jev'])
-        self.assertEqual(len(jev.calls), 3)                              # JEV was not asked for the assistant's step
+        s = FpSession(FLAT, iter([7, 7, 7, 7, 8, 9, 10, 11]))          # the page stays the same for JEV's three clicks, then the assistant's step changes it
+        out, jev, _ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c2')], ['{"action":"click","ref":3}'], s, max_steps=5)     # the assistant does something else
+        self.assertEqual([h['by'] for h in out.steps], ['jev', 'jev', 'jev', 'agent', 'jev'])
+        self.assertEqual(len(jev.calls), 4)                              # JEV was not asked for the assistant's step
 
     def test_a_step_jev_could_not_carry_out_goes_to_claude_for_that_page(self):
         s = FpSession(FLAT, iter(range(1, 99)), errors={('click', 2): 'stale'})
-        out, jev, _ = self.run_loop([self.click('c2'), self.click('c1')], [HAIKU], s, max_steps=3)
-        self.assertEqual([(h['by'], h['result']) for h in out.steps], [('jev', 'stale'), ('agent', 'ok'), ('jev', 'ok')])
+        out, jev, _ = self.run_loop([self.click('c2'), self.click('c2'), self.click('c1')], [HAIKU], s, max_steps=3)
+        self.assertEqual([(h['by'], h['result']) for h in out.steps], [('jev', 'stale'), ('jev', 'stale'), ('agent', 'ok')])      # one failure: JEV is told and looks again; two in a row: the assistant takes over
 
     def test_the_ladder_says_why_it_skipped_jev(self):
         with tempfile.TemporaryDirectory() as tmp:

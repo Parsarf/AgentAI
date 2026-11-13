@@ -18,6 +18,7 @@ import os
 import time
 import uuid
 from . import activity as activity_mod, outcome as outcome_mod, timing
+from .browse import job_states as browse_job_states
 from .adapters import CapabilityUnavailable
 from .browse.untrusted import neutralize
 from .budget import BudgetLedger
@@ -26,10 +27,10 @@ from .gateway import SyntheticGateway
 from .genui import document as gen_document, prompts as gen_prompts
 from .lifecycle.coordinator import Coordinator
 from .lifecycle.types import Conflict
-from .request_queue import Defer, Parked, Recover, RequestClaim, RequestQueue, RequestReceipt
+from .request_queue import Defer, Parked, Recover, RequestClaim, RequestQueue, RequestReceipt, MAX_MESSAGE_CHARS
 from .security import Principal
 
-MAX_TRANSCRIPT_CHARS = 16000
+MAX_TRANSCRIPT_CHARS = MAX_MESSAGE_CHARS
 WAIT_SLICE_MS = 3000          # one agent.wait; Stop, the lease and the limits are looked after between slices
 RUN_TIMEOUT = 900             # seconds one run may take (not counting time spent waiting for a person)
 PARK_LIMIT = 1800             # seconds a request may wait parked before its run is stopped
@@ -73,11 +74,14 @@ def panel_note(panel):
 MODEL_FAILURE = ('The model you chose could not be used for this task. Open Settings > Assistant > Models and choose another model, or switch back to Lumina, then send your message again. '
                  'Nothing was run.')
 SELECTION_FAILURE = 'Your model choice changed while this task was starting. Send your message again and it will use the model you selected.'
+ALLOWANCE_FAILURE = 'Your Lumina model allowance is exhausted. Choose a saved personal model in Settings or contact the owner to review the allowance.'
 
 
 def failure_message(error) -> str:
     """What the customer is told when a run ends in an error. The runtime's own wording is never shown (it can name providers or hosts); it only decides which fixed sentence applies."""
     text = str(error or '').lower()
+    if any(s in text for s in ('budget_exhausted', 'allowance is exhausted', 'insufficient credits', 'billing error', 'credit balance')):
+        return ALLOWANCE_FAILURE
     if 'timeout' in text:
         return 'The assistant took too long and was stopped. Please try a smaller request.'
     if 'model is unavailable' in text or 'model_unavailable' in text:
@@ -926,7 +930,7 @@ class ChatDriver:
         """An external browser must also stop before releasing the execution slot."""
         with self.store.connect() as con:
             jobs = [claim.request_id] + [r[0] for r in con.execute('SELECT job_id FROM browse_sessions WHERE account_id=? AND request_id=?', (claim.account_id, claim.request_id)).fetchall()]
-            active = con.execute("SELECT 1 FROM browse_runs WHERE account_id=? AND request_id=? AND status IN ('queued','running','handoff','paused','asking')", (claim.account_id, claim.request_id)).fetchone()
+            active = con.execute("SELECT 1 FROM browse_runs WHERE account_id=? AND request_id=? AND status IN " + browse_job_states.sql_list(browse_job_states.LIVE), (claim.account_id, claim.request_id)).fetchone()
         if self.browse_factory is None:
             return active is None
         from .browse.client import BrowseJobUnknown
@@ -938,7 +942,7 @@ class ChatDriver:
                 continue                         # service restart destroyed this job
             except Exception:
                 return False
-            if state not in ('done', 'error', 'cancelled', 'blocked', 'budget', 'deadline', 'max_steps', 'stuck', 'stopped'):
+            if state not in browse_job_states.OVER:
                 return False
         return True
 

@@ -29,6 +29,7 @@ BROWSER_WORDS = {
     'error': 'the browser run failed',
     'stopped': 'the browser could not complete this',
     'cancelled': 'the browser was stopped',
+    'interrupted': 'the browser task was interrupted by a restart of the browser service; what it had done is kept, and it was not resumed',
 }
 
 

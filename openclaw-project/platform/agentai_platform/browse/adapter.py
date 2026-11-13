@@ -19,9 +19,10 @@ from ..adapters import CapabilityUnavailable
 from ..lifecycle.coordinator import Coordinator
 from .client import BrowseJobUnknown
 from .loop import WALL_REASON
-from .. import safety
+from .. import request_states, safety
 from ..budget import OWN_KEY_AMOUNT, OWN_KEY_BROWSE_RESERVE
 from .untrusted import neutralize
+from . import job_states
 from . import sessions as browse_sessions
 
 TOOL_NAME = 'lumina_browser'
@@ -77,7 +78,7 @@ STEP_FIELDS = ('action', 'ref', 'value', 'answer', 'reason', 'question', 'field'
 
 MAX_STEPS = 12
 SITE = re.compile(r'^[a-z0-9][a-z0-9.-]{1,118}\.[a-z]{2,}$')
-FINALS = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
+FINALS = job_states.FINAL
 SHARE = 0.6                       # the part of a request's reservation that browsing may use; the rest is the assistant's own model calls
 MIN_SHARE = 0.05                  # below this fraction of the reservation there is no browsing budget left
 
@@ -260,9 +261,9 @@ class BrowserTool:
         """The account's running request, or None. Production callers supply a request ID verified from the native
         turn by the MCP relay. Never replace a bound request with a newer active one."""
         with self.store.connect() as con:
-            row = con.execute("""SELECT r.id,r.cancel_requested,v.amount_microusd,v.state AS reservation FROM customer_requests r
+            row = con.execute(f"""SELECT r.id,r.cancel_requested,v.amount_microusd,v.state AS reservation FROM customer_requests r
                 LEFT JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
-                WHERE r.account_id=? AND r.state IN ('starting','running') AND r.closing=0 AND r.cancel_requested=0 AND (? IS NULL OR r.id=?) ORDER BY r.sequence DESC LIMIT 1""", (account_id, request_id, request_id)).fetchone()
+                WHERE r.account_id=? AND {request_states.live_run()} AND (? IS NULL OR r.id=?) ORDER BY r.sequence DESC LIMIT 1""", (account_id, request_id, request_id)).fetchone()
         if not row or row['reservation'] != 'active':
             return None
         return dict(row)
@@ -270,7 +271,7 @@ class BrowserTool:
     def _ended(self, account_id, request_id):
         with self.store.connect() as con:
             row = con.execute('SELECT state,cancel_requested,closing FROM customer_requests WHERE account_id=? AND id=?', (account_id, request_id)).fetchone()
-        return row is None or row['cancel_requested'] or row['closing'] or row['state'] not in ('starting', 'running')
+        return request_states.run_ended(row)
 
     # -- the call ------------------------------------------------------------------------------------------------------------------------------
     def call(self, account_id, arguments, closed=lambda: False, name=TOOL_NAME, *, request_id=None):
@@ -295,7 +296,7 @@ class BrowserTool:
             first = con.execute('SELECT status FROM browse_runs WHERE account_id=? AND request_id=?', (account_id, request_id)).fetchone()
             endings = con.execute("SELECT data_json FROM browse_steps WHERE account_id=? AND request_id=? AND kind='status' ORDER BY n DESC", (account_id, request_id)).fetchall()
         terminal = [json.loads(row[0]).get('state') for row in endings if json.loads(row[0]).get('state') in FINALS + ('failed',)][:2]
-        if len(terminal) == 2 and all(state in ('error', 'failed', 'deadline') for state in terminal):
+        if len(terminal) == 2 and all(state in job_states.FAILED_ATTEMPT for state in terminal):
             return 'The last two browser attempts failed for this task. Do not retry the same browser task. Use web_search/web_fetch for available evidence and report what could not be done.', True
         spent = int(spent[0]) if spent else 0
         share = min(SHARE, (SHARE * reserved - spent) / reserved) if reserved else 0.0
@@ -355,7 +356,7 @@ class BrowserTool:
                 unreachable = None
             except BrowseJobUnknown:
                 # The service is up but has no such job: it restarted (it keeps nothing across restarts). Waiting cannot bring it back.
-                return self._give_up(account_id, request_id, base, spent_before, 'error', 'The browser session was lost because the browser service restarted. Nothing is left running; please try again.')
+                return self._give_up(account_id, request_id, base, spent_before, job_states.INTERRUPTED, job_states.INTERRUPTED_REASON)
             except CapabilityUnavailable:
                 polled = None
                 unreachable = unreachable if unreachable is not None else self.clock()
@@ -413,17 +414,8 @@ class BrowserTool:
             pass                                                         # the timeline is best-effort; it never fails the browser
 
     def _mirror(self, account_id, request_id, polled, offset=0, spent_before=0):
-        now = int(self.clock())
-        jev = polled.get('jev') or {}
         with self.coordinator.transaction() as con:
-            con.execute('''UPDATE browse_runs SET status=?,url=?,answer=?,reason=?,pending_json=?,jev_asked=?,jev_agree=?,estimated_cost_microusd=?,updated_epoch=?,
-                takeover_until=CASE WHEN ? THEN ? ELSE takeover_until END WHERE account_id=? AND request_id=?''',
-                        (polled['state'], polled.get('url'), polled.get('answer'), polled.get('reason'),
-                         json.dumps(polled['pending_action']) if polled.get('pending_action') else None, jev.get('jev_calls', jev.get('jev_asked', 0)), jev.get('jev_acted', jev.get('jev_agree', 0)),
-                         int(spent_before) + int(polled.get('cost_microusd') or 0), now, 1 if polled.get('takeover') else 0, now + 600, account_id, request_id))
-            for e in polled['events']:
-                con.execute('INSERT OR IGNORE INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)',
-                            (account_id, request_id, e['n'] + offset, e['kind'], json.dumps({k: v for k, v in e.items() if k not in ('n', 'kind')}), now))
+            job_states.record(con, account_id, request_id, polled, offset=offset, spent_before=spent_before, now=int(self.clock()))
 
     def _saved_choices(self, account_id):
         """What this customer asked us to remember (size -> M). A read that fails never stops a task: the run just asks again."""

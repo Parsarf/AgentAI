@@ -6,71 +6,41 @@ from CSRF because the signature over the raw body authenticates Stripe.
 """
 import json
 from datetime import datetime, timezone
-from django.conf import settings
-from django.db import connection, DatabaseError
+from django.db import DatabaseError
 from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
-from agentai_platform.billing import (BillingService, StripeHttp, BillingNotConfigured, BillingConflict, BillingError,
-                                      PayloadTooLarge, SignatureInvalid, ProviderUnavailable, ProviderRejected, plan_from_plan_json, MAX_BODY)
-from agentai_platform.budget import BudgetLedger, BudgetDenied
-from agentai_platform.security import NotFound, Principal
-from agentai_platform.switches import SwitchStore
-from .lifecycle import AccountStore
+from agentai_platform.billing import (BillingNotConfigured, BillingConflict, BillingError,
+                                      PayloadTooLarge, SignatureInvalid, ProviderUnavailable, ProviderRejected, MAX_BODY)
+from agentai_platform.budget import BudgetDenied
+from agentai_platform.security import NotFound
+from . import wiring
 from .services import Denied, rate, Limited
 from .views import endpoint, customer
 
 
-def _read(path):
-    try:
-        with open(path) as handle:
-            return handle.read()
-    except OSError:
-        return ''
-
-
 def switch_on():
-    return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('billing_checkout')
+    return wiring.switch_on('billing_checkout')
 
 
 def open_access_on():
-    return SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None).is_on('open_access')
+    return wiring.switch_on('open_access')
 
 
-def access_mode():
-    """paid_required wins over open: turning payments on is what ends free access."""
-    if switch_on(): return 'paid_required'
-    return 'open' if open_access_on() else 'invite_only'
-
-
-def webhook_secrets():
-    return [line.strip() for line in _read(settings.BILLING_WEBHOOK_SECRET_FILE).splitlines() if line.strip().startswith('whsec_')] \
-        if settings.BILLING_WEBHOOK_SECRET_FILE else []
+access_mode = wiring.access_mode          # invite_only | open | paid_required
+webhook_secrets = wiring.billing_webhook_secrets
 
 
 def service():
-    """Built per request so a rotated key or secret takes effect without a restart."""
-    plans = []
-    if settings.BILLING_PLAN_FILE:
-        try:
-            # Free access needs only the plan file; the Stripe price id matters once payments are configured.
-            plans = [plan_from_plan_json(json.loads(_read(settings.BILLING_PLAN_FILE)), settings.BILLING_PRICE_ID or 'price_unconfigured')]
-        except (ValueError, KeyError):
-            plans = []
-    api = None
-    if settings.BILLING_SECRET_KEY_FILE and settings.BILLING_API_VERSION:
-        api = StripeHttp(lambda: _read(settings.BILLING_SECRET_KEY_FILE), settings.BILLING_API_VERSION, allow_live=settings.BILLING_ALLOW_LIVE)
-    return BillingService(AccountStore(connection.settings_dict['NAME']), api, plans, webhook_secrets=webhook_secrets(),
-                          public_origin=settings.BILLING_PUBLIC_ORIGIN, allow_live=settings.BILLING_ALLOW_LIVE)
+    return wiring.billing_service()
 
 
-def _principal(request):
-    return Principal(request.account_id, str(request.user.pk), 'customer')
+_principal = wiring.principal
 
 
 def _usage(principal):
     try:
-        return BudgetLedger(AccountStore(connection.settings_dict['NAME'])).summary(principal)
+        return wiring.ledger().summary(principal)
     except (BudgetDenied, NotFound):
         return None
 
@@ -90,10 +60,7 @@ def billing(request, page=False):
     if denied:
         return denied
     principal = _principal(request)
-    try:
-        view = service().overview(principal, usage=_usage(principal), mode=access_mode())
-    except NotFound:
-        raise Denied()
+    view = service().overview(principal, usage=_usage(principal), mode=access_mode())
     view['checkout_available'] = switch_on() and view['can_subscribe']
     view['manage_available'] = switch_on() and view['can_manage']
     view['period_end_text'] = _when(view['period_end'])
@@ -132,12 +99,12 @@ def _hosted(request, build):
     return JsonResponse({'url': url})
 
 
-@endpoint(['POST'])
+@endpoint(['POST'], form='json')
 def checkout(request):
     return _hosted(request, lambda svc, principal: svc.start_checkout(principal))
 
 
-@endpoint(['POST'])
+@endpoint(['POST'], form='json')
 def portal(request):
     return _hosted(request, lambda svc, principal: svc.portal_url(principal))
 

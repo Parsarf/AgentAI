@@ -10,7 +10,7 @@ import Menu from './ui/Menu';
 import { useData } from '../state/data';
 import { useSettings } from '../state/settings';
 import { title } from '../lib/format';
-import { phase } from '../lib/tasks';
+import { phase, REQUEST_LIVE } from '../lib/tasks';
 
 function Command({ onClose }: { onClose(): void }) {
   const { requests, chats } = useData(); const nav = useNavigate();
@@ -77,7 +77,7 @@ export default function Shell() {
             trigger={({ open, props }) => <button className="iconbtn" aria-label="Notifications" aria-expanded={open} {...props}><I.Bell width={20} height={20} />{attention.length > 0 && <span className="dot" />}</button>} />
           <button className="iconbtn" aria-label={reducedMotion ? 'Turn animations on' : 'Reduce motion'} aria-pressed={reducedMotion} title={reducedMotion ? 'Animations off' : 'Animations on'} onClick={() => setReducedMotion(!reducedMotion)}><I.Motion width={20} height={20} /></button>
         </div>
-        {requests.some(r => ['starting', 'running'].includes(r.state)) && <LocationRequest key={app?.user.email} />}
+        {requests.some(r => REQUEST_LIVE.includes(r.state)) && <LocationRequest key={app?.user.email} />}
         <Outlet />
       </main>
       {rail && <aside className="rail" aria-label="Activity"><Rail /></aside>}

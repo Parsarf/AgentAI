@@ -1,5 +1,17 @@
 # Customer account layer — Phase 3
 
+## Code layout (current, 12 November 2026)
+
+- `wiring.py` is the composition root: the one module that turns settings into services (database handle, owner switches, chat/queue/ledger/events,
+  files, RPC clients, feature services). Views and worker commands call it; they never construct those themselves (`test_wiring.py` enforces this).
+- `store.py` is the database adapter that runs platform services on Django's connection and transaction.
+- `views.py` holds `endpoint` (input shape, error-to-status mapping, audited uniform 404 for `Denied` and `NotFound`) and `customer` (the signed-in check).
+- One view module per feature (`chat.py`, `files.py`, `billing.py`, ...), each with a thin `service()` that returns the wired service.
+- `management/commands/` are the worker processes (`request_worker`, `tool_relay`, `telegram_worker`, ...), wired through the same module.
+
+See [the code map](../../docs/architecture/code-map.md) for ownership of every feature and the steps to add one. The sections below are the original
+Phase 3 design notes; where they describe limits or disabled features that have since changed, the code and the code map are current.
+
 Private application built with pinned Django 5.2.17 authentication, password
 validation/hashers, database sessions, CSRF and django-otp 1.7.3 TOTP. Gunicorn
 26.2.0 replaces the foundation preview for the application; the control service

@@ -103,6 +103,23 @@ class SteeringChecks(Base):
         self.assertEqual(len(replies), 2)                                                # the answer to the steered input has a run id of the runtime's own making: it is still this request's
         self.assertTrue(replies[1]['content'].startswith('ack actually make it vegetarian'))
 
+    def test_switching_models_queues_the_next_message_instead_of_steering_the_old_run(self):
+        selected = ['lumina-default']
+        self.queue.model_selection = lambda account: selected[0]
+        first = self.say(key='k1')
+        claim = self.queue.claim(owner='w', capacity=OK)
+        self.driver._begin(claim, self.gateway, self.driver._admit(claim))
+        self.driver._deliver(claim, self.gateway, self.driver._session(claim), self.driver._deliveries(claim)[0])
+        selected[0] = 'key:personal'
+        later = self.say('use my other model', key='k2')
+        self.assertNotIn('steered', later)
+        self.assertNotEqual(later['id'], first['id'])
+        self.assertEqual(json.loads(self.request(later['id'])['context_json'])['model_selection'], 'key:personal')
+        self.assertEqual(json.loads(self.request(first['id'])['context_json'])['model_selection'], 'lumina-default')
+        self.assertEqual(len(self.rows("SELECT 1 FROM chat_deliveries WHERE kind='steer'")), 0)
+        with self.assertRaises(Conflict):
+            self.chat.steer(self.a, self.request(first['id']), message='wrong route', key='k3')
+
     def test_once_the_task_begins_to_close_a_new_message_is_a_task_of_its_own(self):
         first = self.say(key='k1')
         claim = self.queue.claim(owner='w', capacity=OK)

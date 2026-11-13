@@ -4,11 +4,13 @@ import hashlib
 import json
 import time
 import uuid
-from . import safety
+from . import request_states, safety
 from .adapters import CapabilityUnavailable
 from .security import NotFound
 from .lifecycle.coordinator import Coordinator,identifier
 from .lifecycle.types import Conflict
+
+MAX_MESSAGE_CHARS=16000   # one message or one public result (chat_messages.content has the same CHECK). The one definition: chat, the driver, the HTTP field limits and /v1/app `limits` read this name
 
 @dataclass(frozen=True)
 class RequestClaim:
@@ -54,13 +56,14 @@ class DisabledRequestDriver:
     def reconcile(self,claim):self.preflight()
 
 class RequestQueue:
-    def __init__(self,store,clock=time.time,*,require_cell=False):
+    def __init__(self,store,clock=time.time,*,require_cell=False,model_selection=None):
         # require_cell (production): a request runs only while its own account's cell holds the active lifecycle slot.
         self.require_cell=require_cell
+        self.model_selection=model_selection
         self.store=store;self.clock=clock;self.coordinator=Coordinator(store,clock=clock)
     def submit(self,principal,*,message,key,conversation_id=None,intent='chat',context=None,goal_mode=False,continues=None):
         identifier(key)
-        if not isinstance(message,str) or not message.strip() or len(message)>16000 or '\x00' in message:raise ValueError('invalid message')
+        if not isinstance(message,str) or not message.strip() or len(message)>MAX_MESSAGE_CHARS or '\x00' in message:raise ValueError('invalid message')
         if intent not in ('chat','plan','execute','phase','browse','goal_continue','goal_resume'):raise ValueError('invalid intent')
         if type(goal_mode) is not bool or (continues is not None and not isinstance(continues,str)):raise ValueError('invalid goal request')
         context_json=json.dumps(context,sort_keys=True,separators=(',',':')) if context else None
@@ -80,6 +83,10 @@ class RequestQueue:
                 project=c.execute('SELECT id FROM projects WHERE account_id=? ORDER BY created_at,id LIMIT 1',(principal.account_id,)).fetchone()
                 if not project:raise Conflict('account setup incomplete')
             request=uuid.uuid4().hex
+            if self.model_selection is not None:
+                # Server-owned admission snapshot, excluded from the client's idempotency
+                # digest. A repeat send keeps its original route after Settings changes.
+                context_json=json.dumps({**(context or {}), 'model_selection': self.model_selection(principal.account_id)},sort_keys=True,separators=(',',':'))
             c.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,intent,context_json,goal_mode,continues)
                 VALUES (?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?)''',(principal.account_id,request,principal.actor_id,project[0],conversation_id,key,digest,message,int(self.clock()),intent,context_json,1 if goal_mode else 0,continues))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_submit','completed')
@@ -111,10 +118,44 @@ class RequestQueue:
             if not row:raise NotFound()
             if row['state']=='waiting':
                 c.execute("UPDATE customer_requests SET state='cancelled',cancel_requested=1 WHERE account_id=? AND id=?",(principal.account_id,request))
+                self._cancel_unstarted(c, principal.account_id, request)
                 self._terminal_notice(c, row, 'failed' if admission_failed else 'cancelled', 'This request could not be admitted. Nothing started.')
             elif row['state'] in {'starting','running','uncertain'}:c.execute('UPDATE customer_requests SET cancel_requested=1 WHERE account_id=? AND id=?',(principal.account_id,request))
             self.coordinator._audit(c,principal.account_id,principal.actor_id,request,'request_cancel','completed')
             return self._public(c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(principal.account_id,request)).fetchone())
+
+    def _cancel_unstarted(self, c, account, request):
+        """Repair only never-dispatched cancellations; never release uncertain usage."""
+        if c.execute('SELECT 1 FROM chat_deliveries WHERE account_id=? AND request_id=?', (account,request)).fetchone():
+            return False
+        if c.execute('SELECT 1 FROM request_slot WHERE account_id=? AND request_id=?', (account,request)).fetchone():
+            return False
+        task=c.execute('SELECT state FROM tasks WHERE account_id=? AND id=?', (account,request)).fetchone()
+        if task and task['state']!='queued':
+            return False
+        if c.execute('SELECT 1 FROM provider_receipts WHERE account_id=? AND task_id=?', (account,request)).fetchone():
+            return False
+        c.execute("UPDATE tasks SET state='cancelled' WHERE account_id=? AND id=? AND state='queued'", (account,request))
+        reservation=c.execute('SELECT state,amount_microusd FROM task_reservations WHERE account_id=? AND task_id=?', (account,request)).fetchone()
+        if reservation and reservation['state']=='active':
+            from .budget import BudgetLedger
+            c.execute("UPDATE task_reservations SET state='cancelled' WHERE account_id=? AND task_id=?", (account,request))
+            ledger=BudgetLedger(self.store)
+            ledger._entry(c,account,request,'released',reservation['amount_microusd'],'cancel-'+request)
+        return True
+
+    def reconcile_cancelled(self):
+        """Bounded recovery of legacy queued rows whose request was cancelled before dispatch."""
+        repaired=0
+        with self.coordinator.transaction() as c:
+            rows=c.execute("""SELECT t.account_id,t.id FROM tasks t JOIN customer_requests r
+                ON r.account_id=t.account_id AND r.id=t.id
+                WHERE t.state='queued' AND r.state='cancelled' LIMIT 100""").fetchall()
+            for row in rows:
+                if self._cancel_unstarted(c,row['account_id'],row['id']):
+                    self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_cancel_reconcile','completed')
+                    repaired+=1
+        return repaired
 
     @staticmethod
     def _terminal_notice(c, row, state, result):
@@ -174,6 +215,7 @@ class RequestQueue:
                 authorized=c.execute("SELECT 1 FROM accounts a JOIN memberships m ON m.account_id=a.id WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.status='active' AND m.role='customer'",(row['account_id'],row['actor_id'])).fetchone()
                 if authorized:break
                 c.execute("UPDATE customer_requests SET state='cancelled' WHERE account_id=? AND id=?",(row['account_id'],row['id']))
+                self._cancel_unstarted(c,row['account_id'],row['id'])
                 self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_revoked','completed')
             cell_slot=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
             if cell_slot and (cell_slot['account_id']!=row['account_id'] or cell_slot['state']!='active'):return None
@@ -207,7 +249,7 @@ class RequestQueue:
     def finish(self,claim,receipt,*,reconciled=False):
         if (receipt.account_id,receipt.request_id,receipt.fence)!=(claim.account_id,claim.request_id,claim.fence):raise Conflict('receipt target mismatch')
         if receipt.state not in {'completed','failed','cancelled'} or receipt.quiesced is not True:raise Conflict('runtime not drained')
-        if not isinstance(receipt.public_result,str) or len(receipt.public_result)>16000:raise ValueError('invalid public result')
+        if not isinstance(receipt.public_result,str) or len(receipt.public_result)>MAX_MESSAGE_CHARS:raise ValueError('invalid public result')
         with self.coordinator.transaction() as c:
             row=self._fenced(c,claim)
             if not reconciled and (row['state']=='uncertain' or row['lease_until']<=self.clock()):
@@ -295,7 +337,7 @@ class RequestQueue:
         """The request in this conversation whose run can still take a steered message, or None."""
         with self.store.connect() as c:
             self.store._authorize(c,principal)
-            row=c.execute("""SELECT * FROM customer_requests WHERE account_id=? AND conversation_id=? AND state IN ('starting','running') AND closing=0 AND cancel_requested=0
+            row=c.execute(f"""SELECT * FROM customer_requests WHERE account_id=? AND conversation_id=? AND {request_states.live_run('')}
                 ORDER BY sequence DESC LIMIT 1""",(principal.account_id,conversation_id)).fetchone()
             return dict(row) if row else None
     def close_gate(self,claim):

@@ -1,5 +1,8 @@
 # AgentAI private customer platform
 
+Current code layout, module ownership and how to add a feature: [docs/architecture/code-map.md](../docs/architecture/code-map.md).
+The text below is the original foundation note; some statements (for example "no enabled customer execution path") predate the current system.
+
 Separate customer application/control metadata. OpenClaw remains the runtime.
 The application now uses Django accounts and Gunicorn; the earlier stdlib
 server is retained solely for private foundation/control fixtures. No production

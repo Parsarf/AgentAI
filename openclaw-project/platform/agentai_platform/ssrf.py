@@ -11,6 +11,8 @@ import ipaddress
 import socket
 from urllib.parse import urlsplit, urljoin
 
+from . import netsafe
+
 MAX_REDIRECTS = 5
 METADATA_HOSTS = {'metadata.google.internal', 'metadata', 'instance-data'}
 
@@ -23,11 +25,7 @@ def system_resolver(host: str) -> list[str]:
     return sorted({info[4][0] for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)})
 
 
-def _public(address: str) -> bool:
-    ip = ipaddress.ip_address(address)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return ip.is_global and not (ip.is_multicast or ip.is_reserved)
+_public = netsafe.is_public_address          # the one "is this address on the public internet" rule
 
 
 def check_url(url: str, allowed_hosts, *, resolver=system_resolver) -> str:

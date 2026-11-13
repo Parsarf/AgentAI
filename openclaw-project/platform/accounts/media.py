@@ -1,10 +1,9 @@
 """Pictures on comparison cards, served from our own origin to the account that owns them (see agentai_platform/genui/images.py).
 The browser never reaches the store a picture came from. The picture is shown inline but can never run anything: it is sandboxed and not sniffed."""
 import re
-from django.db import connection
 from django.http import HttpResponse
 from agentai_platform.genui.images import ImageStore
-from .lifecycle import AccountStore
+from . import wiring
 from .services import Denied, rate
 from .views import endpoint, customer
 
@@ -19,7 +18,7 @@ def card_image(request, image_id):
     if not IMAGE_ID.fullmatch(image_id):
         raise Denied()
     rate('media.read', request.account_id, 3000, 3600)
-    row = ImageStore(AccountStore(connection.settings_dict['NAME'])).read(request.account_id, image_id)
+    row = ImageStore(wiring.store()).read(request.account_id, image_id)
     if row is None:
         raise Denied()                                                    # also what another account's picture looks like: not there
     response = HttpResponse(row['body'], content_type=row['mime'])

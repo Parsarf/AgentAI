@@ -182,7 +182,6 @@
    "google_connectors",
    "paid_billing"
   ],
-  "known_gap": "Cleanup fix deployed 2026-10-31 (release 20261031T204618Z-f789bf2) and dry-run verified on the server (it keeps the newest 3 copies and would remove 35), but it has not yet been seen to delete anything: after the nightly backup at 03:40 UTC on 2026-11-01 run privacy/check_server.py (expect 3 copies left, no warning), then delete this entry. If it did not run, the 30-day promise holds only until 2026-11-11.",
   "model_providers": [
    "anthropic"
   ]
@@ -311,6 +310,11 @@
    "date": "2026-11-07",
    "by": "User-authorized location/model-selection release preparation",
    "note": "Reviewed location.py, request-worker cleanup, LocationRequest.tsx, saved-key profiles and app_player.html. Disclosed opt-in device coordinates, transient handoff versus conversation/backups, location metadata cleanup, multiple saved API keys and active selection, and conditional jsDelivr Python runtime download. No new Lumina model provider was enabled. Policy prepared for publication before feature rollout."
+  },
+  {
+   "date": "2026-11-12",
+   "by": "Owner-authorized full deployment verification",
+   "note": "Live SSH privacy check confirms plaintext snapshot cleanup: three retained copies, oldest 8.7 days; encrypted backups oldest 13.7 days; every server check passes. Removed the resolved cleanup known_gap. MCP service construction moved to accounts/wiring.py; updated AST derivation to recognize the relay wiring without changing recipients or policy promises. Published privacy policy already matches local; no policy text change required."
   }
  ],
  "assistant_recipients": {

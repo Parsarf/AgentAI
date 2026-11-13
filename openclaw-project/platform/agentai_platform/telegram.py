@@ -20,6 +20,7 @@ from .adapters import CapabilityUnavailable
 from .budget import BudgetDenied
 from .lifecycle.coordinator import Coordinator, identifier
 from .lifecycle.types import Conflict
+from .request_queue import MAX_MESSAGE_CHARS
 from .security import NotFound, Principal
 
 CODE_TTL_SECONDS = 600
@@ -217,7 +218,7 @@ class TelegramService:
         user_id = sender.get('id')
         if not isinstance(user_id, int) or not isinstance(text, str) or not text.strip():
             return 'ignored'  # numeric identity only; usernames and forwards are not trusted
-        payload = text.strip()[:16000]
+        payload = text.strip()[:MAX_MESSAGE_CHARS]
         with self.store.connect() as con:
             binding = self._binding(con, chat_id)
         if binding is None:

@@ -1,6 +1,7 @@
 from dataclasses import replace
 from pathlib import Path
 import tempfile
+import json
 import threading
 import unittest
 from agentai_platform.request_queue import RequestQueue,RequestReceipt,DisabledRequestDriver
@@ -121,3 +122,16 @@ class SerialQueueChecks(unittest.TestCase):
         with self.assertRaises(CapabilityUnavailable):self.q.run_once(DisabledRequestDriver(),owner='worker',capacity=CAPACITY)
         self.assertIsNone(self.q.claim(owner='worker',capacity=replace(CAPACITY,admitted_slots=0)))
         self.assertEqual(len(self.q.get(self.a)),3)
+
+    def test_selection_snapshot_is_immutable_and_retry_key_survives_a_model_change(self):
+        selected = ['lumina-default']
+        self.q.model_selection = lambda account: selected[0]
+        first = self.submit()
+        selected[0] = 'key:next'
+        repeated = self.submit()
+        second = self.submit(key='r2')
+        self.assertEqual(first['id'], repeated['id'])
+        with self.store.connect() as c:
+            snapshot = lambda rid: json.loads(c.execute('SELECT context_json FROM customer_requests WHERE id=?', (rid,)).fetchone()[0])['model_selection']
+            self.assertEqual(snapshot(first['id']), 'lumina-default')
+            self.assertEqual(snapshot(second['id']), 'key:next')

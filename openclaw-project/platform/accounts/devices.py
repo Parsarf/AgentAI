@@ -2,10 +2,9 @@
 
 The extension trades the code for its own long token over its own connection (agentai_platform/browse/device_gateway.py); no token ever passes through here."""
 import re
-from django.conf import settings
 from django.http import JsonResponse
 from agentai_platform.adapters import CapabilityUnavailable
-from agentai_platform.browse.client import BrowseRpc
+from . import wiring
 from .services import Denied, audit, rate
 from .views import endpoint, customer
 
@@ -13,7 +12,7 @@ DEVICE_ID = re.compile(r'^[a-f0-9]{16}$')
 
 
 def _rpc(request):
-    return BrowseRpc(request.account_id, settings.BROWSE_SOCKET)
+    return wiring.browse_rpc(request.account_id)
 
 
 @endpoint(['GET'])

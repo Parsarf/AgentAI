@@ -350,11 +350,12 @@ class JevOperations(unittest.TestCase):
         again = ladder.decide('g', [], PAGE, CANDS)                                                                        # JEV is not asked again: the assistant finishes the task
         self.assertEqual((again.by, llm.calls, len(jev.bodies)), ('agent', ['agent', 'agent'], 1))
 
-    def test_a_first_miss_looks_again_and_two_in_a_row_hand_the_task_over_and_four_stop_the_questions(self):
-        d, llm, *_ = self.decide('garbage', jev_misses=0)
-        self.assertEqual((d.by, d.kind, d.action['action'], llm.calls, d.miss), ('rule', 'act', 'wait', [], True))
-        d, llm, *_ = self.decide('garbage', llm_steps=['{"action":"click","ref":2}'], jev_misses=1)
-        self.assertEqual((d.by, llm.calls, d.miss), ('agent', ['agent'], True))
+    def test_a_miss_looks_again_twice_and_three_in_a_row_hand_the_task_over_and_four_stop_the_questions(self):
+        for misses in (0, 1):                                                                      # JEV gets a fresh look twice before anyone else is called
+            d, llm, *_ = self.decide('garbage', jev_misses=misses)
+            self.assertEqual((d.by, d.kind, d.action['action'], llm.calls, d.miss), ('rule', 'act', 'wait', [], True))
+        d, llm, _, ladder = self.decide('garbage', llm_steps=['{"action":"click","ref":2}'], jev_misses=2)
+        self.assertEqual((d.by, llm.calls, d.miss, bool(ladder.handed)), ('agent', ['agent'], True, True))
         d, llm, jev, _ = self.decide('garbage', llm_steps=['{"action":"click","ref":2}'], jev_misses=4)
         self.assertEqual((jev.bodies, llm.calls, d.miss), ([], ['agent'], False))                 # JEV is left out for the rest of the run
 
@@ -371,11 +372,13 @@ class JevOperations(unittest.TestCase):
             again = ladder.decide('find "carbon paddle" in blue', [], PAGE, CANDS, caps=RUNNER_V2, jev_misses=1)       # a second miss in a row would hand the task over: here JEV answers
             self.assertEqual((again.by, len(jev.bodies)), ('jev', 2))
 
-    def test_two_service_failures_in_a_row_hand_the_task_over_for_good(self):
+    def test_three_service_failures_in_a_row_hand_the_task_over_for_good(self):
         import urllib.error
         def http_503(body): raise urllib.error.HTTPError('https://x', 503, 'Image processing is unavailable', {}, None)
-        llm = scripted_llm(['{"action":"click","ref":2}']); ladder = live(llm, ScriptedJev(http_503))
+        llm = scripted_llm(['{"action":"click","ref":2}'] * 2); ladder = live(llm, ScriptedJev(http_503))
         d = ladder.decide('find "carbon paddle" in blue', [], PAGE, CANDS, caps=RUNNER_V2, jev_misses=1)
+        self.assertEqual((d.by, bool(ladder.handed)), ('agent', False))                         # the second outage: the assistant takes that step, JEV is asked again on the next
+        d = ladder.decide('find "carbon paddle" in blue', [], PAGE, CANDS, caps=RUNNER_V2, jev_misses=2)
         self.assertEqual((d.by, bool(ladder.handed)), ('agent', True))
 
     def test_loops_failures_and_budget(self):
@@ -460,16 +463,16 @@ class HandOffToTheAssistant(unittest.TestCase):
         self.assertEqual([h['by'] for h in r.steps], ['rule', 'jev', 'jev']); self.assertEqual((llm.calls, len(jev.bodies)), ([], 3))
         self.assertEqual(r.steps[0]['action'], 'wait')
 
-    def test_two_misses_in_a_row_hand_the_task_to_the_assistant_and_a_good_jev_step_resets_the_count(self):
-        r, llm, jev, _ = self.run_loop(['oops', 'oops', self.click('c2')], [HAIKU, SONNET], max_steps=3)
-        self.assertEqual([h['by'] for h in r.steps], ['rule', 'agent', 'agent']); self.assertEqual((llm.calls, len(jev.bodies)), (['agent', 'agent'], 2))     # it keeps the task: JEV is not asked a third time
+    def test_three_misses_in_a_row_hand_the_task_to_the_assistant_and_a_good_jev_step_resets_the_count(self):
+        r, llm, jev, _ = self.run_loop(['oops', 'oops', 'oops', self.click('c2')], [HAIKU, SONNET], max_steps=4)
+        self.assertEqual([h['by'] for h in r.steps], ['rule', 'rule', 'agent', 'agent']); self.assertEqual((llm.calls, len(jev.bodies)), (['agent', 'agent'], 3))     # it keeps the task: JEV is not asked a fourth time
         r, llm, *_ = self.run_loop(['oops', self.click('c2'), 'oops'], [], max_steps=3)         # the good step in between resets it
         self.assertEqual([h['by'] for h in r.steps], ['rule', 'jev', 'rule']); self.assertEqual(llm.calls, [])
 
     def test_once_the_assistant_has_the_task_jev_is_not_asked_again(self):
         moves = [f'{{"action":"click","ref":{n}}}' for n in (1, 2, 3)] + ['{"action":"scroll"}', '{"action":"back"}', '{"action":"press","value":"Enter"}']      # all different: no repeat rule
         r, llm, jev, _ = self.run_loop(['oops'] * 6, moves, max_steps=6)
-        self.assertEqual(len(jev.bodies), 2); self.assertEqual([h['by'] for h in r.steps], ['rule'] + ['agent'] * 5)
+        self.assertEqual(len(jev.bodies), 3); self.assertEqual([h['by'] for h in r.steps], ['rule', 'rule'] + ['agent'] * 4)
 
     def test_too_complex_hands_the_task_over_for_good(self):
         r, llm, jev, _ = self.run_loop([{'operation': 'too_complex'}, self.click('c2')], [SONNET, '{"action":"scroll"}'], max_steps=2)
@@ -481,16 +484,16 @@ class HandOffToTheAssistant(unittest.TestCase):
         r, *_ = self.run_loop([self.click('c2')] * 6, ['{"action":"click","ref":2}'], max_steps=8, session=FpSession(FLAT, iter(range(99))))
         self.assertEqual((r.status, r.reason), ('stuck', 'repeating the same step'))
 
-    def test_two_acts_that_changed_nothing_send_the_next_step_to_the_assistant_and_the_run_ends_when_the_page_still_does_not_change(self):
+    def test_three_acts_that_changed_nothing_send_the_next_step_to_the_assistant_and_the_run_ends_when_the_page_still_does_not_change(self):
         same = lambda: FpSession(FLAT, iter([7] * 99))
         r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}', '{"action":"click","ref":1}'], session=same(), max_steps=8)
-        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'agent', 'agent']); self.assertEqual((r.status, r.reason), ('stuck', 'the page is not changing'))
-        self.assertEqual([h['changed'] for h in r.steps], [False] * 4)
+        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'agent', 'agent']); self.assertEqual((r.status, r.reason), ('stuck', 'the page is not changing'))
+        self.assertEqual([h['changed'] for h in r.steps], [False] * 5)
 
     def test_a_wait_neither_counts_nor_resets_and_a_changing_or_unknown_page_never_triggers(self):
         wait = {'operation': 'wait'}
         r, llm, *_ = self.run_loop([self.click('c1'), wait, self.click('c2'), wait, self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}', '{"action":"click","ref":1}'], session=FpSession(FLAT, iter([7] * 99)), max_steps=8)
-        self.assertEqual([h['by'] for h in r.steps[:4]], ['jev', 'jev', 'jev', 'agent'])                                       # the assistant takes the page after the second real act: the wait between them counts for nothing
+        self.assertEqual([h['by'] for h in r.steps[:6]], ['jev'] * 5 + ['agent'])                                              # the assistant takes the page after the third real act: the waits between them count for nothing
         for session in (FpSession(FLAT, iter(range(99))), FpSession(FLAT, iter([None] * 99)), FakeSession(FLAT)):
             r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c1'), self.click('c2')], [], session=session, max_steps=5)
             self.assertEqual((r.status, llm.calls), ('max_steps', []), type(session).__name__)
@@ -500,7 +503,7 @@ class HandOffToTheAssistant(unittest.TestCase):
         r, *_ = self.run_loop([down] * 6, [], session=FpSession(FLAT, iter(range(99))), max_steps=6)            # the page moves every time
         self.assertEqual((r.status, len(r.steps)), ('max_steps', 6))
         r, llm, *_ = self.run_loop([down] * 6, ['{"action":"scroll"}', '{"action":"done","answer":"ok"}'], session=FpSession(FLAT, iter([1, 2, 3, 3, 3, 3, 3, 3])), max_steps=8)   # it hit the bottom
-        self.assertEqual([h['by'] for h in r.steps], ['jev'] * 4 + ['agent'])         # JEV scrolled twice with nothing moving: the assistant takes the page
+        self.assertEqual([h['by'] for h in r.steps], ['jev'] * 5 + ['agent'])         # JEV scrolled three times with nothing moving: the assistant takes the page
         self.assertEqual((r.status, llm.calls[0]), ('done', 'agent'))
 
     def test_runner_refusals_count_as_failures_jev_is_asked_after_one_and_the_assistant_after_two(self):

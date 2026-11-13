@@ -19,6 +19,8 @@ import uuid
 import logging
 
 from agentai_platform.live import now as live_now
+from . import job_states
+from .tabs import ACTIVE_LIMIT
 from .ladder import Decision, Handover, Ladder, Refused, parse_decision, render
 from .goals import goal_parts
 from .loop import BrowseRunner, Policy
@@ -32,7 +34,8 @@ log = logging.getLogger('agentai.browse')
 REQUEST_ID = re.compile(r'^[a-f0-9]{32}$')
 URL_IN_TEXT = re.compile(r'https?://[^\s<>"\')]+', re.I)
 FILE = re.compile(r'^shot-\d{3}\.jpg$')
-FINAL = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline')
+FINAL = job_states.FINAL
+FORGET_AFTER_SECONDS = 3600                   # a finished job's step list and working data are dropped from memory after this (its state and result stay answerable; the record is in the database)
 TAKEOVER_SECONDS = 600
 QUEUE_GRACE_SECONDS = 120                     # a hand-off window shrinks to this once another browser task is waiting for the one stage (an active user keeps it alive)
 MIN_FREE_BYTES = 2 * 1024 ** 3                 # a browser stage needs ~1.5 GiB; below this we wait instead of starving everyone's chats
@@ -137,6 +140,7 @@ class Job:
         self.agent_box, self.agent_ev = None, threading.Event()
         self.vault = []                             # the customer's saved logins and cards, readable part only (label, site, hint): the secrets never travel with the task
         self.prefs = {}                             # what the customer chose before, by field (size -> M); handed to the loop so it does not ask twice
+        self.ended = None                           # when the job thread finished (service clock); None while it is alive
         self.question, self.answer_box, self.answer_ev = None, None, threading.Event()      # a question waiting for the customer: {'id','title','field','options','menu'}
 
     def add(self, kind, data):
@@ -475,7 +479,7 @@ class BrowseService:
         """Kill switch: stop every queued or running browser task now."""
         n = 0
         for job in list(self.jobs.values()):
-            if job.state in ('queued', 'running', 'handoff', 'paused', 'asking') and not job.cancel.is_set():
+            if job.state in job_states.LIVE and not job.cancel.is_set():
                 job.cancel.set(); n += 1
         return n
 
@@ -502,7 +506,7 @@ class BrowseService:
             return 0
         for path in entries:
             job = self.jobs.get(path.name)
-            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in ('queued', 'running', 'handoff', 'paused', 'asking')):
+            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in job_states.LIVE):
                 continue
             try:
                 if now() - path.stat().st_mtime > max_age and self._may_purge(path, job):
@@ -510,6 +514,19 @@ class BrowseService:
             except OSError:
                 continue
         return removed
+
+    def forget(self, after=FORGET_AFTER_SECONDS):
+        """Let go of what finished jobs hold in memory (their step lists, saved-item lists and last observation). A job that is over and whose window has closed keeps only its
+        state, result and cost, so a later poll still gets a truthful answer; the steps themselves are in the request's record. -> how many were trimmed."""
+        n, now = 0, self.clock()
+        for job in list(self.jobs.values()):
+            if job.ended is None or now - job.ended < after or job.state in job_states.LIVE and now < job.takeover_until:
+                continue
+            with job.lock:
+                if job.events or job.vault or job.prefs or job.observation:
+                    job.events, job.vault, job.prefs, job.observation, job.question = [], [], {}, None, None
+                    n += 1
+        return n
 
     def _may_purge(self, path, job):
         """False only when the folder's account switched `screenshot_retention` off (its pictures are then kept until it is switched back on). An unknown owner is purged."""
@@ -553,7 +570,7 @@ class BrowseService:
         if job.engine == 'runner':
             return self._slot
         with self._guard:
-            return self._account_slots.setdefault(job.account, threading.Semaphore(1))
+            return self._account_slots.setdefault(job.account, threading.Semaphore(ACTIVE_LIMIT if job.engine == 'native' else 1))       # native: several of a customer's tasks at once, each in a tab of its own (tabs.py); the customer's own Chrome: one
 
     def _run(self, job):
         slot = self._slot_for(job)
@@ -630,8 +647,10 @@ class BrowseService:
             elif stage is not None:
                 stage.close()
             job.session = None
+            job.ended = self.clock()
             slot.release()
             self.purge()
+            self.forget()
 
 
 # ---------------------------------------------------------------------- unix socket server

@@ -29,9 +29,9 @@ import json
 import re
 import time
 import uuid
-from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from . import rollout
 from .lifecycle.coordinator import Coordinator
 from .security import NotFound
 
@@ -61,25 +61,20 @@ class HindsightError(MemoryError_):
 
 # ---- the owner's switch ---------------------------------------------------------------------------------------------------------------------------------------------
 
+SWITCH_KEY = 'long_term_memory'
+
+
 def read_switch(path):
-    try:
-        p = Path(path)
-        if p.is_symlink() or not p.is_file() or p.stat().st_size > MAX_SWITCH_BYTES:
-            return {}
-        data = json.loads(p.read_text())
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return rollout.read(path, max_bytes=MAX_SWITCH_BYTES)
 
 
 def enabled_for(config, account):
-    """`{"long_term_memory": true}` = everyone; a list = those account ids; anything else = nobody."""
-    value = config.get('long_term_memory') if isinstance(config, dict) else None
-    return value is True or (isinstance(value, list) and isinstance(account, str) and account in value)
+    """`{"long_term_memory": true}` = everyone; a list = those account ids; anything else = nobody. The shared rule is rollout.py."""
+    return rollout.allows(config, SWITCH_KEY, account)
 
 
 def enabled(path, account):
-    return bool(path) and enabled_for(read_switch(path), account)
+    return rollout.enabled(path, SWITCH_KEY, account, max_bytes=MAX_SWITCH_BYTES)
 
 
 # ---- the Hindsight server -------------------------------------------------------------------------------------------------------------------------------------------

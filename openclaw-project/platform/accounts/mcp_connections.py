@@ -1,58 +1,27 @@
 """Authenticated account API; network calls and credential custody stay server-side."""
-import json
 import secrets
-from pathlib import Path
-from django.conf import settings
-from django.db import connection
 from django.http import JsonResponse, HttpResponseRedirect
-from agentai_platform.mcp_connections.service import ConnectionService, ASANA_URL
 from agentai_platform.mcp_connections.network import ConnectionError
-from agentai_platform.mcp_connections import switch
-from agentai_platform.model_keys import ModelKeyring
 from agentai_platform.security import Principal, NotFound
-from .lifecycle import AccountStore
-from .services import rate, audit, Denied
+from . import wiring
+from .services import rate, audit
 from .views import endpoint, customer
 
 
 def service(store=None):
-    registrations = {}
-    if settings.MCP_OAUTH_CLIENTS_FILE:
-        try:
-            p = Path(settings.MCP_OAUTH_CLIENTS_FILE)
-            if p.is_symlink() or p.stat().st_mode & 0o077:
-                raise ValueError('OAuth client registrations must be private')
-            if not p.is_file() or p.stat().st_size > 65536: raise ValueError('invalid registration file')
-            registrations = json.loads(p.read_text())
-            if not isinstance(registrations, dict): raise ValueError('invalid registrations')
-            from agentai_platform.mcp_connections.network import endpoint_url
-            for url, value in registrations.items():
-                endpoint_url(url)
-                if not isinstance(value, dict) or not isinstance(value.get('client_id'), str) or not value['client_id'] or not isinstance(value.get('issuer'), str):
-                    raise ValueError('invalid registration')
-                endpoint_url(value['issuer'])
-                if value.get('client_secret') is not None and not isinstance(value['client_secret'], str): raise ValueError('invalid secret')
-        except (OSError, ValueError):
-            raise ConnectionError('oauth_setup_required', 'OAuth registration configuration is unavailable.') from None
-    if settings.ASANA_MCP_CLIENT_ID and settings.ASANA_MCP_CLIENT_SECRET:
-        registrations[ASANA_URL] = {'client_id': settings.ASANA_MCP_CLIENT_ID, 'client_secret': settings.ASANA_MCP_CLIENT_SECRET,
-                                    'issuer': 'https://app.asana.com', 'token_endpoint_auth_method': 'client_secret_post'}
-    return ConnectionService(store or AccountStore(connection.settings_dict['NAME']),
-                             ModelKeyring.derived(settings.SECRET_KEY, settings.MCP_KEY_FILE or settings.MODEL_KEY_FILE or None),
-                             callback_url=settings.PUBLIC_ORIGIN + '/v1/account/mcp/callback', registrations=registrations)
+    return wiring.mcp_service(store)
 
 
 def available(account_id):
     """The owner's switch (mcp-connections.json), read on every request. Off is the default."""
-    return switch.enabled(settings.MCP_SWITCH_FILE, account_id)
+    return wiring.mcp_on(account_id)
 
 
 def unavailable():
     return JsonResponse({'error': 'unavailable'}, status=404)
 
 
-def principal(request):
-    return Principal(request.account_id, str(request.user.pk), 'customer')
+principal = wiring.principal
 
 
 def failure(error):
@@ -75,7 +44,6 @@ def connections(request):
         rate('mcp.list', request.account_id, 90, 60)
         return JsonResponse(s.listing(p))
     except ConnectionError as e: return failure(e)
-    except NotFound: raise Denied()
 
 
 @endpoint(['POST'], ['name', 'enabled', 'tools', 'auto', 'token'], structured=True)
@@ -109,7 +77,6 @@ def change(request, connection_id, action):
             response.set_cookie('__Host-lumina_mcp_oauth', browser, max_age=600, secure=True, httponly=True, samesite='Lax', path='/')
         return response
     except ConnectionError as e: return failure(e)
-    except NotFound: raise Denied()
 
 
 @endpoint(['GET'])
@@ -160,4 +127,3 @@ def approve(request, call_id):
         audit(request.user.pk, request.account_id, call_id, 'mcp.approval', 'completed', request.request_id)
         return JsonResponse({'decided': True})
     except ConnectionError as e: return failure(e)
-    except NotFound: raise Denied()

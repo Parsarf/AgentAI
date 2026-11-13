@@ -8,10 +8,10 @@ export type Mode = 'activity' | 'screen' | 'terminal' | 'files';
 export const MODE_LABEL: Record<Mode, string> = { activity: 'Activity', screen: 'Screen', terminal: 'Terminal', files: 'Files' };
 
 /** Browser-task states in which the page is still alive: the live picture is worth showing. */
-export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused'];
+export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused', 'asking'];      // the server's list: platform/agentai_platform/browse/job_states.py LIVE
 export const STATE_LABEL: Record<string, string> = {
-  queued: 'Starting', running: 'Working', handoff: 'Waiting for you', paused: 'You have the wheel',
-  done: 'Done', failed: 'Stopped', cancelled: 'Cancelled', completed: 'Done',
+  queued: 'Starting', running: 'Working', handoff: 'Waiting for you', paused: 'You have the wheel', asking: 'Waiting for your answer',
+  done: 'Done', failed: 'Stopped', cancelled: 'Cancelled', completed: 'Done', interrupted: 'Interrupted',
 };
 
 export const VIEW = { w: 1280, h: 800 };                        // the browser window the agent sees; clicks are mapped into it

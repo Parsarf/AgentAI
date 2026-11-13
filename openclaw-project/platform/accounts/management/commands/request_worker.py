@@ -3,49 +3,32 @@ import json
 import time
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.db import connection
-from agentai_platform.bridge_client import BridgeRpc
-from agentai_platform.browse.client import BrowseRpc
-from agentai_platform.budget import BudgetLedger
 from agentai_platform.chat_driver import ChatDriver
-from agentai_platform.events import EventService
-from agentai_platform.gateway import NativeGateway
 from agentai_platform.genui.runtime import GenUiRuntime
 from agentai_platform.genui.store import BlockStore
 from agentai_platform.goals import GoalChain
 from agentai_platform.lifecycle.profiles import host_capacity
-from agentai_platform.request_queue import RequestQueue
+from agentai_platform.panel.offer import PanelOffer
 from agentai_platform.request_worker import RequestWorker
-from accounts.chat import execution_on
-from accounts.lifecycle import AccountStore
+from agentai_platform.routing.display import DisplayDecider
+from agentai_platform.routing.shadow import ShadowRouter
+from accounts import wiring
 
 
 def build_worker(store):
-    queue = RequestQueue(store, require_cell=True)
-    factory = lambda claim: NativeGateway(BridgeRpc(claim.account_id, settings.CELL_BRIDGE_SOCKET))
-    artifacts = None
-    if settings.STORAGE_DIR and settings.STORAGE_READY:
-        from agentai_platform.artifacts import ArtifactService
-        from agentai_platform.storage import RootStore
-        key = settings.ARTIFACT_SIGNING_KEY
-        artifacts = ArtifactService(store, storage=RootStore(settings.STORAGE_DIR), signing_key=key.encode() if isinstance(key, str) else key)
-    from agentai_platform.routing.shadow import ShadowRouter
-    from agentai_platform.switches import SwitchStore
-    switches = SwitchStore(settings.SWITCHES_FILE or None, facts_path=settings.SWITCH_FACTS_FILE or None)
-    from agentai_platform.routing.display import DisplayDecider
+    queue = wiring.request_queue(store, require_cell=True)
+    switches = wiring.switches()
     # When the assistant answers in plain text, JEV may choose a layout for that text (owner switch jev_display, off by default: it sends the reply text to TypeSafe).
     display = DisplayDecider(config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE, switch_on=lambda: switches.is_on('jev_display'))
     # OpenClaw owns the run. The driver hands a message over, asks the runtime when it ended and settles it; the browser the assistant uses is a native tool (tool_relay).
-    from agentai_platform.panel.offer import PanelOffer, read_secret
-    panel = PanelOffer(lambda: read_secret(settings.PANEL_SECRET_FILE) if settings.PANEL_ORIGINS else b'', lambda account: BrowseRpc(account, settings.BROWSE_SOCKET),
-                       enabled=lambda: switches.is_on('browse_tasks'))      # the side panel only exists for browser tasks, so their owner switch is its switch
-    driver = ChatDriver(store, ledger=BudgetLedger(store), gateway_factory=factory, events=EventService(store), artifacts=artifacts, sleep=time.sleep, heartbeat=queue.heartbeat,
-                        genui=GenUiRuntime(store, BlockStore(store)),
-                        browse_factory=lambda account: BrowseRpc(account, settings.BROWSE_SOCKET), display=display, queue=queue, goal_chain_limit=settings.GOAL_CHAIN_LIMIT, panel=panel)
+    panel = PanelOffer(wiring.panel_secret, wiring.browse_rpc, enabled=lambda: switches.is_on('browse_tasks'))      # the side panel only exists for browser tasks, so their owner switch is its switch
+    driver = ChatDriver(store, ledger=wiring.ledger(store), gateway_factory=lambda claim: wiring.cell_gateway(claim.account_id), events=wiring.event_service(store),
+                        artifacts=wiring.artifact_service(store) if wiring.storage_ready() else None, sleep=time.sleep, heartbeat=queue.heartbeat,
+                        genui=GenUiRuntime(store, BlockStore(store)), browse_factory=wiring.browse_rpc, display=display, queue=queue, goal_chain_limit=settings.GOAL_CHAIN_LIMIT, panel=panel)
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))
-    from accounts.chat import service
-    return RequestWorker(queue, driver, host_capacity, shadow=shadow, runner=lambda: service().runner, goals=lambda: GoalChain(service(), limit=settings.GOAL_CHAIN_LIMIT))
+    # Plan phases and goal turns are sent through the same chat service the web app uses (built fresh each tick, so an owner switch change is seen without a restart).
+    return RequestWorker(queue, driver, host_capacity, shadow=shadow, runner=lambda: wiring.chat_service().runner, goals=lambda: GoalChain(wiring.chat_service(), limit=settings.GOAL_CHAIN_LIMIT))
 
 
 class Command(BaseCommand):
@@ -56,14 +39,16 @@ class Command(BaseCommand):
         parser.add_argument('--once', action='store_true')
 
     def handle(self, *args, **options):
-        store = AccountStore(connection.settings_dict['NAME'])
+        store = wiring.store()
         worker = build_worker(store)
         from agentai_platform.location import Locations
         locations = Locations(store)
         while True:
             try:
+                # Heal old cancelled/queued disagreements before lifecycle drain or admission.
+                worker.queue.reconcile_cancelled()
                 locations.cleanup()
-                report = worker.tick() if execution_on() else {'idle': 'customer_execution is off'}
+                report = worker.tick() if wiring.switch_on('customer_execution') else {'idle': 'customer_execution is off'}
             except Exception as exc:   # one failed request must not stop the loop; the queue marks it uncertain
                 report = {'error': type(exc).__name__}
             if report != {'ran': 0}:

@@ -290,8 +290,8 @@ def case_runtime():
     reply = ' '.join(m['content'] for m in s.messages(p, conv)['messages'] if m['provenance'] == 'agent')
     record('P15-RUNTIME-SEND', 'Real send, history and completion through the isolated assistant', 'PASS' if st == 'completed' and canary in reply else 'FAIL', f'state={st}')
     from agentai_platform.artifacts import ArtifactService
-    from accounts.files import _services
-    arts = _services()[3].list_artifacts(p, proj)
+    from accounts import wiring
+    arts = wiring.artifact_service().list_artifacts(p, proj)
     record('P15-FILES-CAPTURE', 'A file the assistant wrote becomes a versioned download for that account only',
            'PASS' if any(a['display_name'] == 'canary.txt' and a['task_id'] == r1['id'] for a in arts) else 'FAIL', f'{len(arts)} artifacts')
     # 2. serial queue: two quick requests never run at the same time

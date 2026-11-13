@@ -11,6 +11,8 @@ recorded production verification, unfinished features and open defects.
 | [Native execution](native-execution.md) | Send/steer, admission, queue/worker/driver, protocol-2 ownership, browser decisions and controls. |
 | [State and recovery](state-and-recovery.md) | Requests versus tasks/deliveries/browser jobs, persistent data, leases, parking and recovery. |
 | [Current findings](findings.md) | Which defects remain open, which old claims were corrected, and what has not been verified. |
+| [Browsing redesign](browsing-redesign.md) | What has been built of the browser redesign (shared page scripts, decision behaviour from the reference extension, job states and interruption), what is next, and what is unproven. |
+| [Code map](code-map.md) | Which module owns each responsibility, the rules features share, the one place services are wired, and how to add a feature. Written 12 November 2026. |
 
 The four reports replace the old `docs/orchestration-audit/` report set and
 its rendered diagrams, the previous pre-native `findings.md` content and the

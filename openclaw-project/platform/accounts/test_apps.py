@@ -1,7 +1,7 @@
 from unittest.mock import patch
 from django.test import TestCase
 from . import test_files
-from . import files
+from . import wiring
 from agentai_platform.apps import application, delivery_prompt
 
 
@@ -18,7 +18,7 @@ class AppHTTPChecks(TestCase):
         self.enable_storage()
         a, b = self.signed('a'), self.signed('b')
         self.seed_task()
-        artifacts = files._services()[3]
+        artifacts = wiring.artifact_service()
         saved = artifacts.capture(account_id='a', project_id='project-a', task_id='tx', name='calculator.py', media_type='text/x-python', data=b'print(2+3)')
         url = f"/v1/artifacts/{saved['artifact_id']}/versions/1/app"
         response = a.get(url, secure=True)
@@ -57,7 +57,7 @@ class AppHTTPChecks(TestCase):
         self.enable_storage()
         a = self.signed('a')
         self.seed_task()
-        artifacts = files._services()[3]
+        artifacts = wiring.artifact_service()
         saved = artifacts.capture(account_id='a', project_id='project-a', task_id='tx', name='app.py', media_type='text/plain', data=b'print(1)')
         url = f"/v1/artifacts/{saved['artifact_id']}/versions/1/app"
         with patch('agentai_platform.storage.RootStore.read_private', side_effect=FileNotFoundError):

@@ -1,21 +1,19 @@
 import uuid
-from django.db import connection
 from django.http import JsonResponse,HttpResponseRedirect
 from django.shortcuts import render
-from agentai_platform.request_queue import RequestQueue
-from agentai_platform.security import Principal,NotFound
+from agentai_platform.request_queue import MAX_MESSAGE_CHARS
 from agentai_platform.lifecycle.types import Conflict
-from .lifecycle import AccountStore
-from .services import Denied, rate
+from . import wiring
+from .services import rate
 from .views import endpoint,customer
 
 def _live():
     from .chat import execution_on
     return execution_on()
-def queue():return RequestQueue(AccountStore(connection.settings_dict['NAME']))
-def principal(request):return Principal(request.account_id,str(request.user.pk),'customer')
+def queue():return wiring.request_queue()
+principal=wiring.principal
 
-@endpoint(['GET','POST'],['message','key'],field_limits={'message':16000})
+@endpoint(['GET','POST'],['message','key'],field_limits={'message':MAX_MESSAGE_CHARS}, form='requests')
 def requests(request,request_id=None):
     denied=customer(request)
     if denied:return denied
@@ -26,24 +24,21 @@ def requests(request,request_id=None):
             item=queue().submit(principal(request),message=request.input.get('message',''),key=request.input.get('key',''))
             return JsonResponse({'request':item,'execution_enabled':_live()},status=202)
         return JsonResponse({'request':queue().get(principal(request),request_id)} if request_id else {'requests':queue().get(principal(request)),'execution_enabled':_live()})
-    except NotFound:raise Denied()
     except Conflict:return JsonResponse({'error':'request_conflict'},status=409)
 
-@endpoint(['POST'])
+@endpoint(['POST'], form='requests')
 def cancel(request,request_id):
     denied=customer(request)
     if denied:return denied
-    try:
-        q = queue()
-        p = principal(request)
-        item = q.get(p, request_id)
-        if item['conversation_id']:
-            from .chat import service
-            result = service().cancel(p, request_id)
-        else:
-            result = q.cancel(p, request_id)
-        return JsonResponse({'request': result}, status=202)
-    except NotFound:raise Denied()
+    q = queue()
+    p = principal(request)
+    item = q.get(p, request_id)
+    if item['conversation_id']:
+        from .chat import service
+        result = service().cancel(p, request_id)
+    else:
+        result = q.cancel(p, request_id)
+    return JsonResponse({'request': result}, status=202)
 
 @endpoint(['GET'])
 def page(request):

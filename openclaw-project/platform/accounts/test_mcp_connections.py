@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.db import connection
 from .services import token_for, consume
 from .tests import AccountBoundaryTests, PASSWORD
-from .lifecycle import AccountStore
+from .store import AccountStore
 from agentai_platform.model_keys import ModelKeyring
 from agentai_platform.mcp_connections.service import ConnectionService
 

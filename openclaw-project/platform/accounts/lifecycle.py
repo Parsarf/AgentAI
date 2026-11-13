@@ -1,43 +1,22 @@
 """Authenticated transport for lifecycle metadata; contains no host credentials."""
-from contextlib import contextmanager
-import sqlite3
-from django.db import connection, transaction
 from django.http import JsonResponse
-from agentai_platform.store import Store
-from agentai_platform.security import Principal, NotFound
+from agentai_platform.security import Principal
 from agentai_platform.lifecycle.coordinator import Coordinator
 from agentai_platform.lifecycle.types import Conflict
-from .services import Denied, operator_scope
+from .services import operator_scope
 from .views import endpoint, customer
 
-class Queries:
-    def __init__(self, cursor): self.cursor=cursor
-    def execute(self, sql, params=()):
-        self.cursor.execute(sql.replace('?', '%s'),params)
-        return self.cursor
-
-class AccountStore(Store):
-    @contextmanager
-    def connect(self):
-        with connection.cursor() as cursor:
-            cursor.cursor.row_factory=sqlite3.Row
-            yield Queries(cursor)
-    @contextmanager
-    def transaction(self):
-        with transaction.atomic():
-            with self.connect() as con: yield con
+from . import wiring
 
 
-def coordinator(): return Coordinator(AccountStore(connection.settings_dict['NAME']))
+def coordinator(): return Coordinator(wiring.store())
 
 @endpoint(['GET'])
 def operations(request, operation_id=None):
     denied=customer(request)
     if denied: return denied
-    try:
-        result=coordinator().get(Principal(request.account_id,str(request.user.pk),'customer'),operation_id)
-        return JsonResponse({'operation':result} if operation_id else {'operations':result})
-    except NotFound: raise Denied()
+    result=coordinator().get(wiring.principal(request),operation_id)
+    return JsonResponse({'operation':result} if operation_id else {'operations':result})
 
 @endpoint(['POST'], ['kind','key','generation','profile','backup_ref'])
 def provision(request, account):
@@ -57,7 +36,6 @@ def provision(request, account):
             backup_ref=request.input.get('backup_ref'))
         return JsonResponse({'operation':result,'runtime_enabled':False},status=202)
     except Conflict: return JsonResponse({'error':'operation_conflict'},status=409)
-    except NotFound: raise Denied()
 
 @endpoint(['POST'])
 def retry(request, account, operation_id):
@@ -69,4 +47,3 @@ def retry(request, account, operation_id):
         result=coordinator().retry(Principal(account,str(request.user.pk),'operator'),operation_id)
         return JsonResponse({'operation':result,'runtime_enabled':False},status=202)
     except Conflict: return JsonResponse({'error':'operation_conflict'},status=409)
-    except NotFound: raise Denied()

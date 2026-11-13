@@ -13,6 +13,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 
+from .. import request_states
 from .backup import VERIFIERS, sha256_file
 from .crypto import AgeCrypto
 
@@ -40,7 +41,7 @@ LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships'
         'location_requests']   # transient device coordinates, deleted once used: never brought back from a backup
 SCOPE = {**{t: 'restore' for t in RESTORE}, **{t: 'merge' for t in MERGE}, **{t: 'ledger' for t in LEDGER}, **{t: 'live' for t in LIVE}}
 NON_TERMINAL_TASK = ('queued', 'running', 'waiting_for_approval', 'paused')
-NON_TERMINAL_REQUEST = ('waiting', 'starting', 'running', 'uncertain')
+NON_TERMINAL_REQUEST = request_states.ACTIVE
 
 
 class RestoreError(Exception): pass
@@ -82,7 +83,7 @@ def snapshot_others(con, schema, account):
 
 def quiesced(con, account):
     checks = [("SELECT 1 FROM tasks WHERE account_id=? AND state IN ('queued','running','waiting_for_approval','paused') LIMIT 1", 'a task is still active'),
-              ("SELECT 1 FROM customer_requests WHERE account_id=? AND state IN ('waiting','starting','running','uncertain') LIMIT 1", 'a request is still active'),
+              ("SELECT 1 FROM customer_requests WHERE account_id=? AND state IN " + request_states.sql_list(NON_TERMINAL_REQUEST) + " LIMIT 1", 'a request is still active'),
               ("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain') LIMIT 1", 'a lifecycle operation is unresolved')]
     for sql, why in checks:
         if con.execute(sql, (account,)).fetchone(): raise RestoreError('account is not quiesced: ' + why)

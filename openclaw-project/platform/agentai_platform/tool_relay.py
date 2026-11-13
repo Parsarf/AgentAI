@@ -20,6 +20,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import request_states
 from .adapters import CapabilityUnavailable
 from .browse.adapter import STEP, STEP_NAME, TOOL, TOOL_NAME, BrowserTool
 from .model_keys import RELAY_PREFIX, SELECTION_PREFIX, SELECTION_MODEL
@@ -167,11 +168,11 @@ class Relay:
         if not isinstance(origin, dict) or not all(isinstance(origin.get(k), str) and origin[k] for k in ('session_key', 'run_id', 'call_id')):
             return None
         with self.tool.store.connect() as con:
-            rows = con.execute("""SELECT DISTINCT r.id FROM customer_requests r
+            rows = con.execute(f"""SELECT DISTINCT r.id FROM customer_requests r
                 JOIN conversations c ON c.account_id=r.account_id AND c.id=r.conversation_id
                 JOIN chat_deliveries d ON d.account_id=r.account_id AND d.request_id=r.id
                 JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
-                WHERE r.account_id=? AND r.state IN ('starting','running') AND r.closing=0 AND r.cancel_requested=0
+                WHERE r.account_id=? AND {request_states.live_run()}
                 AND v.state='active' AND c.native_session_ref=? AND (d.native_run_id=? OR (d.native_run_id IS NULL AND d.idempotency_key=?))
                 LIMIT 2""", (account, origin['session_key'], origin['run_id'], origin['run_id'])).fetchall()
         return rows[0]['id'] if len(rows) == 1 else None
@@ -260,7 +261,9 @@ def make_handler(relay: Relay, identity: Identity, byok=None):
                 return self._send(413, {'error': 'bad length'})
             raw = self.rfile.read(int(length))
             try:
-                up = byok.selected_chat(account, self.headers.get('Authorization', '')[7:].strip(), raw) if self.path.split('?', 1)[0] == SELECTION_PREFIX + '/chat/completions' else byok.chat(account, raw)
+                # Both paths use the same admitted route. Old warm cells still call
+                # /byok/v1 with a stale model name; that must not select an old key.
+                up = byok.selected_chat(account, self.headers.get('Authorization', '')[7:].strip(), raw)
             except RelayError as exc:
                 return self._model_error(exc)
             ctype = up.content_type if up.content_type.split(';')[0].strip().lower() in ('application/json', 'text/event-stream') else 'application/json'

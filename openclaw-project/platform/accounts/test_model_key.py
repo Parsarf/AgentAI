@@ -123,9 +123,11 @@ class ModelKeyEndpointChecks(TestCase):
             c.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch) VALUES ('a','pending','actor','project-a','key','hash','hello','waiting',1)")
         self.assertEqual(self.post(a, '/v1/model-key/select', {'id': 'lumina-default'}).status_code, 409)
         self.assertEqual(self.post(a, '/v1/model-key/remove').status_code, 409)
-        response, probe = self.saved(a)
-        self.assertEqual(response.status_code, 409); probe.assert_not_called()
         self.assertEqual(self.store_path.read_bytes(), before)
+        with mock.patch.object(mk, 'probe') as probe:
+            response = self.post(a, '/v1/model-key/save', self.BODY)
+        self.assertEqual(response.status_code, 200); probe.assert_called_once()
+        self.assertEqual(json.loads(self.store_path.read_text())['accounts']['a']['selected'], json.loads(before)['accounts']['a']['selected'])
 
     def test_save_does_not_automatically_select_or_replace_a_key(self):
         self.configure({'own_model_keys': True}); a = self.signed()
@@ -135,3 +137,17 @@ class ModelKeyEndpointChecks(TestCase):
         self.assertEqual(first.status_code, 200); self.assertEqual(second.status_code, 200)
         self.assertEqual(second.json()['selected'], 'lumina-default')
         self.assertEqual(len(second.json()['keys']), 2)
+
+    def test_selection_changes_immediately_while_pinned_work_keeps_its_model(self):
+        self.configure({'own_model_keys': True}); a = self.signed(); self.saved(a)
+        previous = a.get('/v1/model-key', secure=True).json()['selected']
+        from django.db import connection
+        with connection.cursor() as c:
+            c.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch,context_json) VALUES ('a','pending','actor','project-a','key','hash','hello','running',1,%s)", [json.dumps({'model_selection': previous})])
+        response = self.post(a, '/v1/model-key/select', {'id': 'lumina-default'})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['selected'], 'lumina-default')
+        with connection.cursor() as c:
+            c.execute("SELECT context_json FROM customer_requests WHERE id='pending'")
+            self.assertEqual(json.loads(c.fetchone()[0])['model_selection'], previous)
+        self.assertEqual(self.post(a, '/v1/model-key/remove').status_code, 409)

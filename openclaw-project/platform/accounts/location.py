@@ -1,15 +1,13 @@
 """Session/CSRF protected customer-device location handoff."""
-from django.db import connection
 from django.http import JsonResponse
 from agentai_platform.location import Locations
-from agentai_platform.security import NotFound
-from .lifecycle import AccountStore
-from .services import Denied, rate
+from . import wiring
+from .services import rate
 from .views import customer, endpoint
 
 
 def service():
-    return Locations(AccountStore(connection.settings_dict['NAME']))
+    return Locations(wiring.store())
 
 
 @endpoint(['GET'])
@@ -26,7 +24,4 @@ def answer(request, location_id):
     if denied:
         return denied
     rate('location.answer', request.account_id, 300, 600)
-    try:
-        return JsonResponse(service().answer(request.account_id, location_id, request.input))
-    except NotFound:
-        raise Denied()
+    return JsonResponse(service().answer(request.account_id, location_id, request.input))

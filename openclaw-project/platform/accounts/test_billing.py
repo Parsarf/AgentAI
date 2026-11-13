@@ -36,7 +36,7 @@ class BillingHTTPChecks(TestCase):
                                       SWITCH_FACTS_FILE=paths['facts'] if switch else '')
         overrides.enable(); self.addCleanup(overrides.disable)
         self.api = FakeStripe(lambda: int(time.time()))
-        patcher = patch('accounts.billing.StripeHttp', lambda *a, **k: self.api); patcher.start(); self.addCleanup(patcher.stop)
+        patcher = patch('agentai_platform.billing.StripeHttp', lambda *a, **k: self.api); patcher.start(); self.addCleanup(patcher.stop)
         self.events = Events(lambda: int(time.time()))
 
     def seed_trial(self, account):

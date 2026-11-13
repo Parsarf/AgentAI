@@ -13,19 +13,19 @@ import uuid
 from .adapters import CapabilityUnavailable
 from .budget import OWN_KEY_AMOUNT, BudgetDenied, BudgetLedger
 from .events import EventService
-from . import safety
+from . import request_states, safety
 from .genui import document as gen_document, prompts as gen_prompts, schema as gen_schema
 from .genui.runtime import GenUiRuntime
 from .genui.store import BlockStore
 from .genui.runner import PlanRunner
 from .lifecycle.coordinator import Coordinator, identifier
 from .lifecycle.types import Conflict
-from .request_queue import RequestQueue
+from .request_queue import RequestQueue, MAX_MESSAGE_CHARS
 from .security import NotFound, Principal
 
 MAX_CONVERSATIONS_PER_PROJECT = 100   # chat-style use: many conversations; clearing (archiving) one frees a slot
 MAX_PROJECTS = 10  # product/plan.json max_projects; the numeric source of truth
-MAX_TRANSCRIPT_CHARS = 16000
+MAX_TRANSCRIPT_CHARS = MAX_MESSAGE_CHARS
 
 BUDGET_CATEGORIES = (
     ('queue full', 'queue_full'),
@@ -118,7 +118,7 @@ class ChatService:
                 (SELECT max(m.created_at) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id) AS last_activity,
                 (SELECT substr(m.content,1,240) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id AND coalesce(m.native_message_id,'') NOT LIKE 'ui-answer:%' ORDER BY m.id DESC LIMIT 1) AS preview,
                 (SELECT count(*) FROM customer_requests r WHERE r.account_id=c.account_id AND r.conversation_id=c.id
-                    AND r.state IN ('waiting','starting','running','uncertain')) AS active
+                    AND r.state IN """ + request_states.sql_list(request_states.ACTIVE) + """) AS active
                 FROM conversations c WHERE c.account_id=?"""
             args: list = [principal.account_id]
             sql += ' AND c.archived_epoch IS ' + ('NOT NULL' if archived else 'NULL')
@@ -195,7 +195,7 @@ class ChatService:
             budget_on = safety.is_on(con, principal.account_id, 'budget_caps')
         if not budget_on:                       # the account's own `budget_caps` safety switch: no reservation, same path as an unpriced route
             return None, None, project_id
-        own = self.unmetered(principal.account_id)
+        own = self._own_model(principal.account_id, result['id'])
         try:
             amount, price_version = (OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION) if own else self.pricer.reservation(message_for_cost)
         except CapabilityUnavailable:
@@ -215,7 +215,7 @@ class ChatService:
         While a task of this conversation is still running, a plain message joins that run as a steer (the runtime's own steering) instead of waiting behind it.
         `goal` (Keep working until complete) starts a session goal with this message as its objective; plan mode never takes one."""
         identifier(key)
-        if not isinstance(message, str) or not message.strip() or len(message) > 16000 or '\x00' in message:
+        if not isinstance(message, str) or not message.strip() or len(message) > MAX_MESSAGE_CHARS or '\x00' in message:
             raise ValueError('invalid message')
         if mode not in ('auto', 'text', 'plan', 'browse'):
             raise ValueError('invalid mode')
@@ -229,7 +229,9 @@ class ChatService:
             raise Conflict('restore the archived conversation first')
         if not goal and ui_event is None and mode in ('auto', 'text') and self.gateway_factory is not None:
             running = self.queue.open_for_steer(principal, conversation_id)
-            if running is not None and running['intent'] in ('chat', 'browse', 'goal_continue', 'goal_resume'):
+            same_model = running is not None and (self.queue.model_selection is None or
+                json.loads(running['context_json'] or '{}').get('model_selection') == self.queue.model_selection(principal.account_id))
+            if same_model and running['intent'] in ('chat', 'browse', 'goal_continue', 'goal_resume'):
                 try:
                     return self.steer(principal, running, message=message, key=key, provenance=provenance, surface=surface)
                 except Conflict:
@@ -258,7 +260,7 @@ class ChatService:
                 con.execute('''INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content,native_message_id,surface)
                     VALUES (?,?,?,?,?,?,?)''', (principal.account_id, conversation_id, result['id'], provenance, message, UI_ANSWER_PREFIX + result['id'] if ui_event is not None else None, surface))
             self.coordinator._audit(con, principal.account_id, principal.actor_id, result['id'], 'chat.send.panel' if surface == 'panel' else 'chat.send', 'completed')
-        own = self.unmetered(principal.account_id)
+        own = self._own_model(principal.account_id, result['id'])
         try:
             amount, price_version = (OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION) if own else self.pricer.reservation(message)
         except CapabilityUnavailable:
@@ -277,6 +279,14 @@ class ChatService:
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,
                 'admission': 'reserved', 'price_version': price_version, 'response_type': kind if kind in ('plan', 'browse') else 'text'}
 
+    def _own_model(self, account, request):
+        if self.queue.model_selection is not None and self.ledger.service_limit is None:
+            return False  # record-only ingress and the execution-off switch never admit
+        with self.store.connect() as con:
+            row = con.execute('SELECT context_json FROM customer_requests WHERE account_id=? AND id=?', (account,request)).fetchone()
+        selected = json.loads(row['context_json'] or '{}').get('model_selection') if row else None
+        return selected.startswith('key:') if isinstance(selected, str) else self.unmetered(account)
+
     def steer(self, principal: Principal, running: dict, *, message: str, key: str, provenance: str = 'customer', surface: str | None = None):
         """Join a message to the run that is going on, with the runtime's own steering. The message belongs to that request (same reservation, same outcome); the worker, which
         owns the request, waits for the run it starts. Refused (Conflict) once the request has begun to close, so no run is ever started that nobody owns."""
@@ -286,10 +296,12 @@ class ChatService:
         run_key = f'{running["id"]}-s-{hashlib.sha256(key.encode()).hexdigest()[:16]}'
         with self.coordinator.transaction() as con:
             self.store._authorize(con, principal)
-            row = con.execute("""SELECT r.conversation_id,c.native_session_ref FROM customer_requests r JOIN conversations c ON c.account_id=r.account_id AND c.id=r.conversation_id
-                WHERE r.account_id=? AND r.id=? AND r.state IN ('starting','running') AND r.closing=0 AND r.cancel_requested=0""", (principal.account_id, running['id'])).fetchone()
+            row = con.execute(f"""SELECT r.conversation_id,r.context_json,c.native_session_ref FROM customer_requests r JOIN conversations c ON c.account_id=r.account_id AND c.id=r.conversation_id
+                WHERE r.account_id=? AND r.id=? AND {request_states.live_run()}""", (principal.account_id, running['id'])).fetchone()
             if not row or not row['native_session_ref']:
                 raise Conflict('the task is not accepting messages')
+            if self.queue.model_selection is not None and json.loads(row['context_json'] or '{}').get('model_selection') != self.queue.model_selection(principal.account_id):
+                raise Conflict('the new message uses a different model')
             if con.execute('SELECT 1 FROM chat_deliveries WHERE account_id=? AND request_id=? AND idempotency_key=?', (principal.account_id, running['id'], run_key)).fetchone():
                 return self._steer_view(principal, running['id'], run_key)           # the same message sent again (double click, retry): nothing new
             attempt = con.execute('SELECT coalesce(max(attempt),0)+1 FROM chat_deliveries WHERE account_id=? AND request_id=?', (principal.account_id, running['id'])).fetchone()[0]
@@ -356,7 +368,7 @@ class ChatService:
             if not con.execute('SELECT 1 FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance=?',
                                (principal.account_id, conversation_id, result['id'], provenance)).fetchone():
                 con.execute('INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content) VALUES (?,?,?,?,?)',
-                            (principal.account_id, conversation_id, result['id'], provenance, shown[:16000]))
+                            (principal.account_id, conversation_id, result['id'], provenance, shown[:MAX_MESSAGE_CHARS]))
         amount, price_version, _project = self._admit(principal, result, conversation_id, key, message)
         if amount is not None:
             self._announce_queued(principal.account_id, result['id'])
@@ -524,7 +536,7 @@ class ChatService:
         Idempotent: pressing Retry twice gives the one retry. The new task's `retry_of` names the original."""
         source = self.queue.retry_source(principal, request_id)
         latest = source['latest']
-        if latest and latest['state'] in ('waiting', 'starting', 'running', 'uncertain', 'completed'):
+        if latest and latest['state'] in request_states.ACTIVE + (request_states.COMPLETED,):
             return latest | {'execution_enabled': self.execution, 'admission': 'existing'}        # a repeat press: the retry that already exists
         if self.conversation(principal, source['conversation_id'])['archived_epoch'] is not None:
             raise Conflict('restore the archived conversation first')

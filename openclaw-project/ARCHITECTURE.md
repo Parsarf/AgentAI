@@ -1,5 +1,9 @@
 # OpenClaw runtime and customer platform architecture
 
+> **Historical record.** This file is the phase-by-phase log of the owner runtime and the early customer platform (September to October 2026).
+> For the system as it is now, start at [docs/architecture/README.md](docs/architecture/README.md): system overview, native execution, state and
+> recovery, current findings, and the [code map](docs/architecture/code-map.md) (module ownership, shared rules, where a new feature goes).
+
 ## Current customer-platform foundation — 2026-09-29
 
 Product Phases1–2 define the owner-selected $79/$25/$5 plan and a separate

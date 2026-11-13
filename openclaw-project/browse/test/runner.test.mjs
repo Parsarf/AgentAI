@@ -303,3 +303,45 @@ test('click and type at a point act exactly there, and typing needs a real text 
   assert.equal((await r.handle({ cmd: 'act', action: 'clickat', x: 5000, y: 5 })).error, 'bad_coordinates');
   assert.equal((await r.handle({ cmd: 'act', action: 'typeat', x: 200, y: 320, value: 'x'.repeat(501) })).error, 'bad_value');
 });
+
+// ---- what the decider is offered: the controls a person can see and reach come first, and the snapshot says what has the keyboard
+test('a long header or menu cannot crowd the visible controls out of the list, and numbers still follow page order', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  const hidden = Array.from({ length: 120 }, (_, i) => `<a href="#m${i}" style="${at(10, 2000 + i * 30, 200, 20)}">Menu ${i}</a>`).join('');
+  await html(`<div style="height:6000px"></div>${hidden}<button style="${at(300, 200, 160, 40)}">Add to cart</button><input aria-label="Search" style="${at(300, 300, 200, 30)}">`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  const labels = s.elements.map(e => e.label);
+  assert.equal(s.elements.length, 80);                                           // the cap is unchanged
+  assert.ok(labels.includes('Add to cart') && labels.includes('Search'));        // both come after 120 menu links in the page's code, and are still listed
+  assert.deepEqual(s.elements.map(e => e.ref), Array.from({ length: 80 }, (_, i) => i + 1));
+  const add = s.elements.find(e => e.label === 'Add to cart');
+  assert.equal(add.in_view, true); assert.equal(add.covered, false); assert.equal(add.x, 380); assert.equal(add.y, 220);      // where a click on it lands, in window pixels
+  const clicked = await r.handle({ cmd: 'act', action: 'click', ref: add.ref, expect: { label: 'Add to cart' } });
+  assert.equal(clicked.ok, true);                                                // the number still names the same element
+});
+
+test('a secret field is always listed, even past the cap, so the host still sees that the page needs the user', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  const many = Array.from({ length: 90 }, (_, i) => `<button style="${at(10 + (i % 9) * 130, 10 + Math.floor(i / 9) * 50, 120, 40)}">B${i}</button>`).join('');
+  await html(`<div style="height:4000px"></div>${many}<input type="password" style="${at(100, 3000, 200, 30)}">`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  assert.ok(s.elements.some(e => e.type === 'password'));
+  assert.match(s.snapshot, /<input type=password>/);
+});
+
+test('snapshot says what has the keyboard: nothing, a text field with what it holds, and never a secret value', async () => {
+  await r.handle({ cmd: 'open', url: base + '/' });
+  await html(`<input aria-label="Search" style="${at(100, 100, 200, 30)}"><button style="${at(100, 200, 100, 30)}">Go</button><input type="password" aria-label="Password" style="${at(100, 300, 200, 30)}">`);
+  assert.equal((await r.handle({ cmd: 'snapshot' })).focus, null);
+  const s1 = await r.handle({ cmd: 'snapshot' });
+  const search = s1.elements.find(e => e.label === 'Search');
+  await r.handle({ cmd: 'act', action: 'type', ref: search.ref, value: 'blue shoes', expect: { label: 'Search' } });
+  const s2 = await r.handle({ cmd: 'snapshot' });
+  assert.equal(s2.focus.editable, true); assert.equal(s2.focus.value, 'blue shoes'); assert.equal(s2.focus.label, 'Search');
+  assert.equal(s2.focus.ref, s2.elements.find(e => e.label === 'Search').ref);   // the focused field is named by its number in this same list
+  await r.page.evaluate(() => { const p = document.querySelector('input[type=password]'); p.value = 'hunter2'; p.focus(); });
+  const s3 = await r.handle({ cmd: 'snapshot' });
+  assert.equal(s3.focus.secret, true); assert.equal(s3.focus.value, ''); assert.equal(s3.focus.label, '');
+  await r.page.evaluate(() => document.querySelector('button').focus());
+  assert.equal((await r.handle({ cmd: 'snapshot' })).focus.editable, false);
+});

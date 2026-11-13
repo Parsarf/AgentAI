@@ -81,7 +81,7 @@ class TelegramHTTPChecks(TestCase):
         from agentai_platform.chat import ChatService, FixedRoute
         from agentai_platform.request_queue import RequestQueue
         from agentai_platform.budget import BudgetLedger
-        from .lifecycle import AccountStore
+        from .store import AccountStore
         store = AccountStore(connection.settings_dict['NAME'])
         chat = ChatService(store, queue=RequestQueue(store), ledger=BudgetLedger(store), pricer=FixedRoute(500))
         service = TelegramService(store, chat=chat, bot_username='agentai_testbot', clock=lambda: 2000000000)
@@ -92,7 +92,7 @@ class TelegramHTTPChecks(TestCase):
         class StubApi:
             def __init__(self, token): pass
             def send_message(self, chat_id, text): return 1
-        with patch('accounts.telegram.TelegramBotApi', StubApi):
+        with patch('agentai_platform.telegram.TelegramBotApi', StubApi):
             self.assertEqual(self.secret_post(a, update).status_code, 200)
             self.assertEqual(self.secret_post(a, update).status_code, 200)  # dedup
             self.assertEqual(self.secret_post(a, {**update, 'update_id': 8, 'message': {**update['message'], 'text': 'real work'}}).status_code, 200)

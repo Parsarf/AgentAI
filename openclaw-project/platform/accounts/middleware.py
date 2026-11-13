@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.contrib.auth import logout
 from django.core.exceptions import RequestDataTooBig, TooManyFieldsSent, SuspiciousOperation
 from .models import Identity
+from agentai_platform.security import NotFound
 from .services import Denied, Limited, customer_scope, rate
 
 WEBHOOKS={'/v1/telegram/webhook','/v1/billing/webhook'}
@@ -73,7 +74,7 @@ class AccountMiddleware:
 
     def process_exception(self, request, exception):
         """Views outside the endpoint() wrapper (SSE stream, downloads) must refuse cross-account access like every other route."""
-        if isinstance(exception, Denied):
+        if isinstance(exception, (Denied, NotFound)):
             try:
                 from .services import audit
                 audit(request.user.pk if request.user.is_authenticated else 'anonymous', getattr(request, 'account_id', None), 'route', 'access.denied', 'denied', request.request_id)
