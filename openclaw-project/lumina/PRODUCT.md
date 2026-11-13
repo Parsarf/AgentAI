@@ -18,7 +18,7 @@ Lumina is a private AI assistant each customer owns: a chat where they ask for w
 
 ## Operating Context
 - Served at `https://getlumina.pro/app/` by the account backend; single-page app, same-origin API under `/v1`, cookie session.
-- Chat is the main surface. Around it: Home, Chat history, Task activity, Live view (watch and take over the browser agent), Files, Calendar, Automations, Integrations, Settings.
+- Chat is the main surface. Around it: Home, Chat history, Activity (what needs you, what is in progress, and the record of finished work; each task opens its workspace, where the browser agent can be watched and taken over), Files, Calendar, Automations, Integrations, Settings.
 - Each customer has an isolated assistant workspace that sleeps when idle and wakes when work arrives.
 
 ## Capabilities and Constraints

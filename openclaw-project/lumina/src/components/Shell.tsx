@@ -10,19 +10,19 @@ import Menu from './ui/Menu';
 import { useData } from '../state/data';
 import { useSettings } from '../state/settings';
 import { title } from '../lib/format';
-import { phase, REQUEST_LIVE } from '../lib/tasks';
+import { useWork } from '../state/work';
 
 function Command({ onClose }: { onClose(): void }) {
-  const { requests, chats } = useData(); const nav = useNavigate();
+  const { chats } = useData(); const { tasks } = useWork(); const nav = useNavigate();
   const [q, setQ] = useState(''); const [i, setI] = useState(0); const input = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), []);
   const items = useMemo(() => {
     const all = [...NAV.map(n => ({ label: n.label, hint: 'Go to', to: n.to })),
       ...chats.map(c => ({ label: c.title || 'New chat', hint: 'Chat', to: `/chat/${c.id}` })),
-      ...requests.filter(r => !r.conversation_id).slice(0, 40).map(r => ({ label: title(r.message, 70), hint: phase(r.state), to: `/tasks/${r.id}` }))];
+      ...tasks.slice(0, 40).map(t => ({ label: title(t.title, 70), hint: t.label, to: `/tasks/${t.id}` }))];
     const t = q.trim().toLowerCase();
     return (t ? [{ label: `Search all chats for “${q.trim()}”`, hint: 'Titles and messages', to: `/history?q=${encodeURIComponent(q.trim())}` }, ...all.filter(a => a.label.toLowerCase().includes(t))] : all).slice(0, 12);
-  }, [q, requests, chats]);
+  }, [q, tasks, chats]);
   const go = (to: string) => { void nav(to); onClose(); };
   return (
     <div className="cmd-back" onMouseDown={onClose} role="presentation">
@@ -44,14 +44,15 @@ function Command({ onClose }: { onClose(): void }) {
 /** The label in the top bar: the navigation entry for the current page. */
 function pageTitle(pathname: string) {
   if (pathname === '/') return 'Chat';
+  if (pathname.startsWith('/live')) return 'Activity';      // a task's workspace belongs to Activity
   const hit = NAV.find(n => pathname === n.to || pathname.startsWith(n.to + '/'));
   return hit ? hit.label : 'Lumina';
 }
 
 export default function Shell() {
   const { pathname } = useLocation();
-  const rail = pathname === '/home' || pathname.startsWith('/tasks');
-  const { app, requests, chats, refreshChats } = useData(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
+  const rail = pathname === '/home';
+  const { app, chats, refreshChats } = useData(); const { tasks } = useWork(); const { reducedMotion, setReducedMotion, sidebarOpen, setSidebarOpen } = useSettings(); const [drawer, setDrawer] = useState(false);
   const [cmd, setCmd] = useState(false);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -60,7 +61,8 @@ export default function Shell() {
     };
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, [sidebarOpen, setSidebarOpen]);
-  const attention = requests.filter(r => phase(r.state) === 'failed').slice(0, 5);
+  // The bell lists what is waiting for the customer first, then recent failures: the same facts Activity shows.
+  const attention = [...tasks.filter(t => t.attention), ...tasks.filter(t => t.outcome === 'failed' && !t.attention).slice(0, 3)].slice(0, 6);
   const nav = useNavigate();
   return (
     <div className={`shell${rail ? '' : ' no-right'}${sidebarOpen ? '' : ' side-collapsed'}`}>
@@ -72,12 +74,12 @@ export default function Shell() {
           <h2 className="topbar-title">{pageTitle(pathname)}</h2>
           <button className="iconbtn" aria-label="Search (Ctrl+K)" title="Search (Ctrl+K)" onClick={() => setCmd(true)}><I.Search width={20} height={20} /></button>
           <Menu label="Notifications" heading="Notifications" align="end"
-            items={attention.length ? attention.map(r => ({ id: r.id, label: `Failed: ${title(r.message, 40)}`, onSelect: () => { void nav(r.conversation_id ? `/chat/${r.conversation_id}` : `/tasks/${r.id}`); } }))
+            items={attention.length ? attention.map(t => ({ id: t.id, label: `${t.attention ? t.attention_label : 'Failed'}: ${title(t.title, 40)}`, onSelect: () => { void nav(`/tasks/${t.id}`); } }))
               : [{ id: 'none', label: 'Nothing needs your attention.', disabled: true, onSelect: () => {} }]}
             trigger={({ open, props }) => <button className="iconbtn" aria-label="Notifications" aria-expanded={open} {...props}><I.Bell width={20} height={20} />{attention.length > 0 && <span className="dot" />}</button>} />
           <button className="iconbtn" aria-label={reducedMotion ? 'Turn animations on' : 'Reduce motion'} aria-pressed={reducedMotion} title={reducedMotion ? 'Animations off' : 'Animations on'} onClick={() => setReducedMotion(!reducedMotion)}><I.Motion width={20} height={20} /></button>
         </div>
-        {requests.some(r => REQUEST_LIVE.includes(r.state)) && <LocationRequest key={app?.user.email} />}
+        {tasks.some(t => t.phase === 'working' || t.phase === 'needs_you' || t.phase === 'starting') && <LocationRequest key={app?.user.email} />}
         <Outlet />
       </main>
       {rail && <aside className="rail" aria-label="Activity"><Rail /></aside>}

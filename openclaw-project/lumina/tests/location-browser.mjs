@@ -12,6 +12,10 @@ try {
       Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition() {} }, configurable: true });
     });
     await page.route('**/v1/requests', route => route.fulfill({ json: { requests: [{ id: 'fixture-working', state: 'running', message: 'Restaurants near me', cancel_requested: 0 }] } }));
+    // The shell asks for a location only while a task is working, and reads that from the shared task state.
+    await page.route('**/v1/work', route => route.fulfill({ json: { rev: 'loc', attention: 0, tasks: [{ id: 'fixture-working', conversation_id: 'working', title: 'Restaurants near me', follows: null, created_epoch: Math.floor(Date.now() / 1000), state: 'running', phase: 'working', label: 'Thinking', tone: 'live',
+      activity: null, now: [], ahead: null, attention: null, attention_label: '', outcome: null, verification: null, note: '', goal: false, continuing: false, retry_of: null, needs: [], steps: 0,
+      controls: { stop: true, pause: false, resume: false, retry: false, goal_resume: false, goal_clear: false, steer: true } }] } }));
     await page.route('**/v1/location', route => route.fulfill({ json: { request: answer ? null : { id: 'testloc', expires_epoch: Math.floor(Date.now()/1000) + 120 } } }));
     await page.route('**/v1/csrf', route => route.fulfill({ json: { csrf_token: 'fixture' } }));
     await page.route('**/v1/location/testloc', async route => {

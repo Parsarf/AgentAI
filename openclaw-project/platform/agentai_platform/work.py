@@ -324,7 +324,13 @@ class WorkReader:
         busy = con.execute('SELECT count(*) FROM request_slot').fetchone()[0]
         return busy + con.execute("SELECT count(*) FROM customer_requests WHERE state='waiting' AND paused=0 AND sequence<?", (row['sequence'],)).fetchone()[0]
 
-    def _summary(self, con, row, waiting, *, rows=None):
+    @staticmethod
+    def _step_counts(con, account):
+        """{task_id: how many tool calls it made}, for the list (so a line can say "6 steps" without loading every timeline)."""
+        return {r[0]: r[1] for r in con.execute("""SELECT task_id,count(DISTINCT json_extract(public_payload,'$.ref')) FROM events
+            WHERE account_id=? AND kind='activity' GROUP BY task_id""", (account,))}
+
+    def _summary(self, con, row, waiting, *, rows=None, steps=None):
         """The small view every list shows. `rows` (the timeline) is only read for a run in progress, to say what it is doing right now."""
         needs = list(waiting.get(row['id'], []))
         if row['state'] == 'running' and row['parked_reason'] == 'location_permission':
@@ -346,11 +352,14 @@ class WorkReader:
             attention = 'approval'
         elif controls['goal_resume']:
             attention = 'goal'
+        label, tone = label_of(phase, row, activity=activity, waiting_on=waiting_on, ahead=ahead), tone_of(phase, row)
+        if phase == 'ended' and attention == 'approval':           # the run is over but its question is not: say what is open, not "Done"
+            label, tone = NEEDS['approval'], 'attention'
         return {'id': row['id'], 'conversation_id': row['conversation_id'], 'title': self._title(con, row), 'follows': self._follows(row), 'created_epoch': row['created_epoch'],
-                'state': row['state'], 'phase': phase, 'label': label_of(phase, row, activity=activity, waiting_on=waiting_on, ahead=ahead), 'tone': tone_of(phase, row),
+                'state': row['state'], 'phase': phase, 'label': label, 'tone': tone,
                 'activity': activity, 'now': now, 'ahead': ahead, 'attention': attention, 'attention_label': NEEDS.get(attention, '') if attention else '',
                 'outcome': outcome, 'verification': verification, 'note': note, 'goal': bool(row['goal_mode']), 'continuing': bool(row['continue_goal']), 'retry_of': row['retry_of'],
-                'controls': controls, 'needs': needs}
+                'controls': controls, 'needs': needs, 'steps': steps if steps is not None else sum(1 for r in rows or [] if r['kind'] == 'tool')}
 
     # -- reads ----------------------------------------------------------------------------------------------------------------------------------
     def listing(self, principal: Principal) -> dict:
@@ -359,10 +368,10 @@ class WorkReader:
             self.store._authorize(con, principal)
             account = principal.account_id
             waiting = self._waiting(con, account, self.clock())
-            tasks = []
+            tasks, counts = [], self._step_counts(con, account)
             for row in con.execute('SELECT * FROM customer_requests WHERE account_id=? ORDER BY sequence DESC LIMIT 100', (account,)).fetchall():
                 rows = timeline(self._events(con, account, row['id'])) if row['state'] == 'running' and not row['cancel_requested'] else None
-                tasks.append(self._summary(con, row, waiting, rows=rows))
+                tasks.append(self._summary(con, row, waiting, rows=rows, steps=counts.get(row['id'], 0)))
         out = {'tasks': tasks, 'attention': sum(1 for t in tasks if t['attention'])}
         out['rev'] = hashlib.sha256(json.dumps(out, sort_keys=True).encode()).hexdigest()[:16]
         return out

@@ -5,7 +5,9 @@
 Messages and assistant thinking indicators must size to their content. Spare pane height belongs
 between the transcript and composer, never inside message rows. Any grid filling
 the chat pane must pack its rows at the start; nested turns must not stretch their
-children. Never reintroduce a Working card in chat. Pending replies use a left-aligned 48px thinking orb and short state label; Live activity expands inline below the thinking state through Read more. Stop belongs in the composer, replacing Send while a task is active.
+children. Never reintroduce a Working card in chat. A task is shown under the message that asked for it by `components/work/TaskStrip.tsx`: not a card, a left-aligned 48px orb with the server's status words (one line per thing when several run at once), prompts that need the customer right there, and after it ends a one-line record (how it ended, whether that was confirmed, counts) with the detail folding out below through Details. A plain answer that used no tools shows nothing under it. Stop belongs in the composer, replacing Send while a task is active.
+
+**Task state has one source.** What a task is doing, what it needs, how it ended and what can be done to it are computed on the server (`platform/agentai_platform/work.py`) and reach every screen through `state/work.tsx` (`useWork`, `useTask`), which is pushed over the stream and falls back to polling by itself (`lib/workClient.ts`). Do not derive status from request rows or raw events in a component, do not add a timer that asks about tasks, and do not word a status yourself: render `task.label`. "The run finished" and "the result was confirmed" are separate facts (`outcome`, `verification`) and must stay worded apart. The assistant's own checklist is always labelled as its report. Never post a message in the customer's name (a permission decision is recorded by the server as a `system` line).
 
 Active conversation routes must not render the decorative globe. On screens that
 show it, use the static fallback only while loading, after a rendering failure, or
@@ -23,7 +25,7 @@ It runs `tests/browser-layout.js` against the production bundle. For each fixtur
 and viewport, require `document.documentElement.dataset.layoutCheck === 'passed'`;
 inspect `dataset.layoutFailures` if it fails. Keep these checks when editing chat CSS.
 
-Orb state definitions live in `src/lib/orbs.ts`. Map actual task/event state, never
+Orb animations are listed in `src/lib/orbs.ts`; which one shows is decided from the server's task state by `orbFor` in `src/lib/work.ts` (only a task that is really doing something gets a moving orb). Map actual task state, never
 simulate progress by cycling animations on a timer. Finished tool calls must stop
 showing their old activity; completed replies remove the indicator. Keep terminal
 errors visible without a looping orb. Preserve reduced-motion support.
@@ -41,9 +43,10 @@ rendering; malformed data and code examples remain literal, locally scrollable c
 Verify charts plus very long code lines, prose, URLs, and tables at mobile/desktop
 widths, including the visible scrollbar and ability to reach the end of a code line.
 
-Live view opens the newest active task directly, with a compact task selector for
-history. Show observable tool activity and reported terminal output, never invented
+A task's workspace (`pages/Live.tsx`, `/live/:id`) is the same view while it runs and afterwards as its record; `/live` alone is not a destination (it goes to the open task, or to Activity). Activity (`pages/Tasks.tsx`) lists what needs the customer, what is in progress and finished work, and `/tasks/:id` is a task's record. Show observable tool activity and reported output, never invented
 reasoning or simulated shell output. Browser takeover is enabled only after the
 backend confirms pause/handoff and takeover. Sensitive text is masked by default,
 cleared after submission, and never stored in local/session storage. Browser input
 must be serialized before returning control. Keep task details bounded on mobile.
+
+To look at all of it in a real browser on the real state code (no assistant: a scripted run, in the fixture only): `npm run build && ../platform/.venv/bin/python tests/preview_work.py` (docstring has the chats; `PREVIEW_PUSH=0` shows the polling fallback). It loads the same layout assertions as `tests/preview_chat.py`.

@@ -71,7 +71,7 @@ export function buildCall(endpoint, input = {}) {
 }
 
 export const STATE_LABEL = {
-  waiting: 'Waiting to start', starting: 'Starting', running: 'Working', uncertain: 'Checking where it got to', completed: 'Done', done: 'Done', failed: 'Stopped', cancelled: 'Cancelled',
+  waiting: 'Waiting to start', starting: 'Starting', running: 'Working', uncertain: 'Checking where it got to', completed: 'Done', done: 'Done', failed: 'Failed', cancelled: 'Stopped',
 };
 
 /** What the server's error codes mean to the customer. Unknown codes get the generic line; nothing from the network is shown as written. */
@@ -104,10 +104,14 @@ export function view({ link = {}, state = null, error = null, sending = false } 
   if (!link.hasTicket) return { tone: 'wait', headline: 'Starting a new session…', detail: '', ...none };
   if (!state) return { tone: 'wait', headline: 'Loading…', detail: '', canSend: !sending, canStop: false };
   const request = state.request;
-  if (state.live) return { tone: 'on', headline: request?.paused ? 'Paused' : STATE_LABEL[request?.state] || 'Working', detail: '', canSend: !sending, canStop: true };
+  // `request.label` is Lumina's own status line (the same words the web app shows: what it is doing, what it is waiting for, how it ended and whether that was confirmed).
+  // A server that does not send it yet gets the plain state words below.
+  const said = typeof request?.label === 'string' && request.label ? request.label.slice(0, 80) : '';
+  const note = typeof request?.note === 'string' ? request.note.slice(0, 300) : '';
+  if (state.live) return { tone: request?.phase === 'needs_you' ? 'wait' : 'on', headline: said || (request?.paused ? 'Paused' : STATE_LABEL[request?.state] || 'Working'), detail: '', canSend: !sending, canStop: true };
   const line = cellLine(state.cell);
   if (request && ['waiting', 'starting'].includes(request.state)) return { tone: 'wait', headline: state.cell === 'ready' ? 'Starting' : 'Waking your assistant…', detail: line, canSend: !sending, canStop: true };
-  return { tone: request ? 'idle' : 'on', headline: request ? STATE_LABEL[request.state] || 'Finished' : 'Ready', detail: request ? '' : line, canSend: !sending, canStop: false };
+  return { tone: request ? 'idle' : 'on', headline: request ? said || STATE_LABEL[request.state] || 'Finished' : 'Ready', detail: request ? note : line, canSend: !sending, canStop: false };
 }
 
 /** One line for the activity trail, or null for events that are not worth a line (pictures and clicks of the person's own hands). */

@@ -30,7 +30,8 @@ def decide(messages, tools):
     if last['role'] == 'tool':
         if 'needs your next step' in text_of(last):                       # the browser handed the page over: the assistant answers it with a step (here: it reads the answer off the page)
             return {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser_step', 'args': {'action': 'done', 'answer': 'The wings are in the cart.'}}}
-        if any('SCENARIO:work_then_write' in text_of(m) for m in live if m['role'] == 'user'):
+        asked = next((text_of(m) for m in reversed(live) if m['role'] == 'user'), '')          # the request this tool result belongs to (a session keeps earlier requests too)
+        if 'SCENARIO:work_then_write' in asked:
             return {'chunks': ['Saved the plan. ', 'Here is ', 'what I did.'], 'chunk_delay': 0.3, 'delay': 2.5}
         return {'text': 'TOOL-RESULT ' + text_of(last)[-400:]}
     user = text_of(last)

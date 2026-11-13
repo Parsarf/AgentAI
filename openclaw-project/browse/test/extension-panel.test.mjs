@@ -80,6 +80,12 @@ test('the status follows the pairing, the link, the session, the assistant and t
   assert.deepEqual([waking.headline, waking.canStop, waking.canSend], ['Waking your assistant…', true, true]);
   const done = view({ link, state: { live: false, request: { state: 'completed' }, messages: [], cell: 'ready' } });
   assert.deepEqual([done.tone, done.headline, done.canSend, done.canStop], ['idle', 'Done', true, false]);      // after a run the same session takes the next message
+  // When the server sends its own status line, the panel shows those words and nothing of its own: what a run is doing, what it waits for, and how it ended.
+  assert.equal(view({ link, state: { ...live, request: { ...live.request, phase: 'working', label: 'Searching the web' } } }).headline, 'Searching the web');
+  assert.deepEqual((({ tone, headline }) => [tone, headline])(view({ link, state: { ...live, request: { ...live.request, phase: 'needs_you', label: 'Waiting for your permission' } } })), ['wait', 'Waiting for your permission']);
+  const unsure = view({ link, state: { live: false, cell: 'ready', request: { id: 'r', state: 'completed', label: 'Done · not confirmed', note: 'Done, but I could not confirm it from the page.' } } });
+  assert.deepEqual([unsure.headline, unsure.detail], ['Done · not confirmed', 'Done, but I could not confirm it from the page.']);
+  assert.equal(view({ link, state: { live: false, cell: 'ready', request: { id: 'r', state: 'failed' } } }).headline, 'Failed');      // a failure is never worded as a stop
 });
 
 test('the assistant\'s readiness is said in plain words, and not while a task runs', () => {

@@ -234,8 +234,16 @@ def _message(row):
 def state(request, claims, principal):
     view = service().panel_view(principal, claims['conversation'])
     latest = view['request']
-    return JsonResponse({'messages': [_message(r) for r in view['messages']], 'live': view['live'], 'cell': _cell_state(claims['account']),
-                         'request': {'id': latest['id'], 'state': latest['state'], 'paused': bool(latest['paused']), 'outcome': latest['outcome']} if latest else None})
+    request_view = {'id': latest['id'], 'state': latest['state'], 'paused': bool(latest['paused']), 'outcome': latest['outcome']} if latest else None
+    if request_view:
+        # The same status every Lumina screen shows (agentai_platform/work.py): the side panel words nothing itself. Older panels ignore these fields.
+        try:
+            from agentai_platform.work import WorkReader
+            shown = WorkReader(wiring.store()).detail(principal, latest['id'], after=10 ** 9)['task']
+            request_view.update(phase=shown['phase'], label=shown['label'], tone=shown['tone'], note=shown['note'][:300], attention=shown['attention'])
+        except Exception:
+            pass
+    return JsonResponse({'messages': [_message(r) for r in view['messages']], 'live': view['live'], 'cell': _cell_state(claims['account']), 'request': request_view})
 
 
 @panel_endpoint(['GET'])

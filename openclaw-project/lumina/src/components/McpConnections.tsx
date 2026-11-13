@@ -3,7 +3,7 @@ import { api, ApiError } from '../lib/api';
 import Toggle from './ui/Toggle';
 import Sheet from './ui/Sheet';
 import ServiceIcon from './ServiceIcon';
-import { summary } from './ToolApproval';
+import { argumentLine as summary } from '../lib/work';
 import { Plus, Search, Edit } from './Icons';
 import './integrations.css';
 

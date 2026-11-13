@@ -254,6 +254,84 @@ class NativeEndToEnd(unittest.TestCase):
         message = S.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='agent' ORDER BY id DESC LIMIT 1", (sent['id'],))[0]['content']
         self.assertEqual(texts[-1], message)
 
+    def test_the_push_gateway_streams_a_real_run_state_tool_rows_and_the_reply_as_it_is_written(self):
+        """What an open tab receives, end to end: Lumina's push gateway reading the real database while the real runtime runs, with reply drafts read from the real relay."""
+        from agentai_platform.live.push import PushGateway
+        from agentai_platform.lifecycle.cell_bridge import BRIDGE_ERROR
+        S = self.S
+        S.hold_cell('a')
+        sent = S.say('a', 'Do it. SCENARIO:work_then_write', 'k-push-1')
+
+        def draft(account, after, wait_ms):
+            got = BridgeRpc(account, S.socket)('chat.draft', {'after': after, 'waitMs': wait_ms})
+            return None if BRIDGE_ERROR in got else got
+        gateway = PushGateway(S.store, b's' * 40, draft=draft, window=40, tick=0.1)
+        frames, done = [], threading.Event()
+
+        def listen():
+            for raw in gateway.stream(S.principals['a'], focus=sent['id']):
+                for block in raw.decode().split('\n\n'):
+                    lines = [l for l in block.split('\n') if l and not l.startswith(':')]
+                    if lines:
+                        frames.append((lines[0].removeprefix('event: '), json.loads(lines[1].removeprefix('data: ')), time.time()))
+                if done.is_set() and frames and frames[-1][0] == 'task' and frames[-1][1]['task']['phase'] == 'ended':
+                    return
+        listener = threading.Thread(target=listen, daemon=True)
+        listener.start()
+        S.work(until=self.finished(sent['id']))
+        done.set(); listener.join(8)
+        tasks = [d for kind, d, _ in frames if kind == 'task']
+        phases = [t['task']['phase'] for t in tasks]
+        self.assertIn('working', phases)
+        self.assertEqual(phases[-1], 'ended')
+        self.assertEqual((tasks[-1]['task']['outcome'], tasks[-1]['task']['verification']), ('completed', 'verified'))      # a file it was asked to make exists: Lumina's own evidence
+        rows = {}
+        for t in tasks:
+            for row in t['rows']:
+                rows[row['key']] = row
+        tool = next(r for r in rows.values() if r['kind'] == 'tool')
+        self.assertEqual((tool['category'], tool['detail'], tool['status']), ('file', 'notes/plan.txt', 'done'))
+        self.assertTrue(any(r['kind'] == 'tool' for t in tasks if t['task']['phase'] == 'working' for r in t['rows']) or tasks[0]['task']['phase'] != 'ended')   # the tool row arrived while the run was going
+        drafts = [d for kind, d, _ in frames if kind == 'draft']
+        text = ''
+        for d in drafts:
+            self.assertEqual(d['task'], sent['id'])
+            text = d['add'] if d['at'] == 0 else text + d['add']
+        message = S.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='agent' ORDER BY id DESC LIMIT 1", (sent['id'],))[0]['content']
+        self.assertGreaterEqual(len(drafts), 2)
+        self.assertEqual(text, message)                              # the pieces add up to exactly the saved reply
+        self.assertTrue(drafts[-1]['done'])
+        self.assertNotIn('draft', [kind for kind, d, _ in frames if kind == 'draft' and d['task'] != sent['id']])
+
+    def test_a_permission_decision_reaches_a_run_that_is_going_and_starts_a_turn_when_it_is_not(self):
+        """The customer answers a permission prompt; Lumina tells the assistant by itself. On the real runtime: steered into the live run, or a follow-on turn afterwards.
+        Either way the chat records a decision (provenance system), never a message in the customer's name."""
+        S = self.S
+        S.hold_cell('a')
+        conversation = S.new_conversation('a')
+        sent = S.say('a', 'Take your time. SCENARIO:slow', 'k-decide-1', conversation=conversation)
+        thread, out = S.in_background(self.finished(sent['id']))
+        S.wait_for(lambda: S.rows("SELECT 1 FROM chat_deliveries WHERE request_id=? AND state='acknowledged'", (sent['id'],)), message='the run to start')
+        steered = S.chat.continue_after_decision(S.principals['a'], sent['id'], approved=True, tool='create_issue', service='Linear', key='approval-e2e-1')
+        self.assertTrue(steered.get('steered'))
+        thread.join(90)
+        self.assertEqual(S.request(sent['id'])['state'], 'completed')
+        kinds = [d['kind'] for d in S.rows('SELECT kind FROM chat_deliveries WHERE request_id=? ORDER BY attempt', (sent['id'],))]
+        self.assertEqual(kinds, ['turn', 'steer'])
+        self.assertEqual({d['state'] for d in S.rows('SELECT state FROM chat_deliveries WHERE request_id=?', (sent['id'],))}, {'completed'})
+        record = S.rows("SELECT provenance,content FROM chat_messages WHERE conversation_id=? AND content LIKE 'You allowed%'", (conversation,))
+        self.assertEqual([(r['provenance'], r['content']) for r in record], [('system', 'You allowed create issue on Linear.')])
+        # afterwards: the same decision route starts a turn of its own, named after the task it continues
+        S.hold_cell('a')
+        later = S.chat.continue_after_decision(S.principals['a'], sent['id'], approved=False, tool='create_issue', service='Linear', key='approval-e2e-2')
+        self.assertNotEqual(later['id'], sent['id'])
+        S.work(until=self.finished(later['id']))
+        self.assertEqual(S.request(later['id'])['state'], 'completed')
+        from agentai_platform.work import WorkReader
+        view = WorkReader(S.store).detail(S.principals['a'], later['id'])['task']
+        self.assertEqual((view['title'], view['follows']), ('Take your time. SCENARIO:slow', sent['id']))
+        self.assertFalse(S.rows("SELECT 1 FROM chat_messages WHERE conversation_id=? AND provenance='customer' AND content LIKE '%declined%'", (conversation,)))
+
     def test_a_message_sent_while_the_task_runs_is_steered_into_that_run(self):
         S = self.S
         S.hold_cell('a')

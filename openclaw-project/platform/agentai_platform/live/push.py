@@ -93,7 +93,9 @@ class PushGateway:
         """Yields SSE frames until the window ends. The caller has admitted `principal` and releases it afterwards."""
         focus = focus if TASK_ID.fullmatch(focus or '') else ''
         deadline = self.monotonic() + self.window
-        watch = sqlite3.connect(Path(self.store.path).absolute().as_uri() + '?mode=ro', uri=True, timeout=2, isolation_level=None, check_same_thread=False)
+        # Opened the way every other connection to this database is (read-write mode): a read-only handle on a write-ahead-log database cannot take part in its shared
+        # memory file properly, and on some systems that surfaces as I/O errors for the OTHER connections. This connection only ever runs the PRAGMA below.
+        watch = sqlite3.connect(Path(self.store.path).absolute().as_uri() + '?mode=rw', uri=True, timeout=2, isolation_level=None, check_same_thread=False)
         seen, checked, beat = object(), 0.0, self.monotonic()
         draft_seq, sent = 0, {'item': None, 'len': 0, 'done': True}
         focus_phase = None

@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import Chat from './Chat';
+vi.mock('../state/work', async () => (await import('../test/workMock')).mock);
 
 const data = { app: { user: { email: 'test@example.com' }, limits: { max_message_chars: 16000 }, features: { execution: true } }, chats: [], refreshChats: vi.fn(async () => {}), refresh: vi.fn(async () => {}) };
 vi.mock('../state/data', () => ({ useData: () => data }));
 vi.mock('../components/Orb', () => ({ default: () => <span data-testid="thinking-orb" /> }));
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 beforeEach(() => {
-  sessionStorage.clear(); Element.prototype.scrollIntoView = vi.fn();
+  sessionStorage.clear(); Element.prototype.scrollIntoView = vi.fn(); window.scrollTo = vi.fn() as any;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url === '/v1/csrf') return ok({ csrf_token: 't' });
     if (url === '/v1/devices') return ok({ available: true, use: false, connected: false, devices: [] });
