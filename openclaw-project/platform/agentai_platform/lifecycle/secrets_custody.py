@@ -106,6 +106,10 @@ class SecretStore:
             shutil.rmtree(path)
 
 
+# Requests and tokens a minute on one assistant's key. They stop a runaway loop from hammering the provider; they are not spending limits. 200,000 tokens a minute
+# was too low: one call of a long task carries 40,000 to 120,000 tokens, so a tool loop was refused after two to four calls (14% of all model calls on the live server).
+KEY_RPM, KEY_TPM = 120, 4_000_000
+
 class ProviderKeys:
     """Issues and revokes per-tenant virtual keys on the model proxy (LiteLLM API).
 
@@ -117,11 +121,13 @@ class ProviderKeys:
     def __init__(self, http, store):
         self.http, self.store = http, store
 
-    def issue(self, tenant, account_id, *, max_budget_usd, duration_days, models, rpm_limit=30, tpm_limit=200_000):
-        if not isinstance(max_budget_usd, (int, float)) or isinstance(max_budget_usd, bool) \
-                or not 0 < max_budget_usd <= 1000:
+    def issue(self, tenant, account_id, *, models, max_budget_usd=None, duration_days=None, rpm_limit=KEY_RPM, tpm_limit=KEY_TPM):
+        """Issue the assistant's model key. By default it never expires and carries no budget: a key that ran out (35 days, or $25 for its whole life) stopped the
+        customer's assistant for good with nothing in the app saying why. Spending limits are the customer's own choice in Settings (spend_limits.py), enforced by
+        the platform, not by the key. A budget or an expiry is still accepted for an operator who wants one on a particular key."""
+        if max_budget_usd is not None and (not isinstance(max_budget_usd, (int, float)) or isinstance(max_budget_usd, bool) or not 0 < max_budget_usd <= 100000):
             raise CustodyError('invalid key budget')
-        if type(duration_days) is not int or not 1 <= duration_days <= 400:
+        if duration_days is not None and (type(duration_days) is not int or not 1 <= duration_days <= 400):
             raise CustodyError('invalid key duration')
         if type(models) is not list or not models or not all(type(m) is str and m for m in models):
             raise CustodyError('explicit model allowlist required')
@@ -129,13 +135,27 @@ class ProviderKeys:
             if type(limit) is not int or isinstance(limit, bool) or limit < 1: raise CustodyError('invalid provider rate limit')
         if self.store.provider_key(tenant) is not None:
             return False  # idempotent: a retry reuses the key already in custody
-        status, body = self.http('POST', '/key/generate', {
-            'key_alias': tenant, 'max_budget': max_budget_usd, 'duration': f'{duration_days}d',
-            'models': models, 'rpm_limit': rpm_limit, 'tpm_limit': tpm_limit, 'metadata': {'account_id': account_id, 'tenant': tenant}})
+        body = {'key_alias': tenant, 'models': models, 'rpm_limit': rpm_limit, 'tpm_limit': tpm_limit, 'metadata': {'account_id': account_id, 'tenant': tenant}}
+        if max_budget_usd is not None:
+            body['max_budget'] = max_budget_usd
+        if duration_days is not None:
+            body['duration'] = f'{duration_days}d'
+        status, body = self.http('POST', '/key/generate', body)
         key = body.get('key') if isinstance(body, dict) else None
         if status != 200 or type(key) is not str:
             raise CustodyError('provider key issuance failed')
         self.store.store_provider_key(tenant, key)
+        return True
+
+    def ensure_unlimited(self, tenant, *, rpm_limit=KEY_RPM, tpm_limit=KEY_TPM):
+        """Bring a key issued by older code up to date (idempotent): no expiry, no lifetime budget, the current rate limits. A tenant with no key in custody is left alone.
+        LiteLLM reads `duration: "-1"` as "never expires" and an explicit null budget as "none" (checked against 1.102)."""
+        key = self.store.provider_key(tenant)
+        if key is None:
+            return False
+        status, _ = self.http('POST', '/key/update', {'key': key, 'duration': '-1', 'max_budget': None, 'budget_duration': None, 'rpm_limit': rpm_limit, 'tpm_limit': tpm_limit})
+        if status != 200:
+            raise CustodyError('provider key update failed')
         return True
 
     def ensure_models(self, tenant, models):

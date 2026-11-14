@@ -20,7 +20,8 @@ from ..lifecycle.coordinator import Coordinator
 from .client import BrowseJobUnknown
 from .loop import WALL_REASON
 from .. import request_states, safety
-from ..budget import OWN_KEY_AMOUNT, OWN_KEY_BROWSE_RESERVE
+from ..budget import OWN_KEY_AMOUNT
+from .. import spend_limits
 from .untrusted import neutralize
 from . import job_states
 from . import sessions as browse_sessions
@@ -291,9 +292,11 @@ class BrowserTool:
         request = self.current_request(account_id, request_id)
         if request is None:
             return 'There is no running task to browse for, so the browser was not started.', True
-        request_id, reserved = request['id'], int(request['amount_microusd'] or 1_000_000)
+        request_id, reserved = request['id'], int(request['amount_microusd'] or 0)
         if reserved <= OWN_KEY_AMOUNT:
-            reserved = OWN_KEY_BROWSE_RESERVE           # the customer's own model key: the nominal reservation would leave the browser no budget at all, yet its steps cost Lumina money
+            # The customer's own model key (a nominal reservation), or none recorded: the browser's budget is the task limit they chose in Settings, else none at all.
+            with self.store.connect() as con:
+                reserved = spend_limits.task_amount(con, account_id)
         with self.store.connect() as con:
             spent = con.execute('SELECT coalesce(estimated_cost_microusd,0) FROM browse_runs WHERE account_id=? AND request_id=?', (account_id, request_id)).fetchone()
             sessions = con.execute('SELECT count(*) FROM browse_sessions WHERE account_id=? AND request_id=?', (account_id, request_id)).fetchone()[0]

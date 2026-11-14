@@ -188,9 +188,8 @@ class TelegramChecks(unittest.TestCase):
 
     def test_budget_denial_cancels_and_acks(self):
         self.seed()
-        with self.store.connect() as con:
-            limits = dict(LIMITS, period_microusd=100)
-            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(limits),))
+        with self.store.connect() as con:                  # the account may not run work any more (its entitlement ran out): the one refusal that needs no spending
+            con.execute("UPDATE entitlements SET valid_until=datetime(0,'unixepoch') WHERE account_id='a'")
         self.link(100, 111)
         self.assertEqual(self.service.handle_update(self.update(77, 100, 111, 'work')), 'budget_denied')
         self.assertEqual(self.rows("SELECT state FROM customer_requests WHERE idempotency_key='tg77'")[0][0], 'cancelled')

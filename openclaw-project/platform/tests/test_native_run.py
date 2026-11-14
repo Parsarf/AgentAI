@@ -346,8 +346,10 @@ class GoalChecks(Base):
 
     def test_a_refused_admission_pauses_the_goal_instead_of_continuing_silently(self):
         first = self.goal_send()
-        with self.store.connect() as con:
-            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(dict(LIMITS, period_microusd=600000)),))
+        from agentai_platform import spend_limits
+        with self.store.connect() as con:                  # the customer's own limit for the period is reached by what this turn cost
+            con.execute('INSERT INTO provider_receipts VALUES (?,?,?,?,?,?,?,?)', ('a', first['id'], 'test-route', 'r-limit', 'a' * 64, 'test-price-v1', 5, int(self.now)))
+            spend_limits.put(con, 'a', {'task': None, 'daily': None, 'period': 5}, now=self.now)
         self.finish_turn('active')
         done = self.request(first['id'])
         self.assertEqual((done['continue_goal'], done['outcome']), (0, 'partial'))
@@ -494,6 +496,43 @@ class SpendingLimitChecks(Base):
         self.say('what can we do next?', key='after-budget')
         claim = self.queue.claim(owner='w', capacity=OK)
         self.assertIn('previous request in this conversation was partial', self.driver._outgoing(claim, self.driver._admit(claim)))
+
+    def test_a_task_with_no_limit_is_never_stopped_for_what_it_costs(self):
+        """Lumina sets no limit: a task admitted under the no-limit marker runs to its end however much it spends."""
+        from agentai_platform import spend_limits
+        from agentai_platform.chat import FixedRoute
+        class Spender(SyntheticGateway):
+            readings = [0, 700000, 5000000, 90000000, 90000000]
+            def usage_snapshot(self):
+                return self.readings.pop(0) if len(self.readings) > 1 else self.readings[0]
+        self.gateway = Spender(polls=3)
+        self.make_worker(spend_check_seconds=0)
+        self.chat.pricer = FixedRoute(spend_limits.NO_LIMIT, 'no-limit-v1')
+        sent = self.say(key='free')
+        self.assertEqual(self.worker.tick()['finished'], True)
+        row = self.request(sent['id'])
+        self.assertEqual((row['state'], row['outcome']), ('completed', 'completed'))
+        self.assertFalse([c for c in self.gateway.calls if c[0] == 'abort'])
+        self.assertEqual(self.rows("SELECT amount_microusd FROM provider_receipts")[0][0], 90000000)      # what it cost is still recorded
+
+    def test_a_limit_the_customer_sets_applies_to_the_task_that_is_running(self):
+        from agentai_platform import spend_limits
+        from agentai_platform.chat import FixedRoute
+        class Spender(SyntheticGateway):
+            readings = [0, 700000, 1400000, 2100000]
+            def usage_snapshot(self):
+                return self.readings.pop(0) if len(self.readings) > 1 else self.readings[0]
+        self.gateway = Spender(polls=50)
+        self.make_worker(spend_check_seconds=0)
+        self.chat.pricer = FixedRoute(spend_limits.NO_LIMIT, 'no-limit-v1')
+        sent = self.say(key='k1')                                                              # admitted with no limit
+        with self.store.connect() as con:
+            spend_limits.put(con, 'a', {'task': 1000000, 'daily': None, 'period': None}, now=self.now)      # then they choose one in Settings
+        self.worker.tick()
+        row = self.request(sent['id'])
+        self.assertEqual((row['state'], row['outcome']), ('completed', 'partial'))
+        self.assertIn('Your spending limit', row['outcome_note'])
+        self.assertTrue([c for c in self.gateway.calls if c[0] == 'abort'])
 
 
 class OutgoingChecks(Base):

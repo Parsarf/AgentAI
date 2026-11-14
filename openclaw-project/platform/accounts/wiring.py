@@ -218,12 +218,14 @@ def chat_service(db=None):
     """THE chat service: what the web app, the side panel, generated UI and the request worker all use.
 
     Its wiring follows the owner's `customer_execution` switch. Off: messages are recorded and wait unfunded, nothing is priced and no cell is contacted. On: a send
-    reserves the plan's per-task amount before it may run, needs the account's cell, and can steer a running task or act on a goal through the customer's gateway."""
+    records a reservation (the customer's own task limit, or the no-limit marker) before it may run, needs the account's cell, and can steer a running task or act on a goal through the customer's gateway."""
     from agentai_platform.chat import ChatService, FixedRoute
     db = db or store()
     live = switch_on('customer_execution')
     # Without the owner switch no route is priced, so a send waits unfunded exactly as before.
-    kwargs = {'pricer': FixedRoute(settings.CUSTOMER_RESERVATION_MICROUSD, 'plan-reservation-v1')} if live else {}
+    from agentai_platform import spend_limits
+    # Lumina puts no ceiling on a task: the reservation is the no-limit marker unless the customer chose a task limit in Settings (ChatService._reservation).
+    kwargs = {'pricer': FixedRoute(settings.CUSTOMER_RESERVATION_MICROUSD or spend_limits.NO_LIMIT, 'no-limit-v1')} if live else {}
     return ChatService(db, queue=request_queue(db, require_cell=live), ledger=ledger(db, funded=live), execution=live, browse=switch_on('browse_tasks'),
                        events=event_service(db), gateway_factory=cell_gateway if live else None,      # steering and goal controls talk to the customer's own cell
                        unmetered=own_model_active, **kwargs)

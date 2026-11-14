@@ -9,7 +9,7 @@ from agentai_platform.genui.store import BlockStore
 from agentai_platform.goals import GoalChain
 from agentai_platform.lifecycle.profiles import host_capacity
 from agentai_platform.panel.offer import PanelOffer
-from agentai_platform.request_worker import RequestWorker
+from agentai_platform.request_worker import RequestWorker, where
 from agentai_platform.routing.display import DisplayDecider
 from agentai_platform.routing.shadow import ShadowRouter
 from accounts import wiring
@@ -35,7 +35,9 @@ class Command(BaseCommand):
     help = 'Run waiting customer requests through their own cell (only while customer_execution is on).'
 
     def add_arguments(self, parser):
-        parser.add_argument('--interval', type=int, default=3)
+        # How long an idle worker waits before looking again. A second, not three: a new message used to wait up to three seconds before anything looked at it, and a
+        # request sent back to wait (its cell still starting) lost three more each time. A tick that did work does not wait at all.
+        parser.add_argument('--interval', type=float, default=1.0)
         parser.add_argument('--once', action='store_true')
 
     def handle(self, *args, **options):
@@ -50,9 +52,11 @@ class Command(BaseCommand):
                 locations.cleanup()
                 report = worker.tick() if wiring.switch_on('customer_execution') else {'idle': 'customer_execution is off'}
             except Exception as exc:   # one failed request must not stop the loop; the queue marks it uncertain
-                report = {'error': type(exc).__name__}
+                report = where(exc)    # the error's type and the code lines it passed through: never its message, never a value
             if report != {'ran': 0}:
                 print(json.dumps(report, sort_keys=True), flush=True)   # counts and states only; no account detail
             if options['once']:
                 return
+            if report.get('finished') or report.get('followed'):
+                continue               # a request just ended (or a plan or goal step was queued): the next one is looked for at once
             time.sleep(options['interval'])

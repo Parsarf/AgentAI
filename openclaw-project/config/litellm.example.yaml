@@ -1,18 +1,27 @@
 # Server-side proxy for the OpenClaw model route. No secrets in this file.
-# Requires a persistent PostgreSQL DATABASE_URL and a dedicated virtual key
-# with the $2/24h and $25/30d budget_limits. Test denials before live use.
+# Requires a persistent PostgreSQL DATABASE_URL. Assistant keys carry no budget and no expiry (spending limits are the customer's own, set in Settings and
+# enforced by the platform); they do carry per-minute request and token limits (platform/agentai_platform/lifecycle/secrets_custody.py).
 model_list:
-  - model_name: claude-sonnet-4-6
-    litellm_params:
-      model: anthropic/claude-sonnet-4-6
-      api_key: os.environ/ANTHROPIC_API_KEY
+  # Mirrors /opt/openclaw-production/config/litellm.yaml on the server (checked 2026-11-14). Keep the two the same: a config copied from an older version of this file
+  # dropped the cache settings and the 5.5 models.
   - model_name: claude-sonnet-5-5
     litellm_params:
       model: anthropic/claude-sonnet-5-5
       api_key: os.environ/ANTHROPIC_API_KEY
-  - model_name: claude-haiku-4-5
+      # Only the system prompt is marked here. The end-of-conversation cache point is set by Lumina's model relay (platform/agentai_platform/model_keys.py,
+      # mark_cache_points): the runtime appends an internal-context message as the LAST message of every request, so a point on `index: -1` marks a prefix
+      # that never comes back and the whole conversation is written to the cache at 1.25x on every call and never read (58% of all model spend, measured).
+      cache_control_injection_points:
+        - location: message
+          role: system
+    model_info:
+      input_cost_per_token: 0.000002
+      output_cost_per_token: 0.00001
+      cache_read_input_token_cost: 0.0000002
+      cache_creation_input_token_cost: 0.0000025
+  - model_name: claude-haiku-5-5
     litellm_params:
-      model: anthropic/claude-haiku-4-5
+      model: anthropic/claude-haiku-5-5
       api_key: os.environ/ANTHROPIC_API_KEY
 
 general_settings:

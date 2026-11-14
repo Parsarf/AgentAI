@@ -140,14 +140,20 @@ class ChatHTTPChecks(TestCase):
         store = AccountStore(connection.settings_dict['NAME'])
         scoped = ChatService(store, queue=RequestQueue(store),
                              ledger=BudgetLedger(store, service_limit_microusd=10 ** 9), pricer=FixedRoute(5000000))
+        from agentai_platform import spend_limits
         with patch('accounts.chat.service', lambda: scoped):
-            response = self.post(self.clients[0], '/v1/conversations/' + conversation + '/send', {'message': 'too expensive', 'key': 'denied'})
+            # The only spending limits are the customer's own. Theirs for the period is 5.00, and their first task holds all of it.
+            self.assertEqual(self.post(self.clients[0], '/v1/conversations/' + conversation + '/send', {'message': 'first', 'key': 'held'}).status_code, 202)
+            with store.transaction() as con:
+                account = con.execute("SELECT account_id FROM customer_requests WHERE idempotency_key='held'").fetchone()[0]
+                spend_limits.put(con, account, {'task': None, 'daily': None, 'period': 5000000})
+            response = self.post(self.clients[0], '/v1/conversations/' + conversation + '/send', {'message': 'over my own limit', 'key': 'denied'})
         self.assertEqual(response.status_code, 402, response.content)
         self.assertEqual(response.json()['error'], 'budget_denied')
         self.assertEqual(response.json()['category'], 'account_allowance_exhausted')
         with connection.cursor() as c:
             c.execute("SELECT state FROM customer_requests WHERE idempotency_key='denied'");self.assertEqual(c.fetchone()[0], 'cancelled')
-            c.execute('SELECT count(*) FROM tasks');self.assertEqual(c.fetchone()[0], 0)
+            c.execute('SELECT count(*) FROM tasks');self.assertEqual(c.fetchone()[0], 1)      # only the first task; the refused one left nothing behind
 
     def test_chat_page_flow_and_escaping(self):
         conversation = self.conversation()
@@ -162,7 +168,7 @@ class ChatHTTPChecks(TestCase):
         foreign = a.get('/account/chat/?conversation=' + self.conversation(client=1), secure=True)
         self.assertNotContains(foreign, '&lt;script&gt;')
         denied = a.get('/account/chat/?conversation=' + conversation + '&error=budget_denied&category=account_allowance_exhausted', secure=True)
-        self.assertContains(denied, 'cannot fund this request')
+        self.assertContains(denied, 'This request cannot start')
         self.assertContains(denied, 'account_allowance_exhausted')
         self.assertEqual(a.get('/account/chat/?error=evil', secure=True).status_code, 200)
         self.assertEqual(self.new_client().get('/account/chat/', secure=True).status_code, 302)

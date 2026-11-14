@@ -78,8 +78,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "9ddf5418d6fe10f28875b45f6cf7312a87df4d2c192c2ae7e561a5e1143e74b5",
-  "schema_columns": 680,
+  "schema_sha256": "730bb6c8c1e528a6af96901eca4fc70372d2c23b270fa03e0eebf59abbe67234",
+  "schema_columns": 685,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -341,6 +341,11 @@
    "date": "2026-11-13",
    "by": "Owner-authorized MCP implementation",
    "note": "Reviewed automatic and agent MCP setup: added public registry search recipient and query disclosure, encrypted custom header/Basic/user-owned OAuth credentials, connection provenance/source address columns and explicit per-tool automatic approval wording. Retention and live-only restore rules unchanged. Public policy updated with this release."
+  },
+  {
+   "date": "2026-11-14",
+   "by": "Claude Code, on the owner's instruction to replace Lumina's fixed spending limits with customer-set ones (owner to confirm)",
+   "note": "New table spend_limits (migration 0037): account_id, task_microusd, daily_microusd, period_microusd, updated_epoch. It holds the spending limits a customer chose for themselves in Settings > Usage: three dollar amounts and a timestamp per account. No message content, no contact detail, no new recipient, no retention change; it is not restored from backups. Judged not to need a policy wording change (an account setting of the same kind as the existing safety switches). schema_sha256 and schema_columns (680 to 685) updated to match."
   }
  ],
  "assistant_recipients": {

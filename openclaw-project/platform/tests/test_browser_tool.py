@@ -197,13 +197,25 @@ class ToolChecks(Base):
         self.assertTrue(any('Add to cart' in t for t in timeline))
         self.assertFalse(any('service-browser' in t for t in timeline))                   # no hand-made activity row: the runtime's own tool call is the one row for a browser call
 
-    def test_a_task_on_the_customers_own_model_key_still_gets_a_real_browsing_budget(self):
+    def test_a_task_on_the_customers_own_model_key_browses_under_the_customers_own_limit_or_none(self):
         request_id, claim = self.running_request()
         with self.store.connect() as con:                                                 # what an own-key request reserves: one micro-dollar, because their model is not Lumina's cost
             con.execute("UPDATE task_reservations SET amount_microusd=1 WHERE task_id=?", (claim.request_id,))
+        from agentai_platform import spend_limits
+        with self.store.connect() as con:
+            spend_limits.put(con, 'a', {'task': 1_000_000, 'daily': None, 'period': None})   # the task limit they chose in Settings
         self.rpc.script = [{'state': 'done', 'answer': 'ok', 'events': [], 'cost_microusd': 3000, 'url': 'https://x/'}]
         self.tool.call('a', self.ARGS)
-        self.assertEqual(self.rpc.calls[0][1]['max_cost_microusd'], 600000)               # the browser's steps are paid by Lumina: 60% of the $1 browsing reserve, not 60% of one micro-dollar (0)
+        self.assertEqual(self.rpc.calls[0][1]['max_cost_microusd'], 600000)               # 60% of their $1 task limit, not 60% of the one micro-dollar marker (0)
+
+    def test_with_no_limit_chosen_the_browser_has_no_cost_ceiling(self):
+        from agentai_platform import spend_limits
+        request_id, claim = self.running_request()
+        with self.store.connect() as con:
+            con.execute("UPDATE task_reservations SET amount_microusd=? WHERE task_id=?", (spend_limits.NO_LIMIT, claim.request_id))
+        self.rpc.script = [{'state': 'done', 'answer': 'ok', 'events': [], 'cost_microusd': 3000, 'url': 'https://x/'}]
+        self.tool.call('a', self.ARGS)
+        self.assertGreaterEqual(self.rpc.calls[0][1]['max_cost_microusd'], spend_limits.NO_LIMIT // 2)      # the marker, not a sum anyone could spend
 
     def test_a_second_call_in_one_run_is_a_job_of_its_own_and_the_budget_is_shared(self):
         request_id, claim = self.running_request()

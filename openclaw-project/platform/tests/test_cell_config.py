@@ -59,7 +59,8 @@ class CellConfigChecks(unittest.TestCase):
         self.assertEqual(prov.prepare(binding), ['--env', 'LITELLM_API_KEY=sk-testkey-0123456789abcdef'])
         self.assertEqual(prov.prepare(binding), ['--env', 'LITELLM_API_KEY=sk-testkey-0123456789abcdef'])   # retry reuses the key
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][2]['max_budget'], 25); self.assertEqual(calls[0][2]['models'], ['claude-sonnet-5-5', 'claude-haiku-5-5'])
+        self.assertNotIn('max_budget', calls[0][2]); self.assertNotIn('duration', calls[0][2])      # no lifetime budget, no expiry: the key must not stop the assistant by itself
+        self.assertEqual(calls[0][2]['models'], ['claude-sonnet-5-5', 'claude-haiku-5-5'])
         prov.finish(binding)
         cfg = json.loads((cells / TENANT / 'openclaw.json').read_text())
         self.assertIn('litellm', cfg['models']['providers']); self.assertEqual(set(owners), {(1000, 1000)})
@@ -121,7 +122,9 @@ class CellConfigChecks(unittest.TestCase):
         cfg = json.loads((cells / TENANT / 'openclaw.json').read_text())
         self.assertEqual(cfg['agents']['defaults']['model']['primary'], 'litellm/claude-sonnet-5-5'); self.assertEqual(cfg['gateway'], {'port': 1})       # only the model setup changed
         self.assertEqual([m['id'] for m in cfg['models']['providers']['litellm']['models']], ['claude-sonnet-5-5', 'claude-haiku-5-5'])         # the removed models are gone from an assistant that had them
-        self.assertEqual([(m, path, body['models']) for m, path, body in calls], [('POST', '/key/update', ['claude-sonnet-5-5', 'claude-haiku-5-5'])])
+        self.assertEqual([(m, path) for m, path, body in calls], [('POST', '/key/update'), ('POST', '/key/update')])
+        self.assertEqual((calls[0][2]['duration'], calls[0][2]['max_budget']), ('-1', None))      # first: an old key loses its 35-day expiry and its $25 lifetime budget
+        self.assertEqual(calls[1][2]['models'], ['claude-sonnet-5-5', 'claude-haiku-5-5'])
         before = (cells / TENANT / 'openclaw.json').read_text(); prov.before_start(binding)
         self.assertEqual((cells / TENANT / 'openclaw.json').read_text(), before)                                                                         # idempotent
 

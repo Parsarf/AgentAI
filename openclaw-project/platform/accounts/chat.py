@@ -18,7 +18,7 @@ from .services import Denied, rate
 from .views import endpoint, customer
 
 ERROR_CATEGORIES = {
-    'budget_denied': 'Your plan allowance or task budget cannot fund this request. Nothing was charged or started.',
+    'budget_denied': 'This request cannot start: a spending limit you set in Settings > Usage has been reached, or your plan is not active. Nothing was charged or started.',
     'queue_full': 'You already have the maximum number of waiting requests.',
     'request_conflict': 'This send conflicts with an existing request or changed payload.',
     'conversation_conflict': 'Conversation limit reached for this project.',

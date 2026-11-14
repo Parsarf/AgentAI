@@ -112,7 +112,7 @@ class CellProvisioner:
     """prepare(binding)->extra create argv (issues the key); finish(binding) patches the config;
     after_start(binding) gives the running cell working DNS."""
 
-    def __init__(self, keys, secrets, cell_state_root, *, max_budget_usd=25, duration_days=35, chown=os.chown, run=None, search_key_file=None,
+    def __init__(self, keys, secrets, cell_state_root, *, max_budget_usd=None, duration_days=None, chown=os.chown, run=None, search_key_file=None,
                  sleep=time.sleep, tool_relay_url=None, native_browser=False, safety=None, own_model=None):
         self.tool_relay_url = tool_relay_url      # http://<bridge address>:<port>/mcp; None = cells get no Lumina tools
         self.native_browser = native_browser      # True: the cell's own browser is switched on (the hands of Lumina's browser jobs)
@@ -182,6 +182,10 @@ class CellProvisioner:
             self.ensure_browser_relay_secret(binding)
         except Exception:
             pass                             # the cell's browser then fails visibly on its first use; nothing else about the start depends on it
+        try:
+            self.keys.ensure_unlimited(binding.tenant_ref)      # a key from older code expired after 35 days and had a $25 lifetime budget: both are removed here
+        except Exception:
+            pass                             # tried again at the next start; the model allow-list below does not depend on it
         try:
             if not self.keys.ensure_models(binding.tenant_ref, list(MODELS)):
                 return                       # no key in custody for this assistant: leave it exactly as it is

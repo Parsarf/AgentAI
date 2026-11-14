@@ -1,5 +1,9 @@
 """Offline Phase 5 ledger/admission core; no provider or native dispatch.
 
+Lumina sets no spending limit of its own. The only limits admission checks are the ones the customer chose in Settings (spend_limits.py): per task, per day and
+per billing period. An account with none is admitted whatever it has spent. The entitlement still decides WHETHER the account may run work (trial, active, grace);
+the amounts in its `limits_json` are no longer read as allowances, only its period start and its queue length.
+
 Input prices, upper bounds and receipts must come from trusted route adapters.
 No HTTP endpoint exposes these trust assertions. Unknown pricing or service
 allocation denies admission. Restoring a DB cannot by itself authorize spending:
@@ -10,13 +14,12 @@ import hashlib
 import json
 import time
 import uuid
-from agentai_platform import safety
+from agentai_platform import safety, spend_limits
 from agentai_platform.lifecycle.coordinator import Coordinator, identifier
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import NotFound
 
 OWN_KEY_AMOUNT = 1                    # micro-dollars: the nominal reservation of a task that runs on the customer's own model key (nothing about their model is limited or charged here)
-OWN_KEY_BROWSE_RESERVE = 1_000_000    # but the browser's step decider (JEV) is paid by Lumina, so a task on the customer's key still gets a real browsing budget: $1 per request
 
 class BudgetDenied(Exception): pass
 
@@ -57,15 +60,15 @@ class BudgetLedger:
         # Counting the whole reservation plus receipts would count usage twice.
         sql='''SELECT coalesce(sum(max(0,r.amount_microusd-coalesce((SELECT sum(p.amount_microusd)
             FROM provider_receipts p WHERE p.account_id=r.account_id AND p.task_id=r.task_id),0))),0)
-            FROM task_reservations r WHERE r.state IN ('active','uncertain')''';args=[]
+            FROM task_reservations r WHERE r.state IN ('active','uncertain') AND r.amount_microusd<?''';args=[spend_limits.NO_LIMIT]      # a no-limit reservation is a marker, not money held
         if account is not None:sql+=' AND r.account_id=?';args.append(account)
         return con.execute(sql,args).fetchone()[0]
 
     def admit(self, principal, *, task, project, conversation, key, amount_microusd,
               upper_bound_verified=False, currency='USD', unmetered=False):
-        """`unmetered`: the account runs on the customer's OWN model key, so none of Lumina's spending limits apply to it (the task, daily, period and service allowances are not
-        checked). The task still gets its reservation row, because the rest of the platform (the browser tool among it) looks for one; the amount is a nominal one. The limit on
-        how many tasks may wait in the queue stays: it protects Lumina's servers, not a budget."""
+        """The only spending limits checked are the customer's own (Settings > Usage): a day or a period that is already used up refuses the task. No limit set, nothing checked.
+        `unmetered`: the account runs on the customer's OWN model key, so even their Lumina limits do not apply to the model's cost. The task still gets its reservation row,
+        because the rest of the platform (the browser tool among it) looks for one. The limit on how many tasks may wait in the queue stays: it protects Lumina's servers, not a budget."""
         for value in [task,project,conversation,key]:identifier(value)
         if currency!='USD' or type(amount_microusd) is not int or amount_microusd<=0:
             raise ValueError('invalid allocation')
@@ -79,20 +82,21 @@ class BudgetLedger:
                 if existing['request_hash']!=digest:raise Conflict('allocation payload changed')
                 return dict(existing)
             entitlement,limits=self._limits(con,account)
-            if not unmetered and amount_microusd>limits['task_microusd']:raise BudgetDenied('task allowance exhausted')
+            own=spend_limits.get(con,account)
             if not con.execute('SELECT 1 FROM conversations WHERE account_id=? AND project_id=? AND id=?',(account,project,conversation)).fetchone():
                 raise NotFound()
             queued=con.execute("SELECT count(*) FROM tasks WHERE account_id=? AND state='queued'",(account,)).fetchone()[0]
             if queued>=limits['max_queued_tasks'] and safety.is_on(con,account,'queue_limit'):raise BudgetDenied('queue full')       # the plan's queue limit is the same `queue_limit` switch as the queue's own
             holds=self._holds(con,account)
-            for bound,since in ([] if unmetered else [('period_microusd',limits['period_start_epoch']),('daily_microusd',self.clock()-86400)]):
-                if self._spend(con,account,since)+holds+amount_microusd>limits[bound]:raise BudgetDenied('account allowance exhausted')
-            if not unmetered and self._spend(con)+self._holds(con)+amount_microusd>self.service_limit:raise BudgetDenied('service allocation exhausted')
+            for bound,since in ([] if unmetered else [('period',limits['period_start_epoch']),('daily',self.clock()-86400)]):
+                # The customer's own limit: reached means the next task waits for them to raise it (or for the day or period to turn over). A new task is never refused for what it
+                # MIGHT cost, only for what has already been spent or is held by a task with a limit of its own.
+                if own[bound] is not None and self._spend(con,account,since)+holds>=own[bound]:raise BudgetDenied('account allowance exhausted')
             con.execute('''INSERT INTO tasks(account_id,project_id,conversation_id,id,state,budget_microusd)
                 VALUES (?,?,?,?,'queued',?)''',(account,project,conversation,task,amount_microusd))
             con.execute("INSERT INTO task_reservations VALUES (?,?,?,?,?,?,'active',?)",
                         (account,task,key,digest,entitlement['id'],amount_microusd,int(self.clock())))
-            self._entry(con,account,task,'reserved',amount_microusd,key)
+            self._entry(con,account,task,'reserved',amount_microusd if spend_limits.limited(amount_microusd) else 0,key)      # the no-limit marker is never written as money
             self.transactions._audit(con,account,principal.actor_id,task,'budget_admit','completed')
             return dict(con.execute('SELECT * FROM task_reservations WHERE account_id=? AND task_id=?',(account,task)).fetchone())
 
@@ -134,7 +138,7 @@ class BudgetLedger:
             prior_released=con.execute("SELECT coalesce(sum(amount_microusd),0) FROM usage_entries WHERE account_id=? AND task_id=? AND kind='released'",(account,task)).fetchone()[0]
             reference='settle-'+uuid.uuid4().hex
             self._entry(con,account,task,'reconciled',spent,reference)
-            self._entry(con,account,task,'released',max(0,row['amount_microusd']-spent)-prior_released,reference)
+            self._entry(con,account,task,'released',(max(0,row['amount_microusd']-spent)-prior_released) if spend_limits.limited(row['amount_microusd']) else 0,reference)
             self.transactions._audit(con,account,'receipt-adapter',task,'budget_settle','completed')
             return True
 
@@ -144,8 +148,12 @@ class BudgetLedger:
             entitlement,limits=self._limits(con,principal.account_id,for_admission=False)
             eligible=entitlement['status'] in {'trial','active','grace'} and con.execute("SELECT julianday(?)>julianday(?,'unixepoch')",(entitlement['valid_until'],self.clock())).fetchone()[0]
             spent=self._spend(con,principal.account_id,limits['period_start_epoch']);held=self._holds(con,principal.account_id)
-            return {'reported_microusd':spent,'held_microusd':held,'period_remaining_microusd':max(0,limits['period_microusd']-spent-held) if eligible else 0,
-                    'period_limit_microusd':limits['period_microusd'],
+            own=spend_limits.get(con,principal.account_id);cap=own['period']      # the customer's own limit for the period, or None: Lumina has none
+            return {'reported_microusd':spent,'held_microusd':held,'period_remaining_microusd':(max(0,cap-spent-held) if eligible else 0) if cap is not None else None,
+                    'period_limit_microusd':cap,'period_start_epoch':limits['period_start_epoch'],
+                    'plan_period_microusd':limits['period_microusd'],      # the usage the plan was sold with; a fact about the plan, not a limit anything enforces
+                    'day_reported_microusd':self._spend(con,principal.account_id,self.clock()-86400),
+                    'limits':{'run_microusd':own['task'],'day_microusd':own['daily'],'period_microusd':own['period']},      # the customer's own (spend_limits.py); None = no limit
                     'admission_eligible':bool(eligible),
                     'usage_pending':bool(con.execute("SELECT 1 FROM task_reservations WHERE account_id=? AND state='uncertain'",(principal.account_id,)).fetchone()),
                     'currency':'USD','live_provider_accounting_verified':False}

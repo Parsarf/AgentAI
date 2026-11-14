@@ -93,9 +93,9 @@ class BillingHTTPChecks(TestCase):
         self.assertEqual(self.worker()['applied'], 1)
         view = a.get('/v1/account/billing', secure=True).json()
         self.assertEqual((view['status'], view['new_tasks_allowed'], view['plan']['monthly_price_usd']), ('active', True, '79.00'))
-        self.assertEqual(a.get('/v1/costs', secure=True).json()['period_limit_microusd'], 25_000_000)
+        self.assertEqual(a.get('/v1/costs', secure=True).json()['plan_period_microusd'], 25_000_000)
         self.assertEqual(b.get('/v1/account/billing', secure=True).json()['status'], 'none')
-        self.assertEqual(b.get('/v1/costs', secure=True).json()['period_limit_microusd'], 1_000_000)
+        self.assertEqual(b.get('/v1/costs', secure=True).json()['plan_period_microusd'], 1_000_000)
         self.assertEqual(b.get('/v1/account/billing', secure=True).json()['invoices'], [])
         page = a.get('/account/billing/?checkout=return', secure=True).content.decode()
         for text in ('Your plan is active', 'waiting for Stripe to confirm', 'https://invoice.stripe.com/', 'Manage payment, plan or cancel'):
@@ -170,7 +170,7 @@ class BillingHTTPChecks(TestCase):
             store.confirm('open_access', 'cost_accepted', 'owner'); store.set('open_access', True, 'owner')
             report = self.worker(); self.assertEqual(report['access_mode'], 'open'); self.assertEqual(report['open_access']['granted'], 2)
             for client in (a, b):
-                self.assertEqual(client.get('/v1/costs', secure=True).json()['period_limit_microusd'], 25_000_000)
+                self.assertEqual(client.get('/v1/costs', secure=True).json()['plan_period_microusd'], 25_000_000)
                 self.assertTrue(client.get('/v1/costs', secure=True).json()['admission_eligible'])
             view = b.get('/v1/account/billing', secure=True).json()
             self.assertEqual((view['access_mode'], view['new_tasks_allowed'], view['checkout_available']), ('open', True, False))

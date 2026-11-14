@@ -16,11 +16,13 @@ from agentai_platform.lifecycle.secrets_custody import CustodyError
 class RotationError(Exception): pass
 
 
-def rotate_provider_key(provider_keys, store, tenant, account_id, *, max_budget_usd, duration_days, models, pending_path):
+def rotate_provider_key(provider_keys, store, tenant, account_id, *, models, pending_path, max_budget_usd=None, duration_days=None):
     old = store.provider_key(tenant)
     if old is None: raise RotationError('no key to rotate; issue one first')
-    status, body = provider_keys.http('POST', '/key/generate', {'key_alias': tenant, 'max_budget': max_budget_usd, 'duration': f'{duration_days}d',
-                                                               'models': models, 'metadata': {'account_id': account_id, 'tenant': tenant, 'rotated': True}})
+    request = {'key_alias': tenant, 'models': models, 'metadata': {'account_id': account_id, 'tenant': tenant, 'rotated': True}}      # no budget and no expiry unless asked for (see ProviderKeys.issue)
+    if max_budget_usd is not None: request['max_budget'] = max_budget_usd
+    if duration_days is not None: request['duration'] = f'{duration_days}d'
+    status, body = provider_keys.http('POST', '/key/generate', request)
     new = body.get('key') if isinstance(body, dict) else None
     if status != 200 or not isinstance(new, str): raise RotationError('could not issue the replacement key; the old key is unchanged')
     store.replace_provider_key(tenant, new)

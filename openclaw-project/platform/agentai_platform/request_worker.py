@@ -5,11 +5,20 @@ request. A request left uncertain (crash, lease loss) is recovered from the runt
 person is parked: it gives up the one running slot (not its cell or its reservation) and a later tick takes it back when the person has answered or the run has ended.
 """
 import time
+import traceback
+from pathlib import Path
 
 from .adapters import CapabilityUnavailable
 from .lifecycle.types import Conflict
 from .request_queue import Defer, Parked, Recover, RequestClaim, RequestReceipt
 from . import timing
+
+
+def where(error) -> dict:
+    """Where an unexpected failure happened, safe for the journal: the error's type and the code lines it passed through (file, line, function). Never its message and
+    never a value: a message can carry a customer's words, a path or a key. Without this a failed request left only the name of an exception class, or nothing at all."""
+    frames = [f'{Path(f.filename).name}:{f.lineno} {f.name}' for f in traceback.extract_tb(error.__traceback__)][-8:]
+    return {'error': type(error).__name__, 'frames': frames}
 
 
 class RequestWorker:
@@ -40,8 +49,9 @@ class RequestWorker:
                 started = follow.tick()
                 if started:
                     report = {**report, 'followed': started}
-            except Exception:
-                pass   # plan and goal progress is retried on the next tick; it must never break request handling
+            except Exception as error:
+                # Plan and goal progress is retried on the next tick; it must never break request handling. It is reported, though: a goal that silently never continued looked like a finished task.
+                report = {**report, 'follow_error': where(error)}
         return report
 
     def _tick(self):

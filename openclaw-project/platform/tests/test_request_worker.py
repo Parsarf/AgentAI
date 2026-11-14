@@ -85,7 +85,7 @@ class RecoveryChecks(RequestWorkerChecks):
         self.assertEqual(self.rows("SELECT amount_microusd FROM provider_receipts"), [])        # nothing was spent
         self.assertEqual(self.rows("SELECT state FROM task_reservations")[0][0], 'settled')
 
-    def test_unreachable_runtime_is_abandoned_after_the_grace_period_with_the_reserved_charge(self):
+    def test_unreachable_runtime_is_abandoned_after_the_grace_period_and_charges_nothing_it_could_not_read(self):
         class Down(SyntheticGateway):
             def capabilities(self): return GatewayCapabilities('unverified', 0, False, False, False, False, False)
         self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1'); self.hold_cell()
@@ -98,7 +98,7 @@ class RecoveryChecks(RequestWorkerChecks):
         self.assertEqual(worker.tick()['reconciled'], False)
         self.now += 601
         self.assertEqual(worker.tick(), {'reconciled': True, 'abandoned': True})
-        self.assertEqual([tuple(r) for r in self.rows("SELECT amount_microusd,price_version FROM provider_receipts")], [(1000000, 'reservation-upper-bound-v1')])
+        self.assertEqual([tuple(r) for r in self.rows("SELECT amount_microusd,price_version FROM provider_receipts")], [(0, 'spend-unreadable-v1')])
 
     def rows(self, sql):
         with self.store.connect() as con:

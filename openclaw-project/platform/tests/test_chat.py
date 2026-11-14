@@ -20,6 +20,13 @@ LIMITS = {'period_start_epoch': 2000000000 - 100000, 'period_microusd': 100000,
 
 
 class ChatChecks(unittest.TestCase):
+    def limit(self, *accounts, **chosen):
+        """The customer's own spending limits (Settings > Usage): the only limits there are."""
+        from agentai_platform import spend_limits
+        with self.store.connect() as con:
+            for account in accounts or ('a',):
+                spend_limits.put(con, account, {'task': None, 'daily': None, 'period': None, **chosen}, now=self.now)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.store = Store(Path(self.tmp.name) / 'state' / 'db.sqlite3');self.store.initialize()
@@ -79,9 +86,7 @@ class ChatChecks(unittest.TestCase):
         self.assertTrue(self.rows("SELECT 1 FROM customer_requests WHERE state='waiting' AND id=?", (result['id'],)))
 
     def test_budget_denial_cancels_request_without_residue(self):
-        with self.store.connect() as con:
-            limits = dict(LIMITS, period_microusd=600)
-            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(limits),))
+        self.limit(period=500)
         self.send(key='first')
         with self.assertRaises(BudgetDenied) as caught:
             self.send(key='second')
@@ -89,11 +94,9 @@ class ChatChecks(unittest.TestCase):
         self.assertEqual(self.rows("SELECT state FROM customer_requests WHERE idempotency_key='second'")[0][0], 'cancelled')
 
     def test_an_account_on_its_own_model_key_goes_through_when_its_lumina_allowance_is_used_up(self):
-        with self.store.connect() as con:
-            limits = dict(LIMITS, period_microusd=600, daily_microusd=600, task_microusd=600)
-            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id IN ('a','b')", (json.dumps(limits),))
+        self.limit('a', 'b', period=500, daily=500)                                          # each customer's own limit
         self.send(key='first')
-        with self.assertRaises(BudgetDenied): self.send(key='second')                       # a is out of allowance...
+        with self.assertRaises(BudgetDenied): self.send(key='second')                       # a has reached its own limit...
         self.service.unmetered = lambda account: account == 'a'                              # ...until it runs on its own key
         sent = self.send(key='third')
         self.assertEqual((sent['admission'], sent['price_version'], sent['execution_enabled']), ('reserved', 'own-key-v1', True))
@@ -103,8 +106,7 @@ class ChatChecks(unittest.TestCase):
         with self.assertRaises(BudgetDenied): self.send(principal=self.b, key='b2')         # b did not switch it on: its limits still apply
 
     def test_the_own_key_exemption_also_covers_requests_a_block_button_starts(self):
-        with self.store.connect() as con:
-            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(dict(LIMITS, period_microusd=1, daily_microusd=1)),))
+        self.send(key='hold'); self.limit(period=500, daily=500)                           # a running task holds the customer's whole limit
         result = self.service.queue.submit(self.a, message='go', key='sp1', conversation_id='c-a', intent='chat')
         with self.assertRaises(BudgetDenied): self.service._admit(self.a, result, 'c-a', 'sp1', 'go')
         self.service.unmetered = lambda account: True
@@ -185,13 +187,12 @@ class ChatChecks(unittest.TestCase):
 
     def test_a_retry_the_budget_refuses_leaves_nothing_behind_and_can_be_tried_again_later(self):
         first = self.send(key='k1'); self.service.cancel(self.a, first['id'])
-        with self.store.connect() as con:
-            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(dict(LIMITS, period_microusd=100)),))
+        self.send(key='k0')                                                                # another task of theirs holds 500
+        self.limit(period=500)                                                             # and their own limit for the period is 500
         with self.assertRaises(BudgetDenied):
             self.service.retry(self.a, first['id'])
         self.assertFalse(self.rows("SELECT 1 FROM customer_requests WHERE state='waiting' AND idempotency_key LIKE 'retry-%'"))
-        with self.store.connect() as con:
-            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps(LIMITS),))
+        self.limit()                                                                       # they remove the limit
         later = self.service.retry(self.a, first['id'])                                    # a new attempt, not the dead cancelled one
         self.assertEqual((later['state'], later['admission']), ('waiting', 'reserved'))
 
@@ -308,14 +309,25 @@ class ChatChecks(unittest.TestCase):
         self.assertEqual([tuple(r) for r in receipt], [(700, 'litellm-reported-v1')])
         self.assertEqual(self.rows("SELECT state FROM task_reservations WHERE account_id='a'")[0][0], 'settled')
 
-    def test_unreadable_spend_charges_the_reserved_upper_bound(self):
+    def test_unreadable_spend_never_charges_the_reservation(self):
+        """A reservation is the customer's own limit (or the no-limit marker), not a cost: when the provider cannot say what was spent, nothing is invented."""
         class Blind(SyntheticGateway):
             def usage_snapshot(self): raise RuntimeError('no spend')
         self.send()
         claim = self.queue.claim(owner='w', capacity=CAPACITY)
         self.queue.finish(claim, self.metered_driver(Blind()).execute(claim))
         self.assertEqual([tuple(r) for r in self.rows("SELECT amount_microusd,price_version FROM provider_receipts")],
-                         [(500, 'reservation-upper-bound-v1')])
+                         [(0, 'spend-unreadable-v1')])
+
+    def test_with_no_limit_chosen_nothing_is_refused_and_a_chosen_task_limit_becomes_the_reservation(self):
+        for n in range(3):
+            sent = self.send(key=f'free{n}')                                               # 3 x 500 held: far past every old plan figure the test plan has, nothing refuses
+            self.assertEqual((sent['admission'], sent['price_version']), ('reserved', 'fixed-route-v1'))
+            self.service.cancel(self.a, sent['id'])
+        self.limit(task=70)
+        sent = self.send(key='capped')
+        self.assertEqual(sent['price_version'], 'customer-task-limit-v1')
+        self.assertEqual(self.rows("SELECT amount_microusd FROM task_reservations WHERE account_id='a' AND task_id=?", (sent['id'],))[0][0], 70)
 
     def test_run_that_never_ends_is_stopped_at_its_time_limit_and_failed(self):
         gateway = SyntheticGateway(polls=10**6)

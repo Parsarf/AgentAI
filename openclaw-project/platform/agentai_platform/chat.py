@@ -13,6 +13,7 @@ import time
 import uuid
 from .adapters import CapabilityUnavailable
 from .budget import OWN_KEY_AMOUNT, BudgetDenied, BudgetLedger
+from . import spend_limits
 from .events import EventService
 from . import request_states, safety
 from .genui import document as gen_document, prompts as gen_prompts, schema as gen_schema
@@ -47,6 +48,7 @@ class UnmeasuredRoute:
         raise CapabilityUnavailable('provider route not measured')
 
 
+CUSTOMER_LIMIT_PRICE_VERSION = 'customer-task-limit-v1'      # the reservation is the task limit the customer chose in Settings
 OWN_KEY_PRICE_VERSION = 'own-key-v1'       # an own-key task reserves OWN_KEY_AMOUNT, one micro-dollar (no limit is checked on the customer's model)
 
 
@@ -198,7 +200,7 @@ class ChatService:
             return None, None, project_id
         own = self._own_model(principal.account_id, result['id'])
         try:
-            amount, price_version = (OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION) if own else self.pricer.reservation(message_for_cost)
+            amount, price_version = self._reservation(principal.account_id, own, message_for_cost)
         except CapabilityUnavailable:
             return None, None, project_id
         try:
@@ -263,7 +265,7 @@ class ChatService:
             self.coordinator._audit(con, principal.account_id, principal.actor_id, result['id'], 'chat.send.panel' if surface == 'panel' else 'chat.send', 'completed')
         own = self._own_model(principal.account_id, result['id'])
         try:
-            amount, price_version = (OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION) if own else self.pricer.reservation(message)
+            amount, price_version = self._reservation(principal.account_id, own, message)
         except CapabilityUnavailable:
             # No verified route: the request waits unfunded, execution stays off.
             return {**result, 'conversation_id': conversation_id, 'execution_enabled': False,
@@ -279,6 +281,17 @@ class ChatService:
         self._announce_queued(principal.account_id, result['id'])
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,
                 'admission': 'reserved', 'price_version': price_version, 'response_type': kind if kind in ('plan', 'browse') else 'text'}
+
+    def _reservation(self, account, own, message):
+        """-> (reservation amount, price version). A task on the customer's own model key reserves the nominal own-key amount. Any other task reserves the customer's OWN task
+        limit when they set one in Settings (spend_limits.py), else whatever the route says (in production the no-limit marker: Lumina puts no ceiling on a task).
+        Raises CapabilityUnavailable when no route is priced (execution is off)."""
+        if own:
+            return OWN_KEY_AMOUNT, OWN_KEY_PRICE_VERSION
+        amount, price_version = self.pricer.reservation(message)
+        with self.store.connect() as con:
+            chosen = spend_limits.get(con, account)['task']
+        return (chosen, CUSTOMER_LIMIT_PRICE_VERSION) if chosen else (amount, price_version)
 
     def _own_model(self, account, request):
         if self.queue.model_selection is not None and self.ledger.service_limit is None:
@@ -500,7 +513,7 @@ class ChatService:
                 WHERE account_id=? AND conversation_id=? AND id>? ORDER BY id LIMIT ?''',
                 (principal.account_id, conversation_id, after, limit + 1)).fetchall()
             tasks = con.execute('''SELECT r.id,r.state,r.paused,r.cancel_requested,r.result,r.created_epoch,r.outcome,r.outcome_note,r.verification,r.parked_reason,r.goal_mode,r.continues,
-                    r.continue_goal,t.state AS task_state,t.budget_microusd,v.state AS reservation_state
+                    r.continue_goal,t.state AS task_state,CASE WHEN t.budget_microusd>=1000000000000 THEN NULL ELSE t.budget_microusd END AS budget_microusd,v.state AS reservation_state
                 FROM customer_requests r LEFT JOIN tasks t ON t.account_id=r.account_id AND t.id=r.id
                 LEFT JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
                 WHERE r.account_id=? AND r.conversation_id=? ORDER BY r.sequence DESC LIMIT 20''',
@@ -530,7 +543,7 @@ class ChatService:
         with self.store.connect() as con:
             self.store._authorize(con, principal)
             row = con.execute('''SELECT r.id,r.state,r.paused,r.cancel_requested,r.result,r.created_epoch,r.conversation_id,r.outcome,r.outcome_note,r.verification,r.parked_reason,r.goal_mode,r.continues,
-                    r.continue_goal,t.state AS task_state,t.budget_microusd,v.state AS reservation_state
+                    r.continue_goal,t.state AS task_state,CASE WHEN t.budget_microusd>=1000000000000 THEN NULL ELSE t.budget_microusd END AS budget_microusd,v.state AS reservation_state
                 FROM customer_requests r LEFT JOIN tasks t ON t.account_id=r.account_id AND t.id=r.id
                 LEFT JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
                 WHERE r.account_id=? AND r.id=?''', (principal.account_id, request_id)).fetchone()

@@ -17,7 +17,7 @@ import json
 import os
 import time
 import uuid
-from . import activity as activity_mod, outcome as outcome_mod, timing
+from . import activity as activity_mod, outcome as outcome_mod, spend_limits, timing
 from .browse import job_states as browse_job_states
 from .adapters import CapabilityUnavailable
 from .browse.untrusted import neutralize
@@ -95,7 +95,7 @@ class ChatDriver:
     """
 
     def __init__(self, store, *, ledger: BudgetLedger, gateway_factory, clock=time.time, events: EventService | None = None, sleep=None, pause=0.25, wait_ms=WAIT_SLICE_MS,
-                 run_timeout=RUN_TIMEOUT, usage_wait=45, spend_check_seconds=20, park_limit=PARK_LIMIT, goal_chain_limit=GOAL_CHAIN_LIMIT, outage_limit=OUTAGE_LIMIT, heartbeat=None, genui=None,
+                 run_timeout=RUN_TIMEOUT, usage_wait=45, spend_check_seconds=5, park_limit=PARK_LIMIT, goal_chain_limit=GOAL_CHAIN_LIMIT, outage_limit=OUTAGE_LIMIT, heartbeat=None, genui=None,
                  artifacts=None, display=None, browse_factory=None, queue=None, panel=None):
         self.panel = panel                     # panel.offer.PanelOffer: keeps the customer's own Chrome holding a fresh side-panel ticket while a run goes on (it lapses by itself soon after); None = no panel
         self.browse_factory = browse_factory   # callable(account_id) -> BrowseRpc: only to stop browser jobs when their request ends; the jobs run inside the runtime's tool call
@@ -580,18 +580,39 @@ class ChatDriver:
             row = con.execute('SELECT amount_microusd FROM task_reservations WHERE account_id=? AND task_id=?', (claim.account_id, claim.request_id)).fetchone()
         return int(row[0]) if row else None
 
+    def _task_limit(self, claim):
+        """The most this task may cost, or None. Only the customer sets one (Settings > Usage): the limit the task was admitted under, or a lower one they chose since.
+        A task admitted with no limit has none, unless they set one while it runs. A task on their own model key is never limited here."""
+        reserved = self._reserved(claim)
+        if reserved == 1:                                                                      # the own-key marker (budget.OWN_KEY_AMOUNT): their model, their bill
+            return None
+        admitted = reserved if spend_limits.limited(reserved) else None
+        try:
+            with self.store.connect() as con:
+                chosen = spend_limits.get(con, claim.account_id)['task']
+        except Exception:
+            chosen = None
+        limits = [value for value in (admitted, chosen) if value]
+        return min(limits) if limits else None
+
     def _over_budget(self, claim, gateway, spend):
-        """The customer's spending limit holds while a run is going, not only at admission: a run that has spent its reservation is stopped."""
+        """The customer's own task limit holds while a run is going, not only at admission. No limit chosen: nothing is ever stopped for its cost."""
         if self.clock() < spend['next']:
             return False
         spend['next'] = self.clock() + self.spend_check_seconds
-        reserved = self._reserved(claim)
+        limit = self._task_limit(claim)
         first = next(iter(self._deliveries(claim)), None)
-        if not reserved or not first or first['usage_before_microusd'] is None or getattr(gateway, 'usage_snapshot', None) is None:
+        if not limit or not first or first['usage_before_microusd'] is None or getattr(gateway, 'usage_snapshot', None) is None:
             return False
         try:
-            return gateway.usage_snapshot() - first['usage_before_microusd'] >= reserved
-        except Exception:
+            return gateway.usage_snapshot() - first['usage_before_microusd'] >= limit
+        except Exception as error:
+            # The spend could not be read this time. The run goes on (a provider blip must not stop work) and the next check asks again; it is said out loud once per run.
+            if not spend.get('warned'):
+                spend['warned'] = True
+                timing.mark(claim.request_id, 'spend_unreadable', error=type(error).__name__)
+                self._emit(claim, 'progress', {'summary': 'Your task limit could not be checked for a moment; it will be checked again shortly.'}, 'gateway')
+            spend['next'] = self.clock() + 2
             return False
 
     def _abort_all(self, claim, gateway, session):
@@ -719,10 +740,10 @@ class ChatDriver:
     def _budget_stop(self, claim, gateway, session):
         self._abort_all(claim, gateway, session)
         self._stop_browser_jobs(claim)
-        self._pause_goal(claim, gateway, session, 'The spending limit for this task was reached.')
+        self._pause_goal(claim, gateway, session, 'The spending limit the customer set for this task was reached.')
         self._mirror(claim, gateway, session, set())
-        self._emit(claim, 'budget', {'note': 'The spending limit for this task was reached.'}, 'gateway')
-        note = 'The spending limit for this task was reached, so the work was stopped.'
+        self._emit(claim, 'budget', {'note': 'Your spending limit for this task was reached.'}, 'gateway')
+        note = 'Your spending limit for this task was reached, so the work was stopped. You can change or remove the limit in Settings > Usage.'
         return self._close(claim, 'completed', self._last_reply(claim) or note, gateway, self._before(claim),
                            verdict=outcome_mod.Verdict('partial', 'unverified', note, 'Stopped: ' + note))
 
@@ -925,14 +946,15 @@ class ChatDriver:
     def _reconcile_usage(self, gateway, claim, before):
         """Record what the provider key actually spent for this task as a ledger receipt.
 
-        Falls back to the reserved upper bound when provider spend cannot be read, so the slot never wedges and the customer is never under-charged silently.
-        Spend lands at the provider a little after the run: the reading is taken again until it holds still.
+        When provider spend cannot be read the receipt records what is known and says so in its price version: the last reading that worked, else nothing. A customer is
+        never charged a reservation they did not spend (a reservation is their own limit, or the no-limit marker). Spend lands at the provider a little after the run:
+        the reading is taken again until it holds still.
         """
         snapshot = getattr(gateway, 'usage_snapshot', None)
         if snapshot is None:
             return
         reserved = self._reserved(claim)
-        amount, version, last = None, 'reservation-upper-bound-v1', None
+        amount, version, last = None, 'spend-unreadable-v1', None
         if before is not None:
             deadline = self.clock() + self.usage_wait
             stable = 0
@@ -953,7 +975,7 @@ class ChatDriver:
                     break
                 self.sleep(self.pause)
         if amount is None:
-            amount = reserved if reserved else 0
+            amount = max(0, last - before) if last is not None and before is not None else 0      # never the reservation: that is a limit (or the no-limit marker), not a cost
         digest = hashlib.sha256(json.dumps({'before': before, 'after': last, 'task': claim.request_id}).encode()).hexdigest()
         self.ledger.receipt(account=claim.account_id, task=claim.request_id, provider='litellm',
                             request='litellm-' + claim.request_id, amount_microusd=int(amount),
@@ -1017,7 +1039,7 @@ class ChatDriver:
                         (seconds, claim.account_id, claim.request_id))
 
     def abandon(self, claim: RequestClaim):
-        """Last resort for a request whose runtime cannot be reached for a long time: fail it and charge the reserved upper bound."""
+        """Last resort for a request whose runtime cannot be reached for a long time: fail it. Nothing is charged that was not read from the provider."""
         for delivery in self._deliveries(claim, states=LIVE_STATES):
             self._set_delivery(claim, delivery['attempt'], 'aborted', ended=int(self.clock()), status='aborted')
         self._emit(claim, 'progress', {'summary': 'The runtime could not be reached; the request was stopped.'}, 'reconciler')
