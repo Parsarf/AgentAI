@@ -137,12 +137,12 @@ class TransportChecks(unittest.TestCase):
         self.conn = FakeConn(); self.link = dv.DeviceHub().attach('acct', 'd1', self.conn); self.t = DeviceTransport(self.link, self.tmp.name)
 
     def answer(self, **reply):
-        self.link.push({**reply})
+        self.link.push({**reply, 'id': reply['id'] + self.t._offset})       # on the wire a command carries its task's own offset, so a late reply from an earlier task is never taken for this one's
 
     def test_commands_go_out_and_replies_come_back_for_a_whole_session(self):
         s = Session(self.t)
         self.answer(id=1, ok=True, url='https://x/', title='T'); self.assertTrue(s.open('https://x/')['ok'])
-        self.assertEqual(self.conn.sent[0], {'id': 1, 'cmd': 'open', 'url': 'https://x/'})
+        self.assertEqual(self.conn.sent[0], {'id': self.t._offset + 1, 'cmd': 'open', 'url': 'https://x/'})
         self.answer(id=2, ok=True, snapshot='[1] <a> "Go"'); self.assertTrue(s.snapshot()['ok'])
         s.close()
         self.assertEqual([m['cmd'] for m in self.conn.sent], ['open', 'snapshot', 'close'])        # told once, though Session.close and close() both ask

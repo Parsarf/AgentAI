@@ -7,6 +7,8 @@ shot-NNN.jpg (`screenshot` always, `view` when asked to save) exactly as the oth
 from __future__ import annotations
 import base64
 import binascii
+import secrets
+import time
 from collections import deque
 from pathlib import Path
 
@@ -18,6 +20,10 @@ class DeviceTransport:
         self.link, self.out, self.shots, self._pending = link, Path(out_dir), 0, {}
         self.stderr_tail = deque(maxlen=20)
         self.closed, self._told = False, False
+        # The link is shared by every task of the account, and each task's commands are numbered from 1. On the wire they carry this task's own offset, so a reply that
+        # arrives late from an EARLIER task can never be taken for the answer to one of this task's commands (it used to end the next task with "out-of-order reply", or
+        # worse, be accepted when the numbers happened to match).
+        self._offset = secrets.randbelow(1 << 40) * 1000 + 1000
         link.begin()
 
     def send(self, obj):
@@ -25,12 +31,18 @@ class DeviceTransport:
             raise BrokenPipeError('browser closed')
         if obj.get('cmd') == 'close' and obj.get('id') == 0:
             return self._close_remote(obj)
-        self._pending[obj.get('id')] = (obj.get('cmd'), bool(obj.get('save')))
-        self.link.send(obj)
+        wire = self._offset + int(obj.get('id') or 0)
+        self._pending[wire] = (obj.get('cmd'), bool(obj.get('save')), obj.get('id'))
+        self.link.send({**obj, 'id': wire})
 
     def recv(self, timeout):
-        reply = self.link.recv(timeout)
-        cmd, save = self._pending.pop(reply.get('id'), (None, False))
+        deadline = time.monotonic() + timeout
+        while True:
+            reply = self.link.recv(max(0.01, deadline - time.monotonic()))
+            if reply.get('id') in self._pending:
+                break                                      # anything else is a late reply to an earlier task's command: not ours, dropped
+        cmd, save, own = self._pending.pop(reply['id'])
+        reply = {**reply, 'id': own}
         if cmd in ('screenshot', 'view') and reply.get('ok'):
             reply = self._picture(reply, keep=cmd == 'screenshot' or save, drop_data=cmd == 'screenshot')
         return reply

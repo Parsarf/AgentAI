@@ -195,7 +195,7 @@ class ToolChecks(Base):
         self.assertEqual([r['kind'] for r in self.rows('SELECT kind FROM browse_steps ORDER BY n')], ['opened', 'step', 'screenshot'])
         timeline = [r['public_payload'] for r in self.rows('SELECT public_payload FROM events')]
         self.assertTrue(any('Add to cart' in t for t in timeline))
-        self.assertTrue(any('"status": "done"' in t for t in timeline))
+        self.assertFalse(any('service-browser' in t for t in timeline))                   # no hand-made activity row: the runtime's own tool call is the one row for a browser call
 
     def test_a_task_on_the_customers_own_model_key_still_gets_a_real_browsing_budget(self):
         request_id, claim = self.running_request()

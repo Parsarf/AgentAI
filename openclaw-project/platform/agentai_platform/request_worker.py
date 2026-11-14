@@ -100,7 +100,9 @@ class RequestWorker:
         except (CapabilityUnavailable, Conflict):
             pass
         with self.queue.store.connect() as con:
-            started = con.execute('SELECT created_epoch FROM customer_requests WHERE account_id=? AND id=?',
+            # Since it was last known alive (its lease, which is at most 120 s ahead of that moment), not since the message was sent: a request that had waited its turn for half an hour was abandoned, and charged
+            # its whole reservation, on the first reconnect that failed.
+            started = con.execute('SELECT max(created_epoch,coalesce(lease_until,0)-120) FROM customer_requests WHERE account_id=? AND id=?',
                                   (stuck.account_id, stuck.request_id)).fetchone()[0]
         if self.clock() - started > self.abandon_after:
             # The runtime has been unreachable too long: stop the request so the shared slot is not held forever.

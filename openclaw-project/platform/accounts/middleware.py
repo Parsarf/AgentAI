@@ -10,6 +10,9 @@ from agentai_platform.security import NotFound
 from .services import Denied, Limited, customer_scope, rate
 
 WEBHOOKS={'/v1/telegram/webhook','/v1/billing/webhook'}
+# Routes whose views take structured state up to 131072 bytes (views.endpoint, structured=True): the general 8 KB ceiling used to refuse them first.
+STRUCTURED_ROUTES=('/v1/blocks/','/v1/genui/artifacts/')
+STRUCTURED_BODY=131072
 
 class BoundaryMiddleware:
     def __init__(self, get_response): self.get_response=get_response
@@ -22,7 +25,7 @@ class BoundaryMiddleware:
             except ValueError: return JsonResponse({'error':'invalid_proxy_identity'},status=400)
         try:
             request.get_host()
-            if len(request.get_full_path()) > 2048 or int(request.META.get('CONTENT_LENGTH') or 0) > (31457280 if request.path=='/v1/requests' or request.path.endswith('/send') or request.path.endswith('/files') else 262144 if request.path in WEBHOOKS else 8192):
+            if len(request.get_full_path()) > 2048 or int(request.META.get('CONTENT_LENGTH') or 0) > (31457280 if request.path=='/v1/requests' or request.path.endswith('/send') or request.path.endswith('/files') else 262144 if request.path in WEBHOOKS else STRUCTURED_BODY if request.path.startswith(STRUCTURED_ROUTES) else 8192):
                 response=JsonResponse({'error':'request_too_large'},status=413)
             elif any(x in request.GET for x in ['account','account_id','tenant','tenant_id','session','session_id','native_session_ref','deployment_id']) or any(x in request.META for x in ['HTTP_X_ACCOUNT_ID','HTTP_X_TENANT_ID','HTTP_X_SESSION_ID','HTTP_X_AGENT_ID']):
                 response=JsonResponse({'error':'routing_override_denied'},status=400)
@@ -68,6 +71,8 @@ class AccountMiddleware:
                     scope,limit='api.autosave',90          # debounced draft saves while editing a plan
                 if request.method == 'POST' and request.path.startswith('/v1/location/'):
                     scope,limit='api.location',60
+                if request.method == 'POST' and request.path.startswith('/v1/browse/') and request.path.endswith('/control'):
+                    scope,limit='api.control',240          # the customer driving the browser: every click, key and scroll is a request (the route's own limit is 240 too). At 30 a minute a take-over was cut off, and Stop with it
                 rate(scope,str(request.user.pk)+'|'+request.client_ip,limit,60)
             except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'60'})
         return self.get_response(request)

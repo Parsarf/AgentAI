@@ -316,7 +316,7 @@ export class Runner {
           if (action === 'click') { await this.page.mouse.move(x, y, { steps: 4 }); await this.page.mouse.click(x, y, { delay: 40 }); }
           else if (action === 'type') { if (typeof text !== 'string' || text.length > MAX_VALUE) return { ok: false, error: 'bad_value' }; await this.page.keyboard.type(text, { delay: 5 }); }
           else if (action === 'key') { if (!KEYS.has(text) && !TAKEOVER_KEYS.has(text)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(text); }
-          else if (action === 'scroll') await this.page.mouse.wheel(0, Number(text) > 0 ? 500 : -500);
+          else if (action === 'scroll') await this.page.mouse.wheel(0, (text === 'down' || Number(text) > 0) ? 500 : -500);      // the app sends the words 'up' and 'down'
           else if (action === 'goto') {      // the address bar: the same address rules as every request this browser makes (public http/https only)
             if (typeof text !== 'string' || text.length > MAX_URL || !urlAllowed(text, ALLOW_LOOPBACK)) return { ok: false, error: 'url_blocked' };
             await this.page.goto(text, { waitUntil: 'commit', timeout: 15000 });

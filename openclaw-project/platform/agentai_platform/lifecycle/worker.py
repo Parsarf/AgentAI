@@ -112,7 +112,13 @@ class LifecycleWorker:
                 "ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.observed_state='stopped'").fetchall() if r['request_id']]
         for account, generation, request in due:
             try:
-                self.coordinator.request_system(account, key=f'wake-{generation}-{request}', generation=generation, kind='start')
+                # One wake per request, and one more after each wake that failed (a few times): the same key used to return the failed operation for ever, so the request was never woken again.
+                with self.store.connect() as con:
+                    failed = con.execute("SELECT count(*) FROM operations WHERE account_id=? AND kind='start' AND state='failed' AND substr(idempotency_key,1,?)=?",
+                                         (account, len(f'wake-{generation}-{request}'), f'wake-{generation}-{request}')).fetchone()[0]
+                if failed > 5:
+                    continue
+                self.coordinator.request_system(account, key=f'wake-{generation}-{request}' + (f'-{failed}' if failed else ''), generation=generation, kind='start')
                 queued += 1
                 self._say(account, request, 'Waking your assistant. Its workspace is starting up.', 'waking')
             except (Conflict, NotFound):

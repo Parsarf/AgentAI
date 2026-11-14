@@ -23,6 +23,7 @@ CATEGORY = {
     'spawn_agent': 'subagent', 'sessions_spawn': 'subagent', 'subagents': 'subagent',
     'web_search': 'search', 'search': 'search', 'brave_search': 'search',
     'web_fetch': 'read', 'fetch': 'read', 'browser': 'browse', 'lumina_browser': 'browse', 'lumina__lumina_browser': 'browse',
+    'lumina_browser_step': 'browse', 'lumina__lumina_browser_step': 'browse',
     'exec': 'command', 'bash': 'command', 'shell': 'command', 'process': 'command',
     'write': 'file', 'edit': 'file', 'apply_patch': 'file', 'read': 'file',
 }
@@ -31,7 +32,11 @@ LABELS = {
     'file': 'Worked with a file', 'other': 'Used a tool',
 }
 WORKSPACE = '/home/node/.openclaw/workspace/'
-HIDDEN = {'tool_search', 'tool_describe', 'lumina_task_update', 'lumina__lumina_task_update'}                  # runtime housekeeping, not customer-relevant work
+HIDDEN = {'tool_search', 'tool_describe', 'lumina_task_update', 'lumina__lumina_task_update', 'lumina_mcp_discover', 'lumina__lumina_mcp_discover'}                  # runtime housekeeping, not customer-relevant work
+# Lumina's own tools that have no category: what the customer reads instead of the raw tool name ("Used lumina lumina mcp call").
+OWN_LABELS = {'lumina_mcp_call': 'Used a connected service', 'lumina_mcp_search': 'Looked for a service to connect', 'lumina_mcp_setup': 'Set up a connection',
+              'lumina_mcp_connections': 'Checked your connections', 'lumina_memory_recall': 'Recalled a memory', 'lumina_memory_remember': 'Saved a memory',
+              'lumina_request_location': 'Asked for your location'}
 FILE_VERBS = {'write': 'Wrote', 'edit': 'Edited', 'apply_patch': 'Edited', 'read': 'Read'}
 
 
@@ -94,6 +99,11 @@ def describe(name, args):
         return category, 'Used the browser', clean(_first(args, 'site', 'action', 'url', 'task'), MAX_DETAIL)
     if category == 'subagent':
         return category, 'Delegated to an agent', clean(_first(args, 'label', 'task', 'message'), MAX_DETAIL)
+    own = tool.removeprefix('lumina__')
+    if own in OWN_LABELS:
+        return 'other', OWN_LABELS[own], ''
+    if re.fullmatch(r'lumina_mcp_[a-f0-9]{32}_[a-f0-9]{12}', own):
+        return 'other', OWN_LABELS['lumina_mcp_call'], ''
     label = clean(re.sub(r'[_-]+', ' ', tool), 40) or 'tool'
     return 'other', f'Used {label}', ''
 

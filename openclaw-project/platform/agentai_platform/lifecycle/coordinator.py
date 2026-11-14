@@ -246,7 +246,14 @@ class Coordinator:
                 return None
             if not slot:
                 con.execute("INSERT INTO lifecycle_slot VALUES (1,?,?,?,'reserved')",(account,row['deployment_id'],operation))
-            if row['attempts']>=3: raise Conflict('retry limit reached')
+            if row['attempts']>=3:
+                # The attempts are used up (three effect-free refusals, e.g. no host headroom). The operation ends as failed instead of staying 'pending' for ever, where it was
+                # refused on every tick and blocked every later operation of the account (its cell could never be woken again). Nothing ran, so a retry is safe.
+                con.execute("UPDATE operations SET state='failed' WHERE account_id=? AND id=?",(account,operation))
+                con.execute("UPDATE lifecycle_details SET retry_safe=1,error_code='retry_limit',lease_owner=NULL,lease_until=NULL,updated_at=? WHERE account_id=? AND operation_id=?",(int(self.clock()),account,operation))
+                con.execute("DELETE FROM lifecycle_slot WHERE account_id=? AND operation_id=? AND state='reserved'",(account,operation))
+                self._audit(con,account,'supervisor',operation,kind,'failed')
+                return None
             fence=row['fence']+1
             con.execute("UPDATE operations SET state='running' WHERE account_id=? AND id=?",(account,operation))
             con.execute('''UPDATE lifecycle_details SET attempts=attempts+1,fence=?,lease_owner=?,lease_until=?,

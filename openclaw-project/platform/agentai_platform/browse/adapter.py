@@ -330,7 +330,8 @@ class BrowserTool:
             job, base = browse_sessions.register(con, account_id, request_id, session, now)
             if session > 1:                                              # the Live view reads this row: the new session is live again
                 con.execute("UPDATE browse_runs SET status='queued',updated_epoch=? WHERE account_id=? AND request_id=?", (now, account_id, request_id))
-        self._say(account_id, request_id, 'activity', {'ref': 'service-browser', 'tool': 'browser', 'category': 'browse', 'label': 'Used the browser', 'detail': 'Lumina browser', 'status': 'running'})
+        # No activity row of its own: the runtime's own tool call is already shown (chat_driver._mirror). A second, hand-made row doubled every browser call in the timeline,
+        # was left open on most failure paths and read as "2 at the same time".
         try:
             rpc('start', request_id=job, goal=goal, start_url=start_url, tab=tab, max_cost_microusd=max_cost, prefs=self._saved_choices(account_id), vault=self._saved_items(account_id))
         except CapabilityUnavailable:
@@ -357,7 +358,9 @@ class BrowserTool:
             rpc('agent_step', request_id=job, step=step)
         except (BrowseJobUnknown, CapabilityUnavailable):
             return 'The browser is not waiting for a step from you (it may have finished or been stopped). Start it again with lumina_browser if the task is not done.', True
-        spent_before = self._spent.get(job, int(spent[0]) if spent else 0)
+        # Not known after a restart of this process: then the recorded cost is left as it is (job_states.record). Reading it back from the record counted this job's cost
+        # again on every step.
+        spent_before = self._spent.get(job)
         return self._await(rpc, account_id, request_id, job, base, spent_before, closed, max(0, int(last or 0) - base))
 
     def _await(self, rpc, account_id, request_id, job, base, spent_before, closed, since):
@@ -402,8 +405,6 @@ class BrowserTool:
                 return self._give_up(account_id, request_id, base, spent_before, 'deadline', 'The browser task took too long and was stopped.')
             self.sleep(self.poll_interval)
         self._spent.pop(job, None)
-        done = final['state'] in ('done', 'handoff') and not is_wall(final)
-        self._say(account_id, request_id, 'activity', {'ref': 'service-browser', 'tool': 'browser', 'category': 'browse', 'label': 'Used the browser', 'detail': 'Lumina browser', 'status': 'done' if done else 'failed'})
         return findings(final, self._neutral(account_id, 'untrusted_page_text')), final['state'] in ('error', 'cancelled')
 
     # -- bookkeeping ---------------------------------------------------------------------------------------------------------------------------
@@ -416,7 +417,7 @@ class BrowserTool:
     def _give_up(self, account_id, request_id, base, spent_before, state, message, say=True):
         with self.store.connect() as con:
             n = browse_sessions.offset(con, account_id, request_id) - base + 1
-        self._mirror(account_id, request_id, {'state': state, 'reason': message, 'events': [{'n': n, 'kind': 'status', 'state': state}]}, base, spent_before)
+        self._mirror(account_id, request_id, {'state': state, 'reason': message, 'events': [{'n': n, 'kind': 'status', 'state': state}]}, base, None)      # None: keep the cost the last poll recorded (this report carries none, and wrote the job's cost back to zero)
         if say:
             self._say(account_id, request_id, 'error', {'summary': message, 'category': 'browser'}, 'browser')
         return f'Status: did not finish ({state}): {message}', True

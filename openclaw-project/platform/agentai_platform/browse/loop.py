@@ -487,7 +487,7 @@ class BrowseRunner:
             label = c['label'].lower()
             if CARD_NAME.search(label):
                 wanted.append((c, secret.get('name') or ''))
-            elif CARD_NUMBER.search(label) and not CARD_CODE.search(label):
+            elif CARD_NUMBER.search(label) and not CARD_CODE.search(label) and not CARD_EXPIRY.search(label):      # "Credit card expiration date" is an expiry field: it used to be given the number
                 wanted.append((c, secret.get('number') or ''))
             elif CARD_EXPIRY.search(label):
                 long_year = 'yyyy' in label or 'full year' in label

@@ -186,18 +186,48 @@ class ChatDriver:
         if claim.conversation_id is None:
             raise ValueError('chat driver requires a conversation binding')
         gateway = self.gateway_factory(claim)
-        self._require(gateway)
+        try:
+            self._require(gateway)
+        except CapabilityUnavailable:
+            if self._may_wait_for_cell(claim):
+                timing.mark(claim.request_id, 'defer', reason='cell_not_ready')
+                return Defer('the cell is not ready yet')        # nothing was handed over: the request keeps its place and is claimed again, instead of failing "could not be started"
+            raise
         info = self._admit(claim)
         if not self._deliveries(claim):
             if info['cancelled']:
                 return self._close(claim, 'cancelled', 'Cancelled before execution', verdict=outcome_mod.judge(native={}, cancelled=True))      # nothing was sent, nothing to settle
-            started = self._begin(claim, gateway, info)
+            try:
+                started = self._begin(claim, gateway, info)
+            except CapabilityUnavailable:
+                if not self._deliveries(claim) and self._may_wait_for_cell(claim):
+                    timing.mark(claim.request_id, 'defer', reason='cell_not_ready')
+                    return Defer('the cell is not ready yet')
+                raise
             if started is not None:
                 return started
             info = {**info, 'session': self._session(claim)}
         else:
             self._reassert(claim, gateway, info['session'] or self._session(claim))       # a carried-on request (parked, recovered): make sure the runtime still has its inputs
         return self._supervise(claim, gateway, info)
+
+    def _may_wait_for_cell(self, claim):
+        """A request with nothing handed over yet may go back to waiting while its cell comes up, for as long as a parked request may wait; after that the old ending applies."""
+        if self._deliveries(claim):
+            return False
+        with self.store.connect() as con:
+            row = con.execute('SELECT created_epoch,cancel_requested FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
+        return bool(row) and not row['cancel_requested'] and self.clock() - row['created_epoch'] < self.park_limit
+
+    def _beat(self, claim):
+        """Keep the lease while the request is being closed (stopping runs, waiting for the spend to land): a close that outlived the lease left the request uncertain after
+        its money was settled. Best effort: a lease that is already gone is the queue's business."""
+        if self.heartbeat is None:
+            return
+        try:
+            self.heartbeat(claim)
+        except Exception:
+            pass
 
     def _panel_tick(self, claim):
         if self.panel is not None:
@@ -435,6 +465,8 @@ class ChatDriver:
             if result['status'] == 'running':
                 reason = self._human_wait(claim)
                 if reason:
+                    if self._parked_too_long(claim):
+                        return self._waited_too_long(claim, gateway, session)
                     return Parked(reason)
                 if delivery['deadline_epoch'] and self.clock() >= delivery['deadline_epoch']:
                     return self._timed_out(claim, gateway, session, delivery)
@@ -578,6 +610,7 @@ class ChatDriver:
                 continue
             run = delivery['native_run_id'] or delivery['idempotency_key']
             for _ in range(30):
+                self._beat(claim)
                 result = gateway.wait(run, 1000)
                 if result['status'] != 'running':
                     self._end_delivery(claim, delivery, result)
@@ -615,13 +648,33 @@ class ChatDriver:
             with self.store.connect() as con:
                 jobs = [claim.request_id] + [r[0] for r in con.execute('SELECT job_id FROM browse_sessions WHERE account_id=? AND request_id=?', (claim.account_id, claim.request_id)).fetchall()]
             rpc = self.browse_factory(claim.account_id)
+            released = []
             for job in jobs:
                 try:
-                    rpc('agent_release', request_id=job)
+                    if rpc('agent_release', request_id=job).get('released'):
+                        released.append(job)
                 except Exception:
                     pass
+            if released:
+                self._record_released(claim, rpc, released[-1])
         except Exception:
             pass
+
+    def _record_released(self, claim, rpc, job):
+        """The job was waiting for a step that is not coming and has just been told to end. Nobody is following it any more (the tool call returned when the page was handed
+        over), so its ending is written into the request's browser record here: the record used to say 'running' for ever. Only the newest session is the record's."""
+        from .browse import sessions as browse_sessions
+        with self.store.connect() as con:
+            latest, base = browse_sessions.latest(con, claim.account_id, claim.request_id)
+        if latest != job:
+            return
+        for _ in range(12):
+            polled = rpc('poll', request_id=job, since=0)
+            if polled.get('state') in browse_job_states.OVER:
+                with self.coordinator.transaction() as con:
+                    browse_job_states.record(con, claim.account_id, claim.request_id, polled, offset=base, spent_before=None, now=int(self.clock()))
+                return
+            self.sleep(self.pause)
 
     def _pause_goal(self, claim, gateway, session, note):
         """A stopped, timed-out or over-budget run never leaves its goal active: nothing may pick it up again unless the customer resumes it."""
@@ -651,6 +704,22 @@ class ChatDriver:
         self._emit(claim, 'progress', {'summary': 'The run took too long and was stopped.'}, 'gateway')
         return self._close(claim, 'failed', 'The assistant took too long and was stopped. Please try a smaller request.', gateway, self._before(claim),
                            verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant took too long and was stopped.', ''))
+
+    def _parked_too_long(self, claim):
+        with self.store.connect() as con:
+            row = con.execute('SELECT parked_epoch FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
+        return bool(row and row['parked_epoch']) and self.clock() - row['parked_epoch'] >= self.park_limit
+
+    def _waited_too_long(self, claim, gateway, session):
+        """PARK_LIMIT: the run waited that long for a person who did not come back. It is stopped (it used to be parked again, with a fresh clock, for ever)."""
+        self._abort_all(claim, gateway, session)
+        self._stop_browser_jobs(claim)
+        self._pause_goal(claim, gateway, session, 'The task waited too long for the customer and was stopped.')
+        self._mirror(claim, gateway, session, set())
+        note = 'The task waited too long for you, so it was stopped.'
+        self._emit(claim, 'progress', {'summary': note}, 'gateway')
+        return self._close(claim, 'completed', self._last_reply(claim) or note, gateway, self._before(claim),
+                           verdict=outcome_mod.Verdict('partial', 'unverified', note, 'Stopped: ' + note))
 
     def _budget_stop(self, claim, gateway, session):
         self._abort_all(claim, gateway, session)
@@ -687,6 +756,7 @@ class ChatDriver:
             repaired = self._plan_reply(claim, gateway, info, session)
             if isinstance(repaired, RequestReceipt) or isinstance(repaired, (Parked, Defer)):
                 return repaired
+        self._beat(claim)
         self._release_waiting_browser_jobs(claim)
         self._capture_files(claim, gateway, since=min((d['created_epoch'] for d in deliveries), default=int(self.clock())) - 5)
         if self.genui is not None and info['intent'] != 'plan':
@@ -774,6 +844,9 @@ class ChatDriver:
                 key, now = f'{claim.request_id}-a{attempt}', int(self.clock())
                 con.execute('''INSERT INTO chat_deliveries(account_id,request_id,attempt,idempotency_key,payload_hash,state,native_operation_id,created_epoch,updated_epoch,kind,payload)
                     VALUES (?,?,?,?,?,'pending',?,?,?,'turn',?)''', (claim.account_id, claim.request_id, attempt, key, hashlib.sha256(payload.encode()).hexdigest(), key, now, now, payload))
+                # The close gate was shut when the first reply ended. The repair turn is a run of this request like any other: while `closing` stayed set, the model relay and
+                # every Lumina tool refused it (they only serve a live run), so the one repair could never succeed. The gate shuts again when this run ends.
+                con.execute('UPDATE customer_requests SET closing=0 WHERE account_id=? AND id=? AND cancel_requested=0', (claim.account_id, claim.request_id))
             return self._supervise(claim, gateway, info)
         if plan is not None:
             self.genui.attach_plan(claim, info['context'], plan)
@@ -839,6 +912,7 @@ class ChatDriver:
             deadline = self.clock() + self.usage_wait
             stable = 0
             while True:
+                self._beat(claim)
                 try:
                     now_spend = snapshot()
                 except Exception:
@@ -864,6 +938,7 @@ class ChatDriver:
         # Usage must reconcile before the global slot hands over (queue.finish rechecks).
         with self.store.connect() as con:
             funded = con.execute('SELECT 1 FROM task_reservations WHERE account_id=? AND task_id=?', (claim.account_id, claim.request_id)).fetchone()
+        self._beat(claim)
         if funded:   # a request that never got a reservation has nothing to reconcile or settle
             if gateway is not None:
                 self._reconcile_usage(gateway, claim, before)
@@ -884,9 +959,19 @@ class ChatDriver:
         try:
             gateway = self.gateway_factory(claim)
             owed = self._deliveries(claim, states=LIVE_STATES)
+            starters = [d for d in owed if d['kind'] != 'steer']
             for delivery in owed:
-                if delivery['native_run_id'] and gateway.wait(delivery['native_run_id'], 0)['status'] != 'running':
-                    return 'ended'
+                if not delivery['native_run_id']:
+                    continue
+                result = gateway.wait(delivery['native_run_id'], 0)
+                if result['status'] == 'running':
+                    continue
+                if delivery['kind'] == 'steer' and starters:
+                    # A steered input joins the run that is going and its own id reports "over" at once. That is not the request ending: settle this input here.
+                    # (It used to read as 'ended' on every tick: the request was unparked and parked again for ever, and nothing else was claimed.)
+                    self._end_delivery(claim, delivery, result)
+                    continue
+                return 'ended'
         except CapabilityUnavailable:
             return 'waiting'
         with self.store.connect() as con:
@@ -937,11 +1022,14 @@ class ChatDriver:
         rpc = self.browse_factory(claim.account_id)
         for job in jobs:
             try:
-                state = rpc('poll', request_id=job, since=0).get('state')
+                polled = rpc('poll', request_id=job, since=0)
+                state = polled.get('state')
             except BrowseJobUnknown:
                 continue                         # service restart destroyed this job
             except Exception:
                 return False
+            if state == 'handoff' and not polled.get('takeover'):
+                continue                         # the hand-off window has closed: the job keeps that name but holds nothing
             if state not in browse_job_states.OVER:
                 return False
         return True
@@ -969,6 +1057,9 @@ class ChatDriver:
         if not self._deliveries(claim):
             return self._close(claim, 'failed', 'Your request could not be started. Nothing was charged. Please send it again.',
                                verdict=outcome_mod.Verdict('failed', 'unverified', 'It could not be started.', ''))
+        closed = self._already_closed(claim)
+        if closed is not None:
+            return closed
         gateway = self.gateway_factory(claim)
         if self._cell_gone(gateway):
             return self._interrupted(claim, gateway)
@@ -977,6 +1068,22 @@ class ChatDriver:
         except CapabilityUnavailable:
             return None
         return Recover()
+
+    def _already_closed(self, claim):
+        """The request was closed (runs over, spend settled, task state final) but the queue never recorded it, because the lease ran out during the close. Nothing is left to
+        run or to charge: hand the queue the ending that was reached. Without this the request could never leave 'uncertain': carrying on was refused (its reservation is
+        settled) and abandoning it tried to write a second, different receipt, so the one running slot stayed held for good."""
+        if self._deliveries(claim, states=LIVE_STATES):
+            return None
+        with self.store.connect() as con:
+            reservation = con.execute('SELECT state FROM task_reservations WHERE account_id=? AND task_id=?', (claim.account_id, claim.request_id)).fetchone()
+            task = con.execute('SELECT state FROM tasks WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
+        if not reservation or reservation['state'] != 'settled' or not task or task['state'] not in ('completed', 'blocked', 'failed', 'cancelled'):
+            return None
+        outcome = task['state']
+        state = 'completed' if outcome == 'blocked' else outcome
+        result = self._last_reply(claim) or {'failed': 'The assistant could not finish this request. Nothing more will run; please try again.', 'cancelled': 'Cancelled during execution'}.get(state, 'Completed.')
+        return RequestReceipt(claim.account_id, claim.request_id, claim.fence, state, result[:MAX_TRANSCRIPT_CHARS], True, outcome=outcome)
 
 
 def synthetic_gateway_factory(gateway: SyntheticGateway):
