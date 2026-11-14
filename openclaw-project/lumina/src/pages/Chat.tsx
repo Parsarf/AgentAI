@@ -15,8 +15,9 @@ import BlockView from '../components/genui/BlockView';
 import type { Bridge } from '../gen/ChatBridge';
 import { getAnswerStyle } from '../lib/answerStyle';
 import { api } from '../lib/api';
-import { download } from './Files';
-import { humanSize, type ArtifactRow } from '../lib/files';
+import { type ArtifactRow } from '../lib/files';
+import FileCard from '../components/files/FileCard';
+import AnswerSave, { filesOf } from '../components/files/AnswerSave';
 import type { Block } from '../lib/genui/schema';
 import { isActive, type ThreadTask } from '../lib/tasks';
 import { useData } from '../state/data';
@@ -86,10 +87,7 @@ export default function Chat() {
   const [made, setMade] = useState<ArtifactRow[]>([]);
   useEffect(() => {                                    // files Lumina wrote during each answer, shown under that answer
     if (!id || !app?.features.files || working || !msgs.length) return; let stop = false;
-    api<{ projects: { id: string }[] }>('GET', '/v1/projects').then(async ({ projects }) => {
-      const r = await Promise.all(projects.map(p => api<{ artifacts: ArtifactRow[] }>('GET', `/v1/projects/${p.id}/files`)));
-      if (!stop) setMade(r.flatMap(x => x.artifacts));
-    }).catch(() => { /* chips are optional */ });
+    api<{ files: ArtifactRow[] }>('GET', '/v1/files').then(r => { if (!stop) setMade(r.files); }).catch(() => { /* file cards are optional */ });
     return () => { stop = true; };
   }, [id, app?.features.files, working, msgs.length]);
   const [stopping, setStopping] = useState<string | null>(null);
@@ -138,8 +136,9 @@ export default function Chat() {
                 : <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : <>{m.surface === 'panel' && <small>Sent from the side chat in your browser</small>}<Emojified text={m.content} /></>}</div>)}
               {asks.includes(m.provenance) && m.request_id && byRequest.get(m.request_id) && !msgs.some(next => next.id > m.id && next.request_id === m.request_id && asks.includes(next.provenance)) && (
                 <div className="chat-work"><TaskStrip id={m.request_id} eager={eager.has(m.request_id)} notes={notes.get(m.request_id)} stopping={stopping === m.request_id} /></div>)}
-              {m.provenance === 'agent' && m.request_id && !msgs.some(next => next.id > m.id && next.request_id === m.request_id && next.provenance === 'agent') && (() => { const mine = [...new Map(made.filter(a => a.task_id === m.request_id).map(a => [a.display_name, a])).values()]; return mine.length > 0 && (
-                <div aria-label="Files from this answer"><div className="filechips">{mine.map(a => <button key={a.display_name} className="chip small" title={humanSize(a.size_bytes)} onClick={() => download(a.id, a.version).catch(() => undefined)}>⬇ {a.display_name}</button>)}</div>{mine.filter(a => runnableFile(a)).map(a => <AppPlayer key={`${a.id}-${a.version}`} file={a} />)}</div>); })()}
+              {m.provenance === 'agent' && m.request_id && !msgs.some(next => next.id > m.id && next.request_id === m.request_id && next.provenance === 'agent') && (() => { const mine = filesOf(made, m.request_id); return mine.length > 0 && (
+                <div aria-label="Files from this answer"><div className="file-cards">{mine.map(a => <FileCard key={a.id} file={a} onError={setErr} />)}</div>{mine.filter(a => runnableFile(a)).map(a => <AppPlayer key={`${a.id}-${a.version}`} file={a} />)}</div>); })()}
+              {m.provenance === 'agent' && m.id > 0 && !m.ui_answer && m.content.length > 160 && !m.content.includes('```lumina-app') && id && <AnswerSave conversation={id} message={m.id} convert={!!app?.features.convert} onError={setErr} />}
               {blocks.filter(b => b.anchor_message_id === m.id).map(b => <BlockView key={b.id} block={b} onChanged={reload} bridge={bridge} />)}
               {m === lastAgent && !working && !appRequests.has(m.request_id) && !m.content.includes('```lumina-app') && m.id > 0 && m.content.length > 160 && !blocks.some(b => b.anchor_message_id === m.id) && (
                 <div className="quick" aria-label="Show this differently">

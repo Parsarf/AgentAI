@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 from agentai_platform.lifecycle.workspace import collect
 
@@ -37,12 +38,42 @@ class WorkspaceChecks(unittest.TestCase):
         self.assertNotIn(b'TOP SECRET', b''.join(got.values()))
 
     def test_bounds(self):
-        for i in range(15):
+        from agentai_platform.lifecycle import workspace as ws
+        for i in range(60):
             (self.ws / f'f{i:02}.txt').write_text('x' * 10)
-        (self.ws / 'big.txt').write_bytes(b'x' * (3 * 1024 * 1024))
-        got = collect(self.ws, 0)
-        self.assertLessEqual(len(got), 10)
-        self.assertNotIn('big.txt', dict(got))
+        found = ws.scan(self.ws, 0)
+        self.assertEqual(len(found['files']), 50)
+        self.assertEqual({s['reason'] for s in found['skipped']}, {'more than 50 files in one task'})
+        with mock.patch.object(ws, 'MAX_FILE_BYTES', 1024):
+            (self.ws / 'big.bin').write_bytes(b'x' * 2048)
+            found = ws.scan(self.ws, 0)
+            self.assertIn({'path': 'big.bin', 'reason': 'larger than 50 MB'}, found['skipped'])
+            self.assertIsNone(ws.read(self.ws, 'big.bin'))
+            self.assertEqual(ws.stat_file(self.ws, 'big.bin'), {'reason': 'larger than 50 MB'})
+        self.assertLessEqual(sum(len(d) for _, d in collect(self.ws, 0, max_total=100)), 100)
+
+    def test_any_format_is_kept_but_never_a_program_or_working_leftovers(self):
+        from agentai_platform.lifecycle import workspace as ws
+        (self.ws / 'Q3 sales.xlsx').write_bytes(b'PK\x03\x04 sheet'); (self.ws / 'deck.pptx').write_bytes(b'PK\x03\x04 deck')
+        (self.ws / 'movie.mp4').write_bytes(b'\x00\x00\x00\x18ftypmp42'); (self.ws / 'invite.ics').write_text('BEGIN:VCALENDAR')
+        (self.ws / 'tool.exe').write_bytes(b'MZ\x90\x00'); (self.ws / 'renamed.pdf').write_bytes(b'\x7fELF\x02\x01')     # a program is found by its first bytes too
+        (self.ws / 'run.log').write_text('noise'); (self.ws / 'tmp').mkdir(); (self.ws / 'tmp' / 'draft.md').write_text('working notes')
+        found = ws.scan(self.ws, 0)
+        self.assertEqual(sorted(f['path'] for f in found['files']), ['Q3 sales.xlsx', 'deck.pptx', 'invite.ics', 'movie.mp4'])
+        self.assertEqual(sorted(s['path'] for s in found['skipped']), ['renamed.pdf', 'tool.exe'])
+        self.assertEqual(ws.stat_file(self.ws, 'tool.exe'), {'reason': 'programs and installers are not delivered'})
+        self.assertIsNone(ws.read(self.ws, 'renamed.pdf'))
+        self.assertIsNone(ws.safe_path('tmp/draft.md'))
+
+    def test_one_file_is_read_in_slices_and_only_from_inside_the_workspace(self):
+        from agentai_platform.lifecycle import workspace as ws
+        (self.ws / 'out').mkdir(); (self.ws / 'out' / 'data.csv').write_bytes(b'a,b\n1,2\n')
+        self.assertEqual(ws.stat_file(self.ws, 'out/data.csv')['size'], 8)
+        self.assertEqual(ws.read(self.ws, 'out/data.csv', 0, 4) + ws.read(self.ws, 'out/data.csv', 4, 4), b'a,b\n1,2\n')
+        os.symlink(self.outside, self.ws / 'link.txt'); os.symlink(self.tmp.name, self.ws / 'up')
+        for path in ('../secret.txt', '/etc/passwd', 'link.txt', 'up/secret.txt', 'out/../../secret.txt', '.hidden', 'AGENTS.md', 'a\\b', ''):
+            self.assertIsNone(ws.read(self.ws, path), path)
+            self.assertIn('reason', ws.stat_file(self.ws, path), path)
 
     def test_missing_workspace_or_symlinked_root(self):
         self.assertEqual(collect(Path(self.tmp.name) / 'nope', 0), [])

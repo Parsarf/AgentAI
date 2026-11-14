@@ -167,6 +167,18 @@ def artifact_service(db=None):
     return ArtifactService(db or store(), storage=RootStore(settings.STORAGE_DIR), signing_key=key.encode() if isinstance(key, str) else key)
 
 
+def convert_on():
+    return bool(settings.RENDER_SOCKET)
+
+
+def renderer():
+    """Client of the host render service (file conversions), or None where it is not installed: files are then delivered as written, never converted."""
+    if not settings.RENDER_SOCKET:
+        return None
+    from agentai_platform.render.client import RenderRpc
+    return RenderRpc(settings.RENDER_SOCKET)
+
+
 # ---- chat, queue, budget ------------------------------------------------------------------------------------------------------------------------------
 
 def event_service(db=None, **kwargs):

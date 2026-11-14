@@ -111,6 +111,9 @@ ROUTING_CONFIG_FILE = os.environ.get('AGENTAI_ROUTING_CONFIG_FILE', '/var/lib/ag
 TYPESAFE_KEY_FILE = os.environ.get('AGENTAI_TYPESAFE_KEY_FILE', '/var/lib/agentai-platform/routing/typesafe.key')
 UI_BUNDLE_DIR = os.environ.get('AGENTAI_UI_BUNDLE_DIR', '/var/lib/agentai-platform/ui')
 BROWSE_SOCKET = os.environ.get('AGENTAI_BROWSE_SOCKET', '/run/agentai-browse/browse.sock')
+# The render service (agentai_platform/render): converts a file the assistant wrote into PDF, Word, Excel, PowerPoint or an image. Empty = not installed:
+# files are still delivered in the format they were written in, and the Download-as buttons are hidden.
+RENDER_SOCKET = os.environ.get('AGENTAI_RENDER_SOCKET', '')
 # Native execution: the browser tool relay cells reach over the bridge address (see agentai_platform/tool_relay.py), and how long a "keep working until complete" goal may run.
 TOOL_RELAY_BIND = os.environ.get('AGENTAI_TOOL_RELAY_BIND', '10.77.0.1')
 TOOL_RELAY_PORT = int(os.environ.get('AGENTAI_TOOL_RELAY_PORT', '4100'))

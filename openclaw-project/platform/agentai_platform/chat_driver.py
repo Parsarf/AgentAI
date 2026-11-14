@@ -44,9 +44,6 @@ GOAL_OPEN = ('paused', 'blocked', 'budget_limited', 'usage_limited')
 CONTINUE_TEXT = 'Continue pursuing the current goal.'
 RETRY_NOTE = ('This is a retry of an earlier attempt that did not finish. Look at this conversation first, see what was already done (files written, pages visited, '
               'items added) and do not repeat an action that already happened; carry on from there.')
-MEDIA = {'.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv', '.json': 'application/json', '.py': 'text/x-python',
-         '.js': 'text/javascript', '.ts': 'text/plain', '.tsx': 'text/plain', '.jsx': 'text/plain', '.html': 'text/html', '.css': 'text/css',
-         '.sql': 'text/plain', '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
 
 
 def panel_note(panel):
@@ -831,6 +828,18 @@ class ChatDriver:
         with self.store.connect() as con:
             return con.execute("SELECT COUNT(*) FROM events WHERE account_id=? AND task_id=? AND kind='artifact'", (claim.account_id, claim.request_id)).fetchone()[0]
 
+    def _delivered_by_assistant(self, claim):
+        """Did the assistant hand over a file itself during this task (its file tool records the event as source 'agent')?"""
+        with self.store.connect() as con:
+            rows = con.execute("SELECT public_payload FROM events WHERE account_id=? AND task_id=? AND kind='artifact'", (claim.account_id, claim.request_id)).fetchall()
+        for row in rows:
+            try:
+                if json.loads(row[0]).get('source') == 'agent':
+                    return True
+            except ValueError:
+                continue
+        return False
+
     def _plan_reply(self, claim, gateway, info, session):
         """A plan request's reply must be a valid plan; one bounded repair turn in the same session, then the plain reply is shown as text."""
         reply = self._last_reply(claim) or ''
@@ -867,32 +876,49 @@ class ChatDriver:
             pass
 
     def _capture_files(self, claim, gateway, since):
-        """Save the files the assistant wrote during this task as versioned downloads. Best-effort: never fails the task."""
-        collect = getattr(gateway, 'workspace_files', None)
-        if self.artifacts is None or collect is None:
+        """Save the files the assistant wrote during this task as versioned downloads. Best-effort: never fails the task.
+
+        Any format is kept. When the assistant delivered files itself during the task (the `lumina_file_deliver` tool), those are the result and nothing else is
+        swept up: its notes and working files stay in the workspace. Otherwise everything it wrote is offered, and what could not be saved is said in the timeline."""
+        scan = getattr(gateway, 'workspace_scan', None)
+        legacy = getattr(gateway, 'workspace_files', None)
+        if self.artifacts is None or (scan is None and legacy is None):
             return
         try:
+            if self._delivered_by_assistant(claim):
+                return
             with self.store.connect() as con:
                 row = con.execute('SELECT project_id FROM conversations WHERE account_id=? AND id=?', (claim.account_id, claim.conversation_id)).fetchone()
             if row is None:
                 return
-            from .files import ALLOWLIST, sniff
-            for path, data in collect(since):
-                ext = os.path.splitext(path)[1].lower()
-                kinds = ALLOWLIST.get(ext)
-                kind = sniff(data)
-                if not kinds or (kind not in kinds and not (kind == 'text' and 'json' in kinds)):
-                    continue
-                if 'json' in kinds:
-                    try:
-                        json.loads(data.decode('utf-8'))
-                    except ValueError:
+            from .artifacts import media_for
+            from .lifecycle.workspace import MAX_FILE_BYTES, is_program
+            if scan is not None:
+                found, skipped = scan(since)
+            else:
+                found, skipped = [{'path': path, 'data': data} for path, data in legacy(since)], []
+            for item in found:
+                path = item['path']
+                try:
+                    data = item['data'] if 'data' in item else gateway.workspace_read(path, item['size'])
+                    if is_program(path, data[:8]):               # checked where the file is read, and again here
+                        skipped.append({'path': path, 'reason': 'programs and installers are not delivered'})
                         continue
-                saved = self.artifacts.capture_or_version(account_id=claim.account_id, project_id=row['project_id'], task_id=claim.request_id,
-                                                          name=path.replace('/', '_')[:128], media_type=MEDIA.get(ext, 'application/octet-stream'), data=data)
+                    if len(data) > MAX_FILE_BYTES:
+                        skipped.append({'path': path, 'reason': 'larger than 50 MB'})
+                        continue
+                    saved = self.artifacts.capture_or_version(account_id=claim.account_id, project_id=row['project_id'], task_id=claim.request_id,
+                                                              name=path, media_type=media_for(path), data=data)
+                except Conflict:
+                    skipped.append({'path': path, 'reason': 'your storage is full'})
+                    continue
+                except Exception:
+                    skipped.append({'path': path, 'reason': 'it could not be read'})
+                    continue
                 if saved:
-                    self._emit(claim, 'artifact', {'artifact_id': saved['artifact_id'], 'version': saved['version'], 'name': path.replace('/', '_')[:128],
-                                                   'sha256': saved['sha256']}, 'gateway')
+                    self._emit(claim, 'artifact', {'artifact_id': saved['artifact_id'], 'version': saved['version'], 'name': path, 'sha256': saved['sha256']}, 'gateway')
+            for item in skipped[:20]:
+                self._emit(claim, 'artifact_skipped', {'name': str(item.get('path'))[:200], 'reason': str(item.get('reason'))[:80]}, 'gateway')
         except Exception:
             pass
 

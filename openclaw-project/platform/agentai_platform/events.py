@@ -41,6 +41,7 @@ EVENT_KINDS = {
     'error': {'summary', 'category'},
     'budget': {'remaining_microusd', 'held_microusd', 'note'},
     'artifact': {'artifact_id', 'version', 'name', 'sha256'},
+    'artifact_skipped': {'name', 'reason'},                 # a file the assistant wrote that the customer will not get, and why (too large, storage full, a program)
     'result': {'summary', 'outcome', 'verify_level'},        # outcome (completed | partial | blocked | failed | cancelled) and verify_level (verified | unverified | not_applicable) from outcome.py
     'activity': {'ref', 'tool', 'category', 'label', 'detail', 'output', 'status'},
 }

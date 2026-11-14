@@ -1,4 +1,7 @@
-import { memo } from 'react';
+import { memo, useRef, useState } from 'react';
+import { useData } from '../../state/data';
+import { exportError, saveFrom, saveText, tableData, toCsv } from '../../lib/files';
+import '../files/files.css';
 import AppPlayer, { parseApplication } from '../apps/AppPlayer';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -66,8 +69,29 @@ const COMPONENTS: Components = {
       return <pre role="region" aria-label="Code block" tabIndex={0}>{children}</pre>;
     },
     img: ({ alt, src }) => isEmojiUrl(src) ? <EmojiImg emoji={alt ?? ''} file={src!.slice(src!.lastIndexOf('/') + 1)} /> : <span>{alt || 'Image'}{src && safeResponseUrl(src) && <> — <a href={safeResponseUrl(src)} target="_blank" rel="noopener noreferrer">View image ↗</a></>}</span>,
-    table: ({ children }) => <div className="answer-table" role="region" aria-label="Response table" tabIndex={0}><table>{children}</table></div>,
+    table: ({ children }) => <ResponseTable>{children}</ResponseTable>,
   };
+
+/** A table in an answer, with the way to take it along: CSV is made here in the page; Excel is a real workbook made by the server. */
+function ResponseTable({ children }: { children: React.ReactNode }) {
+  const app = (useData() as ReturnType<typeof useData> | null)?.app;       // also rendered outside the signed-in shell (previews, tests): then nothing optional is offered
+  const ref = useRef<HTMLTableElement>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const csv = () => { if (!ref.current) return; const { columns, rows } = tableData(ref.current); saveText('Table.csv', toCsv(columns, rows), 'text/csv;charset=utf-8'); };
+  const excel = async () => {
+    if (!ref.current || busy) return;
+    setBusy(true); setErr('');
+    try { const { columns, rows } = tableData(ref.current); await saveFrom('/v1/export/table', { format: 'xlsx', name: 'Table', columns, rows }, 'Table.xlsx'); }
+    catch (error) { setErr(exportError(error)); } finally { setBusy(false); }
+  };
+  return <>
+    <div className="answer-table" role="region" aria-label="Response table" tabIndex={0}><table ref={ref}>{children}</table></div>
+    <div className="answer-table-tools">
+      {app?.features.convert && <button type="button" className="btn small tertiary" disabled={busy} onClick={excel}>{busy ? 'Preparing…' : 'Download as Excel'}</button>}
+      <button type="button" className="btn small tertiary" onClick={csv}>Download as CSV</button>
+    </div>
+    {err && <p className="err" role="alert">{err}</p>}
+  </>;
+}
 
 /** Parsed once per message: it only re-renders when its text changes, not on every chat refresh (that re-parse froze scrolling). */
 function AgentResponse({ content }: { content: string }) {

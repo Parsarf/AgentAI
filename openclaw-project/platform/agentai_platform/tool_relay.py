@@ -66,10 +66,11 @@ class Identity:
 class Relay:
     """The MCP protocol and the tools; no sockets (the handler below owns those)."""
 
-    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None, location=None):
+    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None, location=None, files=None):
         self.tool, self.progress, self.origin, self.remote = tool, progress, origin, remote
         self.location = location
         self.memory = memory                                        # longterm_memory.MemoryTools or None; its two tools exist for an account only while the owner's switch is on
+        self.files = files                                          # file_tools.FileTools or None; hands the customer a file the assistant wrote, converted on request
         self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
         if location is not None:
             from .location import NAME, TOOL as LOCATION_TOOL
@@ -105,10 +106,11 @@ class Relay:
                     spec = copy.deepcopy(spec)
                     spec['inputSchema'].setdefault('properties', {})['_lumina_origin'] = {'type': 'string', 'description': 'Runtime ownership proof. Leave unset.'}
                     specs.append(spec)
-            if self.memory is not None and self.memory.enabled(account):
-                for spec in self.memory.specs():
-                    spec['inputSchema']['properties']['_lumina_origin'] = {'type': 'string', 'description': 'Runtime-generated ownership proof. Leave unset; the runtime supplies it.'}
-                    specs.append(spec)
+            for extra in (self.memory, self.files):
+                if extra is not None and extra.enabled(account):
+                    for spec in extra.specs():
+                        spec['inputSchema']['properties']['_lumina_origin'] = {'type': 'string', 'description': 'Runtime-generated ownership proof. Leave unset; the runtime supplies it.'}
+                        specs.append(spec)
             return self._ok(rid, {'tools': specs})
         if method == 'tools/call':
             params = message.get('params') or {}
@@ -116,18 +118,19 @@ class Relay:
             remote_on = self.remote is not None and self.remote.enabled(account)
             remote_call = remote_on and self.remote.accepts(name)
             memory_call = self.memory is not None and name in self.memory.names and self.memory.enabled(account)
+            files_call = self.files is not None and name in self.files.names and self.files.enabled(account)
             if not isinstance(params.get('arguments') or {}, dict):
                 return self._error(rid, -32602, 'invalid arguments')
-            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call and not memory_call):
+            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call and not memory_call and not files_call):
                 return self._error(rid, -32602, 'unknown tool')
             location_call = self.location is not None and name == 'lumina_request_location'
-            busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'progress' if name == PROGRESS_NAME else 'browser')
+            busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'files' if files_call else 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:
                 if busy_key in self._busy:
                     return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
                 self._busy.add(busy_key)
             try:
-                handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.progress if name == PROGRESS_NAME else self.tool
+                handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.files if files_call else self.progress if name == PROGRESS_NAME else self.tool
                 arguments = params.get('arguments') or {}
                 bound = {}
                 if self.origin is not None:

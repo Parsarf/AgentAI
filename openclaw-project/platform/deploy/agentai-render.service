@@ -1,0 +1,30 @@
+[Unit]
+Description=AgentAI render service (file conversions for customer tasks in throwaway no-network containers; root)
+After=agentai-cells-docker.service
+Requires=agentai-cells-docker.service
+
+[Service]
+User=root
+Group=agentai-platform
+WorkingDirectory=/opt/agentai-supervisor/current
+ExecStart=/usr/bin/python3 -m agentai_platform.render.service_main
+UMask=0077
+RuntimeDirectory=agentai-render
+RuntimeDirectoryMode=0750
+StateDirectory=agentai-render
+StateDirectoryMode=0711
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+MemoryMax=512M
+MemorySwapMax=0
+CPUQuota=50%
+TasksMax=64
+TimeoutStopSec=15
+# Jobs are docker containers on the cell engine; do not add mount-namespace sandboxing here (docker needs the host view).
+
+[Install]
+WantedBy=multi-user.target

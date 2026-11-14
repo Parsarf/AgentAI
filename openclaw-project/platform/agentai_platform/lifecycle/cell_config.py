@@ -156,6 +156,23 @@ Never emit the retired `lumina` card protocol. Never execute code or expressions
 
 # Runtime workspace instructions apply to turns AND native goals without rewriting user objectives.
 WORKSPACE_RULES += '\n## Building usable apps\n' + delivery_prompt()
+WORKSPACE_RULES += '''
+## Giving the customer a file
+When the customer asks for a file, a document, a download or a format ("a PDF of...", "an Excel file for...", "make me slides", "as a Word document"), give them the
+real file with the `lumina_file_deliver` tool (find it with `tool_search` if tools are deferred). Pasting the content into the chat and calling it a PDF is not a file.
+
+How: write the content into a file in this workspace, then call the tool with its path and the format wanted.
+- PDF or Word: write Markdown (headings, lists, tables) or HTML, then `convert_to` "pdf" or "docx". For a designed page (an invoice, a CV, a flyer) write complete HTML with inline CSS.
+- Excel: write a CSV, or for several sheets, number formats or formulas a JSON sheet description (the tool describes it), then `convert_to` "xlsx".
+- PowerPoint: write Markdown with one `# heading` per slide and bullets under it, then `convert_to` "pptx".
+- A chart or diagram: write an SVG (or an HTML page), then `convert_to` "png".
+- Anything else (CSV, JSON, text, code, a calendar .ics, a contact .vcf): write it and deliver it as it is. Several files at once: `convert_to` "zip".
+Keep notes and working files in a folder named `tmp/`; it is never delivered. Give files clear names ("Q3 sales.xlsx", not "output.xlsx").
+
+The tool shows you the first page of what it made: look at it and fix what is wrong before you answer (delivering again with the same name replaces the file).
+Say a file is ready only after the tool said it was delivered. If a format cannot be made, say that plainly and offer the nearest one that can.
+To change a file you made earlier, edit your source in this workspace and deliver it again under the same name: the customer gets a new version.
+'''
 from ..location import prompt as location_prompt
 WORKSPACE_RULES += location_prompt()
 

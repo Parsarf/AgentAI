@@ -79,11 +79,34 @@ class RootStore:
         finally:
             os.close(fd)
 
+    def open_private(self, parts):
+        """A binary file object for streaming (the caller closes it); the size is `os.fstat(handle.fileno()).st_size`."""
+        return os.fdopen(self._open_chain(parts, flags=os.O_RDONLY), 'rb')
+
     def delete(self, parts):
-        fd = self._open_chain(parts[:-1], flags=os.O_RDONLY | os.O_DIRECTORY)
+        """Remove one file; a file (or folder) that is already gone is not an error."""
+        validate_component(parts[-1])
+        try:
+            fd = self._open_chain(parts[:-1], flags=os.O_RDONLY | os.O_DIRECTORY)
+        except FileNotFoundError:
+            return
         try:
             os.unlink(parts[-1], dir_fd=fd)
         except FileNotFoundError:
+            pass
+        finally:
+            os.close(fd)
+
+    def remove_empty_dir(self, parts):
+        """Remove a folder that has nothing left in it; anything else is left alone."""
+        validate_component(parts[-1])
+        try:
+            fd = self._open_chain(parts[:-1], flags=os.O_RDONLY | os.O_DIRECTORY) if len(parts) > 1 else os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            return
+        try:
+            os.rmdir(parts[-1], dir_fd=fd)
+        except OSError:
             pass
         finally:
             os.close(fd)

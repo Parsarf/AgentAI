@@ -70,7 +70,7 @@ class NativeGateway:
     The callable is the bridge client (the app never holds a cell token or a docker handle). Raises CapabilityUnavailable for any refusal or malformed reply.
     """
     METHODS = ('hello', 'sessions.create', 'sessions.describe', 'chat.send', 'chat.history', 'chat.abort', 'agent.wait', 'sessions.goal.update', 'sessions.goal.clear',
-               'usage.snapshot', 'workspace.collect', 'cell.status', 'tools.active')
+               'usage.snapshot', 'workspace.collect', 'workspace.scan', 'workspace.stat', 'workspace.read', 'cell.status', 'tools.active')
 
     def __init__(self, rpc):
         self._rpc = rpc
@@ -224,13 +224,49 @@ class NativeGateway:
     def usage_snapshot(self):
         return int(self._call('usage.snapshot')['spend_microusd'])
 
-    def workspace_files(self, since):
-        """Files the assistant wrote since `since` (epoch seconds): [(relative path, bytes)]."""
+    def workspace_scan(self, since):
+        """What the assistant wrote since `since` (epoch seconds): ([{'path','size'}], [{'path','reason'}] left out). No content."""
+        reply = self._call('workspace.scan', {'since': int(since)})
+        files = [f for f in reply.get('files') or [] if isinstance(f, dict) and isinstance(f.get('path'), str) and type(f.get('size')) is int and f['size'] > 0]
+        skipped = [{'path': str(f.get('path'))[:240], 'reason': str(f.get('reason'))[:80]} for f in reply.get('skipped') or [] if isinstance(f, dict)]
+        return files, skipped
+
+    def workspace_stat(self, path):
+        """{'size'} of one deliverable workspace file, or {'reason'} saying why it cannot be delivered."""
+        reply = self._call('workspace.stat', {'path': path})
+        if type(reply.get('size')) is int and reply['size'] > 0:
+            return {'size': reply['size']}
+        return {'reason': str(reply.get('reason') or 'not found')[:80]}
+
+    def workspace_read(self, path, size):
+        """The whole content of one workspace file of a known size, read in slices. Raises CapabilityUnavailable when it changed underneath or cannot be read."""
         import base64
+        from .lifecycle.workspace import MAX_CHUNK, MAX_FILE_BYTES
+        if type(size) is not int or not 0 < size <= MAX_FILE_BYTES:
+            raise CapabilityUnavailable('workspace file unavailable')
+        chunks, got = [], 0
+        while got < size:
+            reply = self._call('workspace.read', {'path': path, 'offset': got, 'length': min(MAX_CHUNK, size - got)})
+            try:
+                chunk = base64.b64decode(reply.get('data_b64') or '', validate=True)
+            except ValueError as exc:
+                raise CapabilityUnavailable('workspace file unavailable') from exc
+            if not chunk:
+                break
+            chunks.append(chunk)
+            got += len(chunk)
+        if got != size:
+            raise CapabilityUnavailable('workspace file changed while it was read')
+        return b''.join(chunks)
+
+    def workspace_files(self, since):
+        """Files the assistant wrote since `since` (epoch seconds): [(relative path, bytes)]. A file that cannot be read whole is left out."""
         out = []
-        for item in self._call('workspace.collect', {'since': int(since)}).get('files') or []:
-            if isinstance(item, dict) and isinstance(item.get('path'), str) and isinstance(item.get('data_b64'), str):
-                out.append((item['path'], base64.b64decode(item['data_b64'])))
+        for item in self.workspace_scan(since)[0]:
+            try:
+                out.append((item['path'], self.workspace_read(item['path'], item['size'])))
+            except CapabilityUnavailable:
+                continue
         return out
 
 
