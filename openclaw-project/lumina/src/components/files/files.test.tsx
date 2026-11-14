@@ -54,7 +54,7 @@ describe('file card', () => {
 
 describe('download as', () => {
   it('asks the server for the answer in the format picked and saves what comes back', async () => {
-    const fetched = vi.fn(async () => new Response(new Blob(['%PDF']), { status: 200, headers: { 'Content-Disposition': 'attachment; filename="Trip plan.pdf"' } }));
+    const fetched = vi.fn(async () => new Response('%PDF', { status: 200, headers: { 'Content-Disposition': 'attachment; filename="Trip plan.pdf"' } }));
     vi.stubGlobal('fetch', fetched); URL.createObjectURL = vi.fn(() => 'blob:x'); URL.revokeObjectURL = vi.fn();
     const onError = vi.fn();
     render(<AnswerSave conversation="c1" message={7} convert onError={onError} />);
