@@ -57,6 +57,22 @@ def parse_command(text):
     return (match.group(1), match.group(2)) if match else None
 
 
+def forget_manual(live_trees):
+    """After a full deploy, drop the record of hand-released files (`source_sha256`) from each live tree.
+
+    The record exists so a deploy never silently undoes a manual release. Once a deploy has replaced those files with a commit's own, the record describes
+    nothing that is on the server; kept, it makes every later commit that touches one of those files look like it is undoing a manual release, and every
+    deploy is refused until someone overrides the check. A manual release made after this starts a fresh record (push-release.py)."""
+    for tree in live_trees:
+        path = Path(tree) / 'current' / 'RELEASE.json'
+        try:
+            meta = json.loads(path.read_text())
+            if isinstance(meta, dict) and meta.pop('source_sha256', None) is not None:
+                path.write_text(json.dumps(meta, indent=2, sort_keys=True))
+        except (OSError, ValueError):
+            continue
+
+
 def safe_extract(archive_bytes, dest):
     """Unpack a tar.gz into `dest`, refusing anything that could land outside it: absolute names, `..`, links, devices."""
     dest = Path(dest).resolve()
@@ -216,6 +232,7 @@ def main(argv=None, stdin=None):
             switch(SUP / 'current', Path(old_sup))
             sh(['systemctl', 'restart', *UNITS])
             return 20
+        forget_manual([APP, SUP])                # both trees now hold exactly this commit: nothing on the server is a hand-made release any more
         LAST.write_text(sha + '\n')
         say(f'deployed {sha[:7]} as {name}. Undo the supervisor tree: ln -sfn {old_sup} {SUP}/current && systemctl restart {" ".join(UNITS)}; the app tree: see OPERATIONS.md (release.py)')
         return 0

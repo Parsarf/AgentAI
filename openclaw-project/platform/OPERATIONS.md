@@ -193,6 +193,25 @@ Each file is an immutable artifact version in the customer's project (same name 
 
 Storage: `AGENTAI_STORAGE_DIR=/var/lib/agentai-platform/storage` and `AGENTAI_ARTIFACT_SIGNING_KEY` in `/etc/agentai-platform/accounts.env`; the directory is in the nightly encrypted backup set as `customer-files` (a deleted file therefore stays in earlier backups until they expire). Conversions need `AGENTAI_RENDER_SOCKET`; without it files are delivered as written. Uploads from customers stay off (`AGENTAI_UPLOADS_ENABLED`, needs the scan capability). Capture failure never fails a task. Claude Code (ACP) stays unactivated for customers: it would spend outside the metering proxy; the assistant's own write/exec tools are metered and are what coding uses.
 
+## 17a. How the assistant is instructed
+
+One home per instruction (`agentai_platform/agent_rules.py` explains the split):
+
+| Layer | What it holds | Where | When the model reads it |
+|---|---|---|---|
+| Core rules | Who Lumina is, who the customer is, what good work looks like, memory, and the four limits that never change. About 1,000 tokens. | `AGENTS.md` in the cell workspace | Every session |
+| Skills | How to do one kind of work: `lumina-browsing`, `lumina-files`, `lumina-apps`, `lumina-show`, `lumina-integrations` | `skills/<name>/SKILL.md` in the cell workspace | On demand: the runtime lists the one-line descriptions and the assistant reads a skill when the work calls for it |
+| Tool descriptions | Each tool's contract: what it does, parameters, limits, what it returns | With each tool (`tool_relay.py`, `file_tools.py`, `show_tool.py`, `mcp_connections/relay.py`, ...) | When the tool is loaded |
+| The message | Facts about this one request: its task id, the mode the customer chose, what they asked Lumina to remember | `chat_driver.py` `_outgoing` | Each message, in a block marked as Lumina's, above the customer's own words |
+
+`write_rules` writes the core rules and skills at every cell start (unchanged skill files are left alone). A running session keeps the skill list it started with; a new chat picks up changes. `skills/` and `lumina-ui/` are never swept up as customer files.
+
+**Showing visuals.** The assistant calls `lumina_show` (`show_tool.py`) with blocks and datasets. They are checked against the component registry before anything is shown; a wrong block comes back as a tool error naming the block and the reason. A valid one is stored as a `document` block, appears at the end of the chat at once, and is attached to the reply when the task ends. The customer's answer style decides what is allowed: plain answers (or Text mode, or a surface outside the app) allow nothing; the middle style allows no buttons or follow-ups. The older fenced `lumina-doc` reply is still read, so stored answers and updates to an existing interactive answer keep working. The skill teaches 21 core components; the rest of the registry stays available through `lumina-ui/components/<type>.json`.
+
+**Output room.** One reply may be up to 32,000 tokens on Sonnet and 16,000 on Haiku (`SONNET_MAX_OUTPUT`, `HAIKU_MAX_OUTPUT` in `lifecycle/cell_config.py`): a document or app is written in one tool call, and the old 8,192 ceiling cut long files off.
+
+**Not verified from this repository.** Whether the model proxy on the server runs Sonnet 5.5 with thinking on and at what effort (the model entries say `reasoning: false`, but that model thinks by default when the setting is left out). Check one real request in the proxy's usage log before tuning cost.
+
 ## 18. Sign-ups and customer approval
 
 Public sign-up is behind the owner switch `open_signups` (off by default). Owner actions live in the dashboard **Customers** page, which calls `manage.py signup_admin` as the app user: approve (activates, seeds allowance, queues the assistant create via `host_create`, emails), decline, suspend (ends sessions), resume, and the customer limit (`/var/lib/agentai-platform/signup-settings.json`, default 2, max 200). Unconfirmed sign-ups are removed after 24 h. Check after any change: `deploy/signup_live_check.py`. Rollback of the switch: turn `open_signups` off. Server files added: dashboard `app.py`/`switches.py` (backups `*.bak-signup`).

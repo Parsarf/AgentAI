@@ -36,7 +36,7 @@ HIDDEN = {'tool_search', 'tool_describe', 'lumina_task_update', 'lumina__lumina_
 # Lumina's own tools that have no category: what the customer reads instead of the raw tool name ("Used lumina lumina mcp call").
 OWN_LABELS = {'lumina_mcp_call': 'Used a connected service', 'lumina_mcp_search': 'Looked for a service to connect', 'lumina_mcp_setup': 'Set up a connection',
               'lumina_mcp_connections': 'Checked your connections', 'lumina_memory_recall': 'Recalled a memory', 'lumina_memory_remember': 'Saved a memory',
-              'lumina_request_location': 'Asked for your location', 'lumina_file_deliver': 'Prepared a file for you'}
+              'lumina_request_location': 'Asked for your location', 'lumina_file_deliver': 'Prepared a file for you', 'lumina_show': 'Prepared a visual answer'}
 FILE_VERBS = {'write': 'Wrote', 'edit': 'Edited', 'apply_patch': 'Edited', 'read': 'Read'}
 
 

@@ -74,6 +74,19 @@ class Drift(unittest.TestCase):
             self.assertEqual(deploy.drift([app, sup], plat), ['app: a/changed.py', 'app: a/gone.py'])
             self.assertEqual(deploy.drift([sup], plat), [])
 
+    def test_a_finished_deploy_forgets_the_manual_record_so_later_commits_are_not_refused(self):
+        import hashlib, json
+        with tempfile.TemporaryDirectory() as root:
+            plat = Path(root) / 'plat'; (plat / 'a').mkdir(parents=True); (plat / 'a/file.py').write_text('COMMITTED')
+            app = self.tree(root, 'app', {'a/file.py': hashlib.sha256(b'HAND MADE').hexdigest()})
+            record = app / 'current' / 'RELEASE.json'
+            record.write_text(json.dumps({'source_sha256': json.loads(record.read_text())['source_sha256'], 'commit': 'abc', 'purpose': 'kept'}))
+            self.assertEqual(deploy.drift([app], plat), ['app: a/file.py'])            # before: the hand-made file would be undone
+            deploy.forget_manual([app, Path(root) / 'missing'])
+            self.assertEqual(json.loads(record.read_text()), {'commit': 'abc', 'purpose': 'kept'})
+            (plat / 'a/file.py').write_text('A LATER COMMIT')
+            self.assertEqual(deploy.drift([app], plat), [])                            # after: a later change to the same file is an ordinary change
+
     def test_a_tree_without_a_record_has_no_drift(self):
         with tempfile.TemporaryDirectory() as root:
             self.assertEqual(deploy.drift([Path(root) / 'nothing'], root), [])

@@ -29,6 +29,8 @@ so it can run only that program: no shell, no forwarding, no other command. The 
 
 `push-release.py` overlays single files on the live server. Before anything else, the deploy program checks the files those manual releases recorded (`source_sha256` in `RELEASE.json`, both trees) against the incoming code. If the server runs a file that the commit does not contain unchanged, the deploy **refuses** (exit 30) and lists them. Fix: commit and merge those files to `main`. Last resort: run the workflow by hand with "overwrite manual changes", which replaces them.
 
+After a deploy finishes, the record of hand-released files is cleared from both trees (`forget_manual`): the server then holds exactly that commit, so the record describes nothing. Before this was added (November 2026) the record was never cleared, so every commit that touched a once hand-released file was refused and each deploy had to be rerun by hand with "overwrite manual changes". The deploy program is not updated by its own deploys: reinstall it (below) to get this behaviour.
+
 ## Switching it on and off
 
 - Off by default. It deploys only when the repository variable `AUTO_DEPLOY_ENABLED` is `true` (Settings → Secrets and variables → Actions → Variables). Set it to anything else to stop all automatic deploys.

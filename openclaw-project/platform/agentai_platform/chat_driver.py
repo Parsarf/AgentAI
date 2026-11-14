@@ -320,8 +320,8 @@ class ChatDriver:
     def _outgoing(self, claim, info, notes=True):
         intent, context = info['intent'], info['context']
         text = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
-        if notes:
-            text = gen_prompts.progress_prompt(claim.request_id) + ('\nThis request only drafts a plan. Do not execute its phases; the customer launches the editable plan separately.\n' if intent == 'plan' else '\n') + text
+        if notes and intent not in ('chat', 'browse'):       # plan, execute and phase prompts are Lumina's own text: the task id simply leads them
+            text = gen_prompts.progress_prompt(claim.request_id) + ('This request only drafts a plan. Do not execute its phases; the customer launches the editable plan separately.\n' if intent == 'plan' else '') + '\n' + text
         if not notes:
             return text  # A new native goal stores this exact text as its objective; goal replacement already clears the old run's goal.
         with self.store.connect() as con:
@@ -336,13 +336,13 @@ class ChatDriver:
                     'continue earlier work only if requested, and first inspect what already completed so external effects are not repeated.]\n\n' + text)
         if intent not in ('chat', 'browse') or not notes:
             return text                                    # plan, execute and phase prompts are complete as they are
-        notes = []
+        notes = [gen_prompts.progress_prompt(claim.request_id).strip()]      # facts about this request go in Lumina's own block; the customer's words stay exactly theirs
         if intent == 'browse':
-            notes.append('The customer chose Browse mode. Use the Lumina browser tool (find it with tool_search: "lumina browser") for what they ask, then tell them what it found.')
+            notes.append('The customer chose Browse mode: use the browser for what they ask, then tell them what it found.')
         if context.get('mode') == 'text':
             notes.append('The customer chose Text mode: answer in plain text and do not use the browser.')
-        if context.get('mode') != 'text' and context.get('ui') in ('medium', 'interactive'):
-            notes.append(gen_document.tier_section(context['ui']).rstrip())         # composed-answer instructions for this message only; basic and Text mode send nothing
+        if context.get('mode') != 'text' and context.get('ui') not in ('medium', 'interactive'):
+            notes.append('The customer chose plain answers: reply in text and do not show visuals.')      # a fact about this request; how to show a visual lives in the display tool and its skill
         if context.get('panel'):
             notes.append(panel_note(context['panel']))
         if info['retry_of']:
@@ -350,8 +350,6 @@ class ChatDriver:
         known = self._known_about(claim.account_id)
         if known:
             notes.append('What the customer asked Lumina to remember:\n' + '\n'.join('- ' + k for k in known[:30]))
-        if not notes:
-            return text
         return '[Lumina context for the assistant only. The customer does not see this.]\n' + '\n'.join(notes) + '\n\nCustomer message:\n' + text
 
     def _known_about(self, account_id):
@@ -760,6 +758,7 @@ class ChatDriver:
             made = 0
             try:
                 made = self.genui.blocks.attach_cards(claim.account_id, claim.conversation_id, claim.request_id)
+                made += self.genui.blocks.anchor_shown(claim.account_id, claim.conversation_id, claim.request_id)      # what the assistant showed with its display tool
             except Exception:
                 pass                        # a card that cannot be stored never fails the answer; the text stays
             if not made and self.display is not None:

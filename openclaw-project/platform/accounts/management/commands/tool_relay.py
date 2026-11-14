@@ -8,6 +8,7 @@ from agentai_platform.location import LocationTool
 from agentai_platform.file_tools import FileTools
 from agentai_platform.longterm_memory import MemoryTools
 from agentai_platform.mcp_connections.relay import RemoteTools
+from agentai_platform.show_tool import ShowTools
 from agentai_platform.task_progress import TaskProgressTool
 from agentai_platform.tool_relay import Identity, Relay, serve
 from agentai_platform import model_keys, request_states
@@ -48,7 +49,7 @@ def build(store):
     if wiring.storage_ready():
         files = FileTools(store, wiring.artifact_service(store), gateway_for=wiring.cell_gateway, renderer=wiring.renderer(), events=wiring.event_service(store))
     return (Relay(tool, location=LocationTool(store), progress=TaskProgressTool(store), origin=origin, memory=MemoryTools(memory) if memory is not None else None,
-                  remote=RemoteTools(wiring.mcp_service(store), enabled=wiring.mcp_on), files=files), Identity(identify), own_models)
+                  remote=RemoteTools(wiring.mcp_service(store), enabled=wiring.mcp_on), files=files, show=ShowTools(store)), Identity(identify), own_models)
 
 
 class Command(BaseCommand):

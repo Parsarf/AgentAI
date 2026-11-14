@@ -247,28 +247,46 @@ class RulesChecks(unittest.TestCase):
         prov = CellProvisioner(None, None, tmp.name, chown=lambda p, u, g: owners.append((str(p).split('/')[-1], u, g)))
         binding = SimpleNamespace(tenant_ref=TENANT)
         prov.write_rules(binding); prov.write_rules(binding)
-        text = (Path(tmp.name) / TENANT / 'workspace' / 'AGENTS.md').read_text()
-        self.assertIn('lumina-app', text)
-        self.assertIn('dist/ are not collected', text)
-        self.assertIn('web_search', text); self.assertIn('never invent prices', text); self.assertIn('do not scrape search-engine pages', text)
+        workspace = Path(tmp.name) / TENANT / 'workspace'
+        text = (workspace / 'AGENTS.md').read_text()
+        self.assertIn('You are Lumina', text); self.assertIn('Limits that never change', text)
+        self.assertLess(len(text), 4600)                                              # read on every request: who Lumina is and the few fixed limits, nothing procedural
         self.assertEqual({o[1:] for o in owners}, {(1000, 1000)})
+        # The ways of working are workspace skills: one folder each, a one-line description the runtime shows, read on demand.
+        from agentai_platform.agent_rules import skills
+        self.assertEqual(sorted(p.name for p in (workspace / 'skills').iterdir()), sorted(skills()))
+        for name, (description, body) in skills().items():
+            saved = (workspace / 'skills' / name / 'SKILL.md').read_text()
+            self.assertTrue(saved.startswith(f'---\nname: {name}\ndescription: {description}\n---\n'), name)
+            self.assertLessEqual(len(description), 160); self.assertNotIn('\n', description)
+            self.assertIn(f'`{name}`', text)                                         # the rules say which skill covers which kind of work
+            self.assertIn('skills', {o[0] for o in owners}); self.assertIn('SKILL.md', {o[0] for o in owners})
+        apps = (workspace / 'skills' / 'lumina-apps' / 'SKILL.md').read_text()
+        self.assertIn('lumina-app', apps); self.assertIn('dist/ are not collected', apps)
+        stamp = (workspace / 'skills' / 'lumina-files' / 'SKILL.md').stat().st_mtime_ns
+        prov.write_rules(binding)
+        self.assertEqual((workspace / 'skills' / 'lumina-files' / 'SKILL.md').stat().st_mtime_ns, stamp)      # unchanged skills are not rewritten
 
     def test_rules_use_one_registry_protocol_and_on_demand_schema_files(self):
         from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
-        self.assertIn('lumina-doc', rules)
-        self.assertIn('lumina-ui/components/', rules)
-        self.assertNotIn('```lumina\n', rules)
-        self.assertIn('Use plain text', rules)
+        from agentai_platform.agent_rules import skills
+        from agentai_platform.genui.document import registry, validate_block
+        from agentai_platform.show_tool import CORE_COMPONENTS
+        show = skills()['lumina-show'][1]
+        self.assertNotIn('lumina-doc', rules); self.assertNotIn('lumina-doc', show)       # one way to show a visual: the display tool
+        self.assertIn('lumina-ui/components/', show)
+        entries = registry()['entries']
+        for name in CORE_COMPONENTS:                                                   # every example the skill teaches is one the server accepts
+            self.assertIn(json.dumps(entries[name]['example'], ensure_ascii=False, separators=(',', ':')), show, name)
+            validate_block(entries[name]['example'], entries[name]['exampleDatasets'])
 
     def test_rules_send_customer_memory_to_hindsight_tools_not_workspace_files(self):
         from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
         section = rules.split('## Remembering the customer', 1)[1].split('\n## ', 1)[0]
-        self.assertIn('lumina_memory_remember', section)
-        self.assertIn('lumina_memory_recall', section)
-        self.assertIn('Never store customer preferences or facts in', section)
-        for name in ('USER.md', 'MEMORY.md'):
-            self.assertIn(name, section)
-        self.assertIn('do not save it to a file instead', section)
+        self.assertIn('save it with the memory tool', section)
+        self.assertIn('Never keep such things in files', section)                     # with the reason: the customer cannot see or delete those
+        self.assertIn('cannot see these files', section)
+        self.assertIn('say\nthat you cannot remember it for later chats', section)
 
     def test_written_component_schemas_and_examples_match_the_registry(self):
         from agentai_platform.genui.document import registry, validate_block

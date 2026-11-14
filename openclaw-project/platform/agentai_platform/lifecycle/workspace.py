@@ -16,7 +16,8 @@ import os
 import re
 import stat
 
-SKIP_DIRS = {'node_modules', '.git', '__pycache__', '.venv', 'venv', '.cache', '.npm', 'dist', 'build', 'memory', 'tmp', 'scratch'}
+# `skills` and `lumina-ui` are Lumina's own instructions and component descriptions (lifecycle/cell_config.py write_rules), not something the customer asked for.
+SKIP_DIRS = {'node_modules', '.git', '__pycache__', '.venv', 'venv', '.cache', '.npm', 'dist', 'build', 'memory', 'tmp', 'scratch', 'skills', 'lumina-ui'}
 # The runtime seeds these into a fresh workspace and keeps them itself (persona, first-run ritual, memory): they are its files, not something the customer asked for.
 SKIP_NAMES = {'AGENTS.md', 'SOUL.md', 'USER.md', 'IDENTITY.md', 'BOOTSTRAP.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md'}
 # Leftovers of doing the work, never the work itself.

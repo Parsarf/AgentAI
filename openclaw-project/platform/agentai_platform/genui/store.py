@@ -159,6 +159,17 @@ class BlockStore:
                         (account_id, uuid.uuid4().hex, conversation_id, row['id'], 'display', json.dumps({'schemaVersion': '1.0', 'type': 'display', 'style': style, **({'presentationPlan': plan} if plan else {})}), request_id, 0, int(self.clock())))
         return True
 
+    def anchor_shown(self, account_id, conversation_id, request_id) -> int:
+        """Attach the visuals the assistant showed during this task (show_tool.py) to its last reply. Until then they sit at the end of the conversation."""
+        with self.coordinator.transaction() as con:
+            row = con.execute("SELECT id FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance='agent' ORDER BY id DESC LIMIT 1",
+                              (account_id, conversation_id, request_id)).fetchone()
+            if row is None:
+                return con.execute("SELECT count(*) FROM data_blocks WHERE account_id=? AND source_request_id=? AND kind='document'", (account_id, request_id)).fetchone()[0]
+            con.execute("UPDATE data_blocks SET anchor_message_id=? WHERE account_id=? AND conversation_id=? AND source_request_id=? AND kind='document' AND anchor_message_id IS NULL",
+                        (row['id'], account_id, conversation_id, request_id))
+            return con.execute("SELECT count(*) FROM data_blocks WHERE account_id=? AND source_request_id=? AND kind='document'", (account_id, request_id)).fetchone()[0]
+
     def attach_cards(self, account_id, conversation_id, request_id) -> int:
         """Attach registry documents or apply a versioned continuation update; historical messages stay intact."""
         with self.store.connect() as con:

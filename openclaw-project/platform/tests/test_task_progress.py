@@ -94,8 +94,11 @@ class ProgressChecks(Base):
         info = self.driver._admit(self.claim)
         outgoing = self.driver._outgoing(self.claim, info)
         self.assertIn(self.request['id'], outgoing)
-        self.assertIn('do not stop to offer Plan mode', outgoing)
-        self.assertIn('checkpoint', outgoing)
+        self.assertIn('The task id of this request is ' + self.request['id'], outgoing)
+        from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES
+        from agentai_platform.task_progress import TOOL
+        self.assertNotIn('checkpoint', outgoing)                                    # how to report progress is said once: in the standing rules and the tool's own description
+        self.assertIn('task checklist', WORKSPACE_RULES); self.assertIn('checkpoint', TOOL['description'])
         from agentai_platform.genui.schema import validate_plan
         plan = validate_plan({'schemaVersion': '1.0', 'type': 'task_plan', 'title': 'Fix', 'phases': [dict(id='fix', title='Fix', description='Make the change', checkpoint='Tests pass')]})
         text = phase_prompt(plan, None, [], plan['phases'][0], 1, 1)

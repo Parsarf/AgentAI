@@ -38,7 +38,7 @@ def decide(messages, tools):
     everything = ' '.join(text_of(m) for m in messages if m['role'] in ('user', 'system'))        # the goal's objective is shown to the model as internal context on every turn, not in the last message
     answered = sum(1 for m in live if m['role'] == 'assistant' and text_of(m).strip())
     if 'SCENARIO:ownership_parallel' in user:
-        task = re.search(r'Current task_id: ([a-f0-9]+)', everything).group(1)
+        task = re.search(r'The task id of this request is ([a-f0-9]+)', everything).group(1)
         progress = {'task_id': task, 'update_id': 'parallel-start', 'revision': 0, 'mode': 'direct',
                     'steps': [{'id': 'browse', 'title': 'Inspect the shop', 'status': 'running'}]}
         browser = {'task': 'Inspect products in the shop', 'site': 'shop.example', 'done_when': 'Report the visible product names'}

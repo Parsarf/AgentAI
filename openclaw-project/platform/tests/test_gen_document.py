@@ -226,7 +226,9 @@ class AnswerStyles(unittest.TestCase):
 
     def test_the_always_on_rules_no_longer_carry_the_section(self):
         from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES as rules
-        self.assertNotIn('```lumina\n', rules); self.assertIn('Use plain text', rules); self.assertIn('lumina-ui/components/', rules)
+        from agentai_platform.agent_rules import skills
+        self.assertNotIn('```lumina', rules); self.assertNotIn('lumina-doc', rules)                 # the always-on rules name no protocol: they point at the skill
+        self.assertIn('`lumina-show`', rules); self.assertIn('lumina-ui/components/', skills()['lumina-show'][1])
 
 
 class StyleFlow(Base):
@@ -237,17 +239,19 @@ class StyleFlow(Base):
 
     def test_basic_keeps_the_message_and_adds_no_composed_ui_instructions(self):
         text = self.outgoing(message='what is 2+2')
-        self.assertTrue(text.endswith('what is 2+2'))
-        self.assertIn('[Lumina task progress.', text)
-        self.assertNotIn('Answer style:', text)
-        self.assertNotIn('lumina-doc', text)
+        self.assertTrue(text.endswith('Customer message:\nwhat is 2+2'))                              # the customer's words stay exactly theirs
+        self.assertIn('The task id of this request is ', text)
+        self.assertIn('The customer chose plain answers', text)
+        self.assertNotIn('Answer style:', text); self.assertNotIn('lumina-doc', text)
+        self.assertLess(len(text), 400)                                                              # facts about this request only, never instructions repeated per message
 
     def test_medium_and_interactive_add_their_instructions_to_that_message_only(self):
         text = self.outgoing(message='compare plans', ui='medium')
-        self.assertTrue(text.startswith('[Lumina context')); self.assertIn('Answer style: medium', text); self.assertIn('Customer message:\n', text); self.assertTrue(text.endswith('compare plans')); self.assertNotIn('agent.request', text)
+        self.assertTrue(text.startswith('[Lumina context')); self.assertTrue(text.endswith('Customer message:\ncompare plans'))
+        self.assertNotIn('plain answers', text); self.assertNotIn('Answer style', text); self.assertNotIn('JSON Lines', text)      # how to show a visual lives in the display tool and its skill
 
     def test_interactive_adds_the_full_set_and_text_mode_overrides_it(self):
-        self.assertIn('approval_request', self.outgoing(message='x y z', ui='interactive'))
+        self.assertNotIn('plain answers', self.outgoing(message='x y z', ui='interactive'))
 
     def test_an_unknown_style_is_refused(self):
         with self.assertRaises(ValueError):

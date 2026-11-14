@@ -47,8 +47,10 @@ class AppHTTPChecks(TestCase):
         with self.assertRaises(ValueError):
             application({'version': 1, 'title': 'Test', 'runtime': 'shell', 'code': 'rm'})
         self.assertIn('lumina-app', delivery_prompt())
+        from agentai_platform.agent_rules import skills
         from agentai_platform.lifecycle.cell_config import WORKSPACE_RULES
-        self.assertIn(delivery_prompt(), WORKSPACE_RULES)
+        self.assertIn(delivery_prompt().replace('[Lumina app delivery]\n', ''), skills()['lumina-apps'][1])      # how to build an app is a skill, read when that work comes up
+        self.assertIn('`lumina-apps`', WORKSPACE_RULES)
         for value in (None, [], {'version': True}, {'version': 1, 'title': 'x', 'runtime': [], 'code': 'x'}):
             with self.assertRaises(ValueError):
                 application(value)
