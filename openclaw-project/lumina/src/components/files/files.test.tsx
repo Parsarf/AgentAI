@@ -66,7 +66,8 @@ describe('download as', () => {
     expect(path).toBe('/v1/conversations/c1/export');
     expect(JSON.parse(String(init.body))).toEqual({ format: 'pdf', message: '7' });
     expect((init.headers as Record<string, string>)['X-CSRFToken']).toBe('csrf');
-    expect(onError).not.toHaveBeenCalled();
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());          // the download ran to the end
+    expect(onError.mock.calls).toEqual([]);
     vi.unstubAllGlobals();
   });
   it('offers only the formats that need no converter when there is none, and says why a download failed', async () => {
