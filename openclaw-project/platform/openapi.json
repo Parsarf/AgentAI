@@ -2884,6 +2884,297 @@
     }
    }
   },
+  "/v1/files": {
+   "get": {
+    "summary": "Every file made for this account (all versions, newest first) with the chat each came from, plus storage used and the limit",
+    "responses": {
+     "200": {
+      "description": "{files: [{id, version, display_name, media_type, size_bytes, sha256, created_at, task_id, project_id, conversation_id}], used_bytes, quota_bytes}. display_name may contain folders (\"reports/Q3 sales.xlsx\")."
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "503": {
+      "description": "Private file storage is not configured"
+     }
+    }
+   }
+  },
+  "/v1/files/bundle": {
+   "post": {
+    "summary": "Make one ZIP of the newest version of every file in the account; it replaces the previous one. Download it with a ticket.",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "{bundle: {artifact_id, version, sha256, size_bytes, file_count}}"
+     },
+     "409": {
+      "description": "Nothing to pack, or over the size or storage limit"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "503": {
+      "description": "Private file storage is not configured"
+     }
+    }
+   }
+  },
+  "/v1/artifacts/{id}/delete": {
+   "post": {
+    "summary": "Permanently delete a file: every version, its bytes, its preview picture and unused download tickets. There is no trash.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "{deleted: {artifact_id, versions}}"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "503": {
+      "description": "Private file storage is not configured"
+     }
+    }
+   }
+  },
+  "/v1/artifacts/{id}/versions/{version}/preview": {
+   "get": {
+    "summary": "What one file looks like: the picture itself (PNG, JPEG, GIF, WebP), the first 200 KB of a text file as text/plain, or a JPEG of the first page of a PDF or office document. Always served sandboxed; never the document itself.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "version",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "image/* or text/plain"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable, not yours, or {error: \"no_preview\"} when this format has nothing to show"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "503": {
+      "description": "Private file storage is not configured"
+     }
+    }
+   }
+  },
+  "/v1/conversations/{id}/export": {
+   "post": {
+    "summary": "Download an answer (with `message`, a message id) or the whole conversation as a file. Made on the spot and returned as an attachment; nothing is stored.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "format": {
+          "type": "string",
+          "enum": [
+           "pdf",
+           "docx",
+           "md",
+           "txt",
+           "html"
+          ]
+         },
+         "message": {
+          "type": "string",
+          "description": "A message id; omit for the whole conversation"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The file, as an attachment"
+     },
+     "400": {
+      "description": "Unknown format or malformed message id"
+     },
+     "422": {
+      "description": "Nothing to export, or the conversion was refused; `reason` says why"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "503": {
+      "description": "{error: \"convert_not_available\"}: pdf, docx and html need the render service; md and txt never do"
+     }
+    }
+   }
+  },
+  "/v1/export/table": {
+   "post": {
+    "summary": "Turn a table shown in the chat into a real Excel workbook (or CSV). Text that looks like a formula is kept as text. Returned as an attachment; nothing is stored.",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "format": {
+          "type": "string",
+          "enum": [
+           "xlsx",
+           "csv"
+          ]
+         },
+         "name": {
+          "type": "string"
+         },
+         "columns": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+           "type": "string"
+          }
+         },
+         "rows": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": {
+           "type": "array",
+           "items": {
+            "type": [
+             "string",
+             "number",
+             "null"
+            ]
+           }
+          }
+         }
+        },
+        "required": [
+         "columns",
+         "rows"
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The file, as an attachment"
+     },
+     "400": {
+      "description": "Invalid table"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours (the two are indistinguishable by design)"
+     },
+     "429": {
+      "description": "Rate limited; Retry-After is set"
+     },
+     "503": {
+      "description": "{error: \"convert_not_available\"}"
+     }
+    }
+   }
+  },
   "/app/": {
    "get": {
     "summary": "Pluggable front-end shell: serves index.html from the installed UI bundle (own script-capable CSP); 404 until installed",

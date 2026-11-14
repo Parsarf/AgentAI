@@ -29,7 +29,7 @@ PROTOCOL = 4
 SESSION_KEY = re.compile(r'^agent:main:[A-Za-z0-9_.:-]{1,120}$')
 TOKEN_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,128}$')
 ALLOWED = ('hello', 'sessions.create', 'sessions.describe', 'chat.send', 'chat.history', 'chat.abort', 'agent.wait', 'sessions.goal.update', 'sessions.goal.clear',
-           'usage.snapshot', 'cell.status', 'cell.identify', 'tools.origin', 'tools.active', 'workspace.collect', 'chat.draft', 'browser.request', 'browser.shot', 'browser.live', 'browser.frame')
+           'usage.snapshot', 'cell.status', 'cell.identify', 'tools.origin', 'tools.active', 'workspace.collect', 'workspace.scan', 'workspace.stat', 'workspace.read', 'chat.draft', 'browser.request', 'browser.shot', 'browser.live', 'browser.frame')
 # The cell's native browser. Its gateway method needs operator.admin, which the main connection never has: these calls travel on a second connection of their own, and only a
 # caller the socket server names (the browse service, root) may use them. The app itself cannot.
 BROWSER_METHODS = ('browser.request', 'browser.shot', 'browser.live', 'browser.frame')
@@ -334,11 +334,22 @@ class CellBridge:
             if not is_tool_name(name) or not isinstance(arguments, dict) or len(json.dumps(arguments)) > 16000:
                 raise BridgeError('invalid tool call')
             return {'name': name, 'arguments': arguments, 'nonce': params.get('nonce')}
-        if method == 'workspace.collect':
+        if method in ('workspace.collect', 'workspace.scan'):
             since = params.get('since')
             if type(since) is not int or since < 0:
                 raise BridgeError('invalid since')
             return {'since': since}
+        if method in ('workspace.stat', 'workspace.read'):
+            from .workspace import safe_path, MAX_CHUNK, MAX_FILE_BYTES
+            path = params.get('path')
+            if safe_path(path) is None:
+                raise BridgeError('invalid path')
+            if method == 'workspace.stat':
+                return {'path': path}
+            offset, length = params.get('offset', 0), params.get('length', MAX_CHUNK)
+            if type(offset) is not int or type(length) is not int or not 0 <= offset <= MAX_FILE_BYTES or not 0 < length <= MAX_CHUNK:
+                raise BridgeError('invalid range')
+            return {'path': path, 'offset': offset, 'length': length}
         if method == 'sessions.create':
             label = params.get('label')
             if not isinstance(label, str) or not TOKEN_ID.fullmatch(label):
@@ -553,13 +564,24 @@ class CellBridge:
                     raise BridgeError('native turn state unavailable')
                 return {'turns': [{'session_key': key, 'run_id': run} for _, key, run in rows]}
             return inspect_origin(root, clean['name'], clean['arguments'], clean['nonce'])
-        if method == 'workspace.collect':
+        if method in ('workspace.collect', 'workspace.scan', 'workspace.stat', 'workspace.read'):
+            # The account's own workspace and nothing else: the tenant comes from the binding, never from the caller.
             tenant = self.binding(account) if self.binding else None
             if tenant is None or self.workspace_root is None or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', tenant):
                 raise BridgeError('no cell')
             import base64
-            from .workspace import collect
-            files = collect(Path(self.workspace_root) / tenant / 'workspace', clean['since'])
+            from . import workspace as ws
+            folder = Path(self.workspace_root) / tenant / 'workspace'
+            if method == 'workspace.scan':
+                return ws.scan(folder, clean['since'])
+            if method == 'workspace.stat':
+                return ws.stat_file(folder, clean['path'])
+            if method == 'workspace.read':
+                data = ws.read(folder, clean['path'], clean['offset'], clean['length'])
+                if data is None:
+                    raise BridgeError('unreadable')
+                return {'data_b64': base64.b64encode(data).decode(), 'eof': len(data) < clean['length']}
+            files = ws.collect(folder, clean['since'])
             return {'files': [{'path': name, 'data_b64': base64.b64encode(data).decode()} for name, data in files]}
         if method == 'usage.snapshot':
             tenant = self.binding(account) if self.binding else None

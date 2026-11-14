@@ -195,9 +195,9 @@ class NativeEndToEnd(unittest.TestCase):
         self.assertEqual(row['outcome'], 'completed')
         self.assertEqual(row['verification'], 'verified')                                          # a saved file is evidence Lumina holds
         listed = {a['display_name']: a for a in S.artifacts.list_artifacts(S.principals['a'], 'p-a')}
-        self.assertIn('notes_report.txt', listed)
+        self.assertIn('notes/report.txt', listed)                                                  # the folder it was written in is kept
         self.assertTrue(any(e['kind'] == 'artifact' for e in S.events.events(S.principals['a'], sent['id'])['events']))
-        self.assertEqual(S.rows("SELECT task_id FROM artifacts WHERE display_name='notes_report.txt'")[0]['task_id'], sent['id'])
+        self.assertEqual(S.rows("SELECT task_id FROM artifacts WHERE display_name='notes/report.txt'")[0]['task_id'], sent['id'])
 
     # -- plan mode and phases ------------------------------------------------------------------------------------------------------------------
     def test_plan_mode_drafts_a_plan_and_each_approved_phase_runs_as_its_own_native_run(self):

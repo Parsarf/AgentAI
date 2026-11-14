@@ -266,12 +266,36 @@ class ChatChecks(unittest.TestCase):
             return claim
         run('f1')
         listed = {a['display_name']: a for a in artifacts.list_artifacts(self.a, 'p-a')}
-        self.assertEqual(sorted(listed), ['slug.py', 'sub_page.html'])              # .exe and invalid json refused
-        files[0] = [('slug.py', b'print(1)\n'), ('sub/page.html', b'<p>changed</p>')]
+        self.assertEqual(sorted(listed), ['data.json', 'slug.py', 'sub/page.html'])   # any format is kept, in its folder; a program never is
+        self.assertEqual(listed['sub/page.html']['media_type'], 'text/html')
+        files[0] = [('slug.py', b'print(1)\n'), ('sub/page.html', b'<p>changed</p>'), ('sheet.xlsx', b'PK\x03\x04fake'), ('evil.exe', b'MZ\x00\x00')]
         claim = run('f2')
         rows = artifacts.list_artifacts(self.a, 'p-a')
-        self.assertEqual(sorted((a['display_name'], a['version']) for a in rows), [('slug.py', 1), ('sub_page.html', 1), ('sub_page.html', 2)])
-        self.assertEqual([e['payload']['name'] for e in events.events(self.a, claim.request_id)['events'] if e['kind'] == 'artifact'], ['sub_page.html'])
+        self.assertEqual(sorted((a['display_name'], a['version']) for a in rows), [('data.json', 1), ('sheet.xlsx', 1), ('slug.py', 1), ('sub/page.html', 1), ('sub/page.html', 2)])
+        seen = events.events(self.a, claim.request_id)['events']
+        self.assertEqual([e['payload']['name'] for e in seen if e['kind'] == 'artifact'], ['sub/page.html', 'sheet.xlsx'])
+        self.assertEqual([(e['payload']['name'], e['payload']['reason']) for e in seen if e['kind'] == 'artifact_skipped'], [('evil.exe', 'programs and installers are not delivered')])
+
+    def test_files_the_assistant_delivered_itself_are_the_result_and_nothing_else_is_swept_up(self):
+        from agentai_platform.artifacts import ArtifactService
+        from agentai_platform.events import EventService
+        from agentai_platform.storage import RootStore
+        artifacts = ArtifactService(self.store, storage=RootStore(Path(self.tmp.name) / 'storage'), signing_key=b'k' * 32, clock=lambda: self.now)
+        events = EventService(self.store, clock=lambda: self.now)
+        outer = self
+        class Delivers(SyntheticGateway):
+            def workspace_files(self, since): return [('report.md', b'# notes'), ('report.pdf', b'%PDF-1.7 x')]
+            def send(self, *args, **kwargs):                       # the assistant's own tool call lands while the run is live
+                out = super().send(*args, **kwargs)
+                request = outer.rows("SELECT id FROM customer_requests WHERE account_id='a' ORDER BY rowid DESC LIMIT 1")[0][0]
+                saved = artifacts.capture_or_version(account_id='a', project_id='p-a', task_id=request, name='Report.pdf', media_type='application/pdf', data=b'%PDF-1.7 x')
+                events.append('a', request, 'artifact', {'artifact_id': saved['artifact_id'], 'version': 1, 'name': 'Report.pdf', 'sha256': saved['sha256']}, 'agent')
+                return out
+        self.send(key='d1')
+        claim = self.queue.claim(owner='w', capacity=CAPACITY)
+        driver = ChatDriver(self.store, ledger=self.ledger, gateway_factory=synthetic_gateway_factory(Delivers()), clock=lambda: self.now, sleep=lambda s: None, events=events, artifacts=artifacts)
+        self.queue.finish(claim, driver.execute(claim))
+        self.assertEqual([a['display_name'] for a in artifacts.list_artifacts(self.a, 'p-a')], ['Report.pdf'])
 
     def test_usage_is_reconciled_from_provider_spend_delta(self):
         class Metered(SyntheticGateway):

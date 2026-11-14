@@ -46,3 +46,6 @@ export const Key = make(<><circle cx="8" cy="15" r="3.5" /><path d="M10.6 12.4L1
 export const Note = make(<path d="M5 7h14M5 12h14M5 17h8" />);
 export const Helper = make(<><circle cx="8" cy="8" r="3" /><circle cx="17" cy="15" r="3" /><path d="M10.5 10l4 3" /></>);
 export const Dash = make(<path d="M7 12h10" />);
+export const Download = make(<><path d="M12 4v11" /><path d="M7.5 11l4.5 4.5 4.5-4.5" /><path d="M5 20h14" /></>);
+export const Trash = make(<><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6.5 7l1 13h9l1-13" /></>);
+export const Folder = make(<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />);

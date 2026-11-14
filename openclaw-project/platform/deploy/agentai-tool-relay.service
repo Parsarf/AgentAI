@@ -1,6 +1,6 @@
 [Unit]
 Description=AgentAI tool relay (Lumina's native browser tool for customer cells, MCP over HTTP on the cells bridge address)
-After=agentai-platform-app.service agentai-cell-bridge.service agentai-cells-docker.service agentai-browse.service
+After=agentai-platform-app.service agentai-cell-bridge.service agentai-cells-docker.service agentai-browse.service agentai-render.service
 Wants=agentai-cell-bridge.service
 
 [Service]
@@ -25,7 +25,7 @@ RestrictAddressFamilies=AF_UNIX AF_INET
 CapabilityBoundingSet=
 ReadWritePaths=/var/lib/agentai-platform
 ReadOnlyPaths=/etc/agentai-platform
-MemoryMax=192M
+MemoryMax=512M
 MemorySwapMax=0
 CPUQuota=25%
 TasksMax=64

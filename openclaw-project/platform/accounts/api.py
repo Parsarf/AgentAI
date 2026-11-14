@@ -28,6 +28,7 @@ def features(request):
         'browse': wiring.switch_on('browse_tasks'),               # the browser agent may be chosen for interactive goals
         'files': wiring.storage_ready(),
         'uploads': wiring.uploads_on(),
+        'convert': wiring.convert_on(),                           # files can be turned into PDF, Word, Excel...: the Download-as buttons exist
         'telegram': bool(settings.TELEGRAM_ENABLED),
         'connectors': wiring.switch_on('connectors_linking'),
         'mcp': wiring.mcp_on(getattr(request, 'account_id', None)),           # remote MCP connections (the owner's mcp-connections.json); off until turned on

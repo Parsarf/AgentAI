@@ -202,6 +202,11 @@ def timeline(events) -> list[dict]:
             if name:
                 rows.append({'key': f'f{seq}', 'kind': 'file', 'category': 'file', 'label': 'Saved a file', 'detail': name, 'output': '', 'status': 'done', 'at': at, 'ended_at': at,
                              'first': seq, 'seq': seq, 'group': None})
+        elif kind == 'artifact_skipped':
+            name = _text(p.get('name'), 200)
+            if name:
+                rows.append({'key': f'f{seq}', 'kind': 'file', 'category': 'file', 'label': 'Could not save a file', 'detail': f"{name}: {_text(p.get('reason'), 80)}", 'output': '',
+                             'status': 'failed', 'at': at, 'ended_at': at, 'first': seq, 'seq': seq, 'group': None})
     return rows
 
 
