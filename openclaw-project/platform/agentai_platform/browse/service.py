@@ -98,7 +98,7 @@ ASK_SECONDS = 300                              # a question waits this long for 
 AGENT_WAIT_SECONDS = 180                       # how long the loop waits for the assistant's next step before it gives the task up
 AGENT_RETRIES = 3                              # an invalid step is handed back to the assistant to correct this many times in a row
 AGENT_STEP_FIELDS = ('action', 'ref', 'value', 'answer', 'reason', 'question', 'field', 'options', 'fields')
-MAX_OBSERVATION = 9000
+MAX_OBSERVATION = 14000                        # the page as the assistant is shown it: up to 80 controls (it used to be 20) and the page text after them. The runtime cuts a tool result at about 20,000 characters
 MAX_PREFS = 40
 
 
@@ -130,6 +130,7 @@ class Job:
         self.state, self.reason, self.answer, self.url, self.pending = 'queued', '', None, '', None
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
+        self.running_cost = lambda: 0               # what the run has spent so far, while it is going (its ladder's count); `cost` is only added up when the run ends
         self.engine = 'runner'                      # 'runner' (the host's Docker stage) | 'native' (the cell's own browser) | 'local' (the customer's own Chrome, through the extension); recorded on the job, never switched mid-run
         self.last_shot = 0.0
         self.trace = NULL                           # set when the run starts: the operator's record (trace.py)
@@ -220,9 +221,16 @@ class BrowseService:
         with job.lock:
             events = [e for e in job.events if e['n'] > since]
         return {'state': job.state, 'reason': job.reason, 'answer': job.answer, 'url': job.url, 'pending_action': job.pending,
-                'cost_microusd': job.cost, 'events': events, 'takeover': job.state in ('handoff', 'paused', 'asking') and self.clock() < job.takeover_until,
+                'cost_microusd': max(job.cost, self._running_cost(job)), 'events': events, 'takeover': job.state in ('handoff', 'paused', 'asking') and self.clock() < job.takeover_until,
                 'pausing': job.state == 'running' and job.pause_req.is_set(), 'needs_you': job.needs or None, 'jev': dict(job.stats), 'question': self._public_question(job),
                 'observation': job.observation if job.state == 'running' else None}
+
+    @staticmethod
+    def _running_cost(job):
+        try:
+            return int(job.running_cost())
+        except Exception:
+            return 0
 
     def cancel(self, account, request_id):
         job = self._job(account, request_id)
@@ -601,6 +609,8 @@ class BrowseService:
             jev = self.jev_for(job.account) if self.jev_mode != 'off' else None
             trace.emit('ready', start=_where(start), jev=jev is not None, decider=type(jev).__name__ if jev is not None else '')       # JevChooser (standard) | UltrafastChooser (the owner's switch is off)
             ladder = Ladder(admit=self._admit(job), jev=jev, agent=self._agent_gate(job), max_cost=job.max_cost, trace=trace, on_call=lambda: job.stats.__setitem__('jev_calls', job.stats['jev_calls'] + 1))
+
+            job.running_cost = lambda: ladder.spent      # a job that is stopped or handed to the assistant is polled before it ends: its cost so far must not read as zero
 
             def on_event(kind, data):
                 job.add(kind, data)

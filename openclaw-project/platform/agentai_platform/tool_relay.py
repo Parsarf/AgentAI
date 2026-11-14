@@ -75,8 +75,8 @@ class Relay:
             from .location import NAME, TOOL as LOCATION_TOOL
             self.tools[NAME] = LOCATION_TOOL
         if remote is not None:
-            from .mcp_connections.relay import DISCOVER, CALL
-            self.tools.update({DISCOVER['name']: DISCOVER, CALL['name']: CALL})
+            from .mcp_connections.relay import GENERIC
+            self.tools.update({spec['name']: spec for spec in GENERIC})
         # The runtime hook overwrites this optional transport field. It is
         # stripped before the browser/progress handler sees user arguments.
         import copy

@@ -258,7 +258,7 @@ def mcp_service(db=None):
                                     'issuer': 'https://app.asana.com', 'token_endpoint_auth_method': 'client_secret_post'}
     db = db or store()
     return ConnectionService(db, ModelKeyring.derived(settings.SECRET_KEY, settings.MCP_KEY_FILE or settings.MODEL_KEY_FILE or None),
-                             callback_url=settings.PUBLIC_ORIGIN + '/v1/account/mcp/callback', registrations=registrations,
+                             callback_url=settings.PUBLIC_ORIGIN + '/v1/account/mcp/callback', registrations=registrations, metadata_url=settings.MCP_CLIENT_METADATA_URL,
                              events=event_service(db))
 
 

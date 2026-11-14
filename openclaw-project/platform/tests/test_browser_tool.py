@@ -137,7 +137,7 @@ class ToolChecks(Base):
                   'observation': {'n': 1, 'text': 'Handed to you because: the planner found this too complex.\nCurrent page: https://ubereats.com/', 'image': 'QUJD'}}
         self.rpc.script = [handed]
         result = self.tool.call('a', self.ARGS)
-        self.assertEqual(len(result), 3); self.assertFalse(result[1]); self.assertEqual(result[2], 'QUJD')                     # the picture of the window goes along
+        self.assertEqual(len(result), 2); self.assertFalse(result[1])          # no picture: the runtime's tool wrapper would turn it into thousands of characters of cut-off base64 text
         self.assertIn('needs your next step', result[0]); self.assertIn('lumina_browser_step', result[0])
         self.assertEqual([c[0] for c in self.rpc.calls], ['start', 'poll'])                                                  # the job is left running, waiting for the step
         self.rpc.script = [done(answer='Added the wings.', events=[{'n': 2, 'kind': 'step', 'by': 'agent', 'action': 'click', 'label': 'Wings', 'result': 'ok'}])]

@@ -142,6 +142,7 @@ BILLING_PUBLIC_ORIGIN = os.environ.get('AGENTAI_BILLING_PUBLIC_ORIGIN', 'https:/
 BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'                   # owner-only, off by default
 
 # Remote MCP custody uses the host-only encryption key; no credentials enter cells.
+MCP_CLIENT_METADATA_URL = os.environ.get('AGENTAI_MCP_CLIENT_METADATA_URL', PUBLIC_ORIGIN + '/oauth/client-metadata.json' if _origin.hostname != 'localhost' else '')
 MCP_KEY_FILE = os.environ.get('AGENTAI_MCP_KEY_FILE', '')
 MCP_SWITCH_FILE = os.environ.get('AGENTAI_MCP_SWITCH_FILE', '/var/lib/agentai-platform/mcp-connections.json')      # who may use remote MCP connections; off until turned on (agentai_platform/mcp_connections/switch.py)
 # Long-term memory (agentai_platform/longterm_memory.py): a self-hosted Hindsight server indexes what the assistant is asked to remember, one private bank per account.

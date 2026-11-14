@@ -1,0 +1,9 @@
+{
+  "client_id": "https://getlumina.pro/oauth/client-metadata.json",
+  "client_name": "Lumina",
+  "client_uri": "https://getlumina.pro",
+  "redirect_uris": ["https://getlumina.pro/v1/account/mcp/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}

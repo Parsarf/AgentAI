@@ -2,6 +2,9 @@
 import asyncio
 import json
 import threading
+import queue
+import uuid
+from urllib.parse import urlsplit, parse_qs
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import httpx2
@@ -14,6 +17,8 @@ ISSUER = 'https://auth.mcp-demo.net'
 class Fixture:
     def __init__(self, oauth=False):
         self.oauth = oauth
+        self.cimd = False; self.registrations = 0; self.required_headers = {}; self.received_headers = []
+        self.legacy = False; self.events = {}; self.ending = threading.Event(); self.required_scope = None
         self.calls = []; self.sessions_closed = 0; self.initialized = 0; self.token_requests = []
         self.tokens = ['fixture-access-secret', 'rotated-access-secret']
         self.tools = [
@@ -33,12 +38,26 @@ class Fixture:
                 self.send_header('Content-Type', 'application/json')
                 for k,v in headers.items(): self.send_header(k.replace('_','-'), v)
                 self.end_headers(); self.wfile.write(data)
+            def event(self, value):
+                sid = parse_qs(urlsplit(self.path).query).get('session_id', [''])[0]
+                fixture.events[sid].put(value)
             def do_GET(self):
+                if fixture.legacy and self.path == '/mcp':
+                    sid = uuid.uuid4().hex; events = queue.Queue(); fixture.events[sid] = events
+                    self.send_response(200); self.send_header('Content-Type', 'text/event-stream'); self.send_header('Cache-Control', 'no-cache'); self.end_headers()
+                    try:
+                        self.wfile.write(('event: endpoint\ndata: /messages?session_id=' + sid + '\n\n').encode()); self.wfile.flush()
+                        while not fixture.ending.is_set():
+                            try: event = events.get(timeout=0.2)
+                            except queue.Empty: continue
+                            self.wfile.write(('event: message\ndata: ' + json.dumps(event) + '\n\n').encode()); self.wfile.flush()
+                    except (OSError, BrokenPipeError): pass
+                    return
                 if 'oauth-protected-resource' in self.path:
                     self.respond(200, {'resource': URL, 'authorization_servers': [ISSUER]})
                 elif 'oauth-authorization-server' in self.path or 'openid-configuration' in self.path:
                     self.respond(200, {'issuer': ISSUER, 'authorization_endpoint': ISSUER+'/authorize', 'token_endpoint': ISSUER+'/token',
-                                      'registration_endpoint': ISSUER+'/register', 'revocation_endpoint': ISSUER+'/revoke',
+                                      'registration_endpoint': ISSUER+'/register', 'revocation_endpoint': ISSUER+'/revoke', 'client_id_metadata_document_supported': fixture.cimd,
                                       'response_types_supported': ['code'], 'grant_types_supported': ['authorization_code','refresh_token'],
                                       'code_challenge_methods_supported': ['S256'], 'token_endpoint_auth_methods_supported': ['none','client_secret_post']})
                 else: self.respond(405)
@@ -47,6 +66,7 @@ class Fixture:
             def do_POST(self):
                 data = self.rfile.read(int(self.headers.get('Content-Length', 0)))
                 if self.path == '/register':
+                    fixture.registrations += 1
                     value=json.loads(data); self.respond(201, {**value, 'client_id': 'fixture-client', 'client_secret': 'fixture-client-secret'}); return
                 if self.path == '/token':
                     from urllib.parse import parse_qs
@@ -54,6 +74,9 @@ class Fixture:
                     if fixture.reject_refresh and params['grant_type'][0]=='refresh_token': self.respond(400, {'error':'invalid_grant'}); return
                     self.respond(200, {'access_token': fixture.tokens[-1] if params['grant_type'][0]=='refresh_token' else fixture.tokens[0], 'token_type':'Bearer','refresh_token':'fixture-refresh-secret','expires_in':3600}); return
                 if self.path == '/revoke': self.respond(fixture.revocation_status); return
+                if fixture.legacy and self.path == '/mcp': self.respond(405); return
+                fixture.received_headers.append(dict(self.headers))
+                if any(self.headers.get(k) != v for k,v in fixture.required_headers.items()): self.respond(401); return
                 if fixture.oauth and self.headers.get('Authorization') not in ['Bearer '+t for t in fixture.tokens]:
                     self.respond(401, WWW_Authenticate='Bearer resource_metadata="'+URL.rsplit('/mcp',1)[0]+'/.well-known/oauth-protected-resource"'); return
                 value=json.loads(data); rid=value.get('id'); method=value.get('method'); params=value.get('params') or {}
@@ -65,7 +88,10 @@ class Fixture:
                     result={'tools':fixture.tools[1:]} if params.get('cursor') else {'tools':fixture.tools[:1], 'nextCursor':'second'}
                 elif method == 'tools/call':
                     fixture.calls.append(params)
-                    if fixture.reject_call: self.respond(401); return
+                    if fixture.reject_call:
+                        if fixture.required_scope: self.respond(403, WWW_Authenticate='Bearer error="insufficient_scope", scope="'+fixture.required_scope+'"')
+                        else: self.respond(401)
+                        return
                     if params['name']=='write' and fixture.fail_write:
                         self.close_connection=True; self.connection.close(); return
                     if params['name']=='picture':
@@ -73,11 +99,16 @@ class Fixture:
                     else: result={'content':[{'type':'text','text':params['arguments']['text']}], 'structuredContent':{'text':params['arguments']['text']}}
                 elif method == 'ping': result={}
                 else:
-                    self.respond(200, {'jsonrpc':'2.0','id':rid,'error':{'code':-32601,'message':'not supported'}}); return
-                self.respond(200, {'jsonrpc':'2.0','id':rid,'result':result}, Mcp_Session_Id='fixture-session')
+                    error={'jsonrpc':'2.0','id':rid,'error':{'code':-32601,'message':'not supported'}}
+                    if fixture.legacy and self.path.startswith('/messages'): self.event(error); self.respond(202)
+                    else: self.respond(200,error)
+                    return
+                if fixture.legacy and self.path.startswith('/messages'):
+                    self.event({'jsonrpc':'2.0','id':rid,'result':result}); self.respond(202)
+                else: self.respond(200, {'jsonrpc':'2.0','id':rid,'result':result}, Mcp_Session_Id='fixture-session')
         self.server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True); self.thread.start()
-    def close(self): self.server.shutdown(); self.server.server_close(); self.thread.join(3)
+    def close(self): self.ending.set(); self.server.shutdown(); self.server.server_close(); self.thread.join(3)
     def http(self, url):
         fixture=self
         class OnlyFixture(httpx2.AsyncBaseTransport):

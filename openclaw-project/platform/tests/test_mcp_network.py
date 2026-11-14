@@ -51,3 +51,43 @@ class TransportChecks(unittest.IsolatedAsyncioTestCase):
             async def aclose(self): pass
         with self.assertRaises(net.ConnectionError):
             async for _ in net.BoundedStream(Stream()): pass
+
+class CompatibilityChecks(unittest.IsolatedAsyncioTestCase):
+    async def test_gzip_and_deflate_decoded_bytes_are_bounded(self):
+        import gzip, zlib
+        class Stream(httpx2.AsyncByteStream):
+            def __init__(self, data): self.data=data
+            async def __aiter__(self): yield self.data
+            async def aclose(self): pass
+        for encoding,compress in [('gzip',gzip.compress),('deflate',zlib.compress)]:
+            parts=[part async for part in net.BoundedStream(Stream(compress(b'hello')),encoding)]
+            self.assertEqual(b''.join(parts),b'hello')
+            with self.assertRaises(net.ConnectionError):
+                async for _ in net.BoundedStream(Stream(compress(b'x'*(net.MAX_RESPONSE+1))),encoding): pass
+
+    async def test_custom_headers_and_basic_cannot_cross_resource_origins(self):
+        transport=net.PublicTransport('https://service.example.com/mcp');self.addAsyncCleanup(transport.aclose)
+        transport.secret_headers={'x-api-key'};transport.resource_basic=True
+        with patch.object(transport.inner,'handle_async_request',new_callable=AsyncMock) as send:
+            for headers in [{'X-API-Key':'secret'},{'Authorization':'Basic dTpw'}]:
+                with self.assertRaises(net.ConnectionError):await transport.handle_async_request(httpx2.Request('GET','https://other.example.com/mcp',headers=headers))
+            send.assert_not_called()
+
+    async def test_cross_origin_token_endpoint_must_be_explicitly_bound(self):
+        transport=net.PublicTransport('https://service.example.com/mcp');self.addAsyncCleanup(transport.aclose)
+        transport.oauth_issuer=lambda:'https://auth.example.com'
+        transport.oauth_endpoints=lambda:{'https://tokens.example.com/oauth/token'}
+        with patch.object(transport.inner,'handle_async_request',new_callable=AsyncMock,return_value=httpx2.Response(200,content=b'{}')) as send:
+            response=await transport.handle_async_request(httpx2.Request('POST','https://tokens.example.com/oauth/token',content='grant_type=refresh_token&refresh_token=secret'))
+            self.assertEqual(response.status_code,200)
+            with self.assertRaises(net.ConnectionError):await transport.handle_async_request(httpx2.Request('POST','https://tokens.example.com/another',content='grant_type=refresh_token&refresh_token=secret'))
+            self.assertEqual(send.await_count,1)
+
+    async def test_same_origin_discovery_redirects_allowed_but_actions_never_replayed(self):
+        transport=net.PublicTransport('https://service.example.com/mcp');self.addAsyncCleanup(transport.aclose)
+        with patch.object(transport.inner,'handle_async_request',new_callable=AsyncMock,side_effect=[httpx2.Response(307,headers={'location':'/final'}),httpx2.Response(200,content=b'{}')]) as send:
+            response=await transport.handle_async_request(httpx2.Request('POST','https://service.example.com/mcp',content=b'{"method":"initialize"}'))
+            self.assertEqual(response.status_code,200);self.assertEqual(send.await_count,2)
+        with patch.object(transport.inner,'handle_async_request',new_callable=AsyncMock,return_value=httpx2.Response(307,headers={'location':'/final'})) as send:
+            with self.assertRaises(net.ConnectionError):await transport.handle_async_request(httpx2.Request('POST','https://service.example.com/mcp',content=b'{"method":"tools/call"}'))
+            self.assertEqual(send.await_count,1)

@@ -2,7 +2,7 @@
 
 Integrations → MCP connections uses one connection path for presets and custom
 servers. It supports public HTTPS Streamable HTTP servers with OAuth, a bearer
-API token, or no authentication. Asana is the first preset:
+API token, a named API-key header, Basic authentication, or no authentication. Automatic detection is the default. Asana is the first preset:
 `https://mcp.asana.com/v2/mcp`.
 
 The implementation uses the official Python SDK, pinned to `mcp==2.3.0` with
@@ -96,9 +96,7 @@ and `client_secret_basic`. Optional `client_metadata_url` supplies an operator-h
 HTTPS Client ID Metadata Document for providers that support it. That public
 document must describe Lumina and its exact callback, and must contain no secrets.
 Private-key JWT client authentication is not implemented. Reconnect after changing
-an existing app registration. Cross-origin token endpoints relative to the bound
-issuer are refused, even if advertised; providers needing that layout are not yet
-supported. Refresh rotations are saved encrypted, including when later discovery
+an existing app registration. Token endpoints on another public origin are allowed only when explicitly bound to validated issuer metadata. Refresh rotations are saved encrypted, including when later discovery
 fails. A per-connection database lease serializes refreshes across web/relay
 processes.
 
@@ -184,21 +182,21 @@ you intend to trust with authorized task data.
   uses the same checked transport. All DNS answers must be public. Connections
   use a checked literal IP while preserving original hostname TLS/SNI verification,
   blocking DNS rebinding. Private, loopback, metadata and IPv6 translation ranges
-  are refused. Proxies, redirects and compressed responses are refused.
+  are refused. Proxies are refused; same-origin discovery redirects and gzip/deflate responses are bounded.
 - Bearer tokens go only to the original resource origin. Client secrets/refresh
   grants go only to the SDK-bound or operator-configured issuer origin.
 - Ten connections/account, 200 enabled tools/account (an abuse guard only); the first 100 discovered tools
   (eight pages) are kept. At most two discoveries or two dispatches/account and
   one operation/connection; 16 outstanding approvals/account. API operations also
   use the existing per-account rate limits.
-- Discovery/auth network work has a ten-second total budget; calls 35 seconds;
+- Discovery/auth network work has a thirty-second total budget; calls 35 seconds;
   revocation five seconds. Connection leases expire after 45 seconds. Individual
   HTTP connect/pool timeouts are five/three seconds. SDK read timeout is 25 seconds.
 - Raw response/event limit 2 MiB; individual tool definitions 24 KiB/depth 20;
   arguments 14 KiB; result content 32 blocks/1.4 MB, text blocks 100k characters,
   structured content 100k bytes. Oversized outcomes are uncertain after dispatch.
 - Each operation initializes/negotiates a fresh SDK session, discovers paginated
-  tools, and closes/DELETEs its session in cleanup. No sessions survive operations.
+  tools, and closes/DELETEs its session in cleanup. No transport sessions survive operations.
   While active, a generation/account/admission monitor closes sessions when the
   connection is disabled, disconnected or the task is stopped. Already received
   remote effects cannot be undone by cancellation.
@@ -249,3 +247,16 @@ disconnect and Asana setup messaging at desktop/mobile widths. Screenshots are
 written to `/tmp/lumina-mcp-ui`. No external tasks or production accounts are used.
 Real Asana OAuth still requires the operator app registration above and a separate,
 authorized provider smoke test. No deployment is part of this implementation.
+
+
+## Automatic setup and agent discovery (13 November 2026)
+
+The canonical production identity is `https://getlumina.pro/oauth/client-metadata.json`, published as static JSON by the Vercel build. `AGENTAI_MCP_CLIENT_METADATA_URL` overrides it for a separately hosted staging identity; never list staging callbacks in the production document. Existing registrations take precedence, followed by CIMD and SDK dynamic registration. The private registrations file is optional. A provider that requires pre-approved applications may still require its own registration.
+
+Manual and agent creation use `ConnectionService.create`, deduplicate exact endpoints per account, and leave tools off. `lumina_mcp_search` searches the official known-provider list and the public MCP Registry; registry entries are untrusted leads. The assistant can use its existing web search to check provider documentation. `lumina_mcp_setup` cannot accept credentials or grant tool permissions. Unknown endpoints are stored with `setup_confirmed=0` and cannot be contacted until the customer reviews the address. The returned management link opens that same connection on Integrations. `lumina_mcp_connections` returns safe account-scoped statuses. All relay tools retain admitted-task ownership checks.
+
+Custom setup defaults to automatic authentication. Explicit methods include OAuth, bearer, named API-key header, Basic authentication, and no authentication. A customer's own OAuth app can be configured with issuer, client ID, optional secret and `none`, `client_secret_post` or `client_secret_basic`. Credentials remain encrypted and never reach the agent. Updating credentials turns tools off, invalidates pending approvals and requires review again. OAuth reconnect rediscoveries discard SDK-issued client registrations, but retain explicitly customer-supplied clients. Scope challenges are saved for customer reauthorization; dispatched actions are never replayed automatically.
+
+Transport negotiation tries Streamable HTTP, falling back to legacy SSE only for explicit HTTP transport-mismatch statuses during discovery, never for dispatched tool calls. Negotiated transport is saved. Discovery has a 30-second total deadline; calls remain 35 seconds. Gzip/deflate responses are bounded before and after decompression. Only same-origin discovery redirects preserving POST methods may be followed, with three hops maximum. Cross-origin resource redirects require entering the final endpoint. OAuth token endpoints on another public origin are accepted only when bound to validated issuer metadata. Local commands/stdio, private networks, token-in-URL endpoints and private-key JWT are unsupported.
+
+The additive `0036_mcp_setup.sql` migration preserves original auth_method values; requested mode and provenance are separate columns. On binary rollback, disable rows whose requested_auth is `auto`, `header` or `basic` before old code handles them; preserve encrypted credentials and ask customers to reconnect after restoring the new release. Keep the public identity document available across rollback. Rollout remains controlled by the existing MCP account allowlist; deploying this code does not expand it.

@@ -30,7 +30,7 @@ describe('a reply being written', () => {
 describe('words composed on the screen', () => {
   it('gives a moving orb only to a task that is really doing something', () => {
     expect(orbFor({ phase: 'working', activity: { key: 'k', category: 'search', label: '', detail: '' } })).toBe('searching');
-    expect(orbFor({ phase: 'working', activity: null })).toBe('lumina');
+    expect(orbFor({ phase: 'working', activity: null })).toBe('breathing');
     expect(orbFor({ phase: 'starting', activity: null })).toBe('connecting');
     for (const phase of ['needs_you', 'paused', 'stopping', 'ended'] as const) expect(orbFor({ phase, activity: null })).toBeNull();
     expect(isMoving({ phase: 'needs_you' })).toBe(false); expect(isMoving({ phase: 'working' })).toBe(true);

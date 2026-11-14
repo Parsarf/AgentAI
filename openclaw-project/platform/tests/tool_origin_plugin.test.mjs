@@ -51,7 +51,7 @@ test('unrelated tools are untouched and parallel calls have independent proofs',
 
 test('remote discovery, wrapper and namespaced tools receive the same one-use proof', t => {
   const { hooks, directory } = setup(t);
-  const names = ['lumina_mcp_discover', 'lumina_mcp_call', 'lumina_mcp_' + 'a'.repeat(32) + '_' + 'b'.repeat(12)];
+  const names = ['lumina_mcp_discover', 'lumina_mcp_call', 'lumina_mcp_search', 'lumina_mcp_setup', 'lumina_mcp_connections', 'lumina_mcp_' + 'a'.repeat(32) + '_' + 'b'.repeat(12)];
   for (const name of names) {
     const event = { toolName: 'lumina__' + name, params: { text: 'fixture' } };
     const result = hooks.before_tool_call(event, ctx);

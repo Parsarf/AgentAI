@@ -4,7 +4,7 @@
  "contact_email": "raouparsa@gmail.com",
  "policy_file": "deploy/vercel/public/privacy.html",
  "policy_url": "https://getlumina.pro/privacy",
- "policy_updated": "2026-11-07",
+ "policy_updated": "2026-11-13",
  "derived": {
   "retention": {
    "browse_pictures_and_trace_hours": 24.0,
@@ -70,13 +70,16 @@
    "cdn.jsdelivr.net",
    "getlumina.pro",
    "mcp.asana.com",
+   "mcp.vercel.com",
    "openrouter.ai",
+   "registry.modelcontextprotocol.io",
    "t.me",
+   "vercel.com",
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "9b61ea14ae2a695af29d9482e738d50efda5e769424b4eadb55d145c9ff99afe",
-  "schema_columns": 675,
+  "schema_sha256": "9ddf5418d6fe10f28875b45f6cf7312a87df4d2c192c2ae7e561a5e1143e74b5",
+  "schema_columns": 680,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -161,6 +164,24 @@
    "why": "Browser Python runtime download when a customer explicitly runs a Python delivery; receives client IP and download metadata.",
    "customer_data": true,
    "in_policy": "jsDelivr"
+  },
+  "mcp.vercel.com": {
+   "who": "Vercel",
+   "why": "Customer-selected Vercel MCP endpoint and authorized tool calls.",
+   "customer_data": true,
+   "in_policy": "MCP services"
+  },
+  "vercel.com": {
+   "who": "Vercel",
+   "why": "Public official documentation URL returned to the customer, no task data fetched by this catalog entry.",
+   "customer_data": false,
+   "in_policy": "Vercel"
+  },
+  "registry.modelcontextprotocol.io": {
+   "who": "MCP Registry",
+   "why": "Requested service name during MCP server discovery.",
+   "customer_data": true,
+   "in_policy": "registry.modelcontextprotocol.io"
   }
  },
  "recipients_not_visible_in_code": {
@@ -200,7 +221,7 @@
   "tabGroups",
   "storage",
   "wss://backend.getlumina.pro",
-  "7 November 2026",
+  "13 November 2026",
   "6,000",
   "80 controls",
   "until you ask us to delete",
@@ -315,6 +336,11 @@
    "date": "2026-11-12",
    "by": "Owner-authorized full deployment verification",
    "note": "Live SSH privacy check confirms plaintext snapshot cleanup: three retained copies, oldest 8.7 days; encrypted backups oldest 13.7 days; every server check passes. Removed the resolved cleanup known_gap. MCP service construction moved to accounts/wiring.py; updated AST derivation to recognize the relay wiring without changing recipients or policy promises. Published privacy policy already matches local; no policy text change required."
+  },
+  {
+   "date": "2026-11-13",
+   "by": "Owner-authorized MCP implementation",
+   "note": "Reviewed automatic and agent MCP setup: added public registry search recipient and query disclosure, encrypted custom header/Basic/user-owned OAuth credentials, connection provenance/source address columns and explicit per-tool automatic approval wording. Retention and live-only restore rules unchanged. Public policy updated with this release."
   }
  ],
  "assistant_recipients": {

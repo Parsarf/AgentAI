@@ -18,7 +18,7 @@ The owner chose to port its behaviour on their experience of it, without a compa
 ### Stage 2: decision behaviour from the reference (`browse/ladder.py`, `loop.py`, `modes.py`, `candidates.py`)
 | Behaviour | Where |
 |---|---|
-| JEV is offered the controls a person could click right now (up to 80), not the first 20 in the page's code. The assistant's list is unchanged. | `candidates.reachable`, `Look.jev_candidates` |
+| JEV is offered the controls a person could click right now (up to 80), not the first 20 in the page's code. Since 13 Nov 2026 the assistant, when a page is handed to it, is offered the same controls in the window together with the list it always had (`candidates.for_assistant`). | `candidates.reachable`, `Look.jev_candidates` |
 | JEV is told what has the keyboard, what a click did to focus, and what a field reads after typing. | `JevChooser.focus_words`, feedback notes in `loop._run` |
 | A click on a text field that already has focus is refused and JEV is told why. | `loop._run` (`already_focused`) |
 | A picture click that lands on nothing clickable is moved to the listed control beside it (within 6% of the window), never onto a sensitive one. | `candidates.nearest` |

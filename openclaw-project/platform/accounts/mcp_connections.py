@@ -28,7 +28,7 @@ def failure(error):
     return JsonResponse({'error': error.code, 'message': error.message}, status=422 if error.code.startswith('invalid') else 409)
 
 
-@endpoint(['GET', 'POST'], ['name', 'url', 'auth_method', 'token'], field_limits={'url': 1000, 'token': 4096, 'name': 80})
+@endpoint(['GET', 'POST'], ['name', 'url', 'auth_method', 'token', 'options', 'transport'], structured=True)
 def connections(request):
     denied = customer(request)
     if denied: return denied
@@ -37,7 +37,9 @@ def connections(request):
         s, p = service(), principal(request)
         if request.method == 'POST':
             rate('mcp.create', request.account_id, 10, 600)
-            cid = s.create(p, **{k: request.input.get(k, '') for k in ('name', 'url', 'auth_method', 'token')})
+            cid = s.create(p, name=request.input.get('name', ''), url=request.input.get('url', ''),
+                           auth_method=request.input.get('auth_method', 'auto'), token=request.input.get('token', ''),
+                           options=request.input.get('options'), transport=request.input.get('transport', 'auto'))
             audit(request.user.pk, request.account_id, cid, 'mcp.create', 'completed', request.request_id)
             # Creation is not connection success. Explicit test/auth completes discovery.
             return JsonResponse({'id': cid}, status=201)
@@ -46,7 +48,7 @@ def connections(request):
     except ConnectionError as e: return failure(e)
 
 
-@endpoint(['POST'], ['name', 'enabled', 'tools', 'auto', 'token'], structured=True)
+@endpoint(['POST'], ['name', 'enabled', 'tools', 'auto', 'token', 'auth_method', 'options', 'transport'], structured=True)
 def change(request, connection_id, action):
     denied = customer(request)
     if denied: return denied
@@ -61,9 +63,21 @@ def change(request, connection_id, action):
             if body or auto is None: s.update(p, connection_id, **body)   # an empty update still checks that the connection is the caller's
             if auto is not None: s.set_auto_approve(p, connection_id, auto)
             result = {'updated': True}
+        elif action == 'configure':
+            if set(body) - {'auth_method', 'token', 'options', 'transport'}: raise ValueError('invalid fields')
+            s.configure(p, connection_id, auth_method=body.get('auth_method', 'auto'), token=body.get('token', ''), options=body.get('options'), transport=body.get('transport'))
+            result = {'updated': True}
+        elif action == 'confirm':
+            if body: raise ValueError('invalid fields')
+            with s.coordinator.transaction() as con:
+                s.row(con, p, connection_id)
+                con.execute('UPDATE mcp_connections SET setup_confirmed=1 WHERE account_id=? AND id=?', (p.account_id, connection_id))
+            result = {'updated': True}
         elif action in ('test', 'reconnect'):
             rate('mcp.discover', request.account_id, 10, 60)
-            if action == 'reconnect': s.reconnect(p, connection_id, body.get('token'))
+            if action == 'reconnect':
+                if set(body) - {'token'}: raise ValueError('invalid fields')
+                s.reconnect(p, connection_id, body.get('token'))
             elif body: raise ValueError('invalid fields')
             browser = secrets.token_urlsafe(32)
             result = s.test(p, connection_id, session=request.session.session_key, browser=browser)

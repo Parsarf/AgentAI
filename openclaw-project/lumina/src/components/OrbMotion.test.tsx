@@ -8,7 +8,6 @@ const mock = vi.hoisted(() => ({
   stop: vi.fn(),
 }));
 vi.mock('../state/settings', () => ({ useSettings: () => ({ reducedMotion: mock.reducedMotion }) }));
-vi.mock('../lib/luminaOrb', () => ({ drawLumina: (...args: unknown[]) => mock.draw(...args) }));
 vi.mock('../vendor/thinking-orbs', () => ({
   resolvePreset: () => ({ mode: 'test', speed: 1, opts: {} }),
   MODE_DRAWS: { test: (...args: unknown[]) => mock.draw(...args) },
@@ -35,7 +34,7 @@ describe('calm orb motion', () => {
   it('blends states over 600ms without restarting the motion timeline', () => {
     const alphas: number[] = [];
     mock.draw.mockImplementation(() => alphas.push(ctx.globalAlpha));
-    const { rerender } = render(<Orb state="lumina" size={48} />);
+    const { rerender } = render(<Orb state="breathing" size={48} />);
     mock.frame!(0.1); now = 0.1;
     const before = mock.draw.mock.calls.at(-1)![2] as number;
     rerender(<Orb state="searching" size={48} />);
@@ -44,7 +43,7 @@ describe('calm orb motion', () => {
     mock.frame!(0.4);
     expect(alphas.at(-1)).toBeCloseTo(0.5);
     // Interrupt halfway through: preserve the current blend, not a blank frame.
-    now = 0.4; rerender(<Orb state="lumina" size={48} />);
+    now = 0.4; rerender(<Orb state="breathing" size={48} />);
     expect(ctx.drawImage).toHaveBeenCalled();
     expect(alphas.at(-1)).toBe(0);
     mock.frame!(1.0);
@@ -52,7 +51,7 @@ describe('calm orb motion', () => {
   });
   it('switches directly to a static state when motion is reduced', () => {
     mock.reducedMotion = true;
-    const { rerender } = render(<Orb state="lumina" size={48} />);
+    const { rerender } = render(<Orb state="breathing" size={48} />);
     rerender(<Orb state="searching" size={48} />);
     expect(ctx.drawImage).not.toHaveBeenCalled();
     expect(ctx.globalAlpha).toBe(1);
@@ -64,22 +63,4 @@ describe('calm orb motion', () => {
     mock.frame!(60);
     expect((mock.draw.mock.calls.at(-1)![2] as number) - before).toBeCloseTo(0.055);
   });
-  it.each(['working', 'searching', 'solving', 'listening', 'connecting', 'weaving', 'composing', 'breathing', 'shaping'] as const)(
-    'blends from the logo to %s and back without resetting time', state => {
-      const alphas: number[] = [];
-      mock.draw.mockImplementation(() => alphas.push(ctx.globalAlpha));
-      const { rerender } = render(<Orb state="lumina" size={48} />);
-      mock.frame!(0.1); now = 0.1;
-      const before = mock.draw.mock.calls.at(-1)![2];
-      rerender(<Orb state={state} size={48} />);
-      expect(alphas.at(-1)).toBe(0);
-      expect(mock.draw.mock.calls.at(-1)![2]).toBe(before);
-      mock.frame!(0.7); now = 0.7;
-      expect(alphas.at(-1)).toBeCloseTo(1);
-      rerender(<Orb state="lumina" size={48} />);
-      expect(alphas.at(-1)).toBe(0);
-      mock.frame!(1.3);
-      expect(alphas.at(-1)).toBeCloseTo(1);
-    },
-  );
 });

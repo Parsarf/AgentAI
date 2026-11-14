@@ -61,7 +61,7 @@ export const isMoving = (t: Pick<TaskSummary, 'phase'>) => ['queued', 'starting'
 /** Which orb animation shows what the task is doing. Only a task that is really doing something gets a moving orb. */
 export function orbFor(t: Pick<TaskSummary, 'phase' | 'activity'>): OrbState | null {
   if (t.phase === 'starting' || t.phase === 'reconnecting') return 'connecting';
-  if (t.phase === 'queued') return 'lumina';
+  if (t.phase === 'queued') return 'breathing';
   if (t.phase !== 'working') return null;
   switch (t.activity?.category) {
     case 'search': return 'searching';
@@ -69,7 +69,7 @@ export function orbFor(t: Pick<TaskSummary, 'phase' | 'activity'>): OrbState | n
     case 'command': return 'working';
     case 'file': return 'composing';
     case 'subagent': return 'weaving';
-    default: return 'lumina';
+    default: return 'breathing';
   }
 }
 

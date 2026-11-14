@@ -113,7 +113,7 @@ The live pulse is the only moving thing besides the orb, and stops with Reduce m
 ## Known exceptions and limitations
 - Chart series colours in `components/genui/Cards.tsx` are data colours, not theme colours.
 - The planet backdrop and thinking orbs (vendored `src/vendor/thinking-orbs`) draw their own greys.
-- The default thinking orb is Lumina's four-point spark, drawn as a breathing particle mark in `src/lib/luminaOrb.ts`. The app's `lumina` state extends the nine library states in `src/lib/orbs.ts`; it uses the same ink, shared clock and interruptible 600ms blend. At reduced motion it is a still spark. Preview all states and sizes with `npm run dev` at `/app/tests/orbs.html`.
+- Thinking orbs are the nine animations of the vendored `src/vendor/thinking-orbs`, one per state of the agent (`orbFor` in `src/lib/work.ts` picks it from the server's task state; `breathing` is plain thinking). They use a shared clock and an interruptible 600ms blend, and are a still frame at reduced motion. Preview all states and sizes with `npm run dev` at `/app/tests/orbs.html`.
 - Pure-black `rgb(0 0 0 / x)` scrims and shadows are allowed.
 - The browser's native `<select>` list (opened from `.input` selects) and date inputs are drawn by the OS and cannot be themed; there is no date picker in the app yet.
 - Dark is the only theme; there is no light theme.

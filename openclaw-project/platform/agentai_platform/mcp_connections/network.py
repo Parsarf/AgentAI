@@ -6,7 +6,9 @@ redirects, compression, Unix sockets, or production private-address exception.
 """
 from __future__ import annotations
 import asyncio
-from urllib.parse import urlsplit
+import json
+import zlib
+from urllib.parse import urlsplit, urljoin
 import httpx2
 from httpcore2._backends.anyio import AnyIOBackend
 from ..model_keys import Endpoint, resolve_public, ModelKeyError        # the resolve-and-pin step, shared with the own-model relay
@@ -59,16 +61,26 @@ class PublicBackend(AnyIOBackend):
 
 
 class BoundedStream(httpx2.AsyncByteStream):
-    def __init__(self, stream):
+    def __init__(self, stream, encoding="identity"):
         self.stream = stream
+        self.encoding = encoding
 
     async def __aiter__(self):
-        size = 0
-        async for chunk in self.stream:
-            size += len(chunk)
-            if size > MAX_RESPONSE:
-                raise ConnectionError('response_too_large', 'The server response exceeded Lumina’s size limit.')
-            yield chunk
+        raw_size = decoded_size = 0
+        decoder = zlib.decompressobj(16 + zlib.MAX_WBITS if self.encoding == 'gzip' else zlib.MAX_WBITS) if self.encoding != 'identity' else None
+        try:
+            async for chunk in self.stream:
+                raw_size += len(chunk)
+                if raw_size > MAX_RESPONSE: raise ConnectionError('response_too_large', 'The server response exceeded Lumina’s size limit.')
+                if decoder:
+                    chunk = decoder.decompress(chunk, MAX_RESPONSE - decoded_size + 1)
+                decoded_size += len(chunk)
+                if decoded_size > MAX_RESPONSE: raise ConnectionError('response_too_large', 'The decoded response exceeded Lumina’s size limit.')
+                yield chunk
+            if decoder and (not decoder.eof or decoder.unused_data):
+                raise ConnectionError('unsupported_response', 'The compressed response could not be read safely.')
+        except zlib.error:
+            raise ConnectionError('unsupported_response', 'Invalid compressed response.') from None
 
     async def aclose(self):
         await self.stream.aclose()
@@ -78,6 +90,9 @@ class PublicTransport(httpx2.AsyncBaseTransport):
     def __init__(self, resource_url):
         self.resource_origin = origin(resource_url)
         self.oauth_issuer = lambda: None
+        self.oauth_endpoints = lambda: set()
+        self.secret_headers = set()
+        self.resource_basic = False
         self.inner = httpx2.AsyncHTTPTransport(trust_env=False, retries=0, limits=httpx2.Limits(max_connections=4, max_keepalive_connections=0))
         # Pinned httpx2/httpcore2 versions; their public transport has no backend argument.
         self.inner._pool._network_backend = PublicBackend()
@@ -87,22 +102,43 @@ class PublicTransport(httpx2.AsyncBaseTransport):
         url = str(request.url)
         p = urlsplit(url)
         endpoint_url(p._replace(query='').geturl())
-        if request.headers.get('authorization', '').lower().startswith('bearer ') and origin(url) != self.resource_origin:
+        if (request.headers.get('authorization', '').lower().startswith('bearer ') or any(h in request.headers for h in self.secret_headers) or (self.resource_basic and request.headers.get('authorization', '').lower().startswith('basic '))) and origin(url) != self.resource_origin:
             raise ConnectionError('credential_destination', 'Refused to send the connection token to another service.')
         body = await request.aread()
-        if (request.headers.get('authorization', '').lower().startswith('basic ') or b'grant_type=' in body or b'client_secret=' in body):
+        if ((not self.resource_basic and request.headers.get('authorization', '').lower().startswith('basic ')) or b'grant_type=' in body or b'client_secret=' in body):
             issuer = self.oauth_issuer()
-            if not issuer or origin(url) != origin(issuer):
+            if not issuer or (origin(url) != origin(issuer) and p._replace(query='').geturl() not in self.oauth_endpoints()):
                 raise ConnectionError('credential_destination', 'Refused OAuth credentials for an unrelated authorization server.')
-        request.headers['Accept-Encoding'] = 'identity'
+        request.headers['Accept-Encoding'] = 'gzip, deflate'
         response = await self.inner.handle_async_request(request)
+        for _ in range(3):
+            if not 300 <= response.status_code < 400: break
+            target = urljoin(str(request.url), response.headers.get('location', ''))
+            try: endpoint_url(target)
+            except ConnectionError:
+                await response.aclose(); raise
+            try: method = json.loads(body).get('method') if body else None
+            except (ValueError, AttributeError): method = None
+            # Never replay actions or redirect OAuth grants/secrets. Only same-origin discovery redirects.
+            if (origin(target) != origin(str(request.url)) or method == 'tools/call' or b'grant_type=' in body or b'client_secret=' in body
+                    or (request.method not in ('GET', 'HEAD') and response.status_code not in (307, 308))):
+                await response.aclose()
+                raise ConnectionError('redirect_refused', 'The endpoint redirects to another address. Enter its final public HTTPS MCP URL.')
+            await response.aclose()
+            request = httpx2.Request(request.method, target, headers=request.headers, content=body, extensions=request.extensions)
+            response = await self.inner.handle_async_request(request)
         if 300 <= response.status_code < 400:
             await response.aclose()
-            raise ConnectionError('redirect_refused', 'The endpoint redirects. Enter its final HTTPS URL instead.')
-        if response.headers.get('content-encoding', 'identity').lower() != 'identity':
+            raise ConnectionError('redirect_refused', 'Too many endpoint redirects. Enter its final HTTPS MCP URL.')
+        encoding = response.headers.get('content-encoding', 'identity').lower()
+        if encoding not in ('identity', 'gzip', 'deflate'):
             await response.aclose()
-            raise ConnectionError('unsupported_response', 'Compressed MCP responses are not supported.')
-        response.stream = BoundedStream(response.stream)
+            raise ConnectionError('unsupported_response', 'This response compression is not supported.')
+        response.stream = BoundedStream(response.stream, encoding)
+        if encoding != 'identity':
+            del response.headers['content-encoding']
+            response.headers.pop('content-length', None)
+
         return response
 
     async def aclose(self):

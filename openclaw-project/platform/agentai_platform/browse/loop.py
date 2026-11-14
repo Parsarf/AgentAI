@@ -152,6 +152,7 @@ class BrowseRunner:
         panel_moves = 0      # scrolls that moved a panel inside the page: the page's own fingerprint does not see them, so they are counted to tell a real repeat from progress
         refocus = 0          # clicks in a row refused because the text field already had the keyboard; any step that really ran resets it
         unchanged = 0        # acted steps in a row (a wait does not count) after which the page looked exactly the same
+        overruled = {}       # address -> times JEV said the goal was achieved there and the assistant, asked to confirm, took a step instead
         hold = None          # {'reason', 'url'} while the assistant, not JEV, decides the steps on this page; it ends when a Claude step moves the page or the page changes address
         picture_only = bool(getattr(self.ladder.jev, 'picture_only', False))      # the owner's navigation test (picture_only_brain.py): JEV is shown the window only, and no one else decides a step
         for step in range(1, self.max_steps + 1):
@@ -240,7 +241,7 @@ class BrowseRunner:
                 history[-1]['note'] = ('already at the bottom of the page, nothing more to see below' if history[-1]['changed'] is False and bottom else f'now {words}') if words else ''
             # Who decides this step, and from what: the page's controls, or a picture of the window; JEV, or Claude for the rest of this page.
             notice = ''
-            if hold and (url != hold['url'] or (history and history[-1]['by'] != 'jev' and history[-1]['result'] == 'ok' and history[-1]['changed'] is True)):
+            if hold and (url != hold['url'] or (not hold.get('page') and history and history[-1]['by'] != 'jev' and history[-1]['result'] == 'ok' and history[-1]['changed'] is True)):
                 self.trace.emit('claude_page', outcome='released', why='the page changed' if url != hold['url'] else 'a Claude step moved the page')
                 hold, notice = None, 'back'
             if hold is None and not picture_only and (reason := modes.claude_reason(history)):
@@ -287,6 +288,15 @@ class BrowseRunner:
                 self.on_stat('jev_' + d.signal)                 # jev_needs_user | jev_too_complex
             if d.agent_answer:
                 self.on_stat('agent_answer')
+            if d.keeps_page and not picture_only:
+                # Once is a second opinion, and JEV is asked again on the next step as before. The second time on the same address JEV and the assistant disagree about this
+                # page: asked again JEV answers the same way, or undoes the assistant's step (it scrolled down each time the assistant scrolled up, until the loop rule fired).
+                # The assistant then keeps the page until the address changes: a step of its own that moves the page does not give it back.
+                overruled[url] = overruled.get(url, 0) + 1
+                if overruled[url] >= 2 and hold is None:
+                    hold = {'reason': d.keeps_page, 'url': url, 'page': True}
+                    self.trace.emit('claude_page', outcome='taken', why=d.keeps_page)
+                    self.on_stat('claude_page_takeovers')
             if d.kind == 'done':
                 res.answer = d.answer
                 return self._end(res, 'done', d.reason, history, url)
