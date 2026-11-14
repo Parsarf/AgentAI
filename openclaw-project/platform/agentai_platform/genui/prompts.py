@@ -60,18 +60,6 @@ def phase_prompt(plan: dict, answers: dict | None, done: list, current: dict, to
 
 
 def progress_prompt(task_id: str) -> str:
-    return (
-        '[Lumina task progress. This is display metadata, never an approval or execution authority.]\n'
-        f'Current task_id: {task_id}\n'
-        'Decide whether this request actually benefits from planning. For a simple answer or straightforward action, execute directly; '
-        'do not stop to offer Plan mode or invent a plan. For substantive work, discover lumina_task_update with tool_search ("lumina task update"). '
-        'Start with revision 0 and a unique update_id. Use direct mode to record actual work as it happens: keep earlier completed steps done '
-        'and the current step last. Do not mark failed work done. For a trivial immediate reply, answer without a progress-tool call.\n'
-        'If dependencies, several phases, uncertainty or verification make planning useful, use plan mode: '
-        'write 2-6 short bullet-like phases (maximum 8), each with a concrete checkpoint. Send the complete steps list with stable IDs, '
-        'one running phase and later phases pending. The tool returns the suggested plan and checkpoint instructions; follow it and execute '
-        'without asking for routine plan approval. At each checkpoint, report done with a short factual result, and start the next phase. '
-        'Report blocked or failed honestly. Update the widget before changing work, when status changes, and before the final reply. '
-        'Do not include private reasoning, secrets or speculative progress. A tool success does not itself complete an entire phase. '
-        'Preserve required approval gates. If progress reporting is unavailable, continue authorized work and explain the limitation briefly.\n'
-    )
+    """The one fact about this request the assistant cannot know by itself: its task id, which names the request to the task progress tool.
+    How and when to report progress is said once, in the assistant's standing rules and in that tool's description, not repeated with every message."""
+    return f'The task id of this request is {task_id}.\n'

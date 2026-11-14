@@ -105,5 +105,6 @@ class LocationChecks(Base):
         import agentai_platform.lifecycle.tool_origin as origin
         self.assertTrue(is_tool_name(NAME))
         self.assertIn(NAME, Path(origin.__file__).with_name('tool_origin_plugin').joinpath('index.mjs').read_text())
-        self.assertIn(NAME, WORKSPACE_RULES)
+        from agentai_platform.location import TOOL
+        self.assertIn("customer's location", WORKSPACE_RULES); self.assertIn('near me', TOOL['description'])      # the rules say the ability exists; the tool says when to use it
         self.assertGreater(BROWSER_TOOL_TIMEOUT_MS, 120000)

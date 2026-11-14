@@ -505,14 +505,14 @@ class OutgoingChecks(Base):
 
     def test_a_plain_message_gets_direct_execution_guidance_without_a_forced_plan(self):
         text, _ = self.outgoing(message='what is 2+2')
-        self.assertTrue(text.endswith('what is 2+2'))
-        self.assertIn('execute directly', text)
-        self.assertIn('do not stop to offer Plan mode', text)
+        self.assertTrue(text.endswith('Customer message:\nwhat is 2+2'))
+        self.assertIn('The task id of this request is ', text)
+        self.assertNotIn('Plan mode', text); self.assertNotIn('checkpoint', text)       # the message carries facts; when to plan is the assistant's judgement, said once in its rules
 
     def test_browse_and_text_modes_become_a_short_note_not_a_protocol(self):
         text, _ = self.outgoing(message='order wings', mode='browse')
-        self.assertIn('Lumina browser tool', text)
-        self.assertNotIn('lumina-step', text)
+        self.assertIn('The customer chose Browse mode: use the browser', text)
+        self.assertNotIn('lumina-step', text); self.assertNotIn('tool_search', text)
 
     def test_what_the_customer_asked_to_remember_reaches_the_assistant_but_never_a_secret(self):
         with self.store.connect() as con:
