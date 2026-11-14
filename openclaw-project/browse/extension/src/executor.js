@@ -199,7 +199,7 @@ export class Executor {
       if (action === 'click') await this.click(x, y, 4);
       else if (action === 'type') { if (typeof text !== 'string' || text.length > MAX_VALUE) return err('bad_value'); await this.cdp('Input.insertText', { text }); }
       else if (action === 'key') { if (!KEYS.has(text) && !TAKEOVER_KEYS.has(text)) return err('key_not_allowed'); await this.key(text); }
-      else if (action === 'scroll') await this.wheel(Number(text) > 0 ? 500 : -500);
+      else if (action === 'scroll') await this.wheel((text === 'down' || Number(text) > 0) ? 500 : -500);      // the app sends the words 'up' and 'down'
       else if (action === 'goto') {
         if (typeof text !== 'string' || text.length > MAX_URL || !urlAllowed(text, this.allowLoopback)) return err('url_blocked');
         await this.cdp('Page.navigate', { url: text });

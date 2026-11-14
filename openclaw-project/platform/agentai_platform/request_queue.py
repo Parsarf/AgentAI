@@ -289,7 +289,7 @@ class RequestQueue:
         with self.coordinator.transaction() as c:
             row=self._fenced(c,claim)
             if row['state']=='uncertain':raise Conflict('lease expired; reconcile before parking')
-            c.execute("UPDATE customer_requests SET state='running',parked_reason=?,parked_epoch=?,lease_until=? WHERE account_id=? AND id=?",(reason,int(self.clock()),int(self.clock())+60,claim.account_id,claim.request_id))
+            c.execute("UPDATE customer_requests SET state='running',parked_reason=?,parked_epoch=coalesce(parked_epoch,?),lease_until=? WHERE account_id=? AND id=?",(reason,int(self.clock()),int(self.clock())+60,claim.account_id,claim.request_id))
             c.execute('DELETE FROM request_slot WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
             # A task waiting on a person counts as pending work for the cell's idle sleep: the cell is not stopped under it.
             c.execute("UPDATE tasks SET state='waiting_for_approval' WHERE account_id=? AND id=? AND state='running'",(claim.account_id,claim.request_id))
@@ -318,7 +318,8 @@ class RequestQueue:
                 c.execute('INSERT INTO request_slot VALUES (1,?,?)',(claim.account_id,claim.request_id))
             c.execute("UPDATE tasks SET state='running' WHERE account_id=? AND id=? AND state='waiting_for_approval'",(claim.account_id,claim.request_id))
             fence=row['fence']+1
-            c.execute('UPDATE customer_requests SET fence=?,lease_owner=?,lease_until=?,parked_reason=NULL WHERE account_id=? AND id=?',(fence,owner,int(self.clock())+lease_seconds,claim.account_id,claim.request_id))
+            # A request that carries on (need_slot) starts a new wait the next time it parks; one taken back only to be closed keeps the time it parked, which is what the park limit is measured from.
+            c.execute('UPDATE customer_requests SET fence=?,lease_owner=?,lease_until=?,parked_reason=NULL,parked_epoch=CASE WHEN ? THEN NULL ELSE parked_epoch END WHERE account_id=? AND id=?',(fence,owner,int(self.clock())+lease_seconds,1 if need_slot else 0,claim.account_id,claim.request_id))
             self.coordinator._audit(c,claim.account_id,'worker',claim.request_id,'request_unpark','completed')
             return RequestClaim(claim.account_id,claim.request_id,claim.project_id,claim.actor_id,claim.message,fence,owner,claim.conversation_id)
     def recover(self,claim,*,owner,lease_seconds=120):

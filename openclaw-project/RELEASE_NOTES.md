@@ -1,3 +1,23 @@
+# Reliability fixes (14 Nov 2026, not yet deployed)
+
+Bug fixes only; no feature was added or removed. Tests: `platform/tests/test_reliability_fixes.py`, `platform/accounts/test_limits.py`.
+
+- **Lost message:** a message sent while the previous one is still starting becomes a task of its own. It used to be steered in first, and the original message was then never handed to the assistant.
+- **Parked tasks:** a chat message sent while the browser waits for the customer no longer makes the worker unpark and park the task on every tick (nothing else was claimed meanwhile). A task parked past the 30-minute limit is stopped and closed as partly done; it used to be parked again with a fresh clock.
+- **Closing:** the lease is kept alive while a task is being closed, and a close the queue missed is recorded on the next tick (it used to hold the one running slot for good).
+- **Abandon:** counted from when the task was last alive, not from when the message was sent.
+- **Cell not ready:** a task whose cell does not answer before anything was handed over goes back to waiting (for up to 30 minutes) instead of failing with "could not be started".
+- **Plan repair:** the one repair turn of a plan reply runs as a live run again, so the model relay and the tools serve it.
+- **Lifecycle:** an operation turned away three times ends as failed instead of staying pending and blocking the account; a failed wake is tried again for the same waiting task (up to five more times).
+- **Take-over:** "Scroll down" scrolls down (all three browser engines read the words the app sends). Take-over input has its own limit of 240 a minute; it was cut off by the general 30.
+- **Browser record:** a job released after a hand-over is recorded as over; a stopped job keeps its cost; cost is not counted again after a tool-relay restart; pictures of a job that ended at a hand-off are purged; a hand-off whose window has closed no longer blocks closing a task whose cell is gone.
+- **Saved card:** a field named like "Credit card expiration date" gets the date, not the number.
+- **Wording:** a job ended by the assistant moving on or by the owner's switch no longer says "stopped by you".
+- **Timeline:** one row per browser call (the hand-made second row is gone); `lumina_browser_step` and the connection, memory and location tools have plain labels; the tool-listing call is hidden.
+- **Own Chrome:** a late reply from an earlier task is never taken for the current task's answer; a command that never answers is given up after 45 s in the extension instead of blocking every later one.
+- **Request size:** plan, form and generated-UI state up to 128 KB reaches its route (the general 8 KB ceiling refused it first).
+- **Needs:** restart of the web app, request worker, lifecycle worker, tool relay and browse service; a new extension package for the two extension changes. No migration, no config change.
+
 # Browsing cost and hand-over fixes (13 Nov 2026, not yet deployed)
 
 From the cost study of production request `064ac023` ($1.21, nothing added to the cart). Tests: `platform/tests/test_browse_cost_fixes.py`.

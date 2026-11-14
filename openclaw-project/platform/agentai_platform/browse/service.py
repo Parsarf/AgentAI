@@ -142,6 +142,7 @@ class Job:
         self.vault = []                             # the customer's saved logins and cards, readable part only (label, site, hint): the secrets never travel with the task
         self.prefs = {}                             # what the customer chose before, by field (size -> M); handed to the loop so it does not ask twice
         self.ended = None                           # when the job thread finished (service clock); None while it is alive
+        self.cancel_why = ''                        # who stopped it, when it was not the customer (the assistant moved on, the owner's switch): the ending then says so instead of "stopped by you"
         self.question, self.answer_box, self.answer_ev = None, None, threading.Event()      # a question waiting for the customer: {'id','title','field','options','menu'}
 
     def add(self, kind, data):
@@ -296,6 +297,7 @@ class BrowseService:
             waiting = job.observation is not None
         if waiting:
             job.trace.emit('agent', what='released: the request ended')
+            job.cancel_why = job.cancel_why or 'the assistant went on without this page'
             job.cancel.set()
         return {'ok': True, 'released': waiting}
 
@@ -488,6 +490,7 @@ class BrowseService:
         n = 0
         for job in list(self.jobs.values()):
             if job.state in job_states.LIVE and not job.cancel.is_set():
+                job.cancel_why = job.cancel_why or 'browser tasks are switched off right now'
                 job.cancel.set(); n += 1
         return n
 
@@ -514,7 +517,7 @@ class BrowseService:
             return 0
         for path in entries:
             job = self.jobs.get(path.name)
-            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.state in job_states.LIVE):
+            if not REQUEST_ID.fullmatch(path.name) or (job is not None and job.ended is None):      # `ended`, not the state: a job that ended at a hand-off keeps the state 'handoff' for good, and its pictures were never deleted while the service ran
                 continue
             try:
                 if now() - path.stat().st_mtime > max_age and self._may_purge(path, job):
@@ -586,7 +589,7 @@ class BrowseService:
         stage = None
         try:
             if job.cancel.is_set():
-                job.state, job.reason = 'cancelled', 'stopped by you'
+                job.state, job.reason = 'cancelled', job.cancel_why or 'stopped by you'
                 return
             if job.engine == 'runner' and not self._wait_for_memory(job):
                 job.state = 'cancelled' if job.cancel.is_set() else 'error'
@@ -630,6 +633,8 @@ class BrowseService:
                                   max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), hand_gate=self._hand_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault, attached=job.tab).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
+            if job.cancel_why and job.reason == 'stopped by you':
+                job.reason = job.cancel_why          # it was stopped, but not by the customer
             job.url = result.url or job.url
             if result.status == 'handoff':
                 job.takeover_until = self.clock() + self._window()

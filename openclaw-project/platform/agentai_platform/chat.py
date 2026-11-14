@@ -305,6 +305,10 @@ class ChatService:
                 raise Conflict('the new message uses a different model')
             if con.execute('SELECT 1 FROM chat_deliveries WHERE account_id=? AND request_id=? AND idempotency_key=?', (principal.account_id, running['id'], run_key)).fetchone():
                 return self._steer_view(principal, running['id'], run_key)           # the same message sent again (double click, retry): nothing new
+            if not con.execute("SELECT 1 FROM chat_deliveries WHERE account_id=? AND request_id=? AND kind<>'steer'", (principal.account_id, running['id'])).fetchone():
+                # The request is claimed but its own message has not been handed to the runtime yet. A steer now would be the request's first delivery: the worker then
+                # took the request for one already begun and never sent the original message. This one waits its turn as a task of its own instead.
+                raise Conflict('the task has not started its run yet')
             attempt = con.execute('SELECT coalesce(max(attempt),0)+1 FROM chat_deliveries WHERE account_id=? AND request_id=?', (principal.account_id, running['id'])).fetchone()[0]
             now = int(self.clock())
             con.execute("""INSERT INTO chat_deliveries(account_id,request_id,attempt,idempotency_key,payload_hash,state,native_operation_id,created_epoch,updated_epoch,kind,payload)

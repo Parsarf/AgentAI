@@ -383,7 +383,7 @@ class NativeRunner:
             try:
                 up = float(text) <= 0
             except (TypeError, ValueError):
-                up = False
+                up = text == 'up'                 # the app sends the words 'up' and 'down'
             self.ev('scroll', {'dy': -500 if up else 500})
         elif action == 'goto':
             if not isinstance(text, str) or len(text) > MAX_URL or not url_allowed(text, self.allow_loopback, self.allow_private):      # the same address rules as every request this browser makes (public http/https only)

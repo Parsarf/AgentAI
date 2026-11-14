@@ -10,7 +10,7 @@ import { PROD_BRIDGE, LUMINA_ORIGIN, PROD_PANEL_API, bridgeAllowed, panelApiAllo
 import { createPanelLink } from './panel-link.js';
 import { restrictedUrl } from './panel-model.js';
 
-const PING_MS = 20_000, RETRY_MS = [1000, 2000, 5000, 15000], MAX_GRANTS = 8, ALL_SITES = { origins: ['<all_urls>'] };
+const COMMAND_MS = 45_000, PING_MS = 20_000, RETRY_MS = [1000, 2000, 5000, 15000], MAX_GRANTS = 8, ALL_SITES = { origins: ['<all_urls>'] };
 
 let owned = [], group = null, onEvent = () => {}, executor = null, ws = null, enabled = false, attempt = 0, pinger = null, queue = Promise.resolve();
 
@@ -187,7 +187,9 @@ async function run(raw) {
     return;
   }
   if (!msg || typeof msg !== 'object' || msg.cmd === undefined) return;      // pongs and other chatter
-  try { reply = await executor.handle(msg); } catch (e) { reply = { ok: false, error: 'runner_error' }; }
+  // One command that never answers (a DevTools call on a tab that is not painting, say) must not hold every later command behind it for good: the platform gives up on
+  // a command after 40 s at most, so after 45 s this one is answered as failed and the queue moves on.
+  try { reply = await Promise.race([executor.handle(msg), new Promise(r => setTimeout(() => r({ ok: false, error: 'timeout' }), COMMAND_MS))]); } catch (e) { reply = { ok: false, error: 'runner_error' }; }
   say({ ...reply, id: msg.id });
 }
 
