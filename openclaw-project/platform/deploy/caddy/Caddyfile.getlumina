@@ -9,6 +9,15 @@ backend.getlumina.pro {
             header_up -Forwarded
         }
     }
+    # Task state stream: one path, to the push gateway (agentai_platform/live/push.py), never the web app's single worker. See deploy/PUSH.md.
+    # Not active until the gateway unit runs and the app has AGENTAI_PUSH_PATH=/v1/push; without them the app never asks for this path.
+    @push path /v1/push
+    handle @push {
+        reverse_proxy 127.0.0.1:18803 {
+            flush_interval -1
+            header_up -Forwarded
+        }
+    }
     # The customer's own Chrome (the Lumina extension): one WebSocket path, to the device gateway inside the browse service. Caddy proxies the upgrade by itself.
     # The extension connects here directly, not through Vercel. The gateway checks the Origin and the device token; nothing else is reachable on this port.
     @device path /v1/device

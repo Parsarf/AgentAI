@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const NAMES = new Map(['lumina_request_location', 'lumina_browser', 'lumina_browser_step', 'lumina_task_update', 'lumina_mcp_discover', 'lumina_mcp_call', 'lumina_memory_recall', 'lumina_memory_remember'].map(n => ['lumina__' + n, n]));
+const NAMES = new Map(['lumina_request_location', 'lumina_browser', 'lumina_browser_step', 'lumina_task_update', 'lumina_mcp_discover', 'lumina_mcp_call', 'lumina_mcp_search', 'lumina_mcp_setup', 'lumina_mcp_connections', 'lumina_memory_recall', 'lumina_memory_remember'].map(n => ['lumina__' + n, n]));
 const MAX_BYTES = 24000;
 const MAX_PENDING = 64;
 const MAX_AGE_MS = 30 * 60 * 1000;

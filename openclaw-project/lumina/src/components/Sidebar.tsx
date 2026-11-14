@@ -4,18 +4,19 @@ import ChatList from './ChatList';
 import SafetyButton from './safety/SafetyButton';
 import { useData } from '../state/data';
 import { useSettings } from '../state/settings';
+import { useWork } from '../state/work';
 import { displayName } from '../lib/format';
 
 export const NAV = [
-  { to: '/home', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/history', label: 'Chat history', icon: I.Search }, { to: '/tasks', label: 'Task activity', icon: I.Tasks },
-  { to: '/live', label: 'Live view', icon: I.Browser }, { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
+  { to: '/home', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/history', label: 'Chat history', icon: I.Search }, { to: '/tasks', label: 'Activity', icon: I.Tasks },
+  { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
   { to: '/automations', label: 'Automations', icon: I.Bolt }, { to: '/integrations', label: 'Integrations', icon: I.Cube }, { to: '/settings', label: 'Settings', icon: I.Gear },
 ];
 
 /** Left sidebar: menu on top, chat history below, one toggle to fold it to an icon rail (like ChatGPT and Claude). */
 export default function Sidebar() {
   const { app, chats, signOut, refreshChats } = useData(); const { sidebarOpen, setSidebarOpen } = useSettings(); const nav = useNavigate();
-  const match = useMatch('/chat/:id'); const name = displayName(app?.user.email ?? '');
+  const match = useMatch('/chat/:id'); const { attention } = useWork(); const name = displayName(app?.user.email ?? '');
   const toggle = () => setSidebarOpen(!sidebarOpen);
   return (
     <aside className={`panel side${sidebarOpen ? '' : ' collapsed'}`} aria-label="Sidebar">
@@ -25,7 +26,9 @@ export default function Sidebar() {
       </div>
       <button className="newchat-btn" onClick={() => nav('/chat')} title="New chat" aria-label="New chat"><I.Edit width={18} height={18} /><span className="lbl">New chat</span></button>
       <nav className="nav" aria-label="Primary">
-        {NAV.map(n => <NavLink key={n.to} to={n.to} end={n.end} title={n.label}><n.icon width={20} height={20} /><span className="lbl">{n.label}</span></NavLink>)}
+        {NAV.map(n => { const waiting = n.to === '/tasks' ? attention : 0; return (
+          <NavLink key={n.to} to={n.to} end={n.end} title={waiting ? `${n.label}: ${waiting} waiting for you` : n.label}><n.icon width={20} height={20} /><span className="lbl">{n.label}</span>
+            {waiting > 0 && <span className="nav-count" aria-label={`${waiting} waiting for you`}>{waiting}</span>}</NavLink>); })}
         <SafetyButton />
       </nav>
       {sidebarOpen && <div className="side-chats"><ChatList chats={chats} current={match?.params.id} onChanged={() => refreshChats()} /></div>}

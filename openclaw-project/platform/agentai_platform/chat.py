@@ -6,6 +6,7 @@ runtime when the run ended and settles it. Nothing here reads the assistant's pr
 session is authoritative for execution and its replies are attributed to a request by native run id, never by position.
 """
 from __future__ import annotations
+import re
 import hashlib
 import json
 import time
@@ -287,7 +288,7 @@ class ChatService:
         selected = json.loads(row['context_json'] or '{}').get('model_selection') if row else None
         return selected.startswith('key:') if isinstance(selected, str) else self.unmetered(account)
 
-    def steer(self, principal: Principal, running: dict, *, message: str, key: str, provenance: str = 'customer', surface: str | None = None):
+    def steer(self, principal: Principal, running: dict, *, message: str, key: str, provenance: str = 'customer', surface: str | None = None, shown: str | None = None):
         """Join a message to the run that is going on, with the runtime's own steering. The message belongs to that request (same reservation, same outcome); the worker, which
         owns the request, waits for the run it starts. Refused (Conflict) once the request has begun to close, so no run is ever started that nobody owns."""
         factory = self.gateway_factory
@@ -309,7 +310,7 @@ class ChatService:
             con.execute("""INSERT INTO chat_deliveries(account_id,request_id,attempt,idempotency_key,payload_hash,state,native_operation_id,created_epoch,updated_epoch,kind,payload)
                 VALUES (?,?,?,?,?,'pending',?,?,?,'steer',?)""", (principal.account_id, running['id'], attempt, run_key, hashlib.sha256(message.encode()).hexdigest(), run_key, now, now, message))
             con.execute('INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content,surface) VALUES (?,?,?,?,?,?)',
-                        (principal.account_id, row['conversation_id'], running['id'], provenance, message, surface))
+                        (principal.account_id, row['conversation_id'], running['id'], provenance, shown if shown is not None else message, surface))      # `shown`: what the chat records when the words for the assistant are not the customer's own
             self.coordinator._audit(con, principal.account_id, principal.actor_id, running['id'], 'chat.steer.panel' if surface == 'panel' else 'chat.steer', 'completed')
             session = row['native_session_ref']
         try:
@@ -321,12 +322,43 @@ class ChatService:
         with self.coordinator.transaction() as con:
             con.execute("UPDATE chat_deliveries SET state='acknowledged',native_run_id=?,updated_epoch=? WHERE account_id=? AND request_id=? AND idempotency_key=?",
                         (ack['run_id'], int(self.clock()), principal.account_id, running['id'], run_key))
-        if self.events is not None:
+        if self.events is not None and shown is None:
             try:
                 self.events.append(principal.account_id, running['id'], 'progress', {'summary': 'Your message was added to the task that is running.', 'step': 'steered'}, 'queue')
             except Exception:
                 pass
         return self._steer_view(principal, running['id'], run_key)
+
+    def continue_after_decision(self, principal: Principal, request_id: str, *, approved: bool, tool: str, service: str = '', key: str):
+        """The customer answered a permission prompt (their own signed-in click on the approval route; the assistant cannot make it). Tell the assistant, so the work carries on
+        without the customer having to type anything, and record the decision in the chat as what it is: a decision, not a message the customer wrote.
+
+        A run still going in that conversation is steered. Otherwise the decision starts a turn of its own, funded and admitted like any message (and refused like one when the
+        plan cannot fund it: the decision itself still stands). Returns the request view, or None when there is no conversation to continue."""
+        if type(approved) is not bool:
+            raise ValueError('invalid decision')
+        with self.store.connect() as con:
+            self.store._authorize(con, principal)
+            row = con.execute("SELECT r.conversation_id,c.archived_epoch FROM customer_requests r JOIN conversations c ON c.account_id=r.account_id AND c.id=r.conversation_id WHERE r.account_id=? AND r.id=?",
+                              (principal.account_id, request_id)).fetchone()
+        if not row or row['archived_epoch'] is not None:
+            return None
+        plain = lambda text, limit: re.sub(r' {2,}', ' ', re.sub(r'[^A-Za-z0-9 .&+()]+', ' ', str(text or ''))).strip()[:limit]
+        name, where = plain(tool, 80) or 'that tool', plain(service, 60)
+        on = f' on {where}' if where else ''
+        if approved:
+            shown, message = f'You allowed {name}{on}.', f'The customer allowed the request to use {name}{on}. Make that exact call again now and carry on with the task.'
+        else:
+            shown, message = f'You declined {name}{on}. Nothing was run.', f'The customer declined the request to use {name}{on}. Do not run it. Carry on without it, or say plainly what cannot be done.'
+        conversation_id = row['conversation_id']
+        if self.gateway_factory is not None:
+            running = self.queue.open_for_steer(principal, conversation_id)
+            if running is not None and running['intent'] in ('chat', 'browse', 'goal_continue', 'goal_resume'):
+                try:
+                    return self.steer(principal, running, message=message, key=key, provenance='system', shown=shown)
+                except Conflict:
+                    pass                         # the task finished a moment ago: the decision becomes a turn of its own
+        return self._spawn(principal, conversation_id, message=message, key=key, intent='chat', context={'follows': request_id, 'reason': 'approval'}, shown=shown, provenance='system')
 
     def _steer_view(self, principal, request_id, run_key):
         return {**self.queue.get(principal, request_id), 'steered': True, 'run_id': run_key, 'execution_enabled': True, 'admission': 'steered', 'response_type': 'text'}

@@ -4,6 +4,8 @@ const config = configuration(process.env.BACKEND_ORIGIN);
 const output = new URL('./.vercel/output/', import.meta.url);
 rmSync(output, { recursive: true, force: true });
 mkdirSync(new URL('static/', output), { recursive: true });
+mkdirSync(new URL('static/oauth/', output), { recursive: true });
+copyFileSync(new URL('./public/oauth/client-metadata.json', import.meta.url), new URL('static/oauth/client-metadata.json', output));
 copyFileSync(new URL('./public/robots.txt', import.meta.url), new URL('static/robots.txt', output));
 copyFileSync(new URL('./public/privacy.html', import.meta.url), new URL('static/privacy.html', output));      // the public privacy policy: no sign-in, same in every mode (see platform/privacy/README.md)
 const routes = [{ src: '^/.*$', headers: Object.fromEntries(config.headers[0].headers.map(h => [h.key,h.value])), continue: true }];

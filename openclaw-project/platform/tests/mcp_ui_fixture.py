@@ -30,7 +30,7 @@ def main():
         sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1];sock.close()
         origin=f'https://localhost:{port}'
         os.environ.update(AGENTAI_STATE_DIR=str(state),AGENTAI_SESSION_SECRET=secrets.token_urlsafe(64),AGENTAI_PUBLIC_ORIGIN=origin,
-                          AGENTAI_UI_BUNDLE_DIR=str(Path(__file__).resolve().parents[2]/'lumina'/'dist'),DJANGO_SETTINGS_MODULE='accounts.settings')
+                          AGENTAI_MCP_SWITCH_FILE=str(state/'mcp-connections.json'),AGENTAI_UI_BUNDLE_DIR=str(Path(__file__).resolve().parents[2]/'lumina'/'dist'),DJANGO_SETTINGS_MODULE='accounts.settings')
         import django;django.setup()
         from django.core.management import call_command
         from django.contrib.auth.models import User
@@ -56,6 +56,7 @@ def main():
         account=Identity.objects.get(user=user).account_id
         store=Store(state/'platform.sqlite3');principal=Principal(account,str(user.pk),'customer')
         fixture=Fixture()
+        (state/'mcp-connections.json').write_text('{"mcp_connections": true}')
         original=views.service
         def service(store_=None):
             s=original(store_ or store);s.remote=fixture.remote();return s

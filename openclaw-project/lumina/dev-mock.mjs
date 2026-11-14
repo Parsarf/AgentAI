@@ -57,6 +57,18 @@ http.createServer(async (req, res) => {
     if (p === '/v1/app') return json(res, 200, { api_version: 'mock', user: { email: 'parsa@example.com', role: 'customer' }, assistant: { state: 'ready' },
       features: { chat: true, execution: true, files: false, uploads: false, telegram: false, connectors: false, billing_mode: 'open', requests: true, usage: true }, limits: { max_message_chars: 16000 } });
     if (p === '/v1/requests') return json(res, 200, { requests });
+    // Task state as the app reads it (the real one is computed by platform/agentai_platform/work.py; this is the same shape from the mock's rows).
+    if (p === '/v1/work' || p.startsWith('/v1/work/')) {
+      const view = r => { const live = r.state === 'running' || r.state === 'waiting'; const phase = r.state === 'waiting' ? 'queued' : live ? 'working' : 'ended';
+        return { id: r.id, conversation_id: r.conversation_id ?? null, title: r.message, follows: null, created_epoch: r.created_epoch, state: r.state, phase,
+          label: phase === 'queued' ? 'Queued' : phase === 'working' ? 'Thinking' : r.state === 'failed' ? 'Failed' : 'Done', tone: phase === 'working' ? 'live' : phase === 'queued' ? 'pending' : r.state === 'failed' ? 'bad' : 'ok',
+          activity: null, now: [], ahead: null, attention: null, attention_label: '', outcome: live ? null : r.state === 'failed' ? 'failed' : 'completed', verification: live ? null : 'not_applicable', note: '',
+          goal: false, continuing: false, retry_of: null, needs: [], steps: 0, controls: { stop: live, pause: false, resume: false, retry: r.state === 'failed', goal_resume: false, goal_clear: false, steer: phase === 'working' } }; };
+      if (p === '/v1/work') return json(res, 200, { tasks: requests.map(view), attention: 0, rev: String(requests.length) + requests.map(r => r.state).join('') });
+      const row = requests.find(r => r.id === p.split('/')[3]); if (!row) return json(res, 404, { error: 'not_found' });
+      return json(res, 200, { task: { ...view(row), request: row.message, result: row.result, checklist: null, messages: 1, cancel_requested: false, browser: null, ended_epoch: null, rev: row.state,
+        evidence: { steps: 0, failed_steps: 0, searches: 0, commands: 0, sites: [], files: [], saved: [], approvals: [], duration_s: null } }, rows: [], cursor: 0 });
+    }
     if (p === '/v1/conversations' && req.method === 'POST') return json(res, 201, { conversation: { id: 'cnew', project_id: 'p1' } });
     { const m = p.match(/^\/v1\/conversations\/(c\d)$/); if (m && req.method === 'GET') return json(res, 200, { conversation: { id: m[1], project_id: 'p1', created_at: new Date().toISOString(), title: m[1] === 'c1' ? 'Search for the best cheap carbon pickleball rackets' : 'What is 17 times 3?', last_activity: new Date().toISOString(), active: 1 } }); }
     if (p === '/v1/conversations') return json(res, 200, { conversations: [

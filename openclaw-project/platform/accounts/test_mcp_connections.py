@@ -101,3 +101,27 @@ class McpHTTPChecks(TestCase):
         self.assertTrue(result.json()['credentials_deleted'])
         self.assertEqual(result.json()['provider_revocation'],'not_supported')
         self.assertEqual(a.get('/v1/account/mcp',secure=True).json()['connections'],[])
+
+    def test_automatic_setup_is_idempotent_and_shared_with_agent_entries(self):
+        a,b=self.clients
+        first=self.post(a,'/v1/account/mcp',{'url':URL})
+        self.assertEqual(first.status_code,201);cid=first.json()['id']
+        again=self.post(a,'/v1/account/mcp',{'url':URL,'name':'Duplicate'})
+        self.assertEqual(again.json()['id'],cid)
+        item=a.get('/v1/account/mcp',secure=True).json()['connections'][0]
+        self.assertEqual(item['requested_auth'],'auto');self.assertEqual(item['added_by'],'you')
+        self.assertEqual(item['manage_url'],'/app/integrations?connection='+cid)
+        self.assertEqual(b.get('/v1/account/mcp',secure=True).json()['connections'],[])
+
+    def test_secure_configuration_and_confirmation_are_customer_scoped(self):
+        a,b=self.clients;cid=self.create()
+        body={'auth_method':'header','token':'private-header-secret','options':{'header_name':'X-API-Key'}}
+        self.assertEqual(self.post(b,f'/v1/account/mcp/{cid}/configure',body).status_code,404)
+        self.assertEqual(self.post(a,f'/v1/account/mcp/{cid}/configure',body).status_code,200)
+        result=a.get('/v1/account/mcp',secure=True)
+        self.assertNotIn('private-header-secret',result.content.decode())
+        self.assertEqual(result.json()['connections'][0]['requested_auth'],'header')
+        body['options']['header_name']='Host'
+        self.assertEqual(self.post(a,f'/v1/account/mcp/{cid}/configure',body).status_code,422)
+        self.assertEqual(self.post(b,f'/v1/account/mcp/{cid}/confirm',{}).status_code,404)
+        self.assertEqual(self.post(a,f'/v1/account/mcp/{cid}/confirm',{}).status_code,200)

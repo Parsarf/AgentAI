@@ -338,7 +338,7 @@ class ConnectionChecks(unittest.TestCase):
         self.assertEqual(self.service.resolve('a', namespaced(cid, 'echo')), namespaced(cid, 'echo'))
         with self.assertRaises(ConnectionError) as caught: self.service.resolve('a', 'nope')
         self.assertEqual(caught.exception.code, 'tool_removed')
-        cid2 = self.service.create(self.a, name='Second', url=URL, auth_method='none'); self.assertTrue(self.service.test(self.a, cid2)['connected'])
+        cid2 = self.service.create(self.a, name='Second', url=URL + '/second', auth_method='none'); self.assertTrue(self.service.test(self.a, cid2)['connected'])
         self.service.update(self.a, cid2, tools={'echo': True})
         with self.assertRaises(ConnectionError) as caught: self.service.resolve('a', 'echo')
         self.assertEqual(caught.exception.code, 'ambiguous_tool')

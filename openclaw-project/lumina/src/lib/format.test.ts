@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ago, displayName, elapsed, greeting, title } from './format';
-import { activeTask, counts, phase, visibleEvents } from './tasks';
+import { isActive, phase } from './tasks';
 
 describe('format', () => {
   it('greets by local hour', () => {
@@ -33,14 +33,7 @@ describe('tasks', () => {
     expect(['waiting', 'starting', 'running', 'uncertain', 'completed', 'failed', 'cancelled'].map(phase))
       .toEqual(['queued', 'running', 'running', 'running', 'completed', 'failed', 'cancelled']);
   });
-  it('counts and picks the newest active task', () => {
-    const rows = [row('completed', 1), row('running', 5), row('waiting', 9), row('failed', 2)];
-    expect(counts(rows)).toEqual({ running: 1, queued: 1, completed: 1, failed: 1 });
-    expect(activeTask(rows)?.created_epoch).toBe(9);
-    expect(activeTask([row('completed')])).toBeNull();
-  });
-  it('hides the transcript-update noise only', () => {
-    const ev = [{ payload: { summary: '3 transcript update(s) recorded.' } }, { payload: { summary: 'Runtime accepted the request.' } }, {}];
-    expect(visibleEvents(ev)).toHaveLength(2);
+  it('calls an unfinished request active unless it is held', () => {
+    expect(isActive({ state: 'running' })).toBe(true); expect(isActive({ state: 'waiting', paused: true })).toBe(false); expect(isActive({ state: 'completed' })).toBe(false);
   });
 });

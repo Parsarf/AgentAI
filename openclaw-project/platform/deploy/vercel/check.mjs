@@ -45,3 +45,10 @@ assert.equal(target('/privacy'), '/privacy.html'); assert.equal(target('/privacy
 assert.ok(existsSync(new URL('./.vercel/output/static/privacy.html', import.meta.url)));
 const setup = build(''); assert.ok(setup.routes.some(r => r.src === '^/privacy/?$' && r.dest === '/privacy.html')); assert.ok(existsSync(new URL('./.vercel/output/static/privacy.html', import.meta.url)));
 console.log('Vercel privacy page checks passed.');
+
+const identity = JSON.parse(readFileSync(new URL('./.vercel/output/static/oauth/client-metadata.json', import.meta.url), 'utf8'));
+assert.equal(identity.client_id, 'https://getlumina.pro/oauth/client-metadata.json');
+assert.deepEqual(identity.redirect_uris, ['https://getlumina.pro/v1/account/mcp/callback']);
+assert.equal(identity.token_endpoint_auth_method, 'none');
+assert.equal(target('/oauth/client-metadata.json'), null);
+console.log('Public MCP identity checks passed.');

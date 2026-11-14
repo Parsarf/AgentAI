@@ -25,7 +25,7 @@ from agentai_platform.genui.runtime import extract_json
 from agentai_platform.privacy import scrub
 from .trace import NULL
 from .untrusted import neutralize
-from .candidates import CARD_FIELD, SENSITIVE
+from .candidates import CARD_FIELD, SENSITIVE, for_assistant
 from .goals import goal_parts, instruction_text
 
 log = logging.getLogger('agentai.browse')       # lines go to the service journal; they carry reasons and numbers, never page text or typed values
@@ -61,6 +61,7 @@ class Decision:
     signal: str = ''               # JEV's own verdict when it did not act: needs_user | too_complex | ask | miss
     text_src: str = ''             # for a `type` step: goal (a phrase from the user's request) | agent (written by the assistant for this field)
     agent_answer: bool = False     # the assistant confirmed JEV's `done` and wrote the final answer
+    keeps_page: str = ''           # not empty: JEV said the goal was achieved and the assistant took a step instead; when that repeats on one address the assistant keeps that page
     question: dict | None = None   # for `ask`: {'title','field','options':[{'id','label','do'}],'menu'}; `do` is the step the option stands for, built by code from the page's controls
 
 
@@ -576,6 +577,7 @@ def _why(exc):
 # Why a miss goes straight to the assistant (for this step only) instead of being tried again; the words are what the assistant is told.
 MISS_TAKEOVER = {'error': "its service did not answer", 'timeout': "its service did not answer in time"}
 MISS_LIMIT = 3                  # JEV misses in a row before the assistant takes the task for good
+DONE_NOT_CONFIRMED = 'JEV judged the goal achieved and the assistant chose to go on'
 NO_SPOT_NOTE = 'your last answer pointed at nothing usable in the picture; choose a listed control, scroll, or point at something that can be clicked'
 
 
@@ -615,7 +617,7 @@ class Ladder:
         self.trace.emit('handover', why=handover.why, sticky=handover.sticky, hinted=bool(handover.hint))
         if self.agent is None:
             return Decision('stop', 'rule', 'the assistant is not available to take this step', cost_microusd=jev_cost, signal=signal)
-        d = self.agent(goal, history, page, candidates, handover, look)
+        d = self.agent(goal, history, page, for_assistant(candidates, look.jev_candidates if look is not None else None), handover, look)
         d.cost_microusd += jev_cost
         d.signal = signal or d.signal
         d.miss = d.miss or miss
@@ -732,6 +734,8 @@ class Ladder:
             d = self._agent(goal, history, page, candidates, Handover('check that the goal is achieved', hint, sticky=False), look, step.cost)
             d.agent_answer = d.kind == 'done'
             d.miss = d.kind != 'done'
+            if d.kind == 'act':
+                d.keeps_page = DONE_NOT_CONFIRMED          # the loop counts these per address: the second one there gives the assistant the page (loop._run)
             return d
         if step.signal == 'text':
             hint = f'A quick planner chose to type into c{step.cand["ref"]} but the request gives no text for it. Use action "type" on that element with the right text from the request or the context; or choose something else.'
@@ -744,7 +748,7 @@ class Ladder:
         if jev_misses + 1 >= MISS_LIMIT:
             return self._agent(goal, history, page, candidates, Handover('the planner could not choose a step'), look, step.cost, 'miss', miss=True)
         if step.why in MISS_TAKEOVER and not picture_only:
-            hint = f'A quick planner could not decide this step ({MISS_TAKEOVER[step.why]}). Look at the page and the picture of the window and choose the next step yourself.'
+            hint = f'A quick planner could not decide this step ({MISS_TAKEOVER[step.why]}). Look at the page and choose the next step yourself.'
             return self._agent(goal, history, page, candidates, Handover('the planner could not choose a step', hint, sticky=False), look, step.cost, 'miss', miss=True)
         note = NO_SPOT_NOTE if step.why == 'no_spot' else ''          # JEV is told why nothing happened and asked again on a fresh look, the way a person would look twice
         return Decision('act', 'rule', 'the planner had no answer; looked again', {'action': 'wait', 'ref': None, 'value': None, 'label': '', **({'note': note} if note else {})}, cost_microusd=step.cost, miss=True)

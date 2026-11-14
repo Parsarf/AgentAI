@@ -130,3 +130,18 @@ class InstallChecks(unittest.TestCase):
             actual = json.loads(config.read_text())
             self.assertTrue(actual['plugins']['entries']['lumina-tool-origin']['enabled'])
             self.assertTrue((root / tenant / 'extensions/lumina-tool-origin/index.mjs').is_file())
+
+
+class McpSetupOriginChecks(unittest.TestCase):
+    def test_setup_tools_require_and_consume_the_same_bound_proof(self):
+        from agentai_platform.lifecycle.tool_origin import is_tool_name
+        for name in ('lumina_mcp_search', 'lumina_mcp_setup', 'lumina_mcp_connections'):
+            self.assertTrue(is_tool_name(name))
+            with tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)/'tool-origins';directory.mkdir(mode=0o700)
+                nonce='a'*32;args={'url':'https://mcp.vercel.com'} if name=='lumina_mcp_setup' else {}
+                proof={'version':2,'name':name,'arguments':args,'session_key':'session','run_id':'run','call_id':'call','started_ms':time.time()*1000}
+                path=directory/(nonce+'.json');path.write_text(json.dumps(proof));path.chmod(0o600)
+                self.assertEqual(inspect_origin(tmp,name,args,nonce)['status'],'verified')
+                self.assertNotEqual(inspect_origin(tmp,name,args,nonce)['status'],'verified')
+        self.assertFalse(is_tool_name('lumina_mcp_setup_forged'))

@@ -30,6 +30,9 @@ def decide(messages, tools):
     if last['role'] == 'tool':
         if 'needs your next step' in text_of(last):                       # the browser handed the page over: the assistant answers it with a step (here: it reads the answer off the page)
             return {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser_step', 'args': {'action': 'done', 'answer': 'The wings are in the cart.'}}}
+        asked = next((text_of(m) for m in reversed(live) if m['role'] == 'user'), '')          # the request this tool result belongs to (a session keeps earlier requests too)
+        if 'SCENARIO:work_then_write' in asked:
+            return {'chunks': ['Saved the plan. ', 'Here is ', 'what I did.'], 'chunk_delay': 0.3, 'delay': 2.5}
         return {'text': 'TOOL-RESULT ' + text_of(last)[-400:]}
     user = text_of(last)
     everything = ' '.join(text_of(m) for m in messages if m['role'] in ('user', 'system'))        # the goal's objective is shown to the model as internal context on every turn, not in the last message
@@ -48,6 +51,10 @@ def decide(messages, tools):
             'task': 'Add the spiciest chicken wings to the cart on Uber Eats', 'site': 'ubereats.com', 'steps': ['Open the site', 'Add the spiciest wings to the cart']}}}
     if 'SCENARIO:file' in user:
         return {'tool': 'write', 'args': {'path': 'notes/report.txt', 'content': 'The report body\n'}}
+    if 'SCENARIO:stream' in user:
+        return {'chunks': ['The answer ', 'arrives ', 'a piece ', 'at a time.'], 'chunk_delay': 0.4}
+    if 'SCENARIO:work_then_write' in user:                      # one tool call, a pause while "thinking", then a reply in pieces
+        return {'tool': 'write', 'args': {'path': 'notes/plan.txt', 'content': 'plan\n'}}
     if 'SCENARIO:slow' in user:
         return {'text': 'slow finished', 'delay': 6}
     if 'SCENARIO:goal' in user or ('Active goal:' in everything and 'SCENARIO:goal' in everything):
@@ -109,6 +116,11 @@ class Handler(BaseHTTPRequestHandler):
             elif 'tool' in out:
                 send({'tool_calls': [{'index': 0, 'id': 'call_%d' % len(stub.requests), 'type': 'function', 'function': {'name': out['tool'], 'arguments': json.dumps(out['args'])}}]})
                 send({}, 'tool_calls', usage)
+            elif 'chunks' in out:                                  # a reply written a piece at a time, as a real model writes it
+                for part in out['chunks']:
+                    send({'content': part})
+                    time.sleep(out.get('chunk_delay', 0))
+                send({}, 'stop', usage)
             else:
                 send({'content': out['text']})
                 send({}, 'stop', usage)

@@ -22,7 +22,7 @@ describe('MCP connections', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Custom server/ }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'My service' } });
     fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://service.example.com/mcp' } });
-    fireEvent.click(screen.getByRole('radio', { name: auth }));
+    fireEvent.change(screen.getByLabelText('How it signs in'), { target: { value: ({'API token': 'bearer', 'Nothing': 'none', 'Sign in': 'oauth'} as Record<string, string>)[auth] ?? auth } });
     extra?.();
   };
   it('creates a custom server, waits for discovery, clears the token and lets the user choose what each tool may do', async () => {
@@ -92,4 +92,26 @@ describe('MCP connections', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
+});
+
+it('defaults to automatic detection without asking for credentials', async () => {
+  render(<McpConnections />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Custom server' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Custom server/ }));
+  expect((screen.getByLabelText('How it signs in') as HTMLSelectElement).value).toBe('auto');
+  expect(screen.queryByLabelText('API token')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://service.example.com/mcp' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+  await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp', { name: '', url: 'https://service.example.com/mcp', auth_method: 'auto' }));
+});
+
+it('opens an agent-created connection from its management link and requires address confirmation', async () => {
+  window.history.replaceState({}, '', '/app/integrations?connection=c1');
+  data.connections = [{ id: 'c1', name: 'Found service', url: 'https://unknown.example.com/mcp', recipient: 'unknown.example.com', auth_method: 'none', requested_auth: 'auto', added_by: 'lumina', setup_confirmed: false, state: 'confirmation_required', enabled: true, tools: [] }];
+  render(<McpConnections />);
+  await screen.findByText(/Added by Lumina/);
+  expect((screen.getByRole('button', { name: 'Check connection' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm server address' }));
+  await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/account/mcp/c1/confirm', {}));
+  window.history.replaceState({}, '', '/');
 });

@@ -77,6 +77,21 @@ Legacy short names (`--bg`, `--ink`, `--neon`, `--line`…) are aliases; do not 
 
 States every control provides: default, hover, pressed, `:focus-visible` (2px accent ring, 2px offset), selected, disabled (dimmed, no pointer), loading (`aria-busy`), and invalid/error where it applies.
 
+## Work surfaces (`work.css`, `components/work/`)
+One vocabulary for a task wherever it appears (chat strip, workspace, Activity, Home, rail). Classes are prefixed `wk-` (workspace layout `ws-`).
+
+| Piece | Use |
+|---|---|
+| `Status` (`.wk-status` + `.wk-mark`) | The task's mark and the server's words. Every tone has its own shape as well as colour: filled check (done), hollow dash in the same green (finished, not confirmed), alert (failed/blocked), hand (needs you or held), clock (waiting), stop square (stopped), violet pulse (working). |
+| `TaskStrip` | A task in the chat thread. No surface, no border: it sizes to its content. |
+| `Permission` (`.wk-permission`) | A permission prompt for one exact tool call. Allow is the one primary action of its item. |
+| `Timeline` (`.wk-timeline`, `.wk-row`, `.wk-together`) | What happened, one row per tool call; calls that ran at the same time are bracketed by a hairline in `--accent-line`. Icons from `Icons.tsx`, never glyphs. |
+| `Checklist` (`.wk-checklist`) | The assistant's own steps, always captioned "as reported by the assistant". |
+| `.wk-list` / `.wk-item` | Lines of tasks separated by hairlines (Activity). Not cards. |
+| `.wk-outcome` | The two facts of an ending, side by side: how the run ended, and whether the result was confirmed. |
+
+The live pulse is the only moving thing besides the orb, and stops with Reduce motion. Violet appears on the pulse, the concurrency bracket and the one primary action of an item; nothing else.
+
 ## Layout, type and icons
 - Shell: sidebar (collapsible with Ctrl+B) · main column with a top bar (page title left, search, notifications, motion right) · optional right rail on Home and Tasks. Below 960px the sidebar becomes a bottom bar.
 - Page pattern: top bar, then a `.hero` (greeting/title, secondary line, optional date), then content in `.panel`/`.card` surfaces on a 16px gap.
@@ -98,7 +113,7 @@ States every control provides: default, hover, pressed, `:focus-visible` (2px ac
 ## Known exceptions and limitations
 - Chart series colours in `components/genui/Cards.tsx` are data colours, not theme colours.
 - The planet backdrop and thinking orbs (vendored `src/vendor/thinking-orbs`) draw their own greys.
-- The default thinking orb is Lumina's four-point spark, drawn as a breathing particle mark in `src/lib/luminaOrb.ts`. The app's `lumina` state extends the nine library states in `src/lib/orbs.ts`; it uses the same ink, shared clock and interruptible 600ms blend. At reduced motion it is a still spark. Preview all states and sizes with `npm run dev` at `/app/tests/orbs.html`.
+- Thinking orbs are the nine animations of the vendored `src/vendor/thinking-orbs`, one per state of the agent (`orbFor` in `src/lib/work.ts` picks it from the server's task state; `breathing` is plain thinking). They use a shared clock and an interruptible 600ms blend, and are a still frame at reduced motion. Preview all states and sizes with `npm run dev` at `/app/tests/orbs.html`.
 - Pure-black `rgb(0 0 0 / x)` scrims and shadows are allowed.
 - The browser's native `<select>` list (opened from `.input` selects) and date inputs are drawn by the OS and cannot be themed; there is no date picker in the app yet.
 - Dark is the only theme; there is no light theme.

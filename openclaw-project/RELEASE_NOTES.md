@@ -1,3 +1,15 @@
+# Browsing cost and hand-over fixes (13 Nov 2026, not yet deployed)
+
+From the cost study of production request `064ac023` ($1.21, nothing added to the cart). Tests: `platform/tests/test_browse_cost_fixes.py`.
+
+- **Prompt cache:** the runtime ends every model request with its internal-context message and puts new messages before it, so the proxy's cache point on "the last message" marked a prefix that never came back: the conversation was written to the cache on every call (92% of that request's cost) and never read. The selection relay now sets the two cache points itself for a Claude model behind Lumina's proxy: after the system prompt and after the last message that stays in place (`model_keys.mark_cache_points`). Nothing else in the request changes. **Check after deploy:** in LiteLLM's spend log, `cache_read_input_tokens` must grow from call to call within one run (it was a constant 18,653).
+- **Picture:** a handed-over page no longer carries the window picture to the assistant. The runtime's `tool_call` wrapper turned it into about 13,800 characters of cut-off base64 text (about 14,000 unreadable tokens per hand-over). `BrowserTool(picture=True)` sends it again for a runtime that delivers image blocks. JEV still sees the window on every step.
+- **Controls:** the assistant is offered the controls in the window (up to 80, what JEV is offered) together with the 20 it always had. Every code rule on the chosen control runs as before.
+- **"Done" that is not confirmed:** the second time on one address that JEV says the goal is achieved and the assistant takes a step instead, the assistant keeps that page until the address changes. Once is still a second opinion.
+- **Queue:** a new `lumina_browser` call first releases the same request's job that is still waiting for the assistant's step (it held the browser for up to 180 s).
+- **Cost shown:** a poll reports what JEV has cost so far, not zero until the job ends.
+- **Needs:** restart of the tool relay and the browse service; cells pick up the reworded `AGENTS.md` line at their next start. No migration, no config change. Not changed: the 200,000 tokens-per-minute key limit, the 20-second spend check, and LiteLLM's own config.
+
 # Side panel chat in the customer's own Chrome (1 Nov 2026, not yet deployed; branch `side-panel-chat`)
 
 Read `platform/deploy/SIDE_PANEL.md` and `platform/THREAT_MODEL.md` ("Side panel").
@@ -144,6 +156,7 @@ the web app (`/opt/agentai-platform/current`) is still on live4, which is fine b
 - `/opt/agentai-browse/runner/runner.mjs` replaced again for live6 (previous copy: `runner.mjs.bak-live5`; the one before: `runner.mjs.bak-live1`).
 - Dashboard files refreshed (backup `/opt/openclaw-production/dashboard.bak-20261014T081251Z`).
 - live7 (16 Oct 2026): `/opt/agentai-browse/runner/runner.mjs` replaced (previous copy `runner.mjs.bak-live7`); `/etc/systemd/system/agentai-browse.service.d/jev.conf` sets `--jev-mode live` (delete it for the old `shadow` default); `/opt/agentai-supervisor/current` -> `releases/live7` (then `live8` the same day). The new six-question JEV request format was NOT test-called before the switch (the check was blocked); if TypeSafe rejects it every step counts as a JEV miss and Haiku/Sonnet decide as before. Read `stats` in the closing `status` row of `browse_steps` to see who decided the steps.
+- 13 Nov 2026: `/opt/agentai-browse/runner/runner.mjs` replaced with the copy at commit `2157355` (sha256 `e971ca8f…`): visible-first control list, click positions and keyboard focus in the snapshot. Previous copy: `runner.mjs.bak-20261113-pre-visible-first` (equal to commit `bccf7b8`). Smoke-tested in the stage image (open, snapshot, close on example.com). No service restart: each browser job mounts the file fresh.
 
 ## How to roll back
 - **Web app + request worker:** point `/opt/agentai-platform/current` at the previous release (`releases/live3` etc.) and `systemctl restart agentai-platform-app agentai-request-worker`.

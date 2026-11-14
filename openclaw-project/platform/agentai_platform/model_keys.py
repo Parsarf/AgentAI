@@ -463,6 +463,65 @@ class Upstream:
         close_upstream(self._conn, self._resp)
 
 
+INTERNAL_CONTEXT = '<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>'       # the runtime ends every request with a message that starts like this
+CACHE_POINT = {'type': 'ephemeral'}
+
+
+def _text_start(message):
+    content = message.get('content')
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list) and content and isinstance(content[0], dict) and isinstance(content[0].get('text'), str):
+        return content[0]['text']
+    return ''
+
+
+def _has_cache_point(message):
+    content = message.get('content')
+    return message.get('cache_control') is not None or (isinstance(content, list) and any(isinstance(b, dict) and b.get('cache_control') is not None for b in content))
+
+
+def _mark(message):
+    """Put a cache point on a message the way the model proxy itself would: on the message when its content is text, on its last block when it is a list. -> True when it was placed."""
+    content = message.get('content')
+    if isinstance(content, str) and content.strip():
+        message['cache_control'] = dict(CACHE_POINT)
+        return True
+    if isinstance(content, list) and content and isinstance(content[-1], dict) and (content[-1].get('type') != 'text' or str(content[-1].get('text') or '').strip()):
+        content[-1]['cache_control'] = dict(CACHE_POINT)
+        return True
+    return False
+
+
+def mark_cache_points(body):
+    """Say where the prompt cache should end, for a Claude model behind Lumina's own proxy: after the system prompt, and after the last message that will still be in the same
+    place on the next call. The runtime appends its internal-context message as the LAST message of every request and puts each new assistant and tool message BEFORE it, so a
+    cache point on the last message (what the proxy places by itself) marks a prefix that never comes back: the whole conversation was written to the cache on every call and
+    never read from it. The proxy leaves a request alone once it carries a cache point, so both points are set here. Nothing is added, removed or reordered: only the two marks.
+    A request that already carries a cache point, or tools marked for caching, is left exactly as it is."""
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not all(isinstance(m, dict) for m in messages) or body.get('cache_control') is not None:
+        return False
+    if any(_has_cache_point(m) for m in messages):
+        return False
+    if any(isinstance(t, dict) and (t.get('cache_control') is not None or (isinstance(t.get('function'), dict) and t['function'].get('cache_control') is not None)) for t in body.get('tools') or []):
+        return False
+    marked = False
+    system = [m for m in messages if m.get('role') == 'system']
+    if system:
+        marked = _mark(system[-1]) or marked
+    end = len(messages)
+    while end and messages[end - 1].get('role') == 'user' and _text_start(messages[end - 1]).startswith(INTERNAL_CONTEXT):
+        end -= 1
+    for message in reversed(messages[:end]):
+        if message.get('role') == 'system':
+            break
+        if _mark(message):                         # an assistant message that is only a tool call has nothing to mark: the message before it is the nearest stable end
+            marked = True
+            break
+    return marked
+
+
 class ModelRelay:
     """The logic behind /byok/v1 (the HTTP wrapper is in tool_relay.py): who the caller is has already been established."""
 
@@ -524,6 +583,8 @@ class ModelRelay:
         if not isinstance(body, dict) or not isinstance(body.get('messages'), list):
             raise RelayError(400, 'The request had no messages.', 'bad_request')
         body['model'] = target['model']
+        if 'claude' in target['model'].lower():
+            mark_cache_points(body)
         self._admit(account)
         conn = None
         try:

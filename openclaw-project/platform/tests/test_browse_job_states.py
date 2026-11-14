@@ -22,7 +22,7 @@ class Vocabulary(unittest.TestCase):
         client = (__import__('pathlib').Path(__file__).resolve().parents[2] / 'lumina' / 'src' / 'lib' / 'live.ts').read_text()
         listed = client.split('export const LIVE_STATES = [')[1].split(']')[0]
         self.assertEqual(tuple(s.strip().strip("'") for s in listed.split(',')), js.LIVE)       # the web client's list is the server's (it used to lack `asking`)
-        self.assertIn('interrupted:', client)
+        self.assertNotIn('STATE_LABEL', client)        # the client no longer words browser states itself: the task's status line comes from work.py and an interruption's reason from the server
 
 
 class Records(Base):

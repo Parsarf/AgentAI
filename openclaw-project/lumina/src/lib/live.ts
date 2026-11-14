@@ -1,36 +1,13 @@
-import type { ActivityItem } from './activity';
-
 export interface RunRow { request_id: string; goal: string; status: string; url: string | null; created_epoch: number }
 export interface RunEvent { n: number; kind: string; [k: string]: unknown }
 export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; needs_you?: string | null; pending_action: { label?: string } | null; events: RunEvent[] }
 
-export type Mode = 'activity' | 'screen' | 'terminal' | 'files';
-export const MODE_LABEL: Record<Mode, string> = { activity: 'Activity', screen: 'Screen', terminal: 'Terminal', files: 'Files' };
-
 /** Browser-task states in which the page is still alive: the live picture is worth showing. */
 export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused', 'asking'];      // the server's list: platform/agentai_platform/browse/job_states.py LIVE
-export const STATE_LABEL: Record<string, string> = {
-  queued: 'Starting', running: 'Working', handoff: 'Waiting for you', paused: 'You have the wheel', asking: 'Waiting for your answer',
-  done: 'Done', failed: 'Stopped', cancelled: 'Cancelled', completed: 'Done', interrupted: 'Interrupted',
-};
-
 export const VIEW = { w: 1280, h: 800 };                        // the browser window the agent sees; clicks are mapped into it
 /** Pixel position inside the shown picture -> browser window coordinates (the picture may be scaled, but keeps the window's shape). */
 export const toBrowser = (clientX: number, clientY: number, r: { left: number; top: number; width: number; height: number }) =>
   ({ x: Math.round(((clientX - r.left) / r.width) * VIEW.w), y: Math.round(((clientY - r.top) / r.height) * VIEW.h) });
-
-export const stepText = (e: RunEvent): string | null => {
-  const s = (e.summary ?? e.message ?? e.label ?? e.reason) as string | undefined;
-  if (e.kind === 'screenshot' || e.kind === 'control') return null;
-  return s ? String(s) : e.kind === 'step' ? 'Acted on the page' : String(e.kind).replace(/_/g, ' ');
-};
-
-/** Terminal is a live command surface. Finished commands remain in Activity with their recorded output. */
-export function followMode(rows: ActivityItem[], active: boolean): Mode {
-  return active && rows.some(r => r.category === 'command' && r.status === 'running') ? 'terminal' : 'activity';
-}
-
-export const modesFor = (browseTask: boolean, terminalInUse = false): Mode[] => ['activity', ...(browseTask ? ['screen' as const] : []), ...(terminalInUse ? ['terminal' as const] : []), 'files'];
 
 /** Keyboard event -> what to send to the page. Printable text is batched by the caller; shortcuts and unknown keys are never forwarded. */
 export type KeyAction = { kind: 'text'; text: string } | { kind: 'key'; text: string } | null;

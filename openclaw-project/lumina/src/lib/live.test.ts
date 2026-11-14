@@ -1,38 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { ActivityItem } from './activity';
-import { FALLBACK_AFTER, NOTE_TEXT, frameBackoff, followMode, keyAction, modesFor, nowLabel, parseNow, stepText, toBrowser } from './live';
+import { FALLBACK_AFTER, NOTE_TEXT, frameBackoff, keyAction, nowLabel, parseNow, toBrowser } from './live';
 
-const row = (category: string, key = category): ActivityItem => ({ key, category, label: category, detail: '', output: '', status: 'done', at: '' });
 
 describe('live view helpers', () => {
   it('maps a click on the scaled picture into the 1280x800 browser window', () => {
     expect(toBrowser(150, 120, { left: 100, top: 100, width: 640, height: 400 })).toEqual({ x: 100, y: 40 });
     expect(toBrowser(740, 500, { left: 100, top: 100, width: 640, height: 400 })).toEqual({ x: 1280, y: 800 });
     expect(toBrowser(300, 300, { left: 0, top: 0, width: 960, height: 600 })).toEqual({ x: 400, y: 400 });   // the 960x600 live frame keeps the window's shape
-  });
-
-  it('hides screenshots and your own control events from the step list and names unlabeled steps', () => {
-    expect(stepText({ n: 1, kind: 'screenshot', file: 'shot-001.jpg' })).toBeNull();
-    expect(stepText({ n: 4, kind: 'control', action: 'type' })).toBeNull();
-    expect(stepText({ n: 2, kind: 'step', summary: 'Opened shop' })).toBe('Opened shop');
-    expect(stepText({ n: 3, kind: 'step' })).toBe('Acted on the page');
-  });
-
-  it('follows actual running commands, otherwise opens Activity', () => {
-    const running = { ...row('command'), status: 'running' as const };
-    expect(followMode([], true)).toBe('activity');
-    expect(followMode([row('browse'), row('read')], true)).toBe('activity');
-    expect(followMode([running, row('note')], true)).toBe('terminal');
-    expect(followMode([running], false)).toBe('activity');
-    expect(followMode([row('command')], true)).toBe('activity');
-    expect(followMode([row('file')], true)).toBe('activity');
-  });
-
-  it('offers Terminal only while in use and Screen only for browser tasks', () => {
-    expect(modesFor(true)).toEqual(['activity', 'screen', 'files']);
-    expect(modesFor(false)).toEqual(['activity', 'files']);
-    expect(modesFor(true, true)).toEqual(['activity', 'screen', 'terminal', 'files']);
-    expect(modesFor(false, true)).toEqual(['activity', 'terminal', 'files']);
   });
 
   it('forwards typing and a few editing keys to the page, but never shortcuts or other keys', () => {

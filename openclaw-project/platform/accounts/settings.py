@@ -118,6 +118,8 @@ GOAL_CHAIN_LIMIT = int(os.environ.get('AGENTAI_GOAL_CHAIN_LIMIT', '20'))      # 
 # Live view: the frame gateway is a separate process; this file holds the secret both sides use to sign and check watch tickets.
 LIVE_SECRET_FILE = os.environ.get('AGENTAI_LIVE_SECRET_FILE', '')
 LIVE_PATH = os.environ.get('AGENTAI_LIVE_PATH', '/v1/live')
+# The push gateway (agentai_platform/live/push.py) streams task state to open tabs. Empty = not running on this server: the app polls /v1/work instead.
+PUSH_PATH = os.environ.get('AGENTAI_PUSH_PATH', '')
 # Side panel in the customer's own Chrome: the key that signs its tickets (app user only, never readable by the browse service; no file = feature off) and the extension
 # origins allowed to call /v1/panel/* (comma separated, each exactly chrome-extension://<32 letters>; none = feature off).
 PANEL_SECRET_FILE = os.environ.get('AGENTAI_PANEL_SECRET_FILE', '')
@@ -140,6 +142,7 @@ BILLING_PUBLIC_ORIGIN = os.environ.get('AGENTAI_BILLING_PUBLIC_ORIGIN', 'https:/
 BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'                   # owner-only, off by default
 
 # Remote MCP custody uses the host-only encryption key; no credentials enter cells.
+MCP_CLIENT_METADATA_URL = os.environ.get('AGENTAI_MCP_CLIENT_METADATA_URL', PUBLIC_ORIGIN + '/oauth/client-metadata.json' if _origin.hostname != 'localhost' else '')
 MCP_KEY_FILE = os.environ.get('AGENTAI_MCP_KEY_FILE', '')
 MCP_SWITCH_FILE = os.environ.get('AGENTAI_MCP_SWITCH_FILE', '/var/lib/agentai-platform/mcp-connections.json')      # who may use remote MCP connections; off until turned on (agentai_platform/mcp_connections/switch.py)
 # Long-term memory (agentai_platform/longterm_memory.py): a self-hosted Hindsight server indexes what the assistant is asked to remember, one private bank per account.

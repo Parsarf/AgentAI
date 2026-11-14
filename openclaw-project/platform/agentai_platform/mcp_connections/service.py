@@ -184,10 +184,12 @@ def redact(value, credentials):
     def values(obj):
         if isinstance(obj, dict):
             for k, v in obj.items():
-                if k in ('bearer', 'access_token', 'refresh_token', 'client_secret', 'verifier') and isinstance(v, str):
+                if k in ('bearer', 'value', 'username', 'password', 'access_token', 'refresh_token', 'client_secret', 'verifier') and isinstance(v, str):
                     sensitive.append(v)
                 elif isinstance(v, dict): values(v)
     values(credentials)
+    basic = credentials.get('basic')
+    if isinstance(basic, dict): sensitive.append(basic.get('username', '') + ':' + basic.get('password', ''))
     for secret in sorted(sensitive, key=len, reverse=True):
         if secret:
             for encoded in (secret, base64.b64encode(secret.encode()).decode()):
@@ -200,10 +202,12 @@ def namespaced(connection, tool):
 
 
 class ConnectionService:
-    def __init__(self, store, keyring, *, callback_url, registrations=None, remote=None, clock=time.time):
+    def __init__(self, store, keyring, *, callback_url, registrations=None, remote=None, clock=time.time, metadata_url=None, events=None):
+        self.events = events                     # EventService: permission prompts and their answers go on the task's timeline (None = not recorded there)
         self.store, self.ring, self.callback_url = store, keyring, callback_url
         self.registrations, self.remote, self.clock = registrations or {}, remote or RemoteClient(), clock
         self.coordinator = Coordinator(store, clock=clock)
+        self.metadata_url = endpoint_url(metadata_url) if metadata_url else None
 
     def seal(self, account, connection, data):
         kid, nonce, blob = self.ring.seal(account + '|mcp|' + connection, data)
@@ -238,8 +242,12 @@ class ConnectionService:
                           'enabled': bool(not t.get('unusable') and choice and choice['enabled'] and choice['schema_hash'] == schema_digest(t)),
                           'auto_approve': bool(not t.get('unusable') and choice and choice['enabled'] and choice['auto_approve'] and choice['schema_hash'] == schema_digest(t))})
         return {'id': row['id'], 'name': row['name'], 'url': row['url'], 'recipient': urlsplit(row['url']).hostname,
-                'auth_method': row['auth_method'], 'enabled': bool(row['enabled']), 'state': row['state'] if row['enabled'] else 'disabled',
-                'error_code': row['error_code'], 'checked_epoch': row['checked_epoch'], 'tools': tools}
+                'auth_method': row['auth_method'], 'enabled': bool(row['enabled']), 'state': ('confirmation_required' if not row.get('setup_confirmed', 1) else row['state']) if row['enabled'] else 'disabled',
+                'error_code': row['error_code'], 'checked_epoch': row['checked_epoch'], 'tools': tools,
+                'requested_auth': row.get('requested_auth') or row['auth_method'], 'transport': row.get('transport', 'auto'),
+                'added_by': row.get('added_by', 'you'), 'source_url': row.get('source_url', ''),
+                'setup_confirmed': bool(row.get('setup_confirmed', 1)),
+                'manage_url': '/app/integrations?connection=' + row['id']}
 
     def listing(self, principal):
         with self.coordinator.transaction() as con:
@@ -251,26 +259,48 @@ class ConnectionService:
             for p in pending: p['arguments'] = json.loads(p.pop('arguments_json'))
         return {'connections': connections, 'presets': self.presets(), 'pending_calls': pending}
 
-    def create(self, principal, *, name, url, auth_method, token=''):
+    def create(self, principal, *, name='', url, auth_method='auto', token='', options=None, transport='auto', added_by='you', source_url='', confirmed=True):
+        from .credentials import credentials as validate_credentials
         url = endpoint_url(url)
-        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80 or any(ord(c) < 32 for c in name):
+        name = name.strip() if isinstance(name, str) else name
+        if not name: name = urlsplit(url).hostname
+        if not isinstance(name, str) or not 1 <= len(name) <= 80 or any(ord(c) < 32 for c in name):
             raise ConnectionError('invalid_name', 'Enter a name of 1–80 characters.')
-        if auth_method not in ('none', 'oauth', 'bearer'):
-            raise ConnectionError('invalid_authentication', 'Choose OAuth, bearer token, or no authentication.')
-        if auth_method == 'bearer' and (not isinstance(token, str) or not 1 <= len(token) <= 4096 or any(ord(c) < 33 or ord(c) > 126 for c in token)):
-            raise ConnectionError('invalid_token', 'Enter the bearer API token without spaces.')
-        if url == ASANA_URL and auth_method != 'oauth':
+        if transport not in ('auto', 'streamable_http', 'sse'): raise ConnectionError('invalid_transport', 'Choose automatic, Streamable HTTP or legacy SSE.')
+        credentials = validate_credentials(auth_method, token, options)
+        if source_url: source_url = endpoint_url(source_url)
+        if url == ASANA_URL and auth_method not in ('auto', 'oauth'):
             raise ConnectionError('oauth_required', 'Asana’s MCP server requires OAuth.')
+        if auth_method in ('auto', 'oauth') and not credentials.get('client'): self._registration(credentials, url)
+        if credentials.get('client'):
+            credentials['client'].update(redirect_uris=[self.callback_url], grant_types=['authorization_code', 'refresh_token'], response_types=['code'])
+        wire_auth = 'oauth' if auth_method == 'oauth' else 'bearer' if auth_method in ('bearer', 'header', 'basic') else 'none'
         cid, now = uuid.uuid4().hex, int(self.clock())
-        credentials = {'bearer': token} if auth_method == 'bearer' else {}
-        if auth_method == 'oauth': self._registration(credentials, url)
         with self.coordinator.transaction() as con:
             self.store._authorize(con, principal)
+            # Idempotent setup: retries and agent/manual entry points refer to the same row.
+            existing = con.execute('SELECT id FROM mcp_connections WHERE account_id=? AND url=? ORDER BY created_epoch,id LIMIT 1', (principal.account_id, url)).fetchone()
+            if existing: return existing['id']
             if con.execute('SELECT count(*) FROM mcp_connections WHERE account_id=?', (principal.account_id,)).fetchone()[0] >= MAX_CONNECTIONS:
                 raise ConnectionError('connection_limit', 'You can connect up to ten MCP servers.')
-            con.execute('INSERT INTO mcp_connections(account_id,id,name,url,auth_method,state,secret_json,created_epoch) VALUES (?,?,?,?,?,?,?,?)',
-                        (principal.account_id, cid, name.strip(), url, auth_method, 'authentication_required' if auth_method == 'oauth' else 'connecting', self.seal(principal.account_id, cid, credentials), now))
+            con.execute('INSERT INTO mcp_connections(account_id,id,name,url,auth_method,state,secret_json,created_epoch,requested_auth,transport,added_by,source_url,setup_confirmed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (principal.account_id, cid, name, url, wire_auth, 'authentication_required' if auth_method == 'oauth' else 'connecting', self.seal(principal.account_id, cid, credentials), now, auth_method, transport, added_by, source_url, int(confirmed)))
         return cid
+
+    def configure(self, principal, connection, *, auth_method, token='', options=None, transport=None):
+        from .credentials import credentials as validate_credentials
+        data = validate_credentials(auth_method, token, options)
+        with self.coordinator.transaction() as con:
+            row = self.row(con, principal, connection)
+            if transport is not None and transport not in ('auto', 'streamable_http', 'sse'): raise ConnectionError('invalid_transport', 'Unsupported transport.')
+            if row['url'] == ASANA_URL and auth_method not in ('oauth', 'auto'): raise ConnectionError('oauth_required', 'Asana requires OAuth.')
+            if auth_method in ('oauth', 'auto') and not data.get('client'): self._registration(data, row['url'])
+            if data.get('client'): data['client'].update(redirect_uris=[self.callback_url], grant_types=['authorization_code', 'refresh_token'], response_types=['code'])
+            wire_auth = 'oauth' if auth_method == 'oauth' else 'bearer' if auth_method in ('bearer', 'header', 'basic') else 'none'
+            con.execute("UPDATE mcp_connections SET auth_method=?,requested_auth=?,transport=?,secret_json=?,setup_confirmed=1,enabled=1,state='connecting',error_code=NULL,generation=generation+1,busy_until=0,oauth_state_hash=NULL WHERE account_id=? AND id=?",
+                        (wire_auth, auth_method, transport or row['transport'], self.seal(principal.account_id, connection, data), principal.account_id, connection))
+            con.execute('UPDATE mcp_tool_choices SET enabled=0,auto_approve=0 WHERE account_id=? AND connection_id=?', (principal.account_id, connection))
+            con.execute("UPDATE mcp_calls SET state='rejected' WHERE account_id=? AND connection_id=? AND state IN ('pending','approved')", (principal.account_id, connection))
 
     def _registration(self, credentials, url):
         registration = self.registrations.get(url, {})
@@ -285,6 +315,9 @@ class ConnectionService:
 
     def _save_discovery(self, row, data, credentials, *, actor='', session='', browser=''):
         tools = redact(data.get('tools', []), credentials)
+        if data.get('transport'):
+            with self.store.connect() as con:
+                con.execute('UPDATE mcp_connections SET transport=? WHERE account_id=? AND id=? AND generation=?', (data['transport'], row['account_id'], row['id'], row['generation']))
         tools = tools if isinstance(tools, list) else []
         stored, seen = [], set()
         for t in tools:
@@ -341,7 +374,7 @@ class ConnectionService:
     def _network(self, row, credentials, *, closed=lambda: False, **kwargs):
         async def run():
             if await asyncio.to_thread(closed): raise ConnectionError('cancelled', 'The caller stopped before the remote operation began.')      # closed() reads the database: never from inside the event loop
-            async with asyncio.timeout(35 if kwargs.get('tool') else 10):
+            async with asyncio.timeout(35 if kwargs.get('tool') else 30):
                 operation = asyncio.create_task(self.remote.perform(row, credentials, self.callback_url, **kwargs))
                 try:
                     while not operation.done():
@@ -361,6 +394,7 @@ class ConnectionService:
         with self.coordinator.transaction() as con:
             row = self.row(con, principal, connection)
             if not row['enabled']: raise ConnectionError('disabled', 'Enable this connection before testing it.')
+            if not row.get('setup_confirmed', 1): raise ConnectionError('confirmation_required', 'Review this server address in Integrations and choose Connect before Lumina contacts it.')
             if con.execute("SELECT count(*) FROM mcp_connections WHERE account_id=? AND busy_until>? AND id<>?", (principal.account_id, int(self.clock()), connection)).fetchone()[0] >= 2:
                 raise ConnectionError('busy', 'Two connections are already being tested. Please wait.')
             self._lease(con, row)
@@ -372,8 +406,8 @@ class ConnectionService:
         credentials = None
         try:
             credentials = self.open(row)
-            if row['auth_method'] == 'oauth' and not credentials.get('client'): self._registration(credentials, row['url'])
-            data, credentials = self._network(row, credentials, closed=closed, resume=resume, metadata_url=self.registrations.get(row['url'], {}).get('client_metadata_url'))
+            if (row['auth_method'] == 'oauth' or row.get('requested_auth') == 'auto') and not credentials.get('client'): self._registration(credentials, row['url'])
+            data, credentials = self._network(row, credentials, closed=closed, resume=resume, metadata_url=self.registrations.get(row['url'], {}).get('client_metadata_url') or self.metadata_url)
             if not data.get('authorize_url'): credentials.pop('pending', None)
             self._save_discovery(row, data, credentials, actor=principal.actor_id, session=session, browser=browser)
             return {'authorize_url': data.get('authorize_url'), 'connected': not bool(data.get('authorize_url'))}
@@ -392,7 +426,7 @@ class ConnectionService:
     def _error(self, row, code):
         with self.coordinator.transaction() as con:
             con.execute('UPDATE mcp_connections SET state=?,error_code=? WHERE account_id=? AND id=? AND generation=?',
-                        ('authentication_required' if code in ('oauth_setup_required', 'authentication_required', 'oauth_state_invalid') else 'unavailable', code, row['account_id'], row['id'], row['generation']))
+                        ('authentication_required' if code in ('oauth_setup_required', 'authentication_required', 'oauth_state_invalid', 'additional_permission_required') else 'unavailable', code, row['account_id'], row['id'], row['generation']))
 
     def browser_callback_binding(self, state, browser):
         if not isinstance(state, str) or not 16 <= len(state) <= 200 or not isinstance(browser, str) or not 20 <= len(browser) <= 100:
@@ -464,14 +498,15 @@ class ConnectionService:
                 if row['auth_method'] == 'bearer' and token is None: raise
                 credentials = {}
             credentials.pop('pending', None)
-            if row['auth_method'] == 'oauth':
+            if row['auth_method'] == 'oauth' or row.get('requested_auth') == 'auto':
+                if not credentials.get('user_client'): credentials.pop('client', None)
                 credentials.pop('tokens', None)
                 credentials.pop('expires_at', None)
                 for field in ('oauth_metadata', 'protected_resource_metadata', 'auth_server_url'):
                     credentials.pop(field, None)
-                self._registration(credentials, row['url'])
+                if not credentials.get('user_client'): self._registration(credentials, row['url'])
             if token is not None:
-                if row['auth_method'] != 'bearer' or not isinstance(token, str) or not 1 <= len(token) <= 4096 or any(ord(c) < 33 or ord(c) > 126 for c in token):
+                if (row.get('requested_auth') or row['auth_method']) != 'bearer' or not isinstance(token, str) or not 1 <= len(token) <= 4096 or any(ord(c) < 33 or ord(c) > 126 for c in token):
                     raise ConnectionError('invalid_token', 'Enter a valid replacement bearer token.')
                 credentials['bearer'] = token
             con.execute("UPDATE mcp_connections SET secret_json=?,enabled=1,state='connecting',generation=generation+1,busy_until=0,oauth_state_hash=NULL WHERE account_id=? AND id=?",
@@ -581,6 +616,18 @@ class ConnectionService:
             if row['state'] != 'pending' or row['expires_epoch'] < self.clock():
                 raise ConnectionError('approval_expired', 'This exact-call approval is no longer available.')
             con.execute('UPDATE mcp_calls SET state=?,expires_epoch=? WHERE account_id=? AND id=?', ('approved' if approved else 'rejected', int(self.clock()) + 600, principal.account_id, call))
+            service = con.execute('SELECT name FROM mcp_connections WHERE account_id=? AND id=?', (principal.account_id, row['connection_id'])).fetchone()
+            self._timeline(con, principal.account_id, row['request_id'], 'approval_decision', {'request_id': call, 'decision': 'approved' if approved else 'declined'})
+            return {'request_id': row['request_id'], 'tool': row['tool_name'], 'service': service['name'] if service else '', 'approved': bool(approved)}
+
+    def _timeline(self, con, account, request_id, kind, payload):
+        """Put a permission prompt or its answer on the task's own timeline. Best effort: a call made outside a task (or a full timeline) is still decided."""
+        if self.events is None or not request_id:
+            return
+        try:
+            self.events.append_in(con, account, request_id, kind, payload, 'approval')
+        except Exception:
+            pass
 
     def call(self, account, name, arguments, request_id, *, closed=lambda: False):
         principal = self._principal_for(account)
@@ -625,7 +672,9 @@ class ConnectionService:
                     call_id = uuid.uuid4().hex
                     con.execute("INSERT INTO mcp_calls(account_id,id,connection_id,tool_name,payload_hash,schema_hash,request_id,arguments_json,state,expires_epoch,created_epoch) VALUES (?,?,?,?,?,?,?,?,'pending',?,?)",
                                 (account, call_id, row['id'], tool['name'], target_hash, schema_digest(tool), request_id, packed(arguments), int(self.clock()) + 600, int(self.clock())))
-                return {'content': [{'type': 'text', 'text': 'Customer approval required. Ask the customer to review the exact call in Integrations → MCP connections, then retry only after approval. No remote action has run.'}], 'isError': True}
+                    self._timeline(con, account, request_id, 'approval_request', {'request_id': call_id, 'expires_epoch': int(self.clock()) + 600,
+                                                                                 'summary': 'Asked for your permission to use ' + re.sub(r'[_-]+', ' ', tool['name'])[:80] + ' on ' + str(row['name'])[:60]})
+                return {'content': [{'type': 'text', 'text': 'Customer approval required. Lumina is showing the customer this exact call in the chat now, and will tell you their decision. Tell the customer briefly what you asked permission for and stop; do not retry until you are told it was allowed. No remote action has run.'}], 'isError': True}
             if con.execute("SELECT count(*) FROM mcp_calls WHERE account_id=? AND state='dispatching'", (account,)).fetchone()[0] >= 2:
                 raise ConnectionError('busy', 'Two MCP calls are already running for this account.')
             self._lease(con, row)
@@ -646,7 +695,7 @@ class ConnectionService:
                 error = ConnectionError('uncertain_result', 'The remote outcome could not be confirmed.')
             if credentials is not None: self._save_credentials(row, credentials)
             if error.code in ('authentication_required', 'call_authorization_lost'):
-                self._error(row, 'authentication_required')
+                self._error(row, 'additional_permission_required' if credentials and credentials.get('required_scope') else 'authentication_required')
             certain = error.code in ('tool_changed', 'tool_removed', 'invalid_arguments', 'authentication_required')
             with self.coordinator.transaction() as con:
                 con.execute('UPDATE mcp_calls SET state=? WHERE account_id=? AND id=?', ('rejected' if certain else 'uncertain', account, call_id))

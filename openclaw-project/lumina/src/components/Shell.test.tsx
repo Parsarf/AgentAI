@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Shell from './Shell';
+vi.mock('../state/work', async () => (await import('../test/workMock')).mock);
 vi.mock('../state/data', () => ({ useData: () => ({ requests: [], chats: [], refreshChats: vi.fn() }) }));
 vi.mock('../state/settings', () => ({ useSettings: () => ({ sidebarOpen: true, reducedMotion: false, setReducedMotion: vi.fn(), setSidebarOpen: vi.fn() }) }));
 vi.mock('./Sidebar', () => ({ default: () => null, NAV: [{ to: '/home', label: 'Home' }, { to: '/chat', label: 'Chat' }] }));

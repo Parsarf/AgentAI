@@ -7,6 +7,7 @@ import { DataProvider } from '../../state/data';
 import { SettingsProvider } from '../../state/settings';
 import { resetCsrf } from '../../lib/api';
 import type { SafetyFeature, SafetyState, Scope } from '../../lib/safety';
+vi.mock('../../state/work', async () => (await import('../../test/workMock')).mock);
 
 const GROUPS = [{ key: 'browser', title: 'Browser' }, { key: 'data', title: 'Data and privacy' }, { key: 'access', title: 'Sign-in and sessions' }, { key: 'empty', title: 'Nothing here' }];
 const feature = (over: Partial<SafetyFeature> & { key: string; title: string; group: string }): SafetyFeature =>

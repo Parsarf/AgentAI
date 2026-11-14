@@ -99,3 +99,5 @@ urlpatterns += [path('v1/location', loc.pending), path('v1/location/<str:locatio
 
 
 urlpatterns += [path('v1/model-key/select', mkv.select)]
+from . import work as wk
+urlpatterns += [path('v1/work', wk.listing), path('v1/work/ticket', wk.ticket), path('v1/work/<str:request_id>', wk.detail)]

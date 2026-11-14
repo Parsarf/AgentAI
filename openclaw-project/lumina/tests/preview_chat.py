@@ -26,6 +26,22 @@ class Preview(SimpleHTTPRequestHandler):
             if path == '/v1/app':
                 data = {'api_version': '1', 'user': {'email': 'preview@example.com', 'role': 'owner'}, 'assistant': {'state': 'running'}, 'features': {'execution': True, 'chat': True, 'billing_mode': 'open', 'files': False}, 'limits': {'max_message_chars': 16000}}
             elif path == '/v1/requests': data = {'requests': []}
+            elif path == '/v1/work' or path.startswith('/v1/work/'):
+                # Task state as the app reads it now (platform/agentai_platform/work.py computes the real one; these are the same fields, synthetic).
+                name = path.rsplit('/', 1)[1].removeprefix('fixture-') if path.startswith('/v1/work/') else (parsed.path and self.headers.get('Referer', '').rstrip('/').rsplit('/', 1)[-1]) or 'working'
+                doing = {'searching': ('search', 'Searching the web'), 'working': ('command', 'Running a command'), 'composing': ('file', 'Working with a file'), 'connecting': ('read', 'Reading a page'), 'weaving': ('subagent', 'Working with a helper')}
+                cycle = list(doing)[int(time.time() / 3) % len(doing)] if name == 'transitions' else name
+                live = name in orb_states or name in ['queued', 'starting', 'transitions']
+                phase = 'queued' if name == 'queued' else 'starting' if name == 'starting' else 'working' if live else 'ended'
+                activity = {'key': 'fixture-call', 'category': doing[cycle][0], 'label': doing[cycle][1], 'detail': ''} if phase == 'working' and cycle in doing else None
+                view = {'id': f'fixture-{name}', 'conversation_id': name, 'title': 'hey', 'follows': None, 'created_epoch': now - 82, 'state': 'running' if live else 'completed', 'phase': phase,
+                        'label': {'queued': 'Queued', 'starting': 'Getting ready', 'ended': 'Done'}.get(phase) or (activity['label'] if activity else 'Thinking'), 'tone': 'ok' if phase == 'ended' else 'live' if phase == 'working' else 'pending',
+                        'activity': activity, 'now': [activity] if activity else [], 'ahead': 1 if phase == 'queued' else None, 'attention': None, 'attention_label': '', 'outcome': None if live else 'completed',
+                        'verification': None if live else 'not_applicable', 'note': '', 'goal': False, 'continuing': False, 'retry_of': None, 'needs': [], 'steps': 0,
+                        'controls': {'stop': live, 'pause': False, 'resume': False, 'retry': False, 'goal_resume': False, 'goal_clear': False, 'steer': phase == 'working'}}
+                if path == '/v1/work': data = {'tasks': [view], 'attention': 0, 'rev': f'{name}-{cycle}'}
+                else: data = {'task': {**view, 'request': 'hey', 'result': None, 'checklist': None, 'messages': 1 if live else 2, 'cancel_requested': False, 'browser': None, 'ended_epoch': None, 'rev': f'{name}-{cycle}',
+                                       'evidence': {'steps': 0, 'failed_steps': 0, 'searches': 0, 'commands': 0, 'sites': [], 'files': [], 'saved': [], 'approvals': [], 'duration_s': None}}, 'rows': [], 'cursor': 0}
             elif path == '/v1/conversations': data = {'conversations': [dict(chat, id=x) for x in ['working', 'completed', 'long', 'multiple']]}
             elif path.endswith('/messages'):
                 messages = [{'id': 1, 'provenance': 'customer', 'request_id': task['id'], 'content': 'hey', 'created_at': ''}]

@@ -1,0 +1,40 @@
+[Unit]
+Description=AgentAI push gateway (streams task state to open Lumina tabs; read-only)
+After=agentai-platform-app.service
+Wants=agentai-cell-bridge.service
+
+[Service]
+User=agentai-platform
+Group=agentai-platform
+WorkingDirectory=/opt/agentai-platform/current
+Environment=PUSH_DB=/var/lib/agentai-platform/platform.sqlite3
+Environment=PUSH_SECRET_FILE=/etc/agentai-platform/live.secret
+Environment=PUSH_HOST=127.0.0.1
+Environment=PUSH_PORT=18803
+Environment=AGENTAI_CELL_BRIDGE_SOCKET=/run/agentai-cell-bridge/bridge.sock
+ExecStart=/opt/agentai-platform/current/.venv/bin/python -m agentai_platform.live.push
+UMask=0077
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+# SQLite in WAL mode needs to create its -shm file even to read: the state directory stays writable, the process itself only reads.
+ReadWritePaths=/var/lib/agentai-platform
+ReadOnlyPaths=/etc/agentai-platform
+MemoryMax=160M
+MemorySwapMax=0
+CPUQuota=25%
+TasksMax=128
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

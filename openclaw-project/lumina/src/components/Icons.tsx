@@ -32,3 +32,17 @@ export const Edit = make(<><path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16v4z" /></>
 export const ChevronDown = make(<path d="M6 9l6 6 6-6" />);
 export const Grid = make(<><rect x="4" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" /></>);
 export const More = make(<><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></>);
+// Task activity (work surfaces): one drawn icon per kind of thing Lumina did, same stroke as the rest.
+export const Terminal = make(<><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M7.5 10l3 2.5-3 2.5M13 15h3.5" /></>);
+export const Doc = make(<><path d="M14 3H7.5A1.5 1.5 0 006 4.5v15A1.5 1.5 0 007.5 21h9a1.5 1.5 0 001.5-1.5V7z" /><path d="M14 3v4h4M9 12.5h6M9 16h4" /></>);
+export const Page = make(<><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><path d="M3.5 9h17M7 6.8h.01M9.5 6.8h.01" /></>);
+export const Alert = make(<><path d="M12 4l9 15.5H3z" /><path d="M12 10v4.5M12 17.2h.01" /></>);
+export const Clock = make(<><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>);
+export const Pause = make(<path d="M9 6v12M15 6v12" />);
+export const Stop = make(<rect x="6.5" y="6.5" width="11" height="11" rx="2" />);
+export const Retry = make(<><path d="M4.5 12a7.5 7.5 0 0112.8-5.3L20 9.5" /><path d="M20 4.5v5h-5M19.5 12a7.5 7.5 0 01-12.8 5.3L4 14.5" /><path d="M4 19.5v-5h5" /></>);
+export const Hand = make(<><path d="M8.5 12.5V6a1.5 1.5 0 013 0v5M11.5 10.5V5a1.5 1.5 0 013 0v6M14.5 11V7a1.5 1.5 0 013 0v7.5a6 6 0 01-6 6h-.8a5 5 0 01-4-2l-3-4.2a1.5 1.5 0 012.3-1.9l2.5 2.6" /></>);
+export const Key = make(<><circle cx="8" cy="15" r="3.5" /><path d="M10.6 12.4L19 4M15.5 7.5l2.5 2.5M13 10l2 2" /></>);
+export const Note = make(<path d="M5 7h14M5 12h14M5 17h8" />);
+export const Helper = make(<><circle cx="8" cy="8" r="3" /><circle cx="17" cy="15" r="3" /><path d="M10.5 10l4 3" /></>);
+export const Dash = make(<path d="M7 12h10" />);

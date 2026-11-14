@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { DataProvider } from '../state/data';
 import { SettingsProvider } from '../state/settings';
+vi.mock('../state/work', async () => (await import('../test/workMock')).mock);
 
 const app = { api_version: 't', user: { email: 'parsa@example.com', role: 'customer' }, assistant: { state: 'ready' }, limits: { max_message_chars: 100 },
   features: { chat: true, execution: true, files: false, uploads: false, telegram: false, connectors: false, billing_mode: 'open', requests: true, usage: true } };

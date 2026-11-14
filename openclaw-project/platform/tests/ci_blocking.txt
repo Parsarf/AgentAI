@@ -37,3 +37,4 @@ test_shared_rules
 test_browse_reference
 test_browse_job_states
 test_browse_tabs
+test_mcp_setup

@@ -78,6 +78,21 @@ def reachable(cands: list[dict], limit: int = JEV_LIMIT) -> list[dict] | None:
     return [c for c in cands if c.get('in_view') and c.get('covered') is False][:limit]
 
 
+def for_assistant(listed: list[dict], in_window: list[dict] | None, limit: int = JEV_LIMIT) -> list[dict]:
+    """What the assistant is offered when a page is handed to it: everything it was offered before (`listed`, the first controls of the page with those in the window preferred),
+    and with it the controls a person could click right now (`in_window`, what the fast decider is offered). It used to get `listed` alone, at most 20: on a results page the
+    fast decider could see a product's button that the assistant, asked to take over, could not. In page order; never more than `limit`, and the controls in the window are the
+    ones kept when there are too many. An engine that does not say what is visible (`in_window` is None) keeps the old list."""
+    if not in_window:
+        return listed
+    keep = {c['ref']: c for c in in_window[:limit]}
+    for c in listed:
+        if len(keep) >= limit:
+            break
+        keep.setdefault(c['ref'], c)
+    return sorted(keep.values(), key=lambda c: c['ref'])
+
+
 def nearest(cands: list[dict], x: float, y: float, width: float, height: float, radius: float = SNAP_RADIUS) -> dict | None:
     """The listed clickable control closest to a point, if one is within `radius` of it (a share of the window). Never a secret field: a click is not steered onto one."""
     best, best_d = None, radius

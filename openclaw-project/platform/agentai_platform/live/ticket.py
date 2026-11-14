@@ -48,3 +48,36 @@ def verify(secret: bytes, ticket: str, request_id: str, *, now=time.time) -> str
         return data['a']
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         raise TicketError('invalid ticket') from None
+
+
+# ---- work stream tickets -------------------------------------------------------------------------------------------------------------------------------
+# The push gateway (push.py) is a separate small server that the signed-in session never reaches. The web app, which does hold the session, mints one of these for it:
+# bound to one account and one member, short-lived, read only. A different prefix and field set from the frame ticket above, so neither can be used as the other.
+WORK_PREFIX = 'w1'
+WORK_TTL_SECONDS = 90
+ACTOR_ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
+
+def mint_work(secret: bytes, account_id: str, actor_id: str, *, now=time.time, ttl=WORK_TTL_SECONDS) -> str:
+    if not secret or not isinstance(account_id, str) or not account_id or not ACTOR_ID.fullmatch(str(actor_id or '')):
+        raise TicketError('cannot mint')
+    body = _b64(json.dumps({'a': account_id, 'u': str(actor_id), 'e': int(now()) + ttl}, separators=(',', ':')).encode())
+    sig = _b64(hmac.new(secret, f'{WORK_PREFIX}.{body}'.encode(), hashlib.sha256).digest())
+    return f'{WORK_PREFIX}.{body}.{sig}'
+
+
+def verify_work(secret: bytes, ticket: str, *, now=time.time) -> tuple[str, str]:
+    """-> (account_id, actor_id). Raises TicketError for anything wrong."""
+    try:
+        prefix, body, sig = ticket.split('.')
+        if prefix != WORK_PREFIX or not secret:
+            raise ValueError
+        want = _b64(hmac.new(secret, f'{prefix}.{body}'.encode(), hashlib.sha256).digest())
+        if not hmac.compare_digest(sig, want):
+            raise ValueError
+        data = json.loads(_unb64(body))
+        if int(data['e']) < now() or not isinstance(data['a'], str) or not data['a'] or not ACTOR_ID.fullmatch(data['u']):
+            raise ValueError
+        return data['a'], data['u']
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        raise TicketError('invalid ticket') from None
