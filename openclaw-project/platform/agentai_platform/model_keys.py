@@ -23,6 +23,7 @@ import http.client
 import json
 import logging
 import os
+import random
 import re
 import secrets
 import socket
@@ -522,10 +523,38 @@ def mark_cache_points(body):
     return marked
 
 
+TEMPORARY_STATUSES = (429, 503, 529)      # the provider is busy or a per-minute limit was hit: the same request can succeed a moment later
+RETRY_WAIT_SECONDS = 90                   # the most one model call waits here in total before the runtime is given the provider's answer as it is
+
+
+def retry_pause(header, attempt, jitter=random.random):
+    """How long to wait before asking again: the provider's own Retry-After when it gives one (bounded), else 2, 4, 8, 16, 30 seconds, each with up to a quarter added at random
+    so that several waiting calls do not all return at the same instant."""
+    try:
+        asked = float(header) if header is not None else None
+    except (TypeError, ValueError):
+        asked = None
+    base = min(60.0, max(1.0, asked)) if asked is not None and asked == asked else min(30.0, 2.0 * (2 ** min(attempt, 4)))
+    return base * (1 + 0.25 * jitter())
+
+
+def _is_budget_refusal(body):
+    """LiteLLM reports a permanent key-budget refusal as 429. It will not go away by waiting, so it is never retried."""
+    try:
+        error = json.loads(body).get('error', {})
+        return isinstance(error, dict) and any(s in str(error.get('message', '')).lower() + ' ' + str(error.get('type', '')).lower()
+                                               for s in ('budget has been exceeded', 'budget_exceeded', 'budgetexceeded'))
+    except (ValueError, AttributeError):
+        return False
+
+
 class ModelRelay:
     """The logic behind /byok/v1 (the HTTP wrapper is in tool_relay.py): who the caller is has already been established."""
 
-    def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic, admission=None, selection=None):
+    def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic, admission=None, selection=None,
+                 sleep=time.sleep, jitter=None, waiting=None):
+        self.sleep, self.jitter = sleep, jitter if jitter is not None else random.random       # injectable so tests do not wait
+        self.waiting = waiting       # callable(account): the task is waiting for the model provider (shown in the customer's timeline); None = say nothing
         self.admission = admission
         self.selection = selection   # server-owned route of the one admitted live request
         self.store, self.enabled, self.resolver, self.public, self.context, self.clock = store, enabled, resolver, public, context, clock
@@ -587,28 +616,43 @@ class ModelRelay:
             mark_cache_points(body)
         self._admit(account)
         conn = None
+        payload = json.dumps(body).encode()
+        waited, attempt = 0.0, 0
         try:
-            # Fixed trusted proxy, with the CELL credential; never a customer's
-            # endpoint or API key. Proxy policy and usage metering still apply.
-            conn = self._lumina_connection()
-            conn.request('POST', '/v1/chat/completions', json.dumps(body).encode(),
-                         {'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json', 'Connection': 'close'})
-            response = conn.getresponse()
-            if 300 <= response.status < 400:
-                raise RelayError(502, 'The model proxy attempted a redirect.', 'redirect_refused')
-            prefix = b''
-            if response.status == 429:
+            while True:
+                # Fixed trusted proxy, with the CELL credential; never a customer's
+                # endpoint or API key. Proxy policy and usage metering still apply.
+                conn = self._lumina_connection()
+                conn.request('POST', '/v1/chat/completions', payload,
+                             {'Authorization': 'Bearer ' + credential, 'Content-Type': 'application/json', 'Connection': 'close'})
+                response = conn.getresponse()
+                if 300 <= response.status < 400:
+                    raise RelayError(502, 'The model proxy attempted a redirect.', 'redirect_refused')
+                if response.status not in TEMPORARY_STATUSES:
+                    break
+                # The provider is busy or a per-minute limit was reached. Nothing has been streamed yet, so asking again is safe: wait here, where the customer's task keeps
+                # its place, instead of handing the runtime an error it turns into a failed task. A refusal that will not go away (a budget) is never waited for.
                 prefix = response.read(65536)
-                # LiteLLM reports a permanent key-budget refusal as 429. Passing
-                # that through makes the runtime repeatedly retry an exhausted
-                # allowance. Distinguish it from a genuine temporary rate limit.
-                try:
-                    error = json.loads(prefix).get('error', {})
-                    budget = isinstance(error, dict) and any(s in str(error.get('message', '')).lower() + ' ' + str(error.get('type', '')).lower()
-                        for s in ('budget has been exceeded', 'budget_exceeded', 'budgetexceeded'))
-                except (ValueError, AttributeError):
-                    budget = False
-                if budget:
+                if response.status == 429 and _is_budget_refusal(prefix):
+                    break
+                pause = retry_pause(response.getheader('Retry-After'), attempt, self.jitter)
+                if waited + pause > RETRY_WAIT_SECONDS:
+                    break                                    # waited long enough: the runtime gets the provider's answer as it is
+                close_upstream(conn, response)
+                conn = None
+                if attempt == 0 and self.waiting is not None:
+                    try:
+                        self.waiting(account)                # tells the customer's timeline, once per call, that the task is waiting for the provider
+                    except Exception:
+                        pass
+                self.sleep(pause)
+                waited += pause
+                attempt += 1
+            if response.status not in TEMPORARY_STATUSES:
+                prefix = b''                                 # otherwise `prefix` already holds the start of the body read above
+            if response.status == 429:
+                # LiteLLM reports a permanent key-budget refusal as 429. Passing that through makes the runtime repeatedly retry an exhausted allowance.
+                if _is_budget_refusal(prefix):
                     close_upstream(conn, response)
                     raise RelayError(402, 'Your Lumina model allowance is exhausted. Choose a saved personal model in Settings or contact the owner to review the allowance.', 'budget_exhausted')
             up = Upstream(response.status, response.getheader('Content-Type') or 'application/json', conn, response, prefix)

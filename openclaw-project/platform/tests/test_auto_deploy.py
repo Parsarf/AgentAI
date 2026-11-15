@@ -92,6 +92,34 @@ class Drift(unittest.TestCase):
             self.assertEqual(deploy.drift([Path(root) / 'nothing'], root), [])
 
 
+class SelfInstall(unittest.TestCase):
+    def test_the_installed_program_follows_the_deployed_commit(self):
+        with tempfile.TemporaryDirectory() as root:
+            plat = Path(root) / 'plat'; (plat / 'deploy').mkdir(parents=True)
+            installed = Path(root) / 'sbin' / 'agentai-deploy'; installed.parent.mkdir()
+            installed.write_text('#!/usr/bin/env python3\nold = 1\n')
+            (plat / 'deploy' / 'agentai-deploy').write_text('#!/usr/bin/env python3\nnew = 2\n')
+            self.assertTrue(deploy.install_self(plat, installed))
+            self.assertIn('new = 2', installed.read_text())
+            self.assertEqual(installed.stat().st_mode & 0o777, 0o755)
+            self.assertFalse(deploy.install_self(plat, installed))                     # already the same: nothing to do
+            self.assertEqual([p.name for p in installed.parent.iterdir()], ['agentai-deploy'])      # no temporary file left behind
+
+    def test_a_program_that_does_not_parse_or_is_missing_is_never_installed(self):
+        with tempfile.TemporaryDirectory() as root:
+            plat = Path(root) / 'plat'; (plat / 'deploy').mkdir(parents=True)
+            installed = Path(root) / 'agentai-deploy'; installed.write_text('#!/usr/bin/env python3\nold = 1\n')
+            self.assertFalse(deploy.install_self(plat, installed))                     # the commit has no deploy program
+            for bad in ('#!/usr/bin/env python3\ndef broken(:\n', 'not a script\n'):
+                (plat / 'deploy' / 'agentai-deploy').write_text(bad)
+                self.assertFalse(deploy.install_self(plat, installed), bad)
+                self.assertIn('old = 1', installed.read_text())
+
+    def test_the_lifecycle_worker_is_restarted_with_the_other_services_and_the_supervisor_is_not(self):
+        self.assertIn('agentai-lifecycle-worker', deploy.UNITS)
+        self.assertNotIn('agentai-supervisor-native', deploy.UNITS)
+
+
 class Layout(unittest.TestCase):
     def test_the_required_paths_exist_in_the_repository(self):
         platform = Path(__file__).resolve().parents[1]

@@ -17,7 +17,7 @@ import json
 import os
 import time
 import uuid
-from . import activity as activity_mod, outcome as outcome_mod, spend_limits, timing
+from . import activity as activity_mod, outcome as outcome_mod, spend_limits, timing, versions
 from .browse import job_states as browse_job_states
 from .adapters import CapabilityUnavailable
 from .browse.untrusted import neutralize
@@ -71,6 +71,8 @@ def panel_note(panel):
 MODEL_FAILURE = ('The model you chose could not be used for this task. Open Settings > Assistant > Models and choose another model, or switch back to Lumina, then send your message again. '
                  'Nothing was run.')
 SELECTION_FAILURE = 'Your model choice changed while this task was starting. Send your message again and it will use the model you selected.'
+BUSY_FAILURE = ('The model provider was too busy to finish this task, even after waiting. Nothing is wrong with your request. Please send it again in a minute; '
+                'what was already done is kept in this conversation.')
 ALLOWANCE_FAILURE = 'Your Lumina model allowance is exhausted. Choose a saved personal model in Settings or contact the owner to review the allowance.'
 
 
@@ -79,6 +81,8 @@ def failure_message(error) -> str:
     text = str(error or '').lower()
     if any(s in text for s in ('budget_exhausted', 'allowance is exhausted', 'insufficient credits', 'billing error', 'credit balance')):
         return ALLOWANCE_FAILURE
+    if any(s in text for s in ('rate-limit', 'rate limit', 'ratelimit', 'too many requests', 'overloaded', '429', '529')):
+        return BUSY_FAILURE
     if 'timeout' in text:
         return 'The assistant took too long and was stopped. Please try a smaller request.'
     if 'model is unavailable' in text or 'model_unavailable' in text:
@@ -191,6 +195,7 @@ class ChatDriver:
                 return Defer('the cell is not ready yet')        # nothing was handed over: the request keeps its place and is claimed again, instead of failing "could not be started"
             raise
         info = self._admit(claim)
+        self._stamp(claim, gateway, info)
         if not self._deliveries(claim):
             if info['cancelled']:
                 return self._close(claim, 'cancelled', 'Cancelled before execution', verdict=outcome_mod.judge(native={}, cancelled=True))      # nothing was sent, nothing to settle
@@ -207,6 +212,16 @@ class ChatDriver:
         else:
             self._reassert(claim, gateway, info['session'] or self._session(claim))       # a carried-on request (parked, recovered): make sure the runtime still has its inputs
         return self._supervise(claim, gateway, info)
+
+    def _stamp(self, claim, gateway, info):
+        """Record once which release, rules, tools, runtime and model route serve this request (versions.py). Never fails a request."""
+        try:
+            stamp = versions.stamp(runtime=gateway.capabilities().runtime_version, model=str((info.get('context') or {}).get('model_selection') or ''))
+            with self.coordinator.transaction() as con:
+                con.execute('UPDATE customer_requests SET versions_json=? WHERE account_id=? AND id=? AND versions_json IS NULL',
+                            (json.dumps(stamp, sort_keys=True, separators=(',', ':')), claim.account_id, claim.request_id))
+        except Exception as error:
+            timing.mark(claim.request_id, 'stamp_failed', error=type(error).__name__)
 
     def _may_wait_for_cell(self, claim):
         """A request with nothing handed over yet may go back to waiting while its cell comes up, for as long as a parked request may wait; after that the old ending applies."""

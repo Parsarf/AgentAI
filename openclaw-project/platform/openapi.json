@@ -1586,6 +1586,138 @@
     "parameters": []
    }
   },
+  "/v1/estimates/{kind}": {
+   "get": {
+    "summary": "A range for how long and how much a task of this kind (chat, browse, plan, execute, phase, goal) is likely to take, from finished tasks; null when there is too little history",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     },
+     "400": {
+      "description": "Unknown kind"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/objectives": {
+   "get": {
+    "summary": "List this account's long jobs (\"keep working until complete\"): state, checkpoints, turns and time used against the budget",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/objectives/{objective_id}": {
+   "get": {
+    "summary": "Read one long job with its checkpoints",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": []
+   },
+   "post": {
+    "summary": "Change how a long job behaves: resume_policy (ask or auto), max_turns, max_hours",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     },
+     "400": {
+      "description": "Invalid value"
+     },
+     "409": {
+      "description": "The job was cancelled"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/objectives/{objective_id}/cancel": {
+   "post": {
+    "summary": "Cancel a long job for good and stop its running or waiting turn",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
   "/v1/controls": {
    "get": {
     "summary": "Disabled controls capability; authenticated customer required",

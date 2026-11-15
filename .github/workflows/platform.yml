@@ -42,6 +42,8 @@ jobs:
           python manage.py makemigrations --check --dry-run
       - name: Platform tests (blocking list)
         run: python -m unittest $(sed 's/^/tests./' tests/ci_blocking.txt | tr '\n' ' ') -v 2>&1 | tail -n 40
+      - name: Acceptance cases (a workflow that worked before must still work)
+        run: python deploy/acceptance.py run --baseline tests/acceptance_baseline.json --out "$RUNNER_TEMP/acceptance.json"
       - name: Platform tests (report-only, not yet promoted)
         continue-on-error: true
         run: |
