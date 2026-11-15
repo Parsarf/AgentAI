@@ -12,18 +12,23 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 
 _log = logging.getLogger('agentai.timing')
 _SAFE = re.compile(r'^[A-Za-z0-9_.:\-]{0,64}$')
 
 
-_current = {'rid': '-'}
+_current = threading.local()      # per thread: several requests run at once (one worker thread each), and each thread's marks must carry its own request id
 
 
 def bind(rid):
-    """The worker runs one request at a time: layers below the driver (the bridge client) mark against this id."""
-    _current['rid'] = str(rid)[:64] if rid else '-'
+    """Layers below the driver (the bridge client) mark against the request this THREAD is running."""
+    _current.rid = str(rid)[:64] if rid else '-'
+
+
+def current() -> str:
+    return getattr(_current, 'rid', '-')
 
 
 def enabled() -> bool:
@@ -45,7 +50,7 @@ def mark(rid, stage, **fields):
     try:
         if not enabled():
             return
-        rid = rid or _current['rid']
+        rid = rid or current()
         row = {'rid': str(rid)[:64], 'stage': stage, 'wall_ms': round(time.time() * 1000, 1), 'mono_ms': round(time.monotonic() * 1000, 1), 'pid': os.getpid()}
         for key, value in fields.items():
             if isinstance(value, bool) or isinstance(value, (int, float)):

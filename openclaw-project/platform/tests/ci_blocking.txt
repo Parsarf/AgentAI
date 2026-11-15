@@ -38,3 +38,9 @@ test_browse_reference
 test_browse_job_states
 test_browse_tabs
 test_mcp_setup
+test_acceptance
+test_rate_limits
+test_auto_deploy
+test_timing
+test_goal_objectives
+test_estimates

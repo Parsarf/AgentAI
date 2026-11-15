@@ -1,0 +1,44 @@
+{
+ "cases": {
+  "A-BUSY-PROVIDER": {
+   "passed": true
+  },
+  "A-CELL-UNREACHABLE": {
+   "passed": true
+  },
+  "A-CUSTOMER-LIMIT": {
+   "passed": true
+  },
+  "A-GOAL-CHAIN": {
+   "passed": true
+  },
+  "A-ISOLATION": {
+   "passed": true
+  },
+  "A-NO-LIMIT": {
+   "passed": true
+  },
+  "A-PLAIN-ANSWER": {
+   "passed": true
+  },
+  "A-QUEUE-ORDER": {
+   "passed": true
+  },
+  "A-RECOVER-CELL": {
+   "passed": true
+  },
+  "A-RECOVER-WORKER": {
+   "passed": true
+  },
+  "A-STEER": {
+   "passed": true
+  },
+  "A-STOP": {
+   "passed": true
+  },
+  "A-VERSION-STAMP": {
+   "passed": true
+  }
+ },
+ "tier": "a"
+}

@@ -78,8 +78,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "730bb6c8c1e528a6af96901eca4fc70372d2c23b270fa03e0eebf59abbe67234",
-  "schema_columns": 685,
+  "schema_sha256": "cbc0c88818babbef8620cc9536e958e5578e386e5bbd8e3c351658b1b51a1025",
+  "schema_columns": 692,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -346,6 +346,11 @@
    "date": "2026-11-14",
    "by": "Claude Code, on the owner's instruction to replace Lumina's fixed spending limits with customer-set ones (owner to confirm)",
    "note": "New table spend_limits (migration 0037): account_id, task_microusd, daily_microusd, period_microusd, updated_epoch. It holds the spending limits a customer chose for themselves in Settings > Usage: three dollar amounts and a timestamp per account. No message content, no contact detail, no new recipient, no retention change; it is not restored from backups. Judged not to need a policy wording change (an account setting of the same kind as the existing safety switches). schema_sha256 and schema_columns (680 to 685) updated to match."
+  },
+  {
+   "date": "2026-11-14",
+   "by": "Claude Code, roadmap Phase 0-1 on the owner's instruction (owner to confirm)",
+   "note": "Columns added by migrations 0038 and 0039 (685 to 692): customer_requests.versions_json (release commit, hashes of the assistant rules and tool names, runtime version, model route: no customer content); objectives.conversation_id, resume_policy, max_turns, max_seconds, pause_reason, auto_resumes (how a long job behaves and why it is paused: fixed sentences and the customer's own settings). No message content, no new recipient, no retention change. Judged not to need a policy wording change."
   }
  ],
  "assistant_recipients": {

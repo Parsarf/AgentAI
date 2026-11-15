@@ -399,7 +399,13 @@ class ChatService:
             if self.queue.open_for_steer(principal, conversation_id) is not None:
                 raise Conflict('stop the running task first')
             gateway.goal_clear(session, goal['id'], 'clear-' + hashlib.sha256(key.encode()).hexdigest()[:24])
+            with self.coordinator.transaction() as con:      # the job's durable record is cancelled with it, and cancel is sticky (goal_objectives.py)
+                con.execute("UPDATE objectives SET cancelled=1,app_state='cancelled',pause_reason='Cleared by you.',updated_epoch=? WHERE account_id=? AND conversation_id=? AND cancelled=0 "
+                            "AND app_state IN ('active','paused','needs_reconciliation')", (int(self.clock()), principal.account_id, conversation_id))
             return {'goal': None}
+        with self.coordinator.transaction() as con:          # resuming: the job's record is active again (a cancelled one is never touched)
+            con.execute("UPDATE objectives SET app_state='active',pause_reason=NULL,updated_epoch=? WHERE account_id=? AND conversation_id=? AND cancelled=0 AND app_state='paused'",
+                        (int(self.clock()), principal.account_id, conversation_id))
         return self._spawn(principal, conversation_id, message='Continue pursuing the current goal.', key='goal-resume-' + key, intent='goal_resume',
                            context={'resume': True}, shown='Resuming the goal.', provenance='system', goal_mode=True)
 

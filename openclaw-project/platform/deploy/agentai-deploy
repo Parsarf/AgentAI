@@ -36,7 +36,10 @@ APP = Path('/opt/agentai-platform')
 SUP = Path('/opt/agentai-supervisor')
 UI_PARENT = Path('/var/lib/agentai-platform')
 RELEASE_PY = 'deploy/release.py'
-UNITS = ['agentai-cell-bridge', 'agentai-browse', 'agentai-tool-relay', 'agentai-request-worker']       # restarted after the app tree switches (OPERATIONS.md: full release)
+UNITS = ['agentai-cell-bridge', 'agentai-browse', 'agentai-tool-relay', 'agentai-request-worker', 'agentai-lifecycle-worker']       # restarted after the trees switch (OPERATIONS.md: full release). The lifecycle worker is a
+# stateless loop over the database: an operation it was running is found uncertain and reconciled on its next tick. The supervisor itself (agentai-supervisor-native) is NOT restarted here: it holds the
+# control socket the cells' lifecycle depends on, so it picks up new code at its next restart (say so in PENDING_DEPLOY.md when a change needs it).
+SELF = Path('/usr/local/sbin/agentai-deploy')
 MAX_BYTES = 400 * 1024 * 1024
 COMMAND = re.compile(r'^(deploy|deploy-dry) ([0-9a-f]{40})$')
 REQUIRED = ('accounts', 'agentai_platform', 'deploy', 'manage.py', 'migrations', 'requirements.lock')
@@ -85,6 +88,30 @@ def safe_extract(archive_bytes, dest):
             if not (member.isfile() or member.isdir()):
                 raise ValueError(f'unsupported entry in archive: {name!r}')
         tar.extractall(dest, filter='data')
+
+
+def install_self(plat, installed=None):
+    """Keep the installed deploy program the same as the one in the commit that was just deployed. -> True when it was replaced.
+
+    The installed copy is what the deploy key is pinned to, and nothing else ever updated it: the server ran the first version for two weeks after fixes to it were merged, and
+    one of those fixes (forget_manual) was the reason every deploy was refused. Replaced atomically, after everything else succeeded, so the running deploy finishes on the code
+    it started with and a failed deploy never changes the program. The commit's code already runs as root in this deploy (release.py), so this grants it nothing new."""
+    installed = Path(installed or SELF)
+    incoming = Path(plat) / 'deploy' / 'agentai-deploy'
+    try:
+        new = incoming.read_bytes()
+        if not new.startswith(b'#!') or (installed.exists() and installed.read_bytes() == new):
+            return False
+        compile(new, str(incoming), 'exec')          # never install a program that does not even parse
+        tmp = installed.with_name(installed.name + '.new')
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o755)
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(new)
+        os.chmod(tmp, 0o755)
+        os.replace(tmp, installed)
+        return True
+    except (OSError, SyntaxError, ValueError):
+        return False
 
 
 def read_stream(stream):
@@ -234,6 +261,8 @@ def main(argv=None, stdin=None):
             return 20
         forget_manual([APP, SUP])                # both trees now hold exactly this commit: nothing on the server is a hand-made release any more
         LAST.write_text(sha + '\n')
+        if install_self(plat):
+            say('the deploy program itself changed in this commit: the installed copy was replaced and the next deploy uses it')
         say(f'deployed {sha[:7]} as {name}. Undo the supervisor tree: ln -sfn {old_sup} {SUP}/current && systemctl restart {" ".join(UNITS)}; the app tree: see OPERATIONS.md (release.py)')
         return 0
     except Exception as exc:

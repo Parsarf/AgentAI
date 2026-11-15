@@ -47,11 +47,15 @@ urlpatterns += [
 from . import lifecycle as l
 from . import usage as u
 from . import spending as sp
+from . import objectives as ob
+from . import estimates as es
 from . import requests as r
 from . import connections as cn
 urlpatterns += [
  path('v1/costs',u.usage),
  path('v1/spending-limits',sp.limits),
+ path('v1/estimates/<str:kind>',es.estimate),
+ path('v1/objectives',ob.listing),path('v1/objectives/<str:objective_id>',ob.detail),path('v1/objectives/<str:objective_id>/cancel',ob.cancel),
  path('v1/operations', l.operations),
  path('v1/operations/<str:operation_id>', l.operations),
  path('internal/accounts/<str:account>/deployment/operations',l.provision),
