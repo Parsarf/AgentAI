@@ -1,17 +1,18 @@
 {% extends 'accounts/base.html' %}{% block title %}Usage — AgentAI{% endblock %}{% block body %}
-<div class="pagehead"><h1>Usage</h1><p>Provider consumption against your plan allowance. Costs are counted after reconciliation, never estimated.</p></div>
+<div class="pagehead"><h1>Usage</h1><p>What your tasks have cost this billing period. Costs are counted after reconciliation, never estimated. You can set your own spending limits in Settings &gt; Usage.</p></div>
 {% if unconfigured %}
 <div class="empty">Your usage allowance has not been configured yet. It appears here as soon as a plan is attached to your account.</div>
 {% else %}
 <section class="card">
-<h3>Billing period allowance</h3>
-<div class="meter" role="img" aria-label="{{ used_percent }} percent of the period allowance used"><span class="w{{ meter_step }}"></span></div>
-<p class="amounts"><strong>${{ used_usd }}</strong> used of <strong>${{ limit_usd }}</strong> · <strong>${{ remaining_usd }}</strong> remaining</p>
+<h3>This billing period</h3>
+{% if no_limit %}<p class="amounts"><strong>${{ used_usd }}</strong> used · no spending limit set</p>
+{% else %}<div class="meter" role="img" aria-label="{{ used_percent }} percent of your period limit used"><span class="w{{ meter_step }}"></span></div>
+<p class="amounts"><strong>${{ used_usd }}</strong> used of your <strong>${{ limit_usd }}</strong> limit · <strong>${{ remaining_usd }}</strong> remaining</p>{% endif %}
 <dl class="facts">
 <dt>Reported provider cost</dt><dd class="amounts">${{ reported_usd }}</dd>
 <dt>Held for unfinished work</dt><dd class="amounts">${{ held_usd }}</dd>
-<dt>Remaining allowance</dt><dd class="amounts">${{ remaining_usd }}</dd>
-</dl>
+{% if not no_limit %}<dt>Remaining under your limit</dt><dd class="amounts">${{ remaining_usd }}</dd>
+{% endif %}</dl>
 </section>
 {% if usage.usage_pending %}<div class="notice warn"><span><strong>Reconciliation pending.</strong> Some usage is still awaiting confirmation from the provider; held amounts stay reserved until it settles.</span></div>{% endif %}
 <p class="hint">Running cost estimates are unavailable until provider accounting is connected. Live provider accounting is not connected yet.</p>

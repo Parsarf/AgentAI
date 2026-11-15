@@ -54,7 +54,10 @@ class WiringChecks(TestCase):
         s = wiring.chat_service()
         self.assertTrue(s.execution)
         self.assertIsInstance(s.pricer, FixedRoute)
-        self.assertEqual(s.pricer.reservation('hello'), (700, 'plan-reservation-v1'))
+        self.assertEqual(s.pricer.reservation('hello'), (700, 'no-limit-v1'))      # this test's settings force a ceiling of 700; the default is none at all
+        from agentai_platform import spend_limits
+        with override_settings(CUSTOMER_RESERVATION_MICROUSD=0):
+            self.assertEqual(wiring.chat_service().pricer.reservation('hello'), (spend_limits.NO_LIMIT, 'no-limit-v1'))
         self.assertEqual(s.ledger.service_limit, 50_000_000)
         self.assertTrue(s.queue.require_cell)
         self.assertIsNotNone(s.gateway_factory)

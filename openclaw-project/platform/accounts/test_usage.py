@@ -14,7 +14,8 @@ class UsageAPIChecks(TestCase):
         a,b=self.signed('a'),self.signed('b')
         result=a.get('/v1/costs',secure=True)
         self.assertEqual(result.status_code,200)
-        self.assertEqual(result.json()['period_remaining_microusd'],1000000)
+        self.assertEqual(result.json()['plan_period_microusd'],1000000)
+        self.assertIsNone(result.json()['period_limit_microusd']);self.assertIsNone(result.json()['period_remaining_microusd'])      # no limit unless the customer sets one
         self.assertIsNone(result.json()['estimated_microusd'])
         self.assertFalse(result.json()['live_provider_accounting_verified'])
         self.assertEqual(b.get('/v1/costs',secure=True).status_code,503)

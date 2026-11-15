@@ -41,7 +41,7 @@ Work already running finishes, and you can still view billing and export your fi
 <dl class="facts">
 <dt>Confirmed by providers</dt><dd class="amounts">${{ reported_usd }}</dd>
 <dt>Held for unfinished tasks (estimate)</dt><dd class="amounts">${{ held_usd }}</dd>
-<dt>Period allowance</dt><dd class="amounts">${{ limit_usd }}</dd>
+<dt>Your limit for the period</dt><dd class="amounts">{% if limit_usd == "0.00" %}none set{% else %}${{ limit_usd }}{% endif %}</dd>
 </dl>
 {% if v.usage.usage_pending %}<p class="hint">Some usage is still awaiting confirmation from the provider. Held amounts stay reserved until it settles; estimates are never shown as final.</p>{% endif %}
 {% else %}<p class="hint">Usage appears here once an allowance is attached to your account.</p>{% endif %}

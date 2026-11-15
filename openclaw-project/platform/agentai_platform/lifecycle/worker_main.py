@@ -70,6 +70,8 @@ def main():
             print(json.dumps(report, sort_keys=True), flush=True)
         if args.once:
             return
+        if report.get('woken'):
+            continue      # a start was just queued for a waiting customer: run it now instead of after a sleep
         time.sleep(args.interval)
 
 

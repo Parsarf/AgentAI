@@ -171,7 +171,7 @@ class BrowseService:
             raise BrowseError('invalid job')
         if tab is not None and not (isinstance(tab, str) and re.fullmatch(r'[a-z0-9]{1,24}', tab)):
             raise BrowseError('invalid job')
-        max_cost = min(int(max_cost_microusd), 5_000_000)
+        max_cost = max(1, int(max_cost_microusd))      # the customer's own task limit (or the no-limit marker), decided by the caller; this service adds no ceiling of its own
         with self._guard:
             existing = self.jobs.get(request_id)
             if existing:

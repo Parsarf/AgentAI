@@ -41,12 +41,25 @@ class CustodyChecks(unittest.TestCase):
         self.assertFalse(keys.issue(A,'acct1',max_budget_usd=25,duration_days=30,models=['m']))
         self.assertEqual(len(calls),1)
         self.assertEqual(calls[0][1]['max_budget'],25);self.assertEqual(calls[0][1]['models'],['m'])
-        self.assertEqual((calls[0][1]['rpm_limit'],calls[0][1]['tpm_limit']),(30,200000))   # provider rate limits are always set
+        self.assertEqual((calls[0][1]['rpm_limit'],calls[0][1]['tpm_limit']),(120,4000000))   # provider rate limits are always set (they stop a runaway loop; they are not spending limits)
         self.assertTrue(keys.revoke(A));self.assertEqual(calls[-1][0],'/key/delete')
         self.assertFalse(keys.revoke(B))
-    def test_unbounded_or_open_keys_are_refused(self):
+    def test_a_key_has_no_budget_and_no_expiry_unless_one_is_asked_for(self):
+        """A key that expired after 35 days, or ran out of a lifetime budget, stopped the customer's assistant for good. Spending limits are the customer's own, in the platform."""
+        calls=[]
+        def http(method,path,body):
+            calls.append((path,body));return (200,{'key':'sk-'+'k'*30}) if path=='/key/generate' else (200,{})
+        keys=ProviderKeys(http,self.store)
+        self.assertTrue(keys.issue(A,'acct1',models=['m']))
+        self.assertNotIn('max_budget',calls[0][1]);self.assertNotIn('duration',calls[0][1])
+        self.assertTrue(keys.ensure_unlimited(A))                    # a key issued by older code is brought up to date
+        self.assertEqual(calls[-1],('/key/update',{'key':'sk-'+'k'*30,'duration':'-1','max_budget':None,'budget_duration':None,'rpm_limit':120,'tpm_limit':4000000}))
+        self.assertFalse(keys.ensure_unlimited(B))                   # no key in custody: left alone
+        failing=ProviderKeys(lambda *a:(500,{}),self.store)
+        with self.assertRaises(CustodyError): failing.ensure_unlimited(A)
+    def test_malformed_or_open_keys_are_refused(self):
         keys=ProviderKeys(lambda *a:(200,{'key':'sk-'+'k'*30}),self.store)
-        for kw in [dict(max_budget_usd=0),dict(max_budget_usd=True),dict(max_budget_usd=5000),
+        for kw in [dict(max_budget_usd=0),dict(max_budget_usd=True),dict(max_budget_usd=500000),
                    dict(duration_days=0),dict(models=[]),dict(models=None),dict(rpm_limit=0),dict(tpm_limit=True)]:
             args=dict(max_budget_usd=25,duration_days=30,models=['m']);args.update(kw)
             with self.assertRaises(CustodyError): keys.issue(A,'acct1',**args)

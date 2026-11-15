@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from agentai_platform import spend_limits
 from agentai_platform.budget import BudgetLedger,BudgetDenied
 from agentai_platform.lifecycle.types import Conflict
 from agentai_platform.security import Principal,NotFound
@@ -25,6 +26,10 @@ class BudgetChecks(unittest.TestCase):
                 con.execute('INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES (?,?,?,?)',(a,'p-'+a,'c-'+a,'d-'+a))
                 limits={'period_start_epoch':self.now-100000,'period_microusd':100,'daily_microusd':100,'task_microusd':100,'max_queued_tasks':3}
                 con.execute("INSERT INTO entitlements VALUES (?,?,'test-v1','trial',?,datetime(?,'unixepoch'))",(a,'e-'+a,json.dumps(limits),self.now+1000000))
+    def limit(self,account='a',**chosen):
+        """The customer's own spending limits (Settings > Usage): the only limits there are."""
+        with self.store.connect() as con:
+            spend_limits.put(con,account,{'task':None,'daily':None,'period':None,**chosen},now=self.now)
     def admit(self,task='t1',principal=None,amount=60,**kw):
         actor=principal or self.a
         return self.ledger.admit(actor,task=task,project='p-'+actor.account_id,conversation='c-'+actor.account_id,
@@ -41,6 +46,7 @@ class BudgetChecks(unittest.TestCase):
             self.assertEqual(con.execute('SELECT count(*) FROM tasks').fetchone()[0],1)
             self.assertEqual(con.execute('SELECT count(*) FROM usage_entries').fetchone()[0],1)
     def test_racing_final_allowance_admissions(self):
+        self.limit(daily=60)                      # the customer's own day limit: the first task holds all of it
         barrier=threading.Barrier(2);outcomes=[];errors=[]
         def attempt(t):
             try:barrier.wait();self.admit(t);outcomes.append('admitted')
@@ -51,8 +57,9 @@ class BudgetChecks(unittest.TestCase):
         for t in threads:t.join(5)
         self.assertFalse(errors);self.assertCountEqual(outcomes,['admitted','denied'])
     def test_reported_usage_consumes_hold_without_double_counting(self):
+        self.limit(period=100)
         self.admit();self.receipt()
-        s=self.ledger.summary(self.a);self.assertEqual((s['reported_microusd'],s['held_microusd'],s['period_remaining_microusd']),(20,40,40))
+        s=self.ledger.summary(self.a);self.assertEqual((s['reported_microusd'],s['held_microusd'],s['period_remaining_microusd'],s['period_limit_microusd']),(20,40,40,100))
         self.admit('t2',amount=40)
         with self.assertRaises(BudgetDenied):self.admit('t3',amount=1)
     def test_uncertain_effects_keep_allowance_reserved(self):
@@ -73,11 +80,43 @@ class BudgetChecks(unittest.TestCase):
             self.assertEqual(con.execute("SELECT sum(amount_microusd) FROM usage_entries WHERE kind='released'").fetchone()[0],35)
         self.assertEqual(self.ledger.summary(self.a)['reported_microusd'],25)
     def test_service_overrun_accounted_and_blocks_new_work(self):
+        """Lumina has no limit of its own: spend beyond the old plan and service allowances is accounted and work goes on. Only the customer's own limit refuses a task."""
         self.admit();self.receipt(amount=120);self.settle()
-        self.assertEqual(self.ledger.summary(self.a)['period_remaining_microusd'],0)
-        with self.assertRaises(BudgetDenied):self.admit('t2',amount=1)
+        s=self.ledger.summary(self.a)
+        self.assertEqual((s['reported_microusd'],s['period_limit_microusd'],s['period_remaining_microusd']),(120,None,None))
+        self.assertEqual(s['limits'],{'run_microusd':None,'day_microusd':None,'period_microusd':None})
+        self.admit('t2',amount=1)                                   # the plan's old $-allowances (100) and the service allocation (1000) are not limits any more
         self.ledger.service_limit=120
-        with self.assertRaises(BudgetDenied):self.admit('t-b',self.b,amount=1)
+        self.admit('t-b',self.b,amount=1)
+        self.limit(period=100)                                      # the customer now chooses a limit below what they already spent
+        with self.assertRaises(BudgetDenied) as ctx:self.admit('t3',amount=1)
+        self.assertIn('account allowance exhausted',str(ctx.exception))
+        self.assertEqual(self.ledger.summary(self.a)['period_remaining_microusd'],0)
+        self.limit()                                                # and removes it again
+        self.admit('t3',amount=1)
+    def test_a_task_with_no_limit_reserves_a_marker_that_is_never_counted_as_money(self):
+        self.limit(daily=50)
+        row=self.admit('t1',amount=spend_limits.NO_LIMIT)
+        self.assertEqual(row['amount_microusd'],spend_limits.NO_LIMIT)
+        s=self.ledger.summary(self.a);self.assertEqual((s['held_microusd'],s['reported_microusd']),(0,0))
+        self.admit('t2',amount=spend_limits.NO_LIMIT)               # the marker of the first task holds nothing against the day limit
+        self.receipt(amount=7);self.settle()
+        with self.store.connect() as con:
+            entries={r['kind']:r['amount_microusd'] for r in con.execute("SELECT kind,amount_microusd FROM usage_entries WHERE task_id='t1'")}
+        self.assertEqual(entries,{'reserved':0,'reported':7,'reconciled':7,'released':0})
+    def test_the_owner_default_applies_until_the_customer_chooses(self):
+        with self.store.connect() as con:
+            spend_limits.put(con,spend_limits.ALL,{'task':None,'daily':10,'period':None},now=self.now)
+            self.assertEqual(spend_limits.get(con,'a')['daily'],10)
+            self.assertEqual(spend_limits.task_amount(con,'a'),spend_limits.NO_LIMIT)
+        self.admit('t1',amount=10)
+        with self.assertRaises(BudgetDenied):self.admit('t2',amount=1)
+        self.limit()                                                # the customer chooses "no limit": their choice wins over the default
+        self.admit('t2',amount=1)
+        with self.store.connect() as con:
+            self.assertEqual(spend_limits.get(con,'b')['daily'],10)      # everyone else still follows the default
+            with self.assertRaises(ValueError):spend_limits.put(con,'a',{'task':0,'daily':None,'period':None})
+            with self.assertRaises(ValueError):spend_limits.put(con,'a',{'task':spend_limits.MAX_LIMIT+1,'daily':None,'period':None})
     def test_cross_account_conversation_and_revocation(self):
         with self.assertRaises(NotFound):self.ledger.admit(self.a,task='x',project='p-b',conversation='c-b',key='x',amount_microusd=1,upper_bound_verified=True)
         with self.store.connect() as con:con.execute("UPDATE memberships SET status='revoked' WHERE account_id='a'")
@@ -89,35 +128,31 @@ class BudgetChecks(unittest.TestCase):
         with self.assertRaises(BudgetDenied):self.admit()
         with self.store.connect() as con:self.assertEqual(con.execute('SELECT count(*) FROM tasks').fetchone()[0],0)
     def test_an_account_on_its_own_model_key_is_not_held_to_lumina_spending_limits(self):
-        """No task, daily, period or service allowance applies; the task still gets a reservation row (the browser tool looks for one); the queue ceiling still does."""
-        self.admit('t1', amount=100)                                                     # uses the whole daily and period allowance of 100
-        with self.assertRaises(BudgetDenied): self.admit('t2', amount=1)                 # a metered account is now out of allowance
-        row = self.admit('t2', amount=1, unmetered=True)                                 # an own-key account is not
+        """Not even the customer's own Lumina limits apply to a task on their own model key; the task still gets a reservation row (the browser tool looks for one); the queue ceiling still does."""
+        self.limit(daily=100,period=100)
+        self.admit('t1', amount=100)                                                     # holds the whole day and period limit of 100
+        with self.assertRaises(BudgetDenied): self.admit('t2', amount=1)                 # a task on Lumina's model is now refused by the customer's own limit
+        row = self.admit('t2', amount=1, unmetered=True)                                 # one on their own key is not
         self.assertEqual((row['state'], row['amount_microusd'] if 'amount_microusd' in row else 1), ('active', 1))
-        with self.assertRaises(BudgetDenied): self.admit('t3', amount=101)               # still refused: over the task allowance
-        self.admit('t3', amount=101, unmetered=True)                                     # not for an own-key account
+        self.admit('t3', amount=101, unmetered=True)
         with self.store.connect() as con:
             states = {r['task_id']: r['state'] for r in con.execute('SELECT task_id,state FROM task_reservations WHERE account_id=?', ('a',))}
         self.assertEqual(states, {'t1': 'active', 't2': 'active', 't3': 'active'})
         with self.assertRaises(BudgetDenied) as ctx: self.admit('t4', amount=1, unmetered=True)  # the queue holds 3: the ceiling protects the servers and stays
         self.assertIn('queue', str(ctx.exception))
         self.admit('other', principal=self.b, amount=60)                                  # and another account is unaffected either way
-
     def test_unmetered_still_needs_a_verified_bound_a_real_conversation_and_stays_idempotent(self):
         with self.assertRaises(ValueError): self.admit('t1', amount=0, unmetered=True)
         with self.assertRaises(NotFound): self.ledger.admit(self.a, task='t9', project='p-a', conversation='c-b', key='t9', amount_microusd=1, upper_bound_verified=True, unmetered=True)
         first = self.admit('t5', amount=1, unmetered=True); self.assertEqual(first, self.admit('t5', amount=1, unmetered=True))
 
     def test_period_daily_expiry_and_queue_ceiling(self):
-        with self.store.connect() as con:
-            limits={'period_start_epoch':self.now-100000,'period_microusd':100,'daily_microusd':30,'task_microusd':20,'max_queued_tasks':3}
-            con.execute('UPDATE entitlements SET limits_json=? WHERE account_id=?',(json.dumps(limits),'a'))
+        self.limit(daily=30,period=100)
         self.admit(amount=20)
-        with self.assertRaises(BudgetDenied):self.admit('t2',amount=11)
-        self.admit('t2',amount=5);self.admit('t3',amount=5)
+        self.admit('t2',amount=5);self.admit('t3',amount=5)      # a new task is refused for what is already spent or held, never for what it might cost
         with self.assertRaises(BudgetDenied):self.admit('t4',amount=1)
         self.now+=1000001
-        with self.assertRaises(BudgetDenied):self.admit('t5',amount=1)
+        with self.assertRaises(BudgetDenied):self.admit('t5',amount=1)      # the entitlement itself ran out: that still decides whether the account may run work
         self.assertEqual(self.ledger.summary(self.a)['period_remaining_microusd'],0)
         self.assertFalse(self.ledger.summary(self.a)['admission_eligible'])
     def test_immutable_receipts_and_audit_atomicity(self):

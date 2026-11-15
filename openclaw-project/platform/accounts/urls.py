@@ -46,10 +46,12 @@ urlpatterns += [
 ]
 from . import lifecycle as l
 from . import usage as u
+from . import spending as sp
 from . import requests as r
 from . import connections as cn
 urlpatterns += [
  path('v1/costs',u.usage),
+ path('v1/spending-limits',sp.limits),
  path('v1/operations', l.operations),
  path('v1/operations/<str:operation_id>', l.operations),
  path('internal/accounts/<str:account>/deployment/operations',l.provision),

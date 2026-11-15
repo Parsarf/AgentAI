@@ -133,7 +133,8 @@ VAULT_KEY_FILE = os.environ.get('AGENTAI_VAULT_KEY_FILE', '')          # saved l
 MODEL_KEY_STORE = os.environ.get('AGENTAI_MODEL_KEY_STORE', str(STATE_DIR / 'model-keys.json'))     # customers' own model keys, encrypted (agentai_platform/model_keys.py)
 MODEL_KEY_FILE = os.environ.get('AGENTAI_MODEL_KEY_FILE', '')            # optional dedicated encryption key for them; without it a key derived from the app secret is used
 ENGINE_FILE = os.environ.get('AGENTAI_ENGINE_FILE', '/var/lib/agentai-platform/own-model-keys.json')   # who may use their own model key: {"own_model_keys": true | [account ids]}
-CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '1000000'))
+# 0 (the default) = no ceiling on a task; customers choose their own limits in Settings > Usage. A positive value forces that ceiling on every task that has no limit of its own.
+CUSTOMER_RESERVATION_MICROUSD = int(os.environ.get('AGENTAI_CUSTOMER_RESERVATION_MICROUSD', '0'))
 
 # Billing (Stripe TEST mode first). Secrets live in private files read at call time, never in settings values.
 BILLING_SECRET_KEY_FILE = os.environ.get('AGENTAI_BILLING_SECRET_KEY_FILE', '')

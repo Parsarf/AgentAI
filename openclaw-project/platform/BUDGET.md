@@ -1,5 +1,10 @@
 # Phase 5 — offline admission and accounting core
 
+> **2026-11-14: Lumina sets no spending limit of its own.** Admission checks only the limits a customer chose in Settings > Usage (`agentai_platform/spend_limits.py`:
+> per task, per day, per billing period; none by default) or the owner's default (`manage.py spend_limits`). The task, period, rolling-day and service-allocation
+> exhaustion described below no longer refuse work by themselves; the entitlement still decides whether an account may run work at all, and the queue limit stays.
+> A reservation is the customer's own task limit or the no-limit marker and is never charged.
+
 `agentai_platform.budget.BudgetLedger` uses the existing metadata DB. Atomic
 admission creates a queued task, reservation and append-only usage/audit entries
 together after account/project/conversation authorization. Reject changed

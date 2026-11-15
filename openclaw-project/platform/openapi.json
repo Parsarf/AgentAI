@@ -1535,6 +1535,57 @@
     "parameters": []
    }
   },
+  "/v1/spending-limits": {
+   "get": {
+    "summary": "Read the spending limits this account chose for itself (per task, per day, per billing period); null means no limit. Lumina applies none of its own",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     }
+    },
+    "parameters": []
+   },
+   "post": {
+    "summary": "Set this account's own spending limits: dollar amounts as text for task, daily and period; an empty string means no limit",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "503": {
+      "description": "Unconfigured usage/schema unavailable"
+     },
+     "400": {
+      "description": "Not a dollar amount"
+     }
+    },
+    "parameters": []
+   }
+  },
   "/v1/controls": {
    "get": {
     "summary": "Disabled controls capability; authenticated customer required",
@@ -1821,7 +1872,7 @@
   },
   "/v1/requests": {
    "get": {
-    "summary": "List the current account\u2019s saved requests",
+    "summary": "List the current account’s saved requests",
     "security": [
      {
       "sessionCookie": []
@@ -5195,7 +5246,7 @@
   },
   "/v1/account/mcp": {
    "get": {
-    "summary": "List this account\u2019s MCP connections, presets, enabled tool definitions and exact calls needing attention; never credentials",
+    "summary": "List this account’s MCP connections, presets, enabled tool definitions and exact calls needing attention; never credentials",
     "responses": {
      "200": {
       "description": "Successful account-scoped result; no stored credentials returned"
@@ -5896,7 +5947,7 @@
   },
   "/v1/location": {
    "get": {
-    "summary": "Read the signed-in account\u2019s pending device-location request (or null). Expired and cancelled requests are excluded.",
+    "summary": "Read the signed-in account’s pending device-location request (or null). Expired and cancelled requests are excluded.",
     "responses": {
      "200": {
       "description": "Account-scoped result; never returns coordinates"
@@ -6023,7 +6074,7 @@
   },
   "/v1/model-key/select": {
    "post": {
-    "summary": "Choose a host-catalog Lumina model or one of this account\u2019s saved key profiles. Applies to the next task without deleting keys. Refused while any work is pending.",
+    "summary": "Choose a host-catalog Lumina model or one of this account’s saved key profiles. Applies to the next task without deleting keys. Refused while any work is pending.",
     "requestBody": {
      "required": true,
      "content": {

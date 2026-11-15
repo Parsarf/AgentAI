@@ -140,7 +140,7 @@ class CheckoutChecks(Kit):
     def test_redirect_alone_never_grants_access(self):
         self.svc.start_checkout(self.a)
         self.assertEqual(self.svc.overview(self.a)['status'], 'none')
-        self.assertEqual(self.ledger.summary(self.a)['period_limit_microusd'], 1_000_000)   # still the $1 trial allowance
+        self.assertEqual(self.ledger.summary(self.a)['plan_period_microusd'], 1_000_000)   # still the trial entitlement
         self.assertNotIn('paid', self.entitlements())
     def test_duplicate_click_reuses_the_hosted_session(self):
         first = self.svc.start_checkout(self.a); second = self.svc.start_checkout(self.a)
@@ -202,7 +202,7 @@ class LifecycleChecks(Kit):
         self.assertTrue(self.admit()['state'] == 'active')
         view = self.svc.overview(self.a, usage=self.ledger.summary(self.a))
         self.assertEqual((view['status'], view['new_tasks_allowed'], view['can_subscribe']), ('active', True, False))
-        self.assertEqual(view['plan']['monthly_price_usd'], '79.00'); self.assertEqual(view['usage']['period_limit_microusd'], 25_000_000)
+        self.assertEqual(view['plan']['monthly_price_usd'], '79.00'); self.assertEqual(view['usage']['plan_period_microusd'], 25_000_000); self.assertIsNone(view['usage']['period_limit_microusd'])      # the plan's figure is a fact; the only limit is one the customer sets
         self.assertEqual(len(view['invoices']), 1); self.assertTrue(view['invoices'][0]['url'].startswith('https://invoice.stripe.com/'))
     def test_replaying_every_event_changes_nothing_a_second_time(self):
         sub = self.subscribe()
@@ -296,7 +296,7 @@ class OpenAccessChecks(Kit):
         self.assertEqual(self.svc.sync_open_access(True), {'granted': 2, 'refreshed': 0, 'ended': 0})
         self.assertEqual(self.ent(), {'trial-v1': 'expired', 'open': 'active'}); self.assertEqual(self.ent('s'), {})
         summary = self.ledger.summary(self.a)
-        self.assertEqual((summary['period_limit_microusd'], summary['admission_eligible']), (25_000_000, True))
+        self.assertEqual((summary['plan_period_microusd'], summary['period_limit_microusd'], summary['admission_eligible']), (25_000_000, None, True))
         with self.store.connect() as con: limits = json.loads(con.execute("SELECT limits_json FROM entitlements WHERE id='open' AND account_id='a'").fetchone()[0])
         self.assertEqual((limits['daily_microusd'], limits['task_microusd'], limits['max_queued_tasks']), (15_000_000, 5_000_000, 3))
         import calendar, time
@@ -350,7 +350,7 @@ class PlanChangeChecks(Kit):
         self.api.change_price(sub['id'], PRICE); self.deliver('customer.subscription.updated', {'id': sub['id']}); self.drain()
         with self.store.connect() as con: limits = json.loads(con.execute("SELECT limits_json FROM entitlements WHERE id='paid'").fetchone()[0])
         self.assertEqual((limits['period_microusd'], self.entitlements()['paid'][1]), (25_000_000, 'launch-v1-proposed'))
-    def test_downgrade_below_current_spend_denies_new_tasks_only(self):
+    def test_downgrade_below_current_spend_keeps_receipts_and_refuses_nothing(self):
         sub = self.subscribe(price=PLUS.price_id)
         for day in range(3):                          # $30 spent over three days (daily cap $10, task cap $5)
             self.now += 86401
@@ -362,7 +362,7 @@ class PlanChangeChecks(Kit):
                 with self.store.connect() as con: con.execute("UPDATE tasks SET state='completed' WHERE id=?", (task,))
         self.now += 86401; self.admit('still-ok', amount=100_000)        # under the $60 allowance, new day
         self.api.change_price(sub['id'], PRICE); self.deliver('customer.subscription.updated', {'id': sub['id']}); self.drain()
-        with self.assertRaises(BudgetDenied): self.admit('after')   # $30 already exceeds the $25 allowance
+        self.admit('after')                                          # $30 spent is past the new plan's $25 figure, but a plan figure is not a limit: only the customer's own is
         self.assertEqual(self.ledger.summary(self.a)['reported_microusd'], 30_000_000)   # receipts untouched
 
 

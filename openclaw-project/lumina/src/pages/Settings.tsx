@@ -8,6 +8,7 @@ import Credits from '../components/Credits';
 import YourBrowser from '../components/YourBrowser';
 import OwnModel from '../components/OwnModel';
 import MemoryNotes from '../components/MemoryNotes';
+import SpendingLimits from '../components/SpendingLimits';
 import '../components/settings.css';
 
 const TABS = [{ id: 'general', label: 'General' }, { id: 'assistant', label: 'Assistant' }, { id: 'usage', label: 'Usage' }, { id: 'account', label: 'Account' }] as const;
@@ -18,14 +19,18 @@ function UsageCard() {
   const { app } = useData(); const [usage, setUsage] = useState<any>(null); const [done, setDone] = useState(false);
   useEffect(() => { api('GET', '/v1/costs').then(setUsage).catch(() => setUsage(null)).finally(() => setDone(true)); }, []);
   const plan = app?.features.billing_mode === 'open' ? 'Free access' : app?.features.billing_mode === 'paid_required' ? 'Subscription' : 'Invitation';
-  const limit = usage?.period_limit_microusd, spent = (usage?.reported_microusd ?? 0) + (usage?.held_microusd ?? 0);
-  const pct = limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
+  // `period_limit_microusd` is the limit the customer chose for the period (null: none; Lumina sets no limit of its own).
+  const limit: number | null = usage?.period_limit_microusd ?? null, spent = (usage?.reported_microusd ?? 0) + (usage?.held_microusd ?? 0);
+  const pct = limit && limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
   return <section className="panel card set-card" aria-labelledby="usage-h">
     <div className="set-head"><h2 id="usage-h">This period</h2><span className="badge alt">{plan}</span></div>
     {usage ? <>
-      <p className="set-big">{usd(usage.period_remaining_microusd)}<span> left of {usd(limit)}</span></p>
-      <div className="meter" role="img" aria-label={`${pct}% of this period's allowance used`}><i style={{ width: `${pct}%` }} /></div>
-      <dl className="set-facts"><div><dt>Used</dt><dd>{usd(usage.reported_microusd)}</dd></div><div><dt>Reserved for running tasks</dt><dd>{usd(usage.held_microusd)}</dd></div></dl>
+      {limit ? <>
+        <p className="set-big">{usd(usage.period_remaining_microusd)}<span> left of your {usd(limit)} limit</span></p>
+        <div className="meter" role="img" aria-label={`${pct}% of your limit for this period used`}><i style={{ width: `${pct}%` }} /></div>
+      </> : <p className="set-big">{usd(spent)}<span> used · no spending limit</span></p>}
+      <dl className="set-facts"><div><dt>Used</dt><dd>{usd(usage.reported_microusd)}</dd></div><div><dt>Last 24 hours</dt><dd>{usd(usage.day_reported_microusd)}</dd></div>
+        {usage.held_microusd > 0 && <div><dt>Held for running tasks</dt><dd>{usd(usage.held_microusd)}</dd></div>}</dl>
     </> : <p className="faint">{done ? 'Usage is not available right now.' : 'Loading…'}</p>}
   </section>;
 }
@@ -53,7 +58,7 @@ export function Settings() {
             <p className="muted" aria-live="polite">{STYLE_INFO[style].hint}</p>
             <p className="faint">Longer answers cost a little more. Ultra (generated code in a sandbox) is planned and not available.</p></section></>}
         {tab === 'assistant' && <><YourBrowser /><OwnModel /><MemoryNotes /></>}
-        {tab === 'usage' && <><UsageCard /><Credits /></>}
+        {tab === 'usage' && <><UsageCard /><SpendingLimits /><Credits /></>}
         {tab === 'account' && <section className="panel card set-card" aria-labelledby="acct-h"><h2 id="acct-h" className="sr">Account</h2>
           <div className="set-id"><span className="set-avatar" aria-hidden="true">{(app?.user.email?.[0] ?? '?').toUpperCase()}</span><div><b>{app?.user.email}</b><p className="faint">Signed in</p></div></div>
           <div className="int-row"><button className="btn" onClick={signOut}>Sign out</button><a className="btn tertiary" href="/account/">Classic view</a></div></section>}

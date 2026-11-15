@@ -9,6 +9,7 @@ vi.mock('../components/YourBrowser', () => ({ default: () => <p>Your browser car
 vi.mock('../components/OwnModel', () => ({ default: () => <p>Own model card</p> }));
 vi.mock('../components/MemoryNotes', () => ({ default: () => <p>Memory card</p> }));
 vi.mock('../components/Credits', () => ({ default: () => <p>Credits card</p> }));
+vi.mock('../components/SpendingLimits', () => ({ default: () => <p>Spending limits card</p> }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe('Settings', () => {
   it('shows only one section at a time, starting with General', () => {
@@ -26,11 +27,19 @@ describe('Settings', () => {
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Assistant' }), { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Usage', selected: true })).toBeTruthy();
   });
-  it('shows what is left of the allowance and what was used, and says so honestly when usage is unavailable', async () => {
+  it('shows what was used with no limit by default, next to the card where a limit can be set', async () => {
+    vi.mocked(api).mockResolvedValue({ reported_microusd: 400000, held_microusd: 0, day_reported_microusd: 150000, period_remaining_microusd: null, period_limit_microusd: null } as any);
+    render(<Settings />); fireEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+    expect(await screen.findByText(/used · no spending limit/)).toBeTruthy();
+    expect(screen.getAllByText('$0.40').length).toBeGreaterThan(0); expect(screen.getByText('$0.15')).toBeTruthy();
+    expect(screen.queryByRole('img')).toBeNull();                                                  // no meter: there is nothing to measure against
+    expect(screen.getByText('Spending limits card')).toBeTruthy();
+  });
+  it('shows what is left of the limit the customer set and what was used, and says so honestly when usage is unavailable', async () => {
     vi.mocked(api).mockResolvedValue({ reported_microusd: 400000, held_microusd: 100000, period_remaining_microusd: 1500000, period_limit_microusd: 2000000 } as any);
     render(<Settings />); fireEvent.click(screen.getByRole('tab', { name: 'Usage' }));
     expect(await screen.findByText('$1.50')).toBeTruthy(); expect(screen.getByText('$0.40')).toBeTruthy();
-    expect(screen.getByRole('img', { name: "25% of this period's allowance used" })).toBeTruthy();
+    expect(screen.getByRole('img', { name: '25% of your limit for this period used' })).toBeTruthy();
     cleanup(); vi.mocked(api).mockRejectedValue(new Error('x'));
     render(<Settings />); fireEvent.click(screen.getByRole('tab', { name: 'Usage' }));
     expect(await screen.findByText('Usage is not available right now.')).toBeTruthy();
