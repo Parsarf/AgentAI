@@ -337,6 +337,19 @@ On the 4-CPU / 16 GiB server that is about three; 8 CPU / 32 GiB about 8; 16 CPU
 * **The supervisor's ceilings** (`/etc/agentai-supervisor/enrollment-policy.json`, root, 0600): `max_cells` (cells that may exist: 2 to 39) and `max_running` (cells that may run at once; the host's own hard backstop under
   the app's live capacity). Both were 2/1 and are 4/4 on this host; raise them when the server grows, then `systemctl restart agentai-supervisor-native`.
 
+## 18c. Things learned running the Phase 1 proof (read before touching cells by hand)
+
+* **Stopping the supervisor stops the lifecycle worker.** `agentai-lifecycle-worker` has `Requires=agentai-supervisor-native`. `systemctl restart agentai-supervisor-native` brings both back; a plain `stop` then `start` of
+  the supervisor does NOT restart the worker, and nothing wakes a customer's cell until it is started again (`systemctl start agentai-lifecycle-worker`).
+* **A cell is removed through the runtime's own registry, or the next creation fails.** The runtime keeps its own list of cells (`openclaw fleet list --json`, run in `/var/lib/agentai-fleet` with the supervisor's `HOME`
+  and `DOCKER_HOST`). Removing a container, volume and custody row by hand leaves a registry entry that still owns its port, and the next `create` comes back `runtime_rejected`. `fleet rm <tenant>` (no `--purge-data` unless
+  the data is meant to go) is the supported removal; then its Docker network (`openclaw-cell-<tenant>-net`), `auth-profile-secrets/<tenant>` and the supervisor's custody record. `deploy/phase1_root.sh` does all of it for a
+  disposable test account and refuses anything that is not a `p1b*` account.
+* **A cell that is left running is invisible to the app but counts against the host.** The supervisor's running ceiling (`max_running` in `enrollment-policy.json`) counts what the host runs, not what the app database
+  remembers. After any manual test, compare `docker --host unix:///run/agentai-cells/docker.sock ps` with `manage.py lifecycle_status`.
+* **Memory per cell.** Idle about 0.5 GiB; under a heavy task 1.3 to 1.6 GiB (the runtime itself warns at 1.0 and 1.5 GiB). The capacity model charges the 2 GiB cap per cell.
+* **A test account's chat limit.** The owner's own account is near the per-project chat limit; anything that makes chats (the live proof) archives them afterwards.
+
 ## 19. Experimental "ultrafast" decider (owner testing only, 2026-10-30)
 
 Safety switch `standard_browser` (Safety console, Browser group). ON for everyone by default. Turn it OFF for **your own account** (choose a time limit: it comes back by itself) and your next browser task is decided the jev-ultrafast way instead of the standard way. **Both run on the same sandboxed browser stage and the same loop** (`browse/loop.py`), so every stop and limit applies to both: payment and sign-in stops, human checks, the denied-sites list, address checks, a clean profile each task, step and time limits, budget, Stop and hand-over. The switch only chooses who decides each step (`browse/service_main.py`, `jev_for`). It is read when a task starts. Nobody else can use it: the account id in `/etc/agentai-supervisor/ultrafast-owner` (copied from `AGENTAI_SAFETY_OWNER_ACCOUNT`) must match, and the switch cannot be changed for all users.
