@@ -89,7 +89,7 @@ class ScheduleChecks(Base):
 
     def test_disabled_until_enforcement_proven(self):
         with self.assertRaises(ScheduleDisabled):
-            ScheduleService(self.store, clock=self.clock).create(self.a, 'p-a', 'x', timezone='UTC', hour=1)
+            ScheduleService(self.store, enforcement_proven=False, clock=self.clock).create(self.a, 'p-a', 'x', timezone='UTC', hour=1)      # the flag is True now (tests/test_schedule_engine.py is its proof); False still refuses
 
     def test_timezone_validation_and_local_due_time(self):
         with self.assertRaises(ValueError):

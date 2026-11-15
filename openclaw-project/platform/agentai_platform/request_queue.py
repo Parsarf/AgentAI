@@ -64,7 +64,7 @@ class RequestQueue:
     def submit(self,principal,*,message,key,conversation_id=None,intent='chat',context=None,goal_mode=False,continues=None):
         identifier(key)
         if not isinstance(message,str) or not message.strip() or len(message)>MAX_MESSAGE_CHARS or '\x00' in message:raise ValueError('invalid message')
-        if intent not in ('chat','plan','replan','execute','phase','browse','goal_continue','goal_resume'):raise ValueError('invalid intent')
+        if intent not in ('chat','plan','replan','execute','phase','browse','goal_continue','goal_resume','schedule'):raise ValueError('invalid intent')
         if type(goal_mode) is not bool or (continues is not None and not isinstance(continues,str)):raise ValueError('invalid goal request')
         context_json=json.dumps(context,sort_keys=True,separators=(',',':')) if context else None
         digest=hashlib.sha256(message.encode()).hexdigest() if intent=='chat' and not context_json and not goal_mode else hashlib.sha256((message+'|'+intent+'|'+(context_json or '')+('|goal' if goal_mode else '')).encode()).hexdigest()

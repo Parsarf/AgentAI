@@ -1,9 +1,13 @@
 """Customer schedules with stricter unattended authority (Phase 10, NATIVE-06).
 
 Schedules are product records in local time with an IANA timezone, a bounded
-timeout and a per-run task budget. Creation is refused until the enforcement
-proof flag is set (``enforcement_proven=False`` by default), matching the rule
-that no new customer schedule is enabled before enforcement proof. A due run
+timeout and a per-run task budget. Creation is refused unless the enforcement
+proof flag is set. ENFORCEMENT_PROVEN is True because tests/test_schedule_engine.py
+(the engine in schedule_engine.py) proves the rules: one run per local day however
+many passes, restarts or engines; the schedule's own time and spending limit; the
+customer's grant expiring; missed runs by policy and never back-filled; no
+waiting for a person; no run for another account. The customer feature itself
+stays behind the owner switch `customer_schedules` (off). A due run
 is admitted only through the budget/authority callback; cheap watcher checks
 come first (unchanged => no model run). Unattended approvals that are
 unavailable or expired deny; pending ones wait. The native scheduler's
@@ -21,6 +25,7 @@ from .lifecycle.types import Conflict
 from .security import NotFound, Principal
 
 MAX_SCHEDULES = 5
+ENFORCEMENT_PROVEN = True      # see the module docstring: a test fails if the cases that prove it are removed
 
 
 class ScheduleDisabled(Conflict):
@@ -33,15 +38,23 @@ def unattended_decision(approval_state: str) -> str:
 
 
 class ScheduleService:
-    def __init__(self, store, *, enforcement_proven=False, clock=time.time):
-        self.store, self.clock, self.enforcement_proven = store, clock, enforcement_proven
+    def __init__(self, store, *, enforcement_proven=None, clock=time.time):
+        self.store, self.clock = store, clock
+        self.enforcement_proven = ENFORCEMENT_PROVEN if enforcement_proven is None else enforcement_proven
         self.coordinator = Coordinator(store, clock=clock)
 
     def create(self, principal: Principal, project_id: str, name: str, *, timezone: str, hour: int,
                minute: int = 0, timeout_seconds: int = 300, task_budget_microusd: int = 0,
-               watcher_id: str | None = None) -> str:
+               watcher_id: str | None = None, prompt: str = '', missed_policy: str = 'skip', grace_seconds: int = 900,
+               approve_days: int = 30) -> str:
+        """Creating a schedule is the customer's grant to run it unattended, for `approve_days` days (then it needs their say-so again).
+        `missed_policy`: what to do with a run whose time passed while the host was down: 'run_once' (run it once, late) or 'skip' (only run it within `grace_seconds` of its time)."""
         if not self.enforcement_proven:
             raise ScheduleDisabled('customer schedules are disabled until enforcement is proven')
+        if not isinstance(prompt, str) or len(prompt) > 2000 or '\x00' in prompt:
+            raise ValueError('invalid prompt')
+        if missed_policy not in ('run_once', 'skip') or type(grace_seconds) is not int or not 60 <= grace_seconds <= 86400 or type(approve_days) is not int or not 1 <= approve_days <= 365:
+            raise ValueError('invalid schedule policy')
         try:
             ZoneInfo(timezone)
         except (ZoneInfoNotFoundError, ValueError, TypeError):
@@ -68,10 +81,11 @@ class ScheduleService:
                 raise NotFound('unavailable')
             schedule_id = uuid.uuid4().hex
             con.execute('''INSERT INTO schedules(account_id,project_id,id,name,timezone,hour_local,minute_local,
-                timeout_seconds,task_budget_microusd,watcher_id,state,created_epoch)
-                VALUES (?,?,?,?,?,?,?,?,?,?,'active',?)''',
+                timeout_seconds,task_budget_microusd,watcher_id,state,created_epoch,prompt,missed_policy,grace_seconds,approved_until_epoch)
+                VALUES (?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?)''',
                         (principal.account_id, project_id, schedule_id, name, timezone, hour, minute,
-                         timeout_seconds, task_budget_microusd, watcher_id, int(self.clock())))
+                         timeout_seconds, task_budget_microusd, watcher_id, int(self.clock()), prompt.strip(), missed_policy, grace_seconds,
+                         int(self.clock()) + approve_days * 86400))
             self.coordinator._audit(con, principal.account_id, principal.actor_id, schedule_id,
                                     'schedule.create', 'completed')
             return schedule_id

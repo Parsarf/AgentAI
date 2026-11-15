@@ -43,7 +43,8 @@ def main():
     if args.enrollment_policy is not None and args.native_wiring is None:
         raise SystemExit('automatic enrollment requires native wiring')
     enrollment=EnrollmentPolicy.load(args.enrollment_policy) if args.enrollment_policy is not None else None
-    supervisor=HostSupervisor(args.state_dir,backend,owner_uid=0,admission=admission,enrollment=enrollment)
+    supervisor=HostSupervisor(args.state_dir,backend,owner_uid=0,admission=admission,enrollment=enrollment,
+                              max_running=(enrollment.config.get('max_running',1) if enrollment is not None else 1))
     if args.check:
         print(json.dumps({'custody_ready':True,'native_execution_enabled':args.native_wiring is not None,
                           'automatic_enrollment_enabled':enrollment is not None}));return

@@ -14,6 +14,13 @@ export function WorkProvider({ children, client }: { children: ReactNode; client
   return <Ctx.Provider value={own}>{children}</Ctx.Provider>;
 }
 
+const NONE_SUBSCRIBE = () => () => {}; const NONE_SNAPSHOT = () => null;
+/** The work state when a WorkProvider is above (the app); null in places that render without one (the component gallery, tests). Never throws. */
+export function useWorkOptional(): WorkState | null {
+  const client = useContext(Ctx);
+  return useSyncExternalStore(client ? client.subscribe : NONE_SUBSCRIBE, (client ? client.snapshot : NONE_SNAPSHOT) as () => WorkState | null, (client ? client.snapshot : NONE_SNAPSHOT) as () => WorkState | null);
+}
+
 export function useWorkClient(): WorkClient {
   const client = useContext(Ctx);
   if (!client) throw new Error('WorkProvider is missing');

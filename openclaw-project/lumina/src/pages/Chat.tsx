@@ -70,7 +70,7 @@ export default function Chat() {
   const latestId = (open[0] ?? mine[0])?.id ?? tasks[tasks.length - 1]?.id ?? null;
   const live = useTask(latestId);
   const working = (work.loaded ? open.length > 0 : tasks.some(t => isActive(t))) || drafting || blocks.some(b => b.run_status === 'running');
-  // New messages are fetched when the task says it has more (or changed phase), not on a fast timer. The slow timer is only a safety net for blocks and missed signals.
+  // New messages are fetched when the task says it has more (or changed phase), not on a fast timer. The slow timer (every 30 s where the push stream is on, every 3 s where it is not) is only a safety net for blocks and missed signals.
   const messageCount = live.full?.messages; const phase = live.task?.phase;
   const known = useRef<{ id: string | null; count?: number; phase?: string }>({ id: null });
   useEffect(() => {
@@ -78,7 +78,7 @@ export default function Chat() {
     if (!latestId || before.id !== latestId) return;                                              // first sight of this task: the thread was just loaded
     if ((before.count !== undefined && messageCount !== before.count) || (before.phase !== undefined && phase !== before.phase)) { void loadThread(); void loadList(); }
   }, [latestId, messageCount, phase, loadThread, loadList]);
-  useEffect(() => { if (!working) return; const t = setInterval(() => { void loadThread(); void loadList(); }, work.mode === 'stream' ? 8000 : 3000); return () => clearInterval(t); }, [working, work.mode, loadThread, loadList]);
+  useEffect(() => { if (!working) return; const t = setInterval(() => { void loadThread(); void loadList(); }, work.mode === 'stream' ? 30000 : 3000); return () => clearInterval(t); }, [working, work.mode, loadThread, loadList]);
   useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; if (stick.current) toEnd(true); else setNewBelow(true); } }, [msgs.length, tasks.length]);
   const draftLength = live.draft?.text.length ?? 0; const liveLabel = live.task?.label; const liveNeeds = live.task?.needs.length ?? 0; const liveNow = live.task?.now.length ?? 0;
   // Follow the work as it happens (a reply being written, the status line changing, a prompt appearing), unless the reader scrolled up to read something.

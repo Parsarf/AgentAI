@@ -187,7 +187,7 @@ class ChatService:
             self.coordinator._audit(con, principal.account_id, principal.actor_id, project, 'chat.project_create', 'completed')
             return {'id': project, 'name': name}
 
-    def _admit(self, principal, result, conversation_id, key, message_for_cost):
+    def _admit(self, principal, result, conversation_id, key, message_for_cost, budget_microusd=None):
         with self.coordinator.transaction() as con:
             row = con.execute('SELECT project_id FROM customer_requests WHERE account_id=? AND id=?',
                               (principal.account_id, result['id'])).fetchone()
@@ -200,7 +200,7 @@ class ChatService:
             return None, None, project_id
         own = self._own_model(principal.account_id, result['id'])
         try:
-            amount, price_version = self._reservation(principal.account_id, own, message_for_cost)
+            amount, price_version = self._reservation(principal.account_id, own, message_for_cost, budget_microusd)
         except CapabilityUnavailable:
             return None, None, project_id
         try:
@@ -282,7 +282,7 @@ class ChatService:
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': True,
                 'admission': 'reserved', 'price_version': price_version, 'response_type': kind if kind in ('plan', 'browse') else 'text'}
 
-    def _reservation(self, account, own, message):
+    def _reservation(self, account, own, message, budget=None):
         """-> (reservation amount, price version). A task on the customer's own model key reserves the nominal own-key amount. Any other task reserves the customer's OWN task
         limit when they set one in Settings (spend_limits.py), else whatever the route says (in production the no-limit marker: Lumina puts no ceiling on a task).
         Raises CapabilityUnavailable when no route is priced (execution is off)."""
@@ -291,7 +291,8 @@ class ChatService:
         amount, price_version = self.pricer.reservation(message)
         with self.store.connect() as con:
             chosen = spend_limits.get(con, account)['task']
-        return (chosen, CUSTOMER_LIMIT_PRICE_VERSION) if chosen else (amount, price_version)
+        limits = [value for value in (chosen, budget) if value]          # the customer's own task limit, and (for a scheduled run) the limit the schedule was given: the lower holds
+        return (min(limits), CUSTOMER_LIMIT_PRICE_VERSION) if limits else (amount, price_version)
 
     def _own_model(self, account, request):
         if self.queue.model_selection is not None and self.ledger.service_limit is None:
@@ -416,7 +417,7 @@ class ChatService:
         return row['native_session_ref'] if row else None
 
     # -- generative UI operations (the only things a block button can do) -------------------------------------------
-    def _spawn(self, principal, conversation_id, *, message, key, intent, context, shown, provenance='customer', goal_mode=False, continues=None):
+    def _spawn(self, principal, conversation_id, *, message, key, intent, context, shown, provenance='customer', goal_mode=False, continues=None, budget_microusd=None):
         """Queue a request created by a block action or by the goal chain, show `shown` as the turn, and admit it like any send."""
         result = self.queue.submit(principal, message=message, key=key, conversation_id=conversation_id, intent=intent, context=context, goal_mode=goal_mode, continues=continues)
         with self.coordinator.transaction() as con:
@@ -424,7 +425,7 @@ class ChatService:
                                (principal.account_id, conversation_id, result['id'], provenance)).fetchone():
                 con.execute('INSERT INTO chat_messages(account_id,conversation_id,request_id,provenance,content) VALUES (?,?,?,?,?)',
                             (principal.account_id, conversation_id, result['id'], provenance, shown[:MAX_MESSAGE_CHARS]))
-        amount, price_version, _project = self._admit(principal, result, conversation_id, key, message)
+        amount, price_version, _project = self._admit(principal, result, conversation_id, key, message, budget_microusd)
         if amount is not None:
             self._announce_queued(principal.account_id, result['id'])
         return {**result, 'conversation_id': conversation_id, 'execution_enabled': amount is not None,

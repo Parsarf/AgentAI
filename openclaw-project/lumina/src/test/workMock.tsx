@@ -28,6 +28,7 @@ export function hold(task: TaskView, rows: Row[] = []) { work.tasks = [task, ...
 export const mock = {
   WorkProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useWorkClient: () => ({ refresh: work.refresh, watch: () => () => {} }),
+  useWorkOptional: () => ({ ...work }),
   useWork: () => ({ ...work, attention: work.tasks.filter(t => t.attention).length }),
   useTask: (id: string | null | undefined, watch = true) => {
     if (id && watch && !work.watched.includes(id)) work.watched.push(id);

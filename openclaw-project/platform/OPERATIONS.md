@@ -299,6 +299,23 @@ An embedded Chromium instance shares the assistant container's 2 GiB cap. On 202
 `NativeGateway.cell_running()` reads the host's `cell.status`, independently of the assistant websocket. If it confirms the container has stopped, request reconciliation closes cancelled work as cancelled (or unexpected exits as failed), reconciles usage, and frees the execution slot. An unreachable/invalid probe never proves termination. An external browser must also confirm a terminal state before that slot is released. Do not repair this condition by merely rewriting a request to completed or dropping its reservation.
 
 
+## 18a. Several customers at once (roadmap #8)
+
+Several customers' assistants run at the same moment. How many is decided by the host, not by a constant: `host_capacity()` (`agentai_platform/lifecycle/profiles.py`) reads live free memory, CPU count, disk and process
+limits and charges each running cell its enforced caps (memory 2 GiB, one CPU), with one browser stage (1.5 GiB, 1.5 CPU) reserved for the whole host. A cell is charged `1 CPU / cpu_oversubscribe` of CPU
+reservation (default 2: an assistant mostly waits for the model provider; its cgroup cap of one CPU is unchanged). A bigger server therefore admits more cells with no code change.
+On the 4-CPU / 16 GiB server that is about three; 8 CPU / 32 GiB about 8; 16 CPU / 32 GiB about 13 (memory first).
+
+* **Who waits.** A request runs when its own account has a cell up and nothing running (one task per account at a time). Otherwise it waits in line, never failed. Across accounts the order is fair
+  (the account served longest ago goes first). When the host is full, the cell idle longest is released after a short idle (`handover_idle`, 60 s) to make room, and the waiting customer sees "Every assistant is busy".
+* **Owner settings** (`/var/lib/agentai-platform/signup-settings.json`, read fresh each time, no restart): `max_running_cells` (1 to 200; absent = by capacity) lowers the ceiling, `cpu_oversubscribe` (1 to 4, default 2).
+  `max_accounts` is a different number: how many customers may have an assistant at all. To go back to one customer at a time: set `max_running_cells` to 1.
+* **Look.** `manage.py lifecycle_status` prints the cell slots by state and the number of running requests; `agentai_platform.lifecycle.profiles.host_capacity_for(store)()` shows the live answer.
+* **Worker threads.** `agentai-request-worker` runs one thread per running request (`AGENTAI_REQUEST_PARALLEL`, default 8); the cells themselves are limited by the capacity above, not by this.
+* **Rollback.** Migration 0040 keeps the old slot tables for one release, but an older release does not know the new ones: before rolling the app back, set `max_running_cells` to 1 and let the extra cells go idle
+  (or stop them), so the older code never sees two cells running at once.
+* **Long replies.** A reply the model cut off at its output limit is continued automatically in the same task, at most three times (`chat_driver.CUTOFF_CONTINUES`); the customer's timeline says so.
+
 ## 19. Experimental "ultrafast" decider (owner testing only, 2026-10-30)
 
 Safety switch `standard_browser` (Safety console, Browser group). ON for everyone by default. Turn it OFF for **your own account** (choose a time limit: it comes back by itself) and your next browser task is decided the jev-ultrafast way instead of the standard way. **Both run on the same sandboxed browser stage and the same loop** (`browse/loop.py`), so every stop and limit applies to both: payment and sign-in stops, human checks, the denied-sites list, address checks, a clean profile each task, step and time limits, budget, Stop and hand-over. The switch only chooses who decides each step (`browse/service_main.py`, `jev_for`). It is read when a task starts. Nobody else can use it: the account id in `/etc/agentai-supervisor/ultrafast-owner` (copied from `AGENTAI_SAFETY_OWNER_ACCOUNT`) must match, and the switch cannot be changed for all users.

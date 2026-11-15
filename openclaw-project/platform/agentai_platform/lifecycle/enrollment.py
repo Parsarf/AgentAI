@@ -17,8 +17,10 @@ from .types import Conflict
 
 class EnrollmentPolicy:
     def __init__(self, config, *, owner_uid=None):
-        if type(config) is not dict or set(config) != {'image', 'profile', 'backup_root', 'max_cells'}:
+        if type(config) is not dict or not {'image', 'profile', 'backup_root', 'max_cells'} <= set(config) <= {'image', 'profile', 'backup_root', 'max_cells', 'max_running'}:
             raise ValueError('invalid enrollment policy')
+        if 'max_running' in config and (type(config['max_running']) is not int or not 1 <= config['max_running'] <= 200):
+            raise ValueError('running ceiling must be 1 to 200')
         if type(config['profile']) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', config['profile']):
             raise ValueError('invalid enrollment profile')
         if type(config['backup_root']) is not str or not Path(config['backup_root']).is_absolute() or '..' in Path(config['backup_root']).parts:
