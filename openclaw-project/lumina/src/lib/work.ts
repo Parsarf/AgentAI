@@ -15,7 +15,7 @@ export interface Controls { stop: boolean; pause: boolean; resume: boolean; retr
 /** What every list shows. */
 export interface TaskSummary {
   id: string; conversation_id: string | null; title: string; follows: string | null; created_epoch: number; state: string;
-  phase: Phase; label: string; tone: Tone; activity: Doing | null; now: Doing[]; ahead: number | null;
+  phase: Phase; label: string; tone: Tone; activity: Doing | null; now: Doing[]; ahead: number | null; wait?: 'your_task' | 'assistant' | null;
   attention: string | null; attention_label: string; outcome: Outcome | null; verification: Verification | null; note: string;
   goal: boolean; continuing: boolean; retry_of: string | null; controls: Controls; needs: Need[]; steps: number;
 }

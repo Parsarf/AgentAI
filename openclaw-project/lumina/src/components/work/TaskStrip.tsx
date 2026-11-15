@@ -39,7 +39,9 @@ export default function TaskStrip({ id, eager = true, notes = [], stopping = fal
           <span className="wk-head-text">
             <span className="agent-state" key={view.label}>{view.label}{isMoving(view) ? '…' : ''}</span>
             {view.phase === 'working' && view.now.length === 1 && view.now[0].detail && <span className="wk-doing">{view.now[0].detail}</span>}
-            {view.phase === 'queued' && typeof view.ahead === 'number' && view.ahead > 0 && <span className="wk-doing">{view.ahead} {view.ahead === 1 ? 'task is' : 'tasks are'} ahead of this one</span>}
+            {view.phase === 'queued' && view.wait === 'assistant' && <span className="wk-doing">{typeof view.ahead === 'number' && view.ahead > 0 ? 'Every assistant is busy. Yours starts as soon as one is free.' : 'Getting your assistant ready.'}</span>}
+            {view.phase === 'queued' && view.wait === 'your_task' && <span className="wk-doing">Waiting for your earlier task to finish.</span>}
+            {view.phase === 'queued' && !view.wait && typeof view.ahead === 'number' && view.ahead > 0 && <span className="wk-doing">{view.ahead} {view.ahead === 1 ? 'task is' : 'tasks are'} ahead of this one</span>}
             {view.phase === 'paused' && <span className="wk-doing">It keeps its place and will not start until you resume it.</span>}
             {view.phase === 'stopping' && <span className="wk-doing">Waiting for the assistant to confirm it has stopped.</span>}
           </span>
