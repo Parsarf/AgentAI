@@ -538,6 +538,59 @@ def retry_pause(header, attempt, jitter=random.random):
     return base * (1 + 0.25 * jitter())
 
 
+class _Headers:
+    """A response's headers as something with .get(name), whatever the response object is."""
+    def __init__(self, response): self.response = response
+    def get(self, name, default=None):
+        try:
+            return self.response.getheader(name, default)
+        except Exception:
+            return default
+
+
+class RouteLimiter:
+    """One limiter per (account, route): what the provider has told us about its limits, shared by every call of that account on that route. A busy answer (429, 503, 529) or a
+    response that says nothing is left (`retry-after`, `x-ratelimit-remaining-*` with `x-ratelimit-reset-*`, `anthropic-ratelimit-*-remaining`) closes the route until the time the
+    provider named; calls made meanwhile wait for it once, together, instead of each asking and being refused. Never waits longer than `cap` seconds. A `route` is any string, so
+    connectors (Phase 3) use the same limiter with their own route names. In memory only: a restart forgets it, and the provider simply tells us again."""
+    def __init__(self, *, clock=time.monotonic, cap=RETRY_WAIT_SECONDS):
+        self.clock, self.cap = clock, cap
+        self._until, self._lock = {}, threading.Lock()
+
+    def note(self, account, route, status, headers):
+        """Record what a response said. `headers` is anything with .get(name) (case as the provider sent it)."""
+        now, until = self.clock(), None
+        get = lambda name: headers.get(name) if headers is not None else None
+        def number(value):
+            try:
+                found = float(value)
+                return found if found == found and found >= 0 else None
+            except (TypeError, ValueError):
+                return None
+        if status in TEMPORARY_STATUSES:
+            asked = number(get('Retry-After') or get('retry-after'))
+            until = now + (min(60.0, max(1.0, asked)) if asked is not None else 2.0)
+        else:
+            for kind in ('requests', 'tokens'):
+                left = number(get(f'x-ratelimit-remaining-{kind}') or get(f'anthropic-ratelimit-{kind}-remaining'))
+                reset = number(get(f'x-ratelimit-reset-{kind}') or get(f'retry-after'))
+                if left is not None and left <= 0 and reset is not None:
+                    until = max(until or 0.0, now + min(60.0, max(1.0, reset)))
+        if until is not None:
+            with self._lock:
+                key = (account, route)
+                self._until[key] = max(self._until.get(key, 0.0), until)
+
+    def wait_time(self, account, route):
+        """Seconds a new call on this route should wait before asking (0 when the route is open), never more than the cap."""
+        with self._lock:
+            left = self._until.get((account, route), 0.0) - self.clock()
+            if left <= 0:
+                self._until.pop((account, route), None)
+                return 0.0
+        return min(left, self.cap)
+
+
 def _is_own_quota_refusal(body):
     """A customer's own provider saying their quota, balance or billing is used up: waiting does not help, so it is passed on at once."""
     try:
@@ -562,9 +615,10 @@ class ModelRelay:
     """The logic behind /byok/v1 (the HTTP wrapper is in tool_relay.py): who the caller is has already been established."""
 
     def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic, admission=None, selection=None,
-                 sleep=time.sleep, jitter=None, waiting=None):
+                 sleep=time.sleep, jitter=None, waiting=None, limiter=None):
         self.sleep, self.jitter = sleep, jitter if jitter is not None else random.random       # injectable so tests do not wait
-        self.waiting = waiting       # callable(account): the task is waiting for the model provider (shown in the customer's timeline); None = say nothing
+        self.waiting = waiting       # callable(account, seconds, first, own): the task is waiting for the model provider (shown in the customer's timeline); None = say nothing
+        self.limiter = limiter or RouteLimiter()       # what each (account, route) has been told by its provider: shared by every call, so concurrent calls wait once together
         self.admission = admission
         self.selection = selection   # server-owned route of the one admitted live request
         self.store, self.enabled, self.resolver, self.public, self.context, self.clock = store, enabled, resolver, public, context, clock
@@ -629,6 +683,10 @@ class ModelRelay:
         payload = json.dumps(body).encode()
         waited, attempt = 0.0, 0
         try:
+            shared = self.limiter.wait_time(account, 'lumina')          # another call of this account was just told to wait: wait with it, once, before asking
+            if shared > 0:
+                self._tell_waiting(account, shared, first=True, own=False)
+                self.sleep(shared)
             while True:
                 # Fixed trusted proxy, with the CELL credential; never a customer's
                 # endpoint or API key. Proxy policy and usage metering still apply.
@@ -638,6 +696,7 @@ class ModelRelay:
                 response = conn.getresponse()
                 if 300 <= response.status < 400:
                     raise RelayError(502, 'The model proxy attempted a redirect.', 'redirect_refused')
+                self.limiter.note(account, 'lumina', response.status, _Headers(response))
                 if response.status not in TEMPORARY_STATUSES:
                     break
                 # The provider is busy or a per-minute limit was reached. Nothing has been streamed yet, so asking again is safe: wait here, where the customer's task keeps
@@ -724,9 +783,14 @@ class ModelRelay:
             streaming = bool(body.get('stream'))
             payload = json.dumps(body, separators=(',', ':')).encode()
             waited, attempt, prefix = 0.0, 0, b''
+            shared = self.limiter.wait_time(account, 'own')
+            if shared > 0:
+                self._tell_waiting(account, shared, first=True, own=True)
+                self.sleep(shared)
             while True:
                 conn, resp = open_upstream(endpoint, ips, '/chat/completions', payload, cfg['key'],
                                            accept='text/event-stream' if streaming else 'application/json', context=self.context)
+                self.limiter.note(account, 'own', resp.status, _Headers(resp))
                 if resp.status not in TEMPORARY_STATUSES:
                     prefix = b''
                     break

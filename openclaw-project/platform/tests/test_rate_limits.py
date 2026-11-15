@@ -136,5 +136,49 @@ class RunTime(unittest.TestCase):
         self.assertTrue(True)
 
 
+class Limiter(unittest.TestCase):
+    """One limiter per (account, route): what the provider said is shared by every call, bounded, and reusable by other routes (connectors)."""
+    def make(self):
+        now = [100.0]
+        return model_keys.RouteLimiter(clock=lambda: now[0], cap=90), now
+
+    def test_a_busy_answer_closes_the_route_for_everyone_until_the_time_it_named(self):
+        limiter, now = self.make()
+        limiter.note('a', 'lumina', 429, {'Retry-After': '7'})
+        self.assertEqual(limiter.wait_time('a', 'lumina'), 7.0)
+        self.assertEqual(limiter.wait_time('b', 'lumina'), 0.0)         # another account's route is its own
+        self.assertEqual(limiter.wait_time('a', 'other-route'), 0.0)     # and so is another route (a connector)
+        now[0] += 5; self.assertEqual(limiter.wait_time('a', 'lumina'), 2.0)
+        now[0] += 3; self.assertEqual(limiter.wait_time('a', 'lumina'), 0.0)
+
+    def test_an_answer_that_says_nothing_is_left_closes_the_route_until_it_resets(self):
+        limiter, now = self.make()
+        limiter.note('a', 'lumina', 200, {'x-ratelimit-remaining-requests': '0', 'x-ratelimit-reset-requests': '12'})
+        self.assertEqual(limiter.wait_time('a', 'lumina'), 12.0)
+        other, _ = self.make()
+        other.note('a', 'r', 200, {'anthropic-ratelimit-tokens-remaining': '0', 'retry-after': '3'})
+        self.assertEqual(other.wait_time('a', 'r'), 3.0)
+        fine, _ = self.make()
+        fine.note('a', 'r', 200, {'x-ratelimit-remaining-requests': '40', 'x-ratelimit-reset-requests': '12'})
+        self.assertEqual(fine.wait_time('a', 'r'), 0.0)                  # plenty left: nothing to wait for
+
+    def test_the_wait_is_bounded_and_bad_headers_are_ignored(self):
+        limiter, _ = self.make()
+        limiter.note('a', 'r', 429, {'Retry-After': '99999'})
+        self.assertEqual(limiter.wait_time('a', 'r'), 60.0)              # the provider's ask is bounded at a minute
+        limiter.note('a', 's', 429, {'Retry-After': 'soon'})
+        self.assertEqual(limiter.wait_time('a', 's'), 2.0)
+        limiter.note('a', 't', 200, {'x-ratelimit-remaining-requests': 'lots', 'x-ratelimit-reset-requests': '-5'})
+        self.assertEqual(limiter.wait_time('a', 't'), 0.0)
+
+    def test_the_relay_makes_a_second_call_wait_once_for_what_the_first_was_told(self):
+        relay = Checks.relay(self, [Response(429, b'{"error":{"message":"Rate limit"}}', {'Retry-After': '7'}), Response(200, b'ok'), Response(200, b'ok')])
+        first = Checks.call(self, relay); first.close()
+        self.assertEqual(self.slept, [7.0])
+        second = Checks.call(self, relay); second.close()                # made right after: the route is still closed for the time the provider named
+        self.assertEqual(len(self.slept), 2); self.assertGreater(self.slept[1], 6.0); self.assertLessEqual(self.slept[1], 7.0)
+        self.assertEqual(len(self.sent), 3)                              # and it did not ask (and get refused) a second time
+
+
 if __name__ == '__main__':
     unittest.main()
