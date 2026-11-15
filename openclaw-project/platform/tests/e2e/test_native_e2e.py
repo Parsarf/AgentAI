@@ -7,6 +7,9 @@ import threading
 import time
 import unittest
 
+from agentai_platform.goals import GoalChain
+from agentai_platform.request_worker import RequestWorker
+
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.bridge_client import BridgeRpc
 from agentai_platform.gateway import NativeGateway
@@ -476,6 +479,35 @@ class NativeEndToEnd(unittest.TestCase):
         notes = [e for e in S.rows("SELECT public_payload FROM events WHERE task_id=? AND kind='progress'", (sent['id'],)) if 'length limit' in (e['public_payload'] or '')]
         self.assertTrue(notes)                                                                                             # the customer's timeline says so
         self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
+
+    # -- parallel phases of one plan (roadmap #10) ----------------------------------------------------------------------------------------------------
+    def test_two_independent_phases_run_at_the_same_time_in_two_sessions_of_one_cell_and_every_cent_is_charged_once(self):
+        S = self.S
+        S.hold_cell('a')
+        def ph(i, deps=()):
+            return {'id': i, 'title': i.upper(), 'description': 'SCENARIO:slow ' + i, 'enabled': True, 'optional': False, 'requiresApproval': False, 'dependsOn': list(deps)}
+        diamond = {'schemaVersion': '1.0', 'type': 'task_plan', 'title': 'Parallel', 'phases': [ph('a'), ph('b'), {**ph('c', ('a', 'b')), 'description': 'join the results'}]}
+        S.model.max_inflight = 0                                                       # counted from here: only this test's phases
+        block = S.chat.blocks.create_plan('a', 'c-a', diamond, key='par-1')
+        S.chat.launch_plan(S.principals['a'], block['id'], 1)
+        S.worker = RequestWorker(S.queue, S.driver, lambda: CAPACITY, goals=GoalChain(S.chat), runner=lambda: S.chat.runner, max_parallel=4)
+        done = lambda: S.rows("SELECT state FROM plan_phase_runs WHERE block_id=? AND phase_id='c'", (block['id'],))[0]['state'] == 'completed'
+        S.work(until=lambda: done() and not S.worker._active, timeout=150)
+        S.worker.wait_idle(30)
+        self.assertEqual({r['phase_id']: r['state'] for r in S.rows('SELECT phase_id,state FROM plan_phase_runs WHERE block_id=?', (block['id'],))}, {'a': 'completed', 'b': 'completed', 'c': 'completed'})
+        self.assertGreaterEqual(S.model.max_inflight, 2)                           # the model was asked by both phases at the same moment: one cell, two runs
+        runs = S.rows("SELECT request_id,conversation_id FROM plan_phase_runs WHERE block_id=? AND phase_id IN ('a','b') ORDER BY phase_id", (block['id'],))
+        self.assertEqual(len({r['conversation_id'] for r in runs}), 2)             # two conversations, therefore two native sessions
+        sessions = {r['native_session_ref'] for r in S.rows('SELECT native_session_ref FROM conversations WHERE account_id=?', ('a',)) if r['native_session_ref']}
+        self.assertGreaterEqual(len(sessions), 2)
+        ids = [r['request_id'] for r in S.rows('SELECT request_id FROM plan_phase_runs WHERE block_id=?', (block['id'],))]
+        receipts = {r['task_id']: r['amount_microusd'] for r in S.rows('SELECT task_id,amount_microusd FROM provider_receipts') if r['task_id'] in ids}
+        marks = S.rows("SELECT request_id,kind,spend_microusd FROM spend_marks WHERE account_id='a' AND request_id IN (%s) ORDER BY id" % ','.join('?' * len(ids)), tuple(ids))
+        stretch = max(m['spend_microusd'] for m in marks) - min(m['spend_microusd'] for m in marks)       # what the key spent from the first phase's start to the last phase's end
+        self.assertLessEqual(abs(sum(receipts.values()) - stretch), 3000)               # every cent the key spent in that stretch is charged to some phase, once (rounding aside)
+        self.assertTrue(all(v >= 0 for v in receipts.values()))
+        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
+        self.assertEqual(S.worker._errors, [])
 
     # -- isolation ------------------------------------------------------------------------------------------------------------------------------
     def test_two_customers_never_see_each_others_runs_sessions_files_charges_or_browser(self):

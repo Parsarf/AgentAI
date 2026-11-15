@@ -14,6 +14,8 @@ from agentai_platform.security import NotFound, Principal
 
 from . import replan, schema
 
+MAX_PARALLEL_PHASES = 3        # phases of one plan running at the same moment (its own conversation and two lanes)
+MAX_LANES = 2
 LOCKED = ('running', 'completed', 'failed')           # phases whose content can no longer change
 OPEN = ('pending', 'awaiting_approval')
 
@@ -73,33 +75,69 @@ class PlanRunner:
         return started
 
     def advance(self, account_id, block_id):
-        """Start the next ready phase if none is running. Returns the new request id, or None."""
+        """Start every phase that is ready and has room, up to MAX_PARALLEL_PHASES at once. Returns the first new request id, or None.
+
+        A plan whose phases declare no dependencies (an older plan) runs one phase at a time in list order, as it always did. A plan with dependencies runs every phase whose prerequisites
+        are done: the first in the plan's own conversation, the others in lanes (hidden child conversations with their own runtime session). A failed phase stops new phases from
+        starting (the customer decides: retry, skip or revise); phases already running go on."""
         with self.store.connect() as con:
             row = self._block(con, account_id, block_id)
             if row['status'] != 'launched':
                 return None
             rows, plan = self._rows(con, account_id, block_id), self._plan(row)
-        if any(r['state'] == 'running' for r in rows.values()):
-            return None
         order = schema.execution_order(plan)
         done = {i for i, r in rows.items() if r['state'] in ('completed', 'skipped')}
+        sequential = not any(p['dependsOn'] for p in plan['phases'])
+        limit = 1 if sequential else MAX_PARALLEL_PHASES
+        running = [i for i, r in rows.items() if r['state'] == 'running']
+        first = None
         for n, phase in enumerate(order, 1):
+            if len(running) >= limit:
+                break
             r = rows.get(phase['id'])
-            if r is None or r['state'] in ('completed', 'skipped', 'cancelled'):
+            if r is None or r['state'] in ('completed', 'skipped', 'cancelled', 'running'):
                 continue
             if r['state'] == 'failed':
-                return None                                   # the user decides: retry or skip
+                return first                                   # the user decides: retry, skip or revise
             if not all(d in done or not self._enabled(plan, d) for d in phase['dependsOn']):
-                return None                                   # waiting on something that is not finished
+                if sequential:
+                    break
+                continue                                       # waiting on something that is not finished; another phase may be ready
             if r['state'] == 'awaiting_approval':
-                return None
+                if sequential:
+                    break
+                continue
             if phase['requiresApproval'] and r['approved_epoch'] is None:
                 with self.blocks.coordinator.transaction() as con:
                     con.execute("UPDATE plan_phase_runs SET state='awaiting_approval' WHERE account_id=? AND block_id=? AND phase_id=? AND state='pending'",
                                 (account_id, block_id, phase['id']))
-                return None
-            return self._spawn(row, plan, phase, n, len(order), r)
-        return None
+                if sequential:
+                    break
+                continue
+            request = self._spawn(row, plan, phase, n, len(order), r)
+            if request:
+                running.append(phase['id'])
+                first = first or request
+        return first
+
+    # -- lanes: where a phase runs ------------------------------------------------------------------------------------------------------------
+    def _conversation_for_phase(self, con, row, phase_id):
+        """(inside the transaction that moves the phase to running) The plan's own conversation when no OTHER running phase of this plan is using it, else a free lane (a hidden child
+        conversation; at most MAX_LANES per plan), else None."""
+        account, main = row['account_id'], row['conversation_id']
+        busy = {r[0] or main for r in con.execute("SELECT conversation_id FROM plan_phase_runs WHERE account_id=? AND block_id=? AND state='running' AND phase_id<>?", (account, row['id'], phase_id))}
+        if main not in busy:
+            return main
+        lanes = [r[0] for r in con.execute('SELECT id FROM conversations WHERE account_id=? AND parent_id=? ORDER BY created_at,id', (account, main))]
+        for lane in lanes:
+            if lane not in busy:
+                return lane
+        if len(lanes) >= MAX_LANES:
+            return None
+        parent = con.execute('SELECT project_id,deployment_id FROM conversations WHERE account_id=? AND id=?', (account, main)).fetchone()
+        lane = uuid.uuid4().hex
+        con.execute('INSERT INTO conversations(account_id,project_id,id,deployment_id,parent_id) VALUES (?,?,?,?,?)', (account, parent['project_id'], lane, parent['deployment_id'], main))
+        return lane
 
     @staticmethod
     def _enabled(plan, phase_id):
@@ -107,14 +145,19 @@ class PlanRunner:
 
     def _spawn(self, row, plan, phase, n, total, r):
         account, block = row['account_id'], row['id']
-        with self.blocks.coordinator.transaction() as con:      # atomic claim: only one caller wins the pending -> running move
+        with self.blocks.coordinator.transaction() as con:      # atomic claim: only one caller wins the pending -> running move, and where it runs is decided in the same step
             won = con.execute("UPDATE plan_phase_runs SET state='running',attempts=attempts+1,started_epoch=?,summary=NULL,finished_epoch=NULL "
                               "WHERE account_id=? AND block_id=? AND phase_id=? AND state='pending'", (int(self.clock()), account, block, phase['id'])).rowcount
+            if not won:
+                return None
+            conversation = self._conversation_for_phase(con, row, phase['id'])
+            if conversation is None:                             # no lane is free: back to pending, tried again when a phase ends
+                con.execute("UPDATE plan_phase_runs SET state='pending',attempts=attempts-1,started_epoch=NULL WHERE account_id=? AND block_id=? AND phase_id=?", (account, block, phase['id']))
+                return None
+            con.execute('UPDATE plan_phase_runs SET conversation_id=? WHERE account_id=? AND block_id=? AND phase_id=?', (conversation, account, block, phase['id']))
             attempts = con.execute('SELECT attempts FROM plan_phase_runs WHERE account_id=? AND block_id=? AND phase_id=?', (account, block, phase['id'])).fetchone()[0]
-        if not won:
-            return None
         try:
-            result = self.chat._spawn(self._principal(row), row['conversation_id'], message=f'Phase {n}: {phase["title"]}'[:200],
+            result = self.chat._spawn(self._principal(row), conversation, message=f'Phase {n}: {phase["title"]}'[:200],
                                       key=f'phase-{block}-{phase["id"]}-{attempts}', intent='phase', context={'block': block, 'phase': phase['id']},
                                       shown=f'Running phase {n} of {total}: {phase["title"]}')
         except Exception as exc:                              # budget, queue full, storage: show it, let the user retry

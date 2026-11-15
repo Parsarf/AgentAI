@@ -147,9 +147,7 @@ class RequestWorker:
             report['resumed'] = report.get('resumed', 0) + 1
         # 3. New requests, one per account with a cell up, fairly ordered, while this process has threads to spare.
         while self._capacity_left() >= 1:
-            with self._lock:
-                running_accounts = {a for a, _ in self._active.values()}
-            claim = self.queue.claim(owner=self.owner, capacity=self.capacity(), lease_seconds=self.lease_seconds, exclude=running_accounts)
+            claim = self.queue.claim(owner=self.owner, capacity=self.capacity(), lease_seconds=self.lease_seconds)     # the slot rows in the database decide who may run beside whom
             if claim is None:
                 break
             self._spawn(claim, lambda claim=claim: self._begin(claim))

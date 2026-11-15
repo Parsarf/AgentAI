@@ -48,3 +48,5 @@ test_parallel_requests
 test_output_cutoff
 test_replan
 test_schedule_engine
+test_lanes
+test_spend_share

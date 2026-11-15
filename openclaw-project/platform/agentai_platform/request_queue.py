@@ -10,6 +10,7 @@ from .security import NotFound
 from .lifecycle.coordinator import Coordinator,identifier
 from .lifecycle.types import Conflict
 
+BACKGROUND_PER_ACCOUNT=2   # phases of one plan that may run beside the customer's own task (and each other); host protection, not a spending limit
 MAX_MESSAGE_CHARS=16000   # one message or one public result (chat_messages.content has the same CHECK). The one definition: chat, the driver, the HTTP field limits and /v1/app `limits` read this name
 
 @dataclass(frozen=True)
@@ -233,12 +234,24 @@ class RequestQueue:
             while True:
                 # An account whose run is parked on a person has one execution already: its next request waits (same session lane, same cell). An account that already
                 # runs a task, or holds an uncertain one, waits for it.
-                rows=c.execute("""SELECT r.* FROM customer_requests r WHERE r.state='waiting' AND r.paused=0
-                    AND NOT EXISTS (SELECT 1 FROM customer_requests p WHERE p.account_id=r.account_id AND p.state='running' AND p.parked_reason IS NOT NULL)
-                    AND NOT EXISTS (SELECT 1 FROM request_slots s WHERE s.account_id=r.account_id)
+                # Two kinds of slot. A task in an ordinary conversation takes the account's one interactive slot. A phase of a running plan that can run beside another (it lives in a
+                # lane: a hidden child conversation) takes one of the account's background slots instead, and may run while the customer's own task runs.
+                rows=c.execute("""SELECT r.*,(cv.parent_id IS NOT NULL) AS in_lane FROM customer_requests r
+                    LEFT JOIN conversations cv ON cv.account_id=r.account_id AND cv.id=r.conversation_id
+                    WHERE r.state='waiting' AND r.paused=0
+                    AND (
+                      (cv.parent_id IS NULL
+                        AND NOT EXISTS (SELECT 1 FROM customer_requests p LEFT JOIN conversations pv ON pv.account_id=p.account_id AND pv.id=p.conversation_id
+                                        WHERE p.account_id=r.account_id AND p.state='running' AND p.parked_reason IS NOT NULL AND pv.parent_id IS NULL)
+                        AND NOT EXISTS (SELECT 1 FROM request_slots s WHERE s.account_id=r.account_id AND s.kind='interactive'))
+                      OR
+                      (cv.parent_id IS NOT NULL
+                        AND (SELECT count(*) FROM request_slots s WHERE s.account_id=r.account_id AND s.kind='background')<?
+                        AND NOT EXISTS (SELECT 1 FROM request_slots s JOIN customer_requests q ON q.account_id=s.account_id AND q.id=s.request_id WHERE s.account_id=r.account_id AND q.conversation_id=r.conversation_id))
+                    )
                     AND NOT EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state!='active')
                     AND (?=0 OR EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state='active'))
-                    ORDER BY coalesce((SELECT max(q.claimed_epoch) FROM customer_requests q WHERE q.account_id=r.account_id),0),r.sequence LIMIT 25""",(1 if self.require_cell else 0,)).fetchall()
+                    ORDER BY coalesce((SELECT max(q.claimed_epoch) FROM customer_requests q WHERE q.account_id=r.account_id),0),r.sequence LIMIT 25""",(BACKGROUND_PER_ACCOUNT,1 if self.require_cell else 0)).fetchall()
                 row=next((r for r in rows if r['account_id'] not in skip),None)
                 if not row:return None
                 authorized=c.execute("SELECT 1 FROM accounts a JOIN memberships m ON m.account_id=a.id WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.status='active' AND m.role='customer'",(row['account_id'],row['actor_id'])).fetchone()
@@ -247,7 +260,7 @@ class RequestQueue:
                 c.execute("UPDATE customer_requests SET state='cancelled' WHERE account_id=? AND id=?",(row['account_id'],row['id']))
                 self._cancel_unstarted(c,row['account_id'],row['id'])
                 self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_revoked','completed')
-            c.execute('INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES (?,?,?,?)',(row['account_id'],row['id'],'interactive',now))
+            c.execute('INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES (?,?,?,?)',(row['account_id'],row['id'],'background' if row['in_lane'] else 'interactive',now))
             fence=row['fence']+1
             c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=?,claimed_epoch=? WHERE account_id=? AND id=?",(fence,owner,now+lease_seconds,now,row['account_id'],row['id']))
             self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_claim','pending')
@@ -342,9 +355,13 @@ class RequestQueue:
             if not row or row['state']!='running' or row['parked_reason'] is None:return None
             if need_slot:
                 # It runs again, so it needs its account's one slot (another task of the same account may hold it) and its cell up.
-                if c.execute('SELECT 1 FROM request_slots WHERE account_id=?',(claim.account_id,)).fetchone():return None
+                lane=c.execute('SELECT parent_id FROM conversations WHERE account_id=? AND id=?',(claim.account_id,row['conversation_id'])).fetchone()
+                lane=bool(lane and lane['parent_id'])
+                if lane:
+                    if c.execute("SELECT count(*) FROM request_slots WHERE account_id=? AND kind='background'",(claim.account_id,)).fetchone()[0]>=BACKGROUND_PER_ACCOUNT:return None
+                elif c.execute("SELECT 1 FROM request_slots WHERE account_id=? AND kind='interactive'",(claim.account_id,)).fetchone():return None
                 if self.require_cell and not c.execute("SELECT 1 FROM cell_slots WHERE account_id=? AND state='active'",(claim.account_id,)).fetchone():return None
-                c.execute("INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES (?,?,'interactive',?)",(claim.account_id,claim.request_id,int(self.clock())))
+                c.execute("INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES (?,?,?,?)",(claim.account_id,claim.request_id,'background' if lane else 'interactive',int(self.clock())))
             c.execute("UPDATE tasks SET state='running' WHERE account_id=? AND id=? AND state='waiting_for_approval'",(claim.account_id,claim.request_id))
             fence=row['fence']+1
             # A request that carries on (need_slot) starts a new wait the next time it parks; one taken back only to be closed keeps the time it parked, which is what the park limit is measured from.

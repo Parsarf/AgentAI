@@ -96,7 +96,7 @@ class ChatService:
             self.store._authorize(con, principal)
             if not con.execute('SELECT 1 FROM projects WHERE account_id=? AND id=?', (principal.account_id, project_id)).fetchone():
                 raise NotFound('unavailable')
-            count = con.execute('SELECT count(*) FROM conversations WHERE account_id=? AND project_id=? AND archived_epoch IS NULL',
+            count = con.execute('SELECT count(*) FROM conversations WHERE account_id=? AND project_id=? AND archived_epoch IS NULL AND parent_id IS NULL',
                                 (principal.account_id, project_id)).fetchone()[0]
             if count >= self.max_conversations_per_project and safety.is_on(con, principal.account_id, 'project_chat_limits'):
                 raise Conflict('conversation limit reached')
@@ -122,7 +122,7 @@ class ChatService:
                 (SELECT substr(m.content,1,240) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id AND coalesce(m.native_message_id,'') NOT LIKE 'ui-answer:%' ORDER BY m.id DESC LIMIT 1) AS preview,
                 (SELECT count(*) FROM customer_requests r WHERE r.account_id=c.account_id AND r.conversation_id=c.id
                     AND r.state IN """ + request_states.sql_list(request_states.ACTIVE) + """) AS active
-                FROM conversations c WHERE c.account_id=?"""
+                FROM conversations c WHERE c.account_id=? AND c.parent_id IS NULL"""            # lanes (a plan's hidden child conversations) are never listed
             args: list = [principal.account_id]
             sql += ' AND c.archived_epoch IS ' + ('NOT NULL' if archived else 'NULL')
             if project_id is not None:
@@ -155,7 +155,7 @@ class ChatService:
             if not row:
                 raise NotFound('unavailable')
             if row['archived_epoch'] is not None:
-                count = con.execute('SELECT count(*) FROM conversations WHERE account_id=? AND project_id=? AND archived_epoch IS NULL', (principal.account_id, row['project_id'])).fetchone()[0]
+                count = con.execute('SELECT count(*) FROM conversations WHERE account_id=? AND project_id=? AND archived_epoch IS NULL AND parent_id IS NULL', (principal.account_id, row['project_id'])).fetchone()[0]
                 if count >= self.max_conversations_per_project and safety.is_on(con, principal.account_id, 'project_chat_limits'):
                     raise Conflict('conversation limit reached')
                 con.execute('UPDATE conversations SET archived_epoch=NULL WHERE account_id=? AND id=?', (principal.account_id, conversation_id))

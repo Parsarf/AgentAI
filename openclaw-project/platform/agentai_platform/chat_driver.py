@@ -22,6 +22,7 @@ from .browse import job_states as browse_job_states
 from .adapters import CapabilityUnavailable
 from .browse.untrusted import neutralize
 from .budget import BudgetLedger
+from .spend_share import SpendShare
 from .events import EventService
 from .gateway import SyntheticGateway
 from .genui import document as gen_document, prompts as gen_prompts
@@ -120,6 +121,7 @@ class ChatDriver:
         self.artifacts = artifacts
         self.clock = clock
         self.coordinator = Coordinator(store, clock=clock)
+        self.shares = SpendShare(store, clock=clock)      # what the cell's key had spent when a request started and ended: exact cost when several requests of one account overlap
         self.queue = queue or RequestQueue(store, clock=clock)
 
     # -- small helpers -------------------------------------------------------------------------------------------------------------------------
@@ -275,7 +277,7 @@ class ChatDriver:
                     if any(t['run_id'] == turn['run_id'] for t in active()):
                         timing.mark(claim.request_id, 'defer', reason='unowned_run_stopping')
                         return Defer('an unowned native run is still stopping')
-                elif not self._quiesced(claim, gateway, turn['session_key'], conversation_id=other['id']):
+                elif not self._quiesced(claim, gateway, turn['session_key'], conversation_id=other['id'], beside_ok=True):
                     timing.mark(claim.request_id, 'defer', reason='other_conversation_run')
                     return Defer('another conversation still owns a native run')
         if session is None:
@@ -299,9 +301,10 @@ class ChatDriver:
         if before is not None:
             with self.coordinator.transaction() as con:
                 con.execute('UPDATE chat_deliveries SET usage_before_microusd=? WHERE account_id=? AND request_id=? AND attempt=?', (before, claim.account_id, claim.request_id, attempt))
+            self.shares.mark(claim.account_id, claim.request_id, 'start', before)
         return None
 
-    def _quiesced(self, claim, gateway, session, *, conversation_id=None):
+    def _quiesced(self, claim, gateway, session, *, conversation_id=None, beside_ok=False):
         """Execution ownership comes before new work: no run may be going on in this session unless a live request of this account owns it. A run nobody owns (the runtime resumed an
         interrupted turn by itself, or its request is over) is stopped here; one a live request owns means this request must wait its turn."""
         active = getattr(gateway, 'active_sessions', None)
@@ -319,7 +322,7 @@ class ChatDriver:
                 WHERE d.account_id=? AND d.request_id<>? AND r.conversation_id=? AND r.state IN ('starting','running','uncertain') AND d.state IN ('acknowledged','uncertain','pending')''',
                                 (claim.account_id, claim.request_id, conversation_id or claim.conversation_id)).fetchall()
         if owners:
-            return False
+            return beside_ok                   # another conversation's run that a live request of this account owns: it may go on beside this one (the queue only lets phases of a plan, in their lanes, run together); in this request's own session it may not
         gateway.abort(session)                 # nothing owns the run: it must not keep running beside the new work
         for _ in range(20):
             if not gateway.history(session)['active_run']:
@@ -682,7 +685,9 @@ class ChatDriver:
         if not limit or not first or first['usage_before_microusd'] is None or getattr(gateway, 'usage_snapshot', None) is None:
             return False
         try:
-            return gateway.usage_snapshot() - first['usage_before_microusd'] >= limit
+            now_spend = gateway.usage_snapshot()
+            mine = self.shares.cost(claim.account_id, claim.request_id, now_spend)       # exact when another request of this account is running beside it; None without a start mark
+            return (now_spend - first['usage_before_microusd'] if mine is None else mine) >= limit
         except Exception as error:
             # The spend could not be read this time. The run goes on (a provider blip must not stop work) and the next check asks again; it is said out loud once per run.
             if not spend.get('warned'):
@@ -1072,6 +1077,11 @@ class ChatDriver:
                 self.sleep(self.pause)
         if amount is None:
             amount = max(0, last - before) if last is not None and before is not None else 0      # never the reservation: that is a limit (or the no-limit marker), not a cost
+        if last is not None and before is not None:
+            self.shares.mark(claim.account_id, claim.request_id, 'end', max(last, before))
+            mine = self.shares.cost(claim.account_id, claim.request_id)
+            if mine is not None:
+                amount = mine                                                                   # the key's spend between this request's marks, shared with the requests that ran beside it
         digest = hashlib.sha256(json.dumps({'before': before, 'after': last, 'task': claim.request_id}).encode()).hexdigest()
         self.ledger.receipt(account=claim.account_id, task=claim.request_id, provider='litellm',
                             request='litellm-' + claim.request_id, amount_microusd=int(amount),
