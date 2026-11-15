@@ -5,6 +5,9 @@ Costs real model money (a few dollars at most: `--budget` is the stop-loss, defa
 
   python phase1_live.py [--budget 8] [--cases parallel,queue,kill-worker,kill-cell,rate-limit,large]
 
+Root steps (restart a service, restart or remove a cell, change a limit in the model proxy) are asked for by creating /tmp/p1-act-<name>.request and are done by
+deploy/phase1_root.sh, which must be running as root beside this script (`systemd-run --unit=p1root deploy/phase1_root.sh`).
+
 Case status: PASS | FAIL | NOT_RUN (never averaged, never promoted). Results: /tmp/phase1-live.json
 """
 import argparse
@@ -124,10 +127,25 @@ def cell_of(account):
     return (sql('SELECT l.observed_state,l.tenant_ref FROM lifecycle_cells l WHERE l.account_id=%s', [account]) or [[None, None]])[0]
 
 
+CREATED = []      # (client, conversation id): every chat this proof makes is archived at the end, so it never fills the test account's chat limit
+
+
 def new_conversation(c, user):
     project = call(c, 'GET', '/v1/projects').json()['projects'][0]['id']
     made = call(c, 'POST', '/v1/conversations', {'project_id': project})
-    return made.json().get('id') or made.json().get('conversation', {}).get('id')
+    found = made.json().get('id') or made.json().get('conversation', {}).get('id')
+    if not found:
+        raise RuntimeError(f'could not make a conversation ({made.status_code}): the account is at its chat limit')
+    CREATED.append((c, found))
+    return found
+
+
+def archive_created():
+    for c, conversation in CREATED:
+        try:
+            call(c, 'POST', f'/v1/conversations/{conversation}/archive', {})
+        except Exception:
+            pass
 
 
 def send(c, conversation, text, mode='text'):
@@ -288,14 +306,17 @@ def case_kill_cell(b_user, conv_b):
            f'acted={acted} state={state[:2] if state else None} runs={runs} receipts={receipts} replies={replies}')
 
 
-def case_rate_limit(b_user, conv_b):
-    """B's model key is limited to 2 requests a minute for the test (root step 'limit-on'): a task that needs several model calls must WAIT, say so, and finish (not fail on a 429)."""
-    cb = client(b_user)
+def case_rate_limit(user, conv, account):
+    """The test account's model key is limited to 2 requests a minute for the test (root step 'limit-on', restored afterwards): a task that needs several model calls must WAIT, say so, and
+    finish (not fail on a 429)."""
+    cb = client(user)
+    open('/tmp/p1-limit-tenant', 'w').write(cell_of(account)[1] or '')
     if not root_action('limit-on'):
         record('P1-RATE-LIMIT', 'A busy provider is waited for, not turned into a failed task', 'NOT_RUN', 'the model proxy limit was not lowered')
         return
     try:
-        request = send(cb, conv_b, 'Use your tools: first list the files in your workspace, then create a file notes.txt with the word hello, then read it back, then tell me what it says.', 'auto')[0]
+        time.sleep(75)                              # the model proxy caches a key's limits for about a minute: let the lowered limit be read before the task starts
+        request = send(cb, conv, 'Use your tools: first list the files in your workspace, then create a file notes.txt with the word hello, then read it back, then tell me what it says.', 'auto')[0]
         finished = wait_for(lambda: done(request), 900, 3)
         state = request_row(request)
         said = scalar("SELECT count(*) FROM events WHERE task_id=%s AND public_payload LIKE '%%model provider%%'", [request])
@@ -305,6 +326,43 @@ def case_rate_limit(b_user, conv_b):
         root_action('limit-off', 120)
 
 
+def case_lanes(a_user, budget):
+    """Independent phases of one plan run at the same time in lanes, under background slots, and every cent the key spent is charged to some phase once."""
+    from accounts import wiring
+    from agentai_platform.security import Principal
+    ca = client(a_user)
+    conv = new_conversation(ca, a_user)
+    actor = sql("SELECT actor_id FROM memberships WHERE account_id=%s AND role='customer' AND status='active' LIMIT 1", [A])[0][0]
+    principal = Principal(A, actor, 'customer')
+    def phase(i, title, text, deps=()):
+        return {'id': i, 'title': title, 'description': text, 'enabled': True, 'optional': False, 'requiresApproval': False, 'dependsOn': list(deps)}
+    plan = {'schemaVersion': '1.0', 'type': 'task_plan', 'title': 'Two notes and a summary', 'phases': [
+        phase('lighthouse', 'Lighthouse note', 'Write a 150-word note about lighthouses. Do not use any tools.'),
+        phase('trains', 'Trains note', 'Write a 150-word note about trains. Do not use any tools.'),
+        phase('summary', 'Summary', 'In two sentences, say what the two earlier notes have in common. Do not use any tools.', ('lighthouse', 'trains'))]}
+    chat = wiring.chat_service()
+    block = chat.blocks.create_plan(A, conv, plan, key='p1-lanes-' + uuid.uuid4().hex[:20])
+    sampler = Sampler(); sampler.start()
+    started = int(time.time())
+    chat.launch_plan(principal, block['id'], block['version'])
+    finished = wait_for(lambda: scalar("SELECT count(*) FROM plan_phase_runs WHERE block_id=%s AND state='completed'", [block['id']]) == 3, 900, 3)
+    sampler.stop = True
+    runs = {r[0]: r for r in sql("SELECT phase_id,state,started_epoch,finished_epoch,conversation_id,request_id FROM plan_phase_runs WHERE block_id=%s", [block['id']])}
+    overlap = None
+    if all(k in runs for k in ('lighthouse', 'trains')) and all(runs[k][2] and runs[k][3] for k in ('lighthouse', 'trains')):
+        overlap = min(runs['lighthouse'][3], runs['trains'][3]) - max(runs['lighthouse'][2], runs['trains'][2])
+    kinds = sorted(r[0] for r in sql('SELECT kind FROM request_slots'))
+    lanes = scalar('SELECT count(*) FROM conversations WHERE account_id=%s AND parent_id IS NOT NULL', [A])
+    ids = [r[5] for r in runs.values() if r[5]]
+    receipts = {i: scalar('SELECT sum(amount_microusd) FROM provider_receipts WHERE task_id=%s', [i]) or 0 for i in ids}
+    marks = sql("SELECT spend_microusd FROM spend_marks WHERE request_id IN (%s)" % ','.join(['%s'] * len(ids)), ids) if ids else []
+    stretch = (max(m[0] for m in marks) - min(m[0] for m in marks)) if marks else None
+    conserved = stretch is not None and abs(sum(receipts.values()) - stretch) <= max(3000, stretch * 0.02)
+    ok = finished and sampler.max_requests >= 2 and bool(overlap and overlap > 0) and lanes >= 1 and conserved
+    record('P1-LANES', 'Two independent phases of a plan run at the same moment in separate lanes and the plan completes', 'PASS' if ok else 'FAIL',
+           f'states={ {k: v[1] for k, v in runs.items()} } max_running={sampler.max_requests} overlap_s={overlap} lanes={lanes} receipts={sum(receipts.values())} key_spend_stretch={stretch}')
+
+
 LARGE_CASES = [
     ('report', 'Write a detailed 50-page report on the history of the bicycle as a Word document. Write it in many parts: create the file with the first section, then add the next section, part by part. Deliver it as docx when done.', 'docx'),
     ('app', 'Build a small multi-file web app: a to-do list with index.html, style.css and app.js (each at least 80 lines, with comments). Deliver the three files as a zip.', 'zip'),
@@ -312,9 +370,11 @@ LARGE_CASES = [
 ]
 
 
-def case_large(a_user, budget, started):
+def case_large(a_user, budget, started, only=()):
     ca = client(a_user)
     for name, prompt, ext in LARGE_CASES:
+        if only and name not in only:
+            continue
         passes = 0
         for attempt in range(3):
             if spend_since(started) > budget:
@@ -322,6 +382,7 @@ def case_large(a_user, budget, started):
                 return
             conv = new_conversation(ca, a_user)
             request = send(ca, conv, prompt, 'auto')[0]
+            CREATED.append((ca, conv)) if False else None
             finished = wait_for(lambda: done(request), 1500, 5)
             state = request_row(request)
             delivered = scalar("SELECT count(*) FROM events WHERE task_id=%s AND kind='artifact'", [request])
@@ -345,17 +406,17 @@ def case_versions(b_user):
 
 
 def cleanup(b_user):
-    """Stop and remove B's cell, then B's rows (audit rows stay by design)."""
-    try:
-        from accounts.lifecycle import coordinator
-        tenant = cell_of(B)[1]
-        subprocess.run(['docker', 'rm', '-f', 'openclaw-cell-' + (tenant or 'none')], env={**os.environ, **CELLS_DOCKER}, capture_output=True, text=True)
-    except Exception:
-        pass
+    """Remove B completely. Stopping and deleting its cell, its volume, its model key and its host custody record needs root (root step 'cleanup-b', see phase1_root.sh); then B's rows
+    (audit rows stay by design). A cell left behind would keep running and count against the host's running ceiling, so a failure to remove it is reported loudly."""
+    tenant = cell_of(B)[1]
+    if tenant:
+        open('/tmp/p1-cleanup-tenant', 'w').write(tenant)
+        if not root_action('cleanup-b', 120):
+            print(f'WARNING: B cell {tenant} was NOT removed (the root step did not run): remove it by hand (docker rm -f, umount, rm volume, custody row, model key)', flush=True)
     sql('DELETE FROM cell_slots WHERE account_id=%s', [B])
     for table in ('lifecycle_details', 'operations', 'lifecycle_cells', 'deployments'):
         try:
-            sql(f'DELETE FROM {table} WHERE account_id=%s', [B]) if table != 'lifecycle_details' else sql('DELETE FROM lifecycle_details WHERE account_id=%s', [B])
+            sql(f'DELETE FROM {table} WHERE account_id=%s', [B])
         except Exception:
             pass
     p15.cleanup_b(b_user, B)
@@ -376,9 +437,10 @@ def cleanup_leftovers():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cleanup-only', action='store_true')
+    ap.add_argument('--large-only', default='', help='comma list of large cases to run (report, app, sheet); default all')
     ap.add_argument('--keep-on-failure', action='store_true', help='leave the disposable account in place when its cell could not be created (to diagnose)')
     ap.add_argument('--budget', type=float, default=8.0)
-    ap.add_argument('--cases', default='parallel,queue,kill-worker,kill-cell,rate-limit,large')
+    ap.add_argument('--cases', default='parallel,queue,kill-worker,kill-cell,rate-limit,lanes,large')
     args = ap.parse_args()
     if args.cleanup_only:
         cleanup_leftovers()
@@ -386,6 +448,21 @@ def main():
     wanted = set(args.cases.split(','))
     started = int(time.time())
     a_user = owner_user()
+    if wanted <= {'large', 'lanes', 'rate-limit'}:                              # these cases use the owner's own test account only: no second account is made
+        try:
+            if 'rate-limit' in wanted:
+                case_rate_limit(a_user, new_conversation(client(a_user), a_user), A)
+            if 'lanes' in wanted:
+                case_lanes(a_user, args.budget)
+            if 'large' in wanted:
+                case_large(a_user, args.budget, started, set(filter(None, args.large_only.split(','))))
+            record('P1-COST', 'Total model spend of this run', 'PASS' if spend_since(started) <= args.budget + 1 else 'FAIL', f'${spend_since(started):.2f} (budget ${args.budget})')
+        finally:
+            archive_created()
+            json.dump({'finished': int(time.time()), 'results': RESULTS}, open('/tmp/phase1-live-large.json', 'w'), indent=1)
+            failed = [r for r in RESULTS if r['status'] != 'PASS']
+            print(f'\n{len(RESULTS) - len(failed)} PASS, {len(failed)} not PASS', flush=True)
+        sys.exit(1 if failed else 0)
     b_user = make_b()
     keep = False
     try:
@@ -405,13 +482,14 @@ def main():
         if 'kill-cell' in wanted:
             case_kill_cell(b_user, conv_b)
         if 'rate-limit' in wanted:
-            case_rate_limit(b_user, conv_b)
+            case_rate_limit(b_user, conv_b, B)
         case_versions(b_user)
         if 'large' in wanted:
-            case_large(a_user, args.budget, started)
+            case_large(a_user, args.budget, started, set(filter(None, args.large_only.split(','))))
         record('P1-COST', 'Total model spend of this run', 'PASS' if spend_since(started) <= args.budget + 1 else 'FAIL', f'${spend_since(started):.2f} (budget ${args.budget})')
     finally:
         set_ceiling(None)
+        archive_created()
         if not keep:
             cleanup(b_user)
         json.dump({'finished': int(time.time()), 'results': RESULTS}, open('/tmp/phase1-live.json', 'w'), indent=1)

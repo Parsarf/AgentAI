@@ -1,38 +1,24 @@
 # Roadmap Phase 0 - ship what is written and remove the launch blockers
 
-**Status (2026-11-14): PARTIAL.** The repository work is done and tested; every remaining item is a server step or a merge that needs the owner.
+**Status (2026-11-15): PASS.** Production runs `main` by an automatic-path deploy (no manual overwrite needed), the model prompt cache is fixed and measured, timing marks are on and report medians, the push stream is on, and the server-side owner items that can be done from code are done. What only the owner can do (accounts, credentials, a place to send backups) is written as exact steps in `LAUNCH.md`.
 
-## What passed (live)
-- **Live assistant key no longer expires and has no lifetime budget** (done by the owner's run of the key script on 2026-11-14; verified read-only: expires never, budget none, 4,000,000 tokens and 120 requests a minute).
-
-## Diagnosed (read-only, on the server)
-- **Why every automatic deploy is refused (exit 30).** The installed `/usr/local/sbin/agentai-deploy` is the 1 November version (hash `665e43ca…`); the repository's is newer (`2ba5d839…`). The installed one has no `forget_manual`, so the hand-release record written on 13 November (528 files in the app tree's `RELEASE.json`, 521 in the supervisor's) was never cleared, and every later commit that touches one of those files is counted as "undoing a manual release": 312, 331, 367, then 379 files.
-- **Why manual runs "succeeded" without changing the server.** They were dry runs. The workflow's "Run workflow" form defaults to `dry_run: true`; the server log shows `deploy-dry … dry run passed` for 3157506 and 77e2d46. Nothing was wrong; nothing was deployed.
-- **The supervisor tree is deployed automatically** (step 2 of the deploy program copies the new code over it). What the deploy did not do is restart the lifecycle worker or the supervisor, so new supervisor-side code waited for their next restart.
-
-## Built, not yet proven on the server
-| Item | What | Proof missing |
+## What passed (live), with evidence
+| Item | Result | Evidence |
 |---|---|---|
-| 0.2 | The deploy program now replaces its own installed copy after a successful deploy (`install_self`), so it can never again fall behind the repository; it also restarts `agentai-lifecycle-worker` with the other services. Tests in `tests/test_auto_deploy.py` (now in the blocking list) | One real deploy with the new program |
-| 0.4 | Timing marks are per thread (`timing.py`), so they stay correct when several requests run at once. `deploy/latency_report.py` already exists | `AGENTAI_TIMING=1` on the server and a week of data |
-| 0.1 | PR #39 and this phase's pull request are green | Merge and deploy |
-
-## Not passed
-- **BLOCKED P0-DEPLOY** (owner): merge PR #39 and the Phase 0-1 pull request; install the repository's deploy program once; run the deploy workflow with *Dry run* unticked and *Overwrite manual changes* ticked. Commands: `platform/deploy/PENDING_DEPLOY.md`.
-- **BLOCKED P0-CACHE** (owner, after P0-DEPLOY): remove the `index: -1` cache point from the server's LiteLLM config and restart LiteLLM. Then verify cache reads grow with the conversation.
-- **BLOCKED P0-TIMING** (owner): set `AGENTAI_TIMING=1` in the unit environments.
-- **NOT_RUN P0-PUSH**: the push gateway stays off; the open question (who may read the signing secret) is the owner's. The remaining polling in `Chat.tsx` and `useActivity.ts` was left as it is until the stream is on.
-- **NOT_RUN P0-LATENCY (0.7)**: the history pre-check, the mirror cursor, cold start and runtime start-up were deliberately not changed. The prompt requires a timing baseline first, and the pre-check is on a correctness path (it decides whether another run owns the session).
-- **NOT_RUN P0-OWNER (0.5)**: off-server backup, SSH keys only, Stripe, legal pages, support address, search key, OAuth apps. Unchanged; see `LAUNCH.md`.
+| **0.1 / 0.2 Deploy** | `/var/lib/agentai-deploy/last` equals `origin/main`; the deploy ran without "overwrite manual changes" (the installed deploy program is now the repository's, and it updates its own copy). | Deploys of `1aadbae` and `9acd79c` (and the part 3 release): `deploy.yml` run green, `last` read back from the server; migrations 0040 to 0043 in `schema_migrations`. |
+| **0.3 Prompt cache** | `index: -1` removed from the server's LiteLLM config (backup `litellm.yaml.bak-20261115`), LiteLLM restarted. Cache reads now grow with the conversation. | LiteLLM spend logs, Sonnet calls since 2026-11-12: **before** (189 calls) average **$0.0771** a call, average cache-created 27,602 tokens; **after** (24 calls, the first hours) average **$0.0207** a call, cache-created 5,362, cache-read 18,227. In one live session `cache_read_input_tokens` rose 17,683 → 23,229 → 24,707 → 29,343 → 30,022 → 31,038 → 31,861 across consecutive calls while cache-created stayed at the size of the new turn. About 73 % less per call (small sample; keep watching). |
+| **0.4 Timing** | `AGENTAI_TIMING=1` on the request worker, app, bridge and lifecycle worker (drop-ins); `deploy/latency_report.py --summary` prints median and 90th percentile, cold and warm. | Last 60 requests: warm: waits for its turn 1.5 s median (was 3 s idle sleep), 103 s median to finish (90th percentile 245 s); cold (the cell had to start): 179 s median (cell start about 87 s), 90th percentile 279 s. A week of data keeps collecting; the report is the tool for reading it. |
+| **0.6 Push** | The push gateway is on. A real ticket from the app opened a stream that answered `event: hello` **through the public address** (so nothing in front buffers it). `/v1/push?t=bad` answers 403 from the gateway. `Chat.tsx` and `useActivity.ts` no longer poll fast where the stream is on: Activity events are fetched when the stream says the task changed (30 s safety net), Chat's safety poll is 30 s (3 s without the stream). | Server steps: Caddy `@push` block, `agentai-push` enabled, `AGENTAI_PUSH_PATH=/v1/push`, app restarted; web tests `useActivity.test.tsx`. The secret decision: `/etc/agentai-platform` is now `root:agentai-platform` mode 0710 (traverse only, no listing); `live.secret` (0640) is the only file the push service can read; `accounts.env` and every other file stay root-only (checked as the app user). |
+| **0.7 Latency** | Two of the four items done, two measured and left alone on purpose. **Done:** the history pre-check is skipped when the cell's own turn state shows nothing running in the session (about 2.5 s saved on a warm message); the full-history mirror runs every other 3-second slice once a run has lasted two minutes (the cell has one CPU). **Measured, not used:** the runtime's history `cursor`/delta: on the installed 2026.9.6 a delta page came back **empty while the final reply existed** (found by the real-runtime test), so using it would silently lose replies. **Not changed:** cold start and runtime start-up: the timing marks show where the time goes (cell start about 87 s of the cold 179 s; about 33 s from `chat.send` to the first reply row on a warm cell), and removing any of it means changing the cell image or the runtime, which no measurement here justifies. | `tests/e2e` (24 tests against the real runtime pass), the report above. |
+| **0.5 Owner launch items** | **SSH key-only login done** (`/etc/ssh/sshd_config.d/10-lumina-hardening.conf`: key login still works, password login refused). The rest need the owner's accounts and credentials. | `LAUNCH.md` has the table with the exact step for each. |
 
 ## Decisions taken
-- The deploy program updates itself rather than relying on someone reinstalling it. The commit's code already runs as root during a deploy (`release.py`), so this grants nothing new; a program that does not parse is never installed, and a failed deploy never changes it.
-- The supervisor itself is still not restarted by a deploy: it holds the control socket the cells depend on.
+- The installed deploy program replaces itself after every successful deploy (so it can never again fall behind the repository).
+- The push key's directory is opened to traverse only, not a wider permission change; nothing new can read `accounts.env`.
+- The host supervisor's two ceilings are now settings in the host-owned enrollment policy (`max_cells`, `max_running`), 4 and 4 on this host (were 2 and 1).
 
-## Needs the owner
-1. Merge the two pull requests.
-2. The three server steps above (deploy program install and first real deploy, LiteLLM config, timing).
-3. The push secret decision.
+## Needs the owner (not engineering)
+Off-server backup destination and key, Stripe account and keys, the terms and refund text, a dedicated search key with a spend alert, the OAuth apps if connectors are offered, a support address, and changing the root password from the provider's console. See `LAUNCH.md`.
 
 ## Cost, unknowns, rollback
-No spend. Unknown: whether the first real deploy of 130+ changed files passes its canary on the server (it passed as a dry run for 77e2d46). Rollback: the deploy program rolls the app back itself on failed probes; the supervisor tree goes back with the `ln -sfn` line it prints.
+Model spend of the Phase 0 proofs: about $0.5. Unknown: the cache saving rests on 24 calls so far; a week of spend logs settles it. Rollback: remove `AGENTAI_PUSH_PATH` and restart the app (tabs poll again); the previous release switches back with `release.py`; the supervisor policy file has a `.bak-20261115`.

@@ -316,6 +316,27 @@ On the 4-CPU / 16 GiB server that is about three; 8 CPU / 32 GiB about 8; 16 CPU
   (or stop them), so the older code never sees two cells running at once.
 * **Long replies.** A reply the model cut off at its output limit is continued automatically in the same task, at most three times (`chat_driver.CUTOFF_CONTINUES`); the customer's timeline says so.
 
+## 18b. Plans that run in parallel, change while running, and schedules (roadmap #10, #11, #78)
+
+* **Parallel phases.** A plan whose phases declare `dependsOn` runs every phase whose prerequisites are done: the first in the plan's own chat, the others in **lanes** (hidden child conversations,
+  `conversations.parent_id`, each with its own runtime session), at most three phases at once. A lane takes one of the account's **background slots** (`request_slots.kind='background'`, two per account:
+  `request_queue.BACKGROUND_PER_ACCOUNT`); the customer's own task keeps its interactive slot. A plan with no dependencies runs one phase at a time, as before. Lanes are never listed as chats and their
+  tasks show under the plan's chat. A failed phase stops new phases from starting; running phases go on.
+* **Exact accounting.** The cell's model key has one running total. Every request records it when it starts and ends (`spend_marks`); when requests overlap each stretch of spend is shared equally between
+  the ones running in it (`spend_share.py`), so every cent is charged once. A request that ran alone is charged exactly its end minus its start, as before.
+* **Revising a running plan.** A failed phase, a changed result or the customer's own wish leads to a *proposal*: the assistant returns the whole revised plan, it is checked (phases that are running or finished
+  never change; a failed one may only be switched off and replaced), stored as a difference in `plan_proposals`, and shown in the plan. The customer applies it, or has chosen automatic revision for that plan
+  (`plan_settings`, at most twice, `genui/replan.MAX_AUTO_REPLANS`). Routes: `/v1/blocks/<id>/replan`, `/proposal`, `/auto-replan`.
+* **Schedules and watchers.** `schedule_engine.py` starts scheduled runs once enforcement is proven (`schedules.ENFORCEMENT_PROVEN`, backed by `tests/test_schedule_engine.py`): one run per schedule per local day
+  (`schedule_runs`), a missed run follows the schedule's policy (`run_once` or `skip` within a grace window, never back-filled), the customer's grant expires, a watcher-gated schedule runs only when the watcher saw
+  a change, the run carries the schedule's own time and spending limit and never waits for a person. Nothing runs for customers until the owner switch `customer_schedules` is on (it is off).
+* **Rate limits.** One `RouteLimiter` per (account, route) in the model relay remembers what the provider said (Retry-After, remaining/reset headers) and makes concurrent calls wait once, together, for at most
+  90 s per call; the same waiting applies to a customer's own model key (and is said to be their provider's limit). The time spent waiting is added to the run's own time limit. Connectors will use the same class.
+* **Push.** The task-state stream is on (`agentai-push`, Caddy `@push`, `AGENTAI_PUSH_PATH=/v1/push`). `/etc/agentai-platform` is `root:agentai-platform` mode 0710 so the push service (running as `agentai-platform`)
+  can open the one secret it needs (`live.secret`, mode 0640); every other file in it stays root-only. To turn it off: remove `AGENTAI_PUSH_PATH` from `accounts.env` and restart the app (tabs poll again).
+* **The supervisor's ceilings** (`/etc/agentai-supervisor/enrollment-policy.json`, root, 0600): `max_cells` (cells that may exist: 2 to 39) and `max_running` (cells that may run at once; the host's own hard backstop under
+  the app's live capacity). Both were 2/1 and are 4/4 on this host; raise them when the server grows, then `systemctl restart agentai-supervisor-native`.
+
 ## 19. Experimental "ultrafast" decider (owner testing only, 2026-10-30)
 
 Safety switch `standard_browser` (Safety console, Browser group). ON for everyone by default. Turn it OFF for **your own account** (choose a time limit: it comes back by itself) and your next browser task is decided the jev-ultrafast way instead of the standard way. **Both run on the same sandboxed browser stage and the same loop** (`browse/loop.py`), so every stop and limit applies to both: payment and sign-in stops, human checks, the denied-sites list, address checks, a clean profile each task, step and time limits, budget, Stop and hand-over. The switch only chooses who decides each step (`browse/service_main.py`, `jev_for`). It is read when a task starts. Nobody else can use it: the account id in `/etc/agentai-supervisor/ultrafast-owner` (copied from `AGENTAI_SAFETY_OWNER_ACCOUNT`) must match, and the switch cannot be changed for all users.
