@@ -18,7 +18,19 @@
   "A-NO-LIMIT": {
    "passed": true
   },
+  "A-OUTPUT-CUTOFF": {
+   "passed": true
+  },
+  "A-OWN-KEY-WAIT": {
+   "passed": true
+  },
+  "A-PARALLEL-ACCOUNTS": {
+   "passed": true
+  },
   "A-PLAIN-ANSWER": {
+   "passed": true
+  },
+  "A-PLAN-REVISION": {
    "passed": true
   },
   "A-QUEUE-ORDER": {

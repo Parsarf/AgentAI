@@ -220,6 +220,61 @@ class Acceptance(Base):
         with self.assertRaises(Exception):
             self.chat.queue.get(impostor, sent['id'])
 
+    @case('A-OUTPUT-CUTOFF')
+    def test_a_reply_cut_off_at_the_models_output_limit_is_carried_on_in_the_same_task(self):
+        from agentai_platform.chat_driver import CUTOFF_TEXT
+        self.gateway.script = lambda text, run, gw: ({'text': 'Part one. ', 'stop_reason': 'length'} if text != CUTOFF_TEXT else {'text': 'Part two.'})
+        sent = self.say('write the long report', key='k-cut')
+        for _ in range(4):
+            self.worker.tick()
+        f = self.facts(sent['id'])
+        self.assertEqual((f['request']['state'], f['request']['outcome']), ('completed', 'completed'))
+        self.assertEqual([d['payload'] == CUTOFF_TEXT for d in f['deliveries']], [False, True])      # one automatic continuation, in the same task
+        self.assertEqual(f['replies'], 2)
+        self.assertEqual(f['reservation'][0]['state'], 'settled')
+
+    @case('A-PARALLEL-ACCOUNTS')
+    def test_two_accounts_hold_a_running_slot_at_the_same_time_and_one_without_a_cell_waits(self):
+        with self.store.connect() as con:                                                            # account b exists (no cell yet); give it one, and add c without a cell
+            con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES ('b','op-b','d-b','start','completed','k','h',1)")
+            con.execute("INSERT INTO cell_slots(account_id,deployment_id,operation_id,state) VALUES ('b','d-b','op-b','active')")
+            con.execute("INSERT INTO accounts(id,status) VALUES ('c','active')")
+            con.execute("INSERT INTO memberships VALUES ('c','actor-c','customer','active')")
+            con.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES ('c','d-c',1,'ready')")
+            con.execute("INSERT INTO projects(account_id,id,name) VALUES ('c','p-c','P')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES ('c','p-c','c-c','d-c')")
+            con.execute("INSERT INTO entitlements VALUES ('c','e-c','test-v1','trial',?,datetime(?,'unixepoch'))", (json.dumps({'period_start_epoch': self.now - 100000, 'period_microusd': 10**9, 'daily_microusd': 10**9, 'task_microusd': 5000000, 'max_queued_tasks': 3}), self.now + 10**6))
+        self.say('from a', key='k-a')
+        self.chat.send(Principal('b', 'actor-b', 'customer'), conversation_id='c-b', message='from b', key='k-b')
+        third = self.chat.send(Principal('c', 'actor-c', 'customer'), conversation_id='c-c', message='from c', key='k-c')     # c has no cell up
+        one, two = self.queue.claim(owner='w', capacity=OK), self.queue.claim(owner='w', capacity=OK)
+        self.assertEqual({one.account_id, two.account_id}, {'a', 'b'})                              # both run at the same moment
+        self.assertEqual(self.rows('SELECT count(*) FROM request_slots')[0][0], 2)
+        self.assertIsNone(self.queue.claim(owner='w', capacity=OK))                                  # c waits for its own cell, nothing fails
+        self.assertEqual(self.request(third['id'])['state'], 'waiting')
+
+    @case('A-PLAN-REVISION')
+    def test_a_revision_of_a_running_plan_never_rewrites_a_finished_phase_and_may_replace_a_failed_one(self):
+        from agentai_platform.genui import replan, schema
+        from tests.test_replan import BASE, revised
+        old = schema.validate_plan(BASE)
+        runs = {'a': {'state': 'completed'}, 'b': {'state': 'failed'}, 'c': {'state': 'pending'}}
+        replan.check_against_runs(runs, old, schema.validate_plan(revised()))                        # the failed phase is switched off and replaced: allowed
+        edited = json.loads(json.dumps(BASE)); edited['phases'][0]['description'] = 'rewritten'
+        with self.assertRaises(replan.ReplanRefused):
+            replan.check_against_runs(runs, old, schema.validate_plan(edited))                       # a finished phase is never changed
+
+    @case('A-OWN-KEY-WAIT')
+    def test_the_customers_own_provider_limit_is_waited_for_and_attributed_to_their_provider(self):
+        from tests.test_rate_limits import OwnKey
+        for name in ('test_their_per_minute_limit_is_waited_for_and_said_to_be_theirs', 'test_their_exhausted_quota_is_passed_on_at_once_and_not_waited_for'):
+            check = OwnKey(name)
+            check.setUp()
+            try:
+                getattr(check, name)()
+            finally:
+                check.doCleanups()
+
 
 class RunnerChecks(unittest.TestCase):
     """deploy/acceptance.py: what makes a deploy refuse."""
