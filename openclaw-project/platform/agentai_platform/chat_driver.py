@@ -42,6 +42,10 @@ LIVE_STATES = ('pending', 'acknowledged', 'uncertain')
 KINDS_THAT_START_RUNS = ('turn', 'goal_start', 'goal_resume', 'goal_continue')
 GOAL_OPEN = ('paused', 'blocked', 'budget_limited', 'usage_limited')
 CONTINUE_TEXT = 'Continue pursuing the current goal.'
+CUT_OFF_REASONS = ('length', 'max_tokens')      # the model stopped because it ran out of output, not because it was done (the runtime reports `length`; a provider may say `max_tokens`)
+CUTOFF_CONTINUES = 3                            # how many times one task is carried on automatically after such a stop
+CUTOFF_TEXT = ('Your last reply stopped because it reached the length limit, not because you were done. Carry on exactly where it stopped: do not repeat anything already written or '
+               'saved, and for a long document or file add the next part instead of starting again.')
 RETRY_NOTE = ('This is a retry of an earlier attempt that did not finish. Look at this conversation first, see what was already done (files written, pages visited, '
               'items added) and do not repeat an action that already happened; carry on from there.')
 
@@ -487,7 +491,31 @@ class ChatDriver:
                 self.sleep(self.pause)
                 continue
             self._end_delivery(claim, delivery, result)
+            self._continue_after_cutoff(claim, delivery, result, seen)
         return self._finish(claim, gateway, {**info, 'session': session})
+
+    def _continue_after_cutoff(self, claim, delivery, result, seen):
+        """A reply that ended because the model hit its output limit is not a finished task: ask it to carry on from where it stopped, in the same session and the same task
+        (so the customer's own limits, the stop button and the time limit all still apply), at most CUTOFF_CONTINUES times. The next input is an ordinary durable delivery, so a
+        restart in between recovers it like any other."""
+        run = delivery['native_run_id'] or delivery['idempotency_key']
+        if result.get('status') != 'ok' or not any(k[0] == 'stop' and k[1] == run and k[2] in CUT_OFF_REASONS for k in seen):
+            return
+        with self.coordinator.transaction() as con:
+            used = con.execute('SELECT count(*) FROM chat_deliveries WHERE account_id=? AND request_id=? AND payload=?', (claim.account_id, claim.request_id, CUTOFF_TEXT)).fetchone()[0]
+            if used >= CUTOFF_CONTINUES:
+                again = False
+            else:
+                again = True
+                attempt = con.execute('SELECT coalesce(max(attempt),0)+1 FROM chat_deliveries WHERE account_id=? AND request_id=?', (claim.account_id, claim.request_id)).fetchone()[0]
+                key, now = f'{claim.request_id}-a{attempt}', int(self.clock())
+                con.execute('''INSERT INTO chat_deliveries(account_id,request_id,attempt,idempotency_key,payload_hash,state,native_operation_id,created_epoch,updated_epoch,kind,goal_issued_ms,payload)
+                    VALUES (?,?,?,?,?,'pending',?,?,?,'turn',NULL,?)''', (claim.account_id, claim.request_id, attempt, key, hashlib.sha256(CUTOFF_TEXT.encode()).hexdigest(), key, now, now, CUTOFF_TEXT))
+        timing.mark(claim.request_id, 'cutoff', continued=again)
+        if again:
+            self._emit(claim, 'progress', {'summary': 'The reply reached the assistant\'s length limit. Carrying on where it stopped.', 'step': 'working'}, 'gateway')
+        else:
+            self._emit(claim, 'progress', {'summary': 'The reply reached the length limit several times. Ask the assistant to continue if there is more to do.', 'step': 'working'}, 'gateway')
 
     def _reassert(self, claim, gateway, session):
         """Present every live input to the runtime again. Safe by construction: the idempotency key is the run id, so an input the runtime still has (or already finished) answers
@@ -547,6 +575,9 @@ class ChatDriver:
         keys = {d['idempotency_key'] for d in deliveries}
         mine = lambda row: row.get('run_id') in runs or row.get('after') in keys         # a steered input's reply has a run id of its own: it is tied to the input it follows
         rows = [r for r in page['messages'] if r['role'] == 'agent' and mine(r)]
+        for run_id, reason in {r.get('run_id'): r.get('stop_reason') for r in rows if r.get('run_id') and r.get('stop_reason')}.items():     # why each run's LAST reply ended (rows are in order)
+            seen.difference_update({k for k in seen if k[0] == 'stop' and k[1] == run_id})
+            seen.add(('stop', run_id, reason))
         with self.coordinator.transaction() as con:
             added = self._absorb(con, claim, rows)
         if added:

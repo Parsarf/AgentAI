@@ -79,9 +79,11 @@ def outcome_of(row):
     return outcome, verification, note
 
 
-def label_of(phase, row, *, activity=None, waiting_on=None, ahead=None) -> str:
+def label_of(phase, row, *, activity=None, waiting_on=None, ahead=None, wait=None) -> str:
     """The one line of status, from a fixed vocabulary."""
     if phase == 'queued':
+        if wait == 'assistant' and ahead:
+            return 'Waiting for a free assistant'
         return 'Next in line' if ahead == 0 else 'Queued'
     if phase == 'paused':
         return 'Paused'
@@ -326,8 +328,8 @@ class WorkReader:
     def _ahead(con, row):
         if row['state'] != 'waiting' or row['paused']:
             return None
-        busy = con.execute('SELECT count(*) FROM request_slot').fetchone()[0]
-        return busy + con.execute("SELECT count(*) FROM customer_requests WHERE state='waiting' AND paused=0 AND sequence<?", (row['sequence'],)).fetchone()[0]
+        from .request_queue import RequestQueue       # one definition of "how many are ahead": the pool-aware one
+        return RequestQueue._ahead(con, row)
 
     @staticmethod
     def _step_counts(con, account):
@@ -346,6 +348,8 @@ class WorkReader:
         now = [{'key': r['key'], 'category': r['category'], 'label': DOING.get(r['category'], DOING['other']), 'detail': r['detail']} for r in running]
         activity = now[-1] if now else None
         ahead = self._ahead(con, row)
+        from .request_queue import RequestQueue
+        wait = RequestQueue.wait_reason(con, row)
         outcome, verification, note = outcome_of(row)
         controls = controls_of(row)
         attention = None
@@ -357,12 +361,12 @@ class WorkReader:
             attention = 'approval'
         elif controls['goal_resume']:
             attention = 'goal'
-        label, tone = label_of(phase, row, activity=activity, waiting_on=waiting_on, ahead=ahead), tone_of(phase, row)
+        label, tone = label_of(phase, row, activity=activity, waiting_on=waiting_on, ahead=ahead, wait=wait), tone_of(phase, row)
         if phase == 'ended' and attention == 'approval':           # the run is over but its question is not: say what is open, not "Done"
             label, tone = NEEDS['approval'], 'attention'
         return {'id': row['id'], 'conversation_id': row['conversation_id'], 'title': self._title(con, row), 'follows': self._follows(row), 'created_epoch': row['created_epoch'],
                 'state': row['state'], 'phase': phase, 'label': label, 'tone': tone,
-                'activity': activity, 'now': now, 'ahead': ahead, 'attention': attention, 'attention_label': NEEDS.get(attention, '') if attention else '',
+                'activity': activity, 'now': now, 'ahead': ahead, 'wait': wait, 'attention': attention, 'attention_label': NEEDS.get(attention, '') if attention else '',
                 'outcome': outcome, 'verification': verification, 'note': note, 'goal': bool(row['goal_mode']), 'continuing': bool(row['continue_goal']), 'retry_of': row['retry_of'],
                 'controls': controls, 'needs': needs, 'steps': steps if steps is not None else sum(1 for r in rows or [] if r['kind'] == 'tool')}
 

@@ -60,27 +60,49 @@ class LifecycleChecks(unittest.TestCase):
         self.create('a');self.create('b')
         self.assertNotEqual(self.cell('a')['tenant_ref'],self.cell('b')['tenant_ref'])
         with self.assertRaises(Conflict):self.request('create','c')
-    def test_single_global_slot_and_stop_before_switch(self):
+    def test_cells_run_side_by_side_by_default(self):
         self.create('a');self.create('b');a=self.request('start','a');b=self.request('start','b')
-        self.assertTrue(self.execute(a,'a'));self.assertFalse(self.execute(b,'b'))
-        self.assertTrue(self.execute(self.request('stop','a'),'a'));self.assertTrue(self.execute(b,'b'))
+        self.assertTrue(self.execute(a,'a'));self.assertTrue(self.execute(b,'b'))
+        self.assertEqual(self.cell('a')['observed_state'],'running');self.assertEqual(self.cell('b')['observed_state'],'running')
+        with self.store.connect() as con:self.assertEqual(con.execute('SELECT count(*) FROM cell_slots').fetchone()[0],2)
+    def test_an_owner_ceiling_makes_the_next_start_wait_until_a_cell_stops(self):
+        with patch('agentai_platform.lifecycle.coordinator.max_running_cells',lambda:1):
+            self.create('a');self.create('b');a=self.request('start','a');b=self.request('start','b')
+            self.assertTrue(self.execute(a,'a'));self.assertFalse(self.execute(b,'b'))
+            with self.store.connect() as con:
+                self.assertEqual(con.execute("SELECT error_code FROM lifecycle_details WHERE operation_id=?",(b['id'],)).fetchone()[0],'capacity_wait')
+            self.assertTrue(self.execute(self.request('stop','a'),'a'));self.assertTrue(self.execute(b,'b'))
         self.assertEqual(self.cell('a')['observed_state'],'stopped');self.assertEqual(self.cell('b')['observed_state'],'running')
-    def test_racing_workers_only_one_claim(self):
-        self.create('a');self.create('b');ops={a:self.request('start',a)['id'] for a in ['a','b']}
-        barrier=threading.Barrier(2);results=[];errors=[]
-        def worker(a):
-            try:
-                barrier.wait();results.append(self.engine.claim(a,ops[a],owner=a,capacity=CAPACITY))
-            except Exception as exc:errors.append(exc)
-        threads=[threading.Thread(target=worker,args=(a,)) for a in ['a','b']]
-        for t in threads:t.start()
-        for t in threads:t.join(5)
-        self.assertFalse(errors);self.assertEqual(sum(x is not None for x in results),1)
+    def test_a_full_host_still_lets_a_cell_stop(self):
+        """A stop is how room is made: it must not be refused because the host has no room."""
+        self.create('a');a=self.request('start','a');self.assertTrue(self.execute(a,'a'))
+        full=CapacityResult(0,0,0,0,0,('memory_exhausted','cpu_exhausted'))
+        stop=self.request('stop','a');self.assertTrue(self.engine.run(self.driver,'a',stop['id'],capacity=full))
+        self.assertEqual(self.cell('a')['observed_state'],'stopped')
+    def test_a_full_host_makes_a_new_start_wait_without_harm(self):
+        self.create('a');a=self.request('start','a')
+        full=CapacityResult(0,0,0,0,0,('memory_exhausted',))
+        self.assertFalse(self.engine.run(self.driver,'a',a['id'],capacity=full))
+        self.assertEqual(self.cell('a')['observed_state'],'stopped')
+        self.assertTrue(self.execute(a,'a'))
+    def test_racing_workers_only_one_claim_under_a_ceiling(self):
+        with patch('agentai_platform.lifecycle.coordinator.max_running_cells',lambda:1):
+            self.create('a');self.create('b');ops={a:self.request('start',a)['id'] for a in ['a','b']}
+            barrier=threading.Barrier(2);results=[];errors=[]
+            def worker(a):
+                try:
+                    barrier.wait();results.append(self.engine.claim(a,ops[a],owner=a,capacity=CAPACITY))
+                except Exception as exc:errors.append(exc)
+            threads=[threading.Thread(target=worker,args=(a,)) for a in ['a','b']]
+            for t in threads:t.start()
+            for t in threads:t.join(5)
+            self.assertFalse(errors);self.assertEqual(sum(x is not None for x in results),1)
     def test_unknown_outcome_reconciles_without_repeating_effect(self):
-        self.create('a');self.create('b');op=self.request('start');self.driver.fail_after=True
-        with self.assertRaises(TimeoutError):self.execute(op)
-        self.assertEqual(self.cell()['observed_state'],'unknown')
-        self.assertFalse(self.execute(self.request('start','b'),'b'))
+        with patch('agentai_platform.lifecycle.coordinator.max_running_cells',lambda:1):
+            self.create('a');self.create('b');op=self.request('start');self.driver.fail_after=True
+            with self.assertRaises(TimeoutError):self.execute(op)
+            self.assertEqual(self.cell()['observed_state'],'unknown')
+            self.assertFalse(self.execute(self.request('start','b'),'b'))     # the uncertain cell still holds its place under the ceiling
         with self.assertRaises(Conflict):self.engine.retry(Principal('a','1','operator'),op['id'])
         count=self.driver.effects;self.assertTrue(self.engine.reconcile(self.driver,'a',op['id']))
         self.assertEqual(self.driver.effects,count);self.assertEqual(self.cell()['observed_state'],'running')
@@ -89,7 +111,7 @@ class LifecycleChecks(unittest.TestCase):
         self.now+=61
         self.assertIsNone(self.engine.claim('a',op['id'],owner='new',capacity=CAPACITY))
         self.assertFalse(self.engine.reconcile(self.driver,'a',op['id']))
-        with self.store.connect() as con:self.assertEqual(con.execute('SELECT state FROM lifecycle_slot').fetchone()[0],'uncertain')
+        with self.store.connect() as con:self.assertEqual(con.execute('SELECT state FROM cell_slots').fetchone()[0],'uncertain')
         receipt=self.driver.execute(claim)
         self.assertFalse(self.engine.finish(claim,receipt))
         self.assertTrue(self.engine.reconcile(self.driver,'a',op['id']))

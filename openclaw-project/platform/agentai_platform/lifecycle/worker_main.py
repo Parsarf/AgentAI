@@ -17,7 +17,7 @@ from agentai_platform.switches import SwitchStore
 
 from agentai_platform.bridge_client import BridgeRpc
 
-from .profiles import host_capacity
+from .profiles import host_capacity_for
 from .supervisor_transport import SocketDriver
 from .worker import LifecycleWorker
 
@@ -58,7 +58,8 @@ def main():
         return bool(reply.get('running')) and isinstance(primary, str) and not compatible
 
     switches = SwitchStore(args.switches_file or None, facts_path=args.switch_facts_file or None)
-    worker = LifecycleWorker(Store(args.db), SocketDriver(args.socket, timeout_seconds=600), host_capacity,
+    db_store = Store(args.db)
+    worker = LifecycleWorker(db_store, SocketDriver(args.socket, timeout_seconds=600), host_capacity_for(db_store),
                              idle_after=args.idle_after, backup_max_age=20 * 3600,
                              wake=lambda: switches.is_on('customer_execution'), observe=observe, events=EventService(Store(args.db)), stale=stale)
     while True:

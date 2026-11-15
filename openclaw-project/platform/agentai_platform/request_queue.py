@@ -100,9 +100,24 @@ class RequestQueue:
     @staticmethod
     def _ahead(c,row):
         if row['state']!='waiting' or row['paused']:return None
-        busy=c.execute('SELECT count(*) FROM request_slot').fetchone()[0]
-        return busy+c.execute("SELECT count(*) FROM customer_requests WHERE state='waiting' AND paused=0 AND sequence<?",(row['sequence'],)).fetchone()[0]
-    def _view(self,c,row):return self._public(row,self._ahead(c,row))
+        # Ahead of this task: the same account's running task and earlier waiting tasks (one task runs per account at a time), plus, only while no
+        # cell is free for this account, the earlier waiting tasks of other accounts. Other accounts' running tasks do not stand in its way.
+        own=c.execute("SELECT count(*) FROM request_slots WHERE account_id=?",(row['account_id'],)).fetchone()[0]
+        own+=c.execute("SELECT count(*) FROM customer_requests WHERE account_id=? AND state='waiting' AND paused=0 AND sequence<?",(row['account_id'],row['sequence'])).fetchone()[0]
+        if c.execute("SELECT 1 FROM cell_slots WHERE account_id=? AND state='active'",(row['account_id'],)).fetchone():return own
+        if not c.execute("SELECT 1 FROM lifecycle_details d JOIN operations o ON o.account_id=d.account_id AND o.id=d.operation_id WHERE d.account_id=? AND d.error_code='capacity_wait' AND o.state='pending'",(row['account_id'],)).fetchone():return own
+        return own+c.execute("SELECT count(*) FROM customer_requests WHERE state='waiting' AND paused=0 AND account_id!=? AND sequence<?",(row['account_id'],row['sequence'])).fetchone()[0]
+    @staticmethod
+    def wait_reason(c,row):
+        """Why a waiting task is not running: 'your_task' (the account's own task holds its place), 'assistant' (waiting for a free assistant: the host is full or the cell is waking), or None."""
+        if row['state']!='waiting' or row['paused']:return None
+        if c.execute("SELECT 1 FROM request_slots WHERE account_id=?",(row['account_id'],)).fetchone():return 'your_task'
+        if c.execute("SELECT 1 FROM customer_requests WHERE account_id=? AND state='waiting' AND paused=0 AND sequence<?",(row['account_id'],row['sequence'])).fetchone():return 'your_task'
+        return 'assistant'
+    def _view(self,c,row):
+        view=self._public(row,self._ahead(c,row))
+        view['wait']=self.wait_reason(c,row)      # 'your_task' | 'assistant' | None: what a waiting task is waiting for, in words the web app can say honestly
+        return view
     def get(self,principal,request=None):
         with self.store.connect() as c:
             self.store._authorize(c,principal)
@@ -128,7 +143,7 @@ class RequestQueue:
         """Repair only never-dispatched cancellations; never release uncertain usage."""
         if c.execute('SELECT 1 FROM chat_deliveries WHERE account_id=? AND request_id=?', (account,request)).fetchone():
             return False
-        if c.execute('SELECT 1 FROM request_slot WHERE account_id=? AND request_id=?', (account,request)).fetchone():
+        if c.execute('SELECT 1 FROM request_slots WHERE account_id=? AND request_id=?', (account,request)).fetchone():
             return False
         task=c.execute('SELECT state FROM tasks WHERE account_id=? AND id=?', (account,request)).fetchone()
         if task and task['state']!='queued':
@@ -197,32 +212,44 @@ class RequestQueue:
     def mark_retry(self,principal,request,source):
         with self.coordinator.transaction() as c:
             c.execute('UPDATE customer_requests SET retry_of=? WHERE account_id=? AND id=? AND retry_of IS NULL',(source,principal.account_id,request))
-    def claim(self,*,owner,capacity,lease_seconds=60):
+    def claim(self,*,owner,capacity,lease_seconds=60,exclude=()):
+        """Give the next waiting task a running slot.
+
+        Several tasks run at once, one per account: the oldest waiting task of an account that has no running task and whose own cell is up. Across accounts the
+        order is fair: the account served longest ago goes first, so one customer's queue cannot starve another's. `exclude` are accounts the caller is already
+        running something for in another thread. Tasks of accounts whose cell is not up wait; the lifecycle worker wakes cells as the host's capacity allows."""
         identifier(owner)
         if type(lease_seconds) is not int or not 1<=lease_seconds<=120:raise ValueError('invalid lease')
         with self.coordinator.transaction() as c:
-            slot=c.execute('SELECT * FROM request_slot WHERE id=1').fetchone()
-            if slot:
-                c.execute("UPDATE customer_requests SET state='uncertain' WHERE account_id=? AND id=? AND state IN ('starting','running') AND lease_until<=?",(slot['account_id'],slot['request_id'],int(self.clock())))
-                return None
-            if capacity.admitted_slots<1 or capacity.blockers:return None
-            # Skip requests whose author/account was revoked while they waited.
+            now=int(self.clock())
+            # A slot whose lease ran out is uncertain; it keeps its slot (its account stays blocked) until it is reconciled.
+            c.execute("""UPDATE customer_requests SET state='uncertain' WHERE state IN ('starting','running') AND lease_until<=? AND parked_reason IS NULL
+                AND EXISTS (SELECT 1 FROM request_slots s WHERE s.account_id=customer_requests.account_id AND s.request_id=customer_requests.id)""",(now,))
+            # Only host-wide blockers stop a claim (stale measurement, isolation not verified). A full host does not: the cell this task runs on is already up.
+            blockers=[b for b in capacity.blockers if not (self.require_cell and b in ('memory_exhausted','cpu_exhausted','pids_exhausted'))]
+            if blockers:return None
+            if not self.require_cell and capacity.admitted_slots<1:return None
+            skip=set(exclude)
             while True:
-                # An account whose run is parked on a person has one execution already: its next request waits (same session lane, same cell), the others go on.
-                row=c.execute("""SELECT * FROM customer_requests r WHERE state='waiting' AND paused=0 AND NOT EXISTS
-                    (SELECT 1 FROM customer_requests p WHERE p.account_id=r.account_id AND p.state='running' AND p.parked_reason IS NOT NULL) ORDER BY sequence LIMIT 1""").fetchone()
+                # An account whose run is parked on a person has one execution already: its next request waits (same session lane, same cell). An account that already
+                # runs a task, or holds an uncertain one, waits for it.
+                rows=c.execute("""SELECT r.* FROM customer_requests r WHERE r.state='waiting' AND r.paused=0
+                    AND NOT EXISTS (SELECT 1 FROM customer_requests p WHERE p.account_id=r.account_id AND p.state='running' AND p.parked_reason IS NOT NULL)
+                    AND NOT EXISTS (SELECT 1 FROM request_slots s WHERE s.account_id=r.account_id)
+                    AND NOT EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state!='active')
+                    AND (?=0 OR EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state='active'))
+                    ORDER BY coalesce((SELECT max(q.claimed_epoch) FROM customer_requests q WHERE q.account_id=r.account_id),0),r.sequence LIMIT 25""",(1 if self.require_cell else 0,)).fetchall()
+                row=next((r for r in rows if r['account_id'] not in skip),None)
                 if not row:return None
                 authorized=c.execute("SELECT 1 FROM accounts a JOIN memberships m ON m.account_id=a.id WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.status='active' AND m.role='customer'",(row['account_id'],row['actor_id'])).fetchone()
                 if authorized:break
+                # Skip requests whose author/account was revoked while they waited.
                 c.execute("UPDATE customer_requests SET state='cancelled' WHERE account_id=? AND id=?",(row['account_id'],row['id']))
                 self._cancel_unstarted(c,row['account_id'],row['id'])
                 self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_revoked','completed')
-            cell_slot=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
-            if cell_slot and (cell_slot['account_id']!=row['account_id'] or cell_slot['state']!='active'):return None
-            if self.require_cell and not cell_slot:return None
-            c.execute('INSERT INTO request_slot VALUES (1,?,?)',(row['account_id'],row['id']))
+            c.execute('INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES (?,?,?,?)',(row['account_id'],row['id'],'interactive',now))
             fence=row['fence']+1
-            c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=? WHERE account_id=? AND id=?",(fence,owner,int(self.clock())+lease_seconds,row['account_id'],row['id']))
+            c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=?,claimed_epoch=? WHERE account_id=? AND id=?",(fence,owner,now+lease_seconds,now,row['account_id'],row['id']))
             self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_claim','pending')
             return RequestClaim(row['account_id'],row['id'],row['project_id'],row['actor_id'],row['message'],fence,owner,row['conversation_id'])
     def _fenced(self,c,claim):
@@ -254,9 +281,9 @@ class RequestQueue:
             row=self._fenced(c,claim)
             if not reconciled and (row['state']=='uncertain' or row['lease_until']<=self.clock()):
                 c.execute("UPDATE customer_requests SET state='uncertain' WHERE account_id=? AND id=?",(claim.account_id,claim.request_id));return False
-            held=c.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
-            # The cell may stay up for the same account (idle sleep stops it later); anything else must stop first.
-            if held and not (self.require_cell and held['account_id']==claim.account_id and held['state']=='active'):raise Conflict('agent cell must stop before handoff')
+            held=c.execute('SELECT account_id,state FROM cell_slots WHERE account_id=?',(claim.account_id,)).fetchone()
+            # The cell may stay up for the same account (idle sleep stops it later); a cell that is still starting or in doubt must settle first.
+            if held and not (self.require_cell and held['state']=='active'):raise Conflict('agent cell must stop before handoff')
             reservation=c.execute('SELECT state FROM task_reservations WHERE account_id=? AND task_id=?',(claim.account_id,claim.request_id)).fetchone()
             if reservation and reservation[0] in {'active','uncertain'}:raise Conflict('usage must reconcile before handoff')
             c.execute('UPDATE customer_requests SET state=?,result=?,outcome=?,outcome_note=?,verification=?,continue_goal=?,parked_reason=NULL,closing=1 WHERE account_id=? AND id=?',
@@ -264,7 +291,7 @@ class RequestQueue:
             if not receipt.continue_goal:
                 self._terminal_notice(c, row, receipt.outcome or receipt.state,
                                       receipt.public_result if receipt.state == 'failed' else receipt.outcome_note or receipt.public_result)
-            c.execute('DELETE FROM request_slot WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
+            c.execute('DELETE FROM request_slots WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
             self.coordinator._audit(c,claim.account_id,'worker',claim.request_id,'request_finish','completed')
             return True
     def run_once(self,driver,*,owner,capacity):
@@ -290,7 +317,7 @@ class RequestQueue:
             row=self._fenced(c,claim)
             if row['state']=='uncertain':raise Conflict('lease expired; reconcile before parking')
             c.execute("UPDATE customer_requests SET state='running',parked_reason=?,parked_epoch=coalesce(parked_epoch,?),lease_until=? WHERE account_id=? AND id=?",(reason,int(self.clock()),int(self.clock())+60,claim.account_id,claim.request_id))
-            c.execute('DELETE FROM request_slot WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
+            c.execute('DELETE FROM request_slots WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
             # A task waiting on a person counts as pending work for the cell's idle sleep: the cell is not stopped under it.
             c.execute("UPDATE tasks SET state='waiting_for_approval' WHERE account_id=? AND id=? AND state='running'",(claim.account_id,claim.request_id))
             self.coordinator._audit(c,claim.account_id,'worker',claim.request_id,'request_park','completed')
@@ -299,7 +326,7 @@ class RequestQueue:
             row=self._fenced(c,claim)
             if row['state']=='uncertain':raise Conflict('lease expired; reconcile before deferring')
             c.execute("UPDATE customer_requests SET state='waiting',lease_owner=NULL,lease_until=NULL WHERE account_id=? AND id=?",(claim.account_id,claim.request_id))
-            c.execute('DELETE FROM request_slot WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
+            c.execute('DELETE FROM request_slots WHERE account_id=? AND request_id=?',(claim.account_id,claim.request_id))
             c.execute("UPDATE tasks SET state='queued' WHERE account_id=? AND id=? AND state='running'",(claim.account_id,claim.request_id))
             self.coordinator._audit(c,claim.account_id,'worker',claim.request_id,'request_defer','completed')
     def parked(self):
@@ -314,8 +341,10 @@ class RequestQueue:
             row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(claim.account_id,claim.request_id)).fetchone()
             if not row or row['state']!='running' or row['parked_reason'] is None:return None
             if need_slot:
-                if c.execute('SELECT 1 FROM request_slot').fetchone():return None
-                c.execute('INSERT INTO request_slot VALUES (1,?,?)',(claim.account_id,claim.request_id))
+                # It runs again, so it needs its account's one slot (another task of the same account may hold it) and its cell up.
+                if c.execute('SELECT 1 FROM request_slots WHERE account_id=?',(claim.account_id,)).fetchone():return None
+                if self.require_cell and not c.execute("SELECT 1 FROM cell_slots WHERE account_id=? AND state='active'",(claim.account_id,)).fetchone():return None
+                c.execute("INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES (?,?,'interactive',?)",(claim.account_id,claim.request_id,int(self.clock())))
             c.execute("UPDATE tasks SET state='running' WHERE account_id=? AND id=? AND state='waiting_for_approval'",(claim.account_id,claim.request_id))
             fence=row['fence']+1
             # A request that carries on (need_slot) starts a new wait the next time it parks; one taken back only to be closed keeps the time it parked, which is what the park limit is measured from.

@@ -117,6 +117,16 @@ The tool shows you the first page of what it made. Look at it and fix what is wr
 the file with a new version. That is also how you change a file you made earlier: edit your source and deliver again.
 
 If a format cannot be made, say so plainly and offer the nearest one that can.
+
+## Long documents, many files and big tables
+
+One reply can only hold so much: a long file written in a single step can be cut off in the middle. So write anything large in parts. Create the file with
+the first section, then add the next section to the end of it, one section at a time; for a report of many pages that is a handful of sections, for a table of
+thousands of rows it is a few thousand rows at a time. After each part, update the task checklist, so the customer sees the progress and you know where you are.
+For a project of several files, finish one file before starting the next and keep a short `tmp/progress.md` that says which are done.
+
+If you are asked to carry on after a stop, first look at what is already in the workspace and continue from the last complete part. Never start a file again
+that already has parts, and never repeat what is already written.
 '''
 
 INTEGRATIONS = '''# Connecting and using outside services

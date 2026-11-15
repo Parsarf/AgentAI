@@ -137,6 +137,22 @@ class LifecycleWorker:
         with self.store.connect() as con:
             return {r[0] for r in con.execute("SELECT DISTINCT account_id FROM customer_requests WHERE state='waiting' AND paused=0")}
 
+    def _pressure(self, waiting):
+        """True when a waiting customer has no running cell and no cell can be added now."""
+        if not waiting:
+            return False
+        with self.store.connect() as con:
+            have = {r[0] for r in con.execute("SELECT account_id FROM cell_slots")}
+        if not (waiting - have):
+            return False
+        try:
+            cap = self.capacity()
+        except Exception:
+            return False
+        from .capacity import max_running_cells
+        ceiling = max_running_cells()
+        return cap.admitted_slots < 1 or bool(cap.blockers) or (ceiling is not None and len(have) >= ceiling)
+
     def _stale_cell(self, account, now):
         """At most one restart per cooldown: if a start cannot bring the config up to date, the cell must not be put to sleep after every message."""
         if self.stale is None or now - self._stale_at.get(account, -1e12) < self.stale_cooldown:
@@ -171,9 +187,14 @@ class LifecycleWorker:
         now = self.clock()
         report['realigned'] = self.realign(now)
         waiting = self.waiting_accounts() if self._wake() else set()
-        for facts, generation in self.facts():
-            # Another account's request is waiting for the one cell slot: hand over after a short idle.
-            idle = self.handover_idle if waiting - {facts.account_id} else self.idle_after
+        # Handover only under pressure: some waiting account has no running cell and the host has no room for another (capacity or the owner's ceiling).
+        # Then the cell idle longest (and only one per tick) is released after a short idle; otherwise cells keep the normal idle time.
+        pressured = self._pressure(waiting)
+        handed = False
+        for facts, generation in sorted(self.facts(), key=lambda fg: fg[0].last_activity_epoch):
+            idle = self.idle_after
+            if pressured and not handed and facts.account_id not in waiting:
+                idle = self.handover_idle
             stale = self._stale_cell(facts.account_id, now)
             if stale:
                 idle = 0   # still needs the same drain point (nothing running, queued or awaiting approval); only the idle wait is skipped, so the next wake reconfigures it
@@ -182,6 +203,8 @@ class LifecycleWorker:
                     self.coordinator.request_system(facts.account_id, key=f'idle-{generation}-{int(facts.last_activity_epoch)}',
                                                     generation=generation)
                     report['drained'] += 1
+                    if pressured and idle == self.handover_idle:
+                        handed = True
                     if stale:
                         self._stale_at[facts.account_id] = now
                 except (Conflict, NotFound):

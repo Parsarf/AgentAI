@@ -25,14 +25,15 @@ class SerialQueueChecks(unittest.TestCase):
     def submit(self,a=None,key='r1',message='private request'):return self.q.submit(a or self.a,message=message,key=key)
     def claim(self,owner='worker'):return self.q.claim(owner=owner,capacity=CAPACITY)
     def receipt(self,claim,**kw):return RequestReceipt(claim.account_id,claim.request_id,claim.fence,'completed','Public final result',True,**kw)
-    def test_fifo_serial_handoff_and_restart(self):
-        a=self.submit();b=self.submit(self.b);claim=self.claim();self.assertEqual(claim.request_id,a['id'])
-        self.assertIsNone(self.claim('second'));self.q.heartbeat(claim)
+    def test_one_task_per_account_in_order_accounts_side_by_side_and_restart(self):
+        a1=self.submit(key='a1');a2=self.submit(key='a2');b=self.submit(self.b);claim=self.claim();self.assertEqual(claim.request_id,a1['id'])
+        other=self.claim('second');self.assertEqual(other.request_id,b['id'])                # another account's task runs beside it
+        self.assertIsNone(self.claim('third'));self.q.heartbeat(claim)                       # a2 waits for its own account's running task
         restarted=RequestQueue(self.store,clock=lambda:self.now)
         self.assertIsNone(restarted.claim(owner='new',capacity=CAPACITY))
-        self.q.finish(claim,self.receipt(claim));self.assertEqual(self.claim().request_id,b['id'])
-    def test_racing_workers_cannot_claim_two(self):
-        self.submit();self.submit(self.b);barrier=threading.Barrier(2);results=[];errors=[]
+        self.q.finish(claim,self.receipt(claim));self.assertEqual(self.claim().request_id,a2['id'])
+    def test_racing_workers_cannot_claim_two_for_one_account(self):
+        self.submit(key='r1');self.submit(key='r2');barrier=threading.Barrier(2);results=[];errors=[]
         def worker(name):
             try:barrier.wait();results.append(self.claim(name))
             except Exception as e:errors.append(e)
@@ -47,31 +48,40 @@ class SerialQueueChecks(unittest.TestCase):
         with self.assertRaises(NotFound):self.q.cancel(self.b,a['id'])
         self.assertEqual(self.q.cancel(self.a,a['id'])['state'],'cancelled');self.assertIsNone(self.claim())
     def test_running_cancel_does_not_release_slot(self):
-        a=self.submit();self.submit(self.b);claim=self.claim()
+        a=self.submit();a2=self.submit(key='a2');claim=self.claim()
         self.assertEqual(self.q.cancel(self.a,a['id'])['state'],'starting')
-        self.assertTrue(self.q.heartbeat(claim));self.assertIsNone(self.claim())
-        self.q.finish(claim,replace(self.receipt(claim),state='cancelled'));self.assertEqual(self.claim().account_id,'b')
+        self.assertTrue(self.q.heartbeat(claim));self.assertIsNone(self.claim())            # the account's slot is still held: its next task waits
+        self.q.finish(claim,replace(self.receipt(claim),state='cancelled'));self.assertEqual(self.claim().request_id,a2['id'])
     def test_expired_uncertain_no_blind_retry(self):
-        self.submit();self.submit(self.b);claim=self.claim();self.now+=61
-        self.assertIsNone(self.claim());self.assertEqual(self.q.get(self.a,claim.request_id)['state'],'uncertain')
+        self.submit();self.submit(self.b);a2=self.submit(key='a2');claim=self.claim();self.now+=61
+        self.assertEqual(self.claim().account_id,'b')                                        # the other account goes on
+        self.assertEqual(self.q.get(self.a,claim.request_id)['state'],'uncertain')
+        self.assertIsNone(self.claim())                                                      # the uncertain task keeps its account's slot: no blind second run
         self.assertFalse(self.q.finish(claim,self.receipt(claim)))
         class ReadReceipt:
             def reconcile(s,c):return self.receipt(c)
-        self.assertTrue(self.q.reconcile(ReadReceipt(),claim));self.assertEqual(self.claim().account_id,'b')
+        self.assertTrue(self.q.reconcile(ReadReceipt(),claim));self.assertEqual(self.claim().request_id,a2['id'])
     def test_forged_receipt_undrained_runtime_and_late_completion_denied(self):
         self.submit();claim=self.claim();receipt=self.receipt(claim)
         for bad in [replace(receipt,account_id='b'),replace(receipt,quiesced=False)]:
             with self.assertRaises(Conflict):self.q.finish(claim,bad)
         self.q.finish(claim,receipt)
         with self.assertRaises(Conflict):self.q.finish(claim,receipt)
-    def test_queue_position_counts_the_running_task_and_earlier_waiting_tasks_of_any_account(self):
+    def test_queue_position_counts_the_accounts_own_tasks_and_only_waits_on_others_when_the_host_is_full(self):
         a1 = self.submit(key='a1'); b1 = self.submit(self.b, key='b1'); a2 = self.submit(key='a2')
         ahead = lambda who, r: self.q.get(who, r['id'])['ahead']
-        self.assertEqual([ahead(self.a, a1), ahead(self.b, b1), ahead(self.a, a2)], [0, 1, 2])
-        claim = self.claim()                                                      # a1 now holds the slot
-        self.assertEqual([ahead(self.a, a1), ahead(self.b, b1), ahead(self.a, a2)], [None, 1, 2])
-        self.assertEqual([r['ahead'] for r in self.q.get(self.a)], [2, None])       # the list carries it too (newest first)
-        self.q.finish(claim, self.receipt(claim)); self.assertEqual([ahead(self.b, b1), ahead(self.a, a2)], [0, 1])
+        self.assertEqual([ahead(self.a, a1), ahead(self.b, b1), ahead(self.a, a2)], [0, 0, 1])      # b does not wait behind a: tasks of different accounts run side by side
+        claim = self.claim()                                                      # a1 now holds a's slot
+        self.assertEqual([ahead(self.a, a1), ahead(self.b, b1), ahead(self.a, a2)], [None, 0, 1])
+        self.assertEqual([r['ahead'] for r in self.q.get(self.a)], [1, None])       # the list carries it too (newest first)
+        self.assertEqual([self.q.get(self.a, a2['id'])['wait'], self.q.get(self.b, b1['id'])['wait']], ['your_task', 'assistant'])
+        with self.store.connect() as c:                                            # the host is full: b's cell cannot start until room is made
+            c.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES ('b','d-b',1,'ready')")
+            c.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES ('b','op-b','d-b','start','pending','k','h',1)")
+            c.execute("INSERT INTO lifecycle_details(account_id,operation_id,target_profile,error_code,updated_at) VALUES ('b','op-b','p','capacity_wait',0)")
+        self.assertEqual(ahead(self.b, b1), 0)                                       # a1 is running (it holds no place in line), a2 is later: nothing is in front of b1
+        a0 = self.submit(key='a0'); self.assertEqual(ahead(self.b, b1), 0)             # a later task of another account never counts
+        self.q.finish(claim, self.receipt(claim)); self.assertEqual(ahead(self.a, a2), 0)
         self.assertNotIn('account_id', self.q.get(self.b, b1['id']))                 # only a number crosses accounts
 
     def test_a_paused_task_keeps_its_place_but_is_never_claimed_and_does_not_count_as_ahead(self):
@@ -79,7 +89,7 @@ class SerialQueueChecks(unittest.TestCase):
         held = self.q.pause(self.a, a1['id'])
         self.assertEqual((held['state'], held['paused'], held['ahead']), ('waiting', True, None))
         self.assertEqual(self.q.pause(self.a, a1['id'])['paused'], True)              # pressing it twice changes nothing
-        self.assertEqual(self.q.get(self.b, b1['id'])['ahead'], 0); self.assertEqual(self.q.get(self.a, a2['id'])['ahead'], 1)
+        self.assertEqual(self.q.get(self.b, b1['id'])['ahead'], 0); self.assertEqual(self.q.get(self.a, a2['id'])['ahead'], 0)   # a held task is not in front of anything
         claim = self.claim(); self.assertEqual(claim.request_id, b1['id'])             # the paused task was skipped
         self.q.finish(claim, self.receipt(claim)); self.assertEqual(self.claim().request_id, a2['id'])
         resumed = self.q.resume(self.a, a1['id']); self.assertEqual((resumed['paused'], resumed['state']), (False, 'waiting'))

@@ -223,10 +223,10 @@ class Stack:
     # -- helpers for scenarios -----------------------------------------------------------------------------------------------------------------
     def hold_cell(self, account):
         with self.store.connect() as con:
-            con.execute('DELETE FROM lifecycle_slot')
+            con.execute('DELETE FROM cell_slots')
             op = f'op-{account}-{time.time_ns()}'
             con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES (?,?,?,'start','completed',?,'h',1)", (account, op, 'd-' + account, op))
-            con.execute("INSERT INTO lifecycle_slot VALUES (1,?,?,?,'active')", (account, 'd-' + account, op))
+            con.execute("INSERT INTO cell_slots(account_id,deployment_id,operation_id,state) VALUES (?,?,?,'active')", (account, 'd-' + account, op))
 
     def new_conversation(self, account):
         """A conversation of its own = a native session of its own (scenarios that count turns need one)."""

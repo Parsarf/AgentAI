@@ -41,7 +41,7 @@ class Base(unittest.TestCase):
                 con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES (?,?,?,?)", (acct, 'p-' + acct, 'c-' + acct, 'd-' + acct))
                 con.execute("INSERT INTO entitlements VALUES (?,?,'test-v1','trial',?,datetime(?,'unixepoch'))", (acct, 'e-' + acct, json.dumps(LIMITS), self.now + 10 ** 6))
             con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES ('a','op1','d-a','start','completed','k','h',1)")
-            con.execute("INSERT INTO lifecycle_slot VALUES (1,'a','d-a','op1','active')")
+            con.execute("INSERT INTO cell_slots(account_id,deployment_id,operation_id,state) VALUES ('a','d-a','op1','active')")
         self.make_worker()
 
     def make_worker(self, **driver_kw):
@@ -157,10 +157,10 @@ class ParkingChecks(Base):
         sent = self.start_and_park()
         row = self.request(sent['id'])
         self.assertEqual((row['state'], row['parked_reason']), ('running', 'browser_question'))
-        self.assertFalse(self.rows('SELECT 1 FROM request_slot'))                       # the one running slot is free for everyone else
+        self.assertFalse(self.rows('SELECT 1 FROM request_slots'))                       # the one running slot is free for everyone else
         self.assertEqual(self.rows("SELECT state FROM task_reservations")[0][0], 'active')
         self.assertEqual(self.rows("SELECT state FROM tasks")[0][0], 'waiting_for_approval')       # the cell's idle sleep treats it as pending work
-        self.assertEqual(self.rows('SELECT account_id FROM lifecycle_slot')[0][0], 'a')
+        self.assertEqual(self.rows('SELECT account_id FROM cell_slots')[0][0], 'a')
         self.assertEqual(self.worker.tick(), {'ran': 0})                                # still waiting: nothing happens, nothing is claimed
         later = self.say('and a second question', key='k2')                             # same account: one execution at a time
         self.assertTrue(later['steered'] if 'steered' in later else True)
@@ -170,7 +170,7 @@ class ParkingChecks(Base):
         self.queue.submit(self.a, message='in another chat', key='other', conversation_id='c-a')
         self.assertIsNone(self.queue.claim(owner='w', capacity=OK))                     # fenced: its session lane and cell are busy
         with self.store.connect() as con:
-            self.assertIsNone(con.execute('SELECT 1 FROM request_slot').fetchone())
+            self.assertIsNone(con.execute('SELECT 1 FROM request_slots').fetchone())
         self.assertEqual(self.request(sent['id'])['parked_reason'], 'browser_question')
 
     def test_when_the_person_answers_the_request_takes_the_slot_back_and_finishes(self):
@@ -180,7 +180,7 @@ class ParkingChecks(Base):
         self.assertEqual(report, {'ran': 1, 'finished': True})
         row = self.request(sent['id'])
         self.assertEqual((row['state'], row['outcome'], row['parked_reason']), ('completed', 'completed', None))
-        self.assertFalse(self.rows('SELECT 1 FROM request_slot'))
+        self.assertFalse(self.rows('SELECT 1 FROM request_slots'))
         self.assertEqual(self.rows("SELECT state FROM tasks")[0][0], 'completed')
 
     def test_the_time_a_person_took_does_not_count_against_the_run(self):
@@ -198,11 +198,11 @@ class ParkingChecks(Base):
         with self.store.connect() as con:
             con.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,fence,lease_owner) "
                         "VALUES ('a','squatter','actor-a','p-a','c-a','kz','h','x','running',?,1,'w')", (self.now,))
-            con.execute("INSERT INTO request_slot VALUES (1,'a','squatter')")           # somebody else holds the slot
+            con.execute("INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES ('a','squatter','interactive',0)")           # somebody else holds the slot
         self.assertEqual(self.driver.check_parked(self.queue.parked()[0]), 'ended')
         self.assertEqual(self.worker.tick()['finished'], True)
         self.assertEqual(self.request(sent['id'])['state'], 'completed')
-        self.assertEqual(self.rows('SELECT request_id FROM request_slot')[0][0], 'squatter')       # their slot was not touched
+        self.assertEqual(self.rows('SELECT request_id FROM request_slots')[0][0], 'squatter')       # their slot was not touched
 
     def test_stop_on_a_parked_request_aborts_the_run_and_closes_it_cancelled(self):
         sent = self.start_and_park()
@@ -271,7 +271,7 @@ class DeferChecks(Base):
         sent = self.say(key='k1', mode='plan')
         self.assertEqual(self.worker.tick(), {'ran': 0, 'deferred': True})                    # the older request holds the account's execution
         self.assertEqual(self.request(sent['id'])['state'], 'waiting')                        # back in line, nothing sent
-        self.assertFalse(self.rows('SELECT 1 FROM request_slot'))
+        self.assertFalse(self.rows('SELECT 1 FROM request_slots'))
 
 
 class GoalChecks(Base):
@@ -588,7 +588,7 @@ class DeadContainerRecoveryChecks(Base):
         with self.store.connect() as con:
             row = con.execute('SELECT state,outcome FROM customer_requests WHERE id=?', (request['id'],)).fetchone()
             self.assertEqual(tuple(row), ('cancelled', 'cancelled'))
-            self.assertEqual(con.execute('SELECT count(*) FROM request_slot').fetchone()[0], 0)
+            self.assertEqual(con.execute('SELECT count(*) FROM request_slots').fetchone()[0], 0)
             self.assertEqual(con.execute('SELECT state FROM task_reservations WHERE task_id=?', (request['id'],)).fetchone()[0], 'settled')
 
     def test_an_unexpected_container_exit_fails_instead_of_replaying_the_work(self):

@@ -117,6 +117,7 @@ RENDER_SOCKET = os.environ.get('AGENTAI_RENDER_SOCKET', '')
 # Native execution: the browser tool relay cells reach over the bridge address (see agentai_platform/tool_relay.py), and how long a "keep working until complete" goal may run.
 TOOL_RELAY_BIND = os.environ.get('AGENTAI_TOOL_RELAY_BIND', '10.77.0.1')
 TOOL_RELAY_PORT = int(os.environ.get('AGENTAI_TOOL_RELAY_PORT', '4100'))
+REQUEST_WORKER_PARALLEL = int(os.environ.get('AGENTAI_REQUEST_PARALLEL', '8'))      # requests one worker process runs at once (one per account); how many cells run is decided by the host's live capacity, not by this
 GOAL_CHAIN_LIMIT = int(os.environ.get('AGENTAI_GOAL_CHAIN_LIMIT', '20'))      # turns of one goal before the customer decides whether to resume it
 # Live view: the frame gateway is a separate process; this file holds the secret both sides use to sign and check watch tickets.
 LIVE_SECRET_FILE = os.environ.get('AGENTAI_LIVE_SECRET_FILE', '')

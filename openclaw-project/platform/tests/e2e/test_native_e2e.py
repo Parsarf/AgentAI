@@ -79,7 +79,7 @@ class NativeEndToEnd(unittest.TestCase):
         self.assertEqual([r['price_version'] for r in receipts], ['litellm-reported-v1'])
         self.assertGreater(receipts[0]['amount_microusd'], 0)
         self.assertEqual(S.rows("SELECT state FROM task_reservations WHERE task_id=?", (sent['id'],))[0]['state'], 'settled')
-        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slot')[0]['n'], 0)
+        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
         session = S.rows("SELECT native_session_ref FROM conversations WHERE id='c-a'")[0]['native_session_ref']
         page = NativeGateway(BridgeRpc('a', S.socket)).history(session)
         self.assertFalse(page['active_run'])
@@ -432,7 +432,7 @@ class NativeEndToEnd(unittest.TestCase):
         S.work(until=lambda: S.request(sent['id'])['parked_reason'])
         row = S.request(sent['id'])
         self.assertEqual((row['state'], row['parked_reason']), ('running', 'browser_question'))
-        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slot')[0]['n'], 0)             # one person's slow answer does not hold the slot
+        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)             # one person's slow answer does not hold the slot
         self.assertEqual(S.rows('SELECT state FROM tasks WHERE id=?', (sent['id'],))[0]['state'], 'waiting_for_approval')
         time.sleep(1.5)
         self.assertEqual(S.request(sent['id'])['parked_reason'], 'browser_question')              # still waiting for them
@@ -440,7 +440,7 @@ class NativeEndToEnd(unittest.TestCase):
         S.work(until=self.finished(sent['id']))
         done = S.request(sent['id'])
         self.assertEqual((done['state'], done['outcome'], done['parked_reason']), ('completed', 'completed', None))
-        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slot')[0]['n'], 0)
+        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
         self.assertEqual(len(S.rows('SELECT 1 FROM chat_deliveries WHERE request_id=?', (sent['id'],))), 1)         # the same single run all along
 
     # -- goals ----------------------------------------------------------------------------------------------------------------------------------
@@ -462,7 +462,20 @@ class NativeEndToEnd(unittest.TestCase):
         for r in (first['id'], two['id']):
             self.assertEqual(S.rows('SELECT state FROM task_reservations WHERE task_id=?', (r,))[0]['state'], 'settled')   # each turn paid for itself
         self.assertEqual(S.rows('SELECT count(*) AS n FROM customer_requests WHERE continues IS NOT NULL AND continues=?', (two['id'],))[0]['n'], 0)     # complete: no third turn
-        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slot')[0]['n'], 0)
+        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
+
+    # -- a reply cut off at the model's output limit (roadmap #2) --------------------------------------------------------------------------------
+    def test_a_reply_cut_off_at_the_output_limit_is_carried_on_in_the_same_task(self):
+        S = self.S
+        sent, row = self.run_to_end('a', 'Write the long report. SCENARIO:cutoff', 'k-cutoff')
+        self.assertEqual((row['state'], row['outcome']), ('completed', 'completed'))
+        deliveries = S.rows('SELECT attempt,kind,state,native_status FROM chat_deliveries WHERE request_id=? ORDER BY attempt', (sent['id'],))
+        self.assertEqual([(d['kind'], d['state']) for d in deliveries], [('turn', 'completed'), ('turn', 'completed')])        # the second input is the automatic continuation
+        texts = [m['content'] for m in S.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='agent' ORDER BY id", (sent['id'],))]
+        self.assertTrue(any('Part one' in t for t in texts) and any('Part two' in t for t in texts))
+        notes = [e for e in S.rows("SELECT public_payload FROM events WHERE task_id=? AND kind='progress'", (sent['id'],)) if 'length limit' in (e['public_payload'] or '')]
+        self.assertTrue(notes)                                                                                             # the customer's timeline says so
+        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
 
     # -- isolation ------------------------------------------------------------------------------------------------------------------------------
     def test_two_customers_never_see_each_others_runs_sessions_files_charges_or_browser(self):
