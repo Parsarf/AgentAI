@@ -44,12 +44,20 @@ def build(store):
         # Existing requests admitted before the snapshot release retain compatibility.
         return selected if isinstance(selected, str) else wiring.model_key_store(sealed=False).choices(account)['selected']
     events = wiring.event_service(store)
-    def provider_wait(account):
-        """The model provider asked us to wait (a per-minute limit, or it is busy): say so in the timeline of the account's one running task, so a pause reads as a pause."""
+    def provider_wait(account, seconds=0, first=True, own=False):
+        """The model provider asked us to wait (a per-minute limit, or it is busy). The wait is not the task's own time: its run limit is moved out by as long as it waited. The
+        account's one running task is told (once per call) in its timeline, so a pause reads as a pause, and whose limit it is."""
         with store.connect() as con:
             rows = con.execute(f"SELECT r.id FROM customer_requests r WHERE r.account_id=? AND {request_states.live_run()} LIMIT 2", (account,)).fetchall()
-        if len(rows) == 1:
-            events.append(account, rows[0]['id'], 'progress', {'summary': 'Waiting a moment for the model provider, then carrying on.', 'step': 'working'}, 'gateway')
+        if len(rows) != 1:
+            return
+        if seconds and seconds > 0:
+            with store.connect() as con:
+                con.execute("UPDATE chat_deliveries SET deadline_epoch=deadline_epoch+? WHERE account_id=? AND request_id=? AND state IN ('acknowledged','uncertain') AND deadline_epoch IS NOT NULL",
+                            (int(seconds) + 1, account, rows[0]['id']))
+        if first:
+            words = 'Your own model provider asked for a short wait (its limit, not Lumina\'s). Carrying on in a moment.' if own else 'Waiting a moment for the model provider, then carrying on.'
+            events.append(account, rows[0]['id'], 'progress', {'summary': words, 'step': 'working'}, 'gateway')
     own_models = model_keys.ModelRelay(wiring.model_key_store(), wiring.own_model_on, admission=selection_admitted, selection=selected_route, waiting=provider_wait)
     memory = wiring.memory_service(store)                         # None unless fully configured; the tools then do not exist for anyone
     files = None                                                  # the file tool exists only where files can be stored at all

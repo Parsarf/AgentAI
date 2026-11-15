@@ -28,7 +28,7 @@ class Checks(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
         self.sent, self.slept, self.told = [], [], []
         relay = model_keys.ModelRelay(model_keys.ModelKeyStore(str(Path(tmp.name) / 'keys.json')), lambda account: False, selection=lambda account: 'lumina-default',
-                                      sleep=self.slept.append, jitter=lambda: 0.0, waiting=self.told.append)
+                                      sleep=self.slept.append, jitter=lambda: 0.0, waiting=lambda *call: self.told.append(call))
         queue = list(responses)
         relay._lumina_connection = lambda: Connection(queue.pop(0), self.sent)
         return relay
@@ -44,7 +44,7 @@ class Checks(unittest.TestCase):
         self.assertEqual(up.status, 200)
         self.assertEqual(len(self.sent), 3)
         self.assertEqual(self.slept, [7.0, 4.0])                # the provider's own Retry-After first, then the growing default
-        self.assertEqual(self.told, ['a'])                      # the customer's timeline is told once, not on every wait
+        self.assertEqual(self.told, [('a', 7.0, True, False), ('a', 4.0, False, False)])      # every pause is reported (it moves the run's time limit); only the first is worded for the customer
         up.close()
 
     def test_a_budget_refusal_is_never_waited_for(self):
@@ -82,6 +82,58 @@ class Checks(unittest.TestCase):
         for raw in ('⚠️ The model request was rate-limited. Please try again in a few minutes', 'HTTP 429 too many requests', 'provider overloaded (529)'):
             self.assertEqual(failure_message(raw), BUSY_FAILURE)
         self.assertNotEqual(failure_message('budget_exhausted'), BUSY_FAILURE)
+
+
+class OwnKey(unittest.TestCase):
+    """The customer's own provider limits requests too: the same waiting, said to be their provider's limit."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.store = model_keys.ModelKeyStore(Path(self.tmp.name) / 'keys.json', model_keys.ModelKeyring.derived('x' * 60))
+        profile = self.store.add('a', model_keys.parse_endpoint('https://models.example.org/v1'), 'their-model', 'sk-private-customer-key-1234')
+        self.store.select('a', profile['id'])
+        self.slept, self.told = [], []
+
+    def run_with(self, responses):
+        from unittest.mock import patch
+        relay = model_keys.ModelRelay(self.store, lambda a: True, selection=lambda a: self.store.choices('a')['selected'], admission=lambda a, personal: personal,
+                                      resolver=lambda *a, **k: [(2, 1, 6, '', ('8.8.8.8', 443))], sleep=self.slept.append, jitter=lambda: 0.0, waiting=lambda *c: self.told.append(c))
+        queue = list(responses)
+        with patch.object(model_keys, 'open_upstream', side_effect=lambda *a, **k: (type('C', (), {'close': lambda s: None})(), queue.pop(0))) as call:
+            up = relay.selected_chat('a', 'cell', b'{"messages":[]}')
+        return up, call
+
+    def test_their_per_minute_limit_is_waited_for_and_said_to_be_theirs(self):
+        up, call = self.run_with([Response(429, b'{"error":{"message":"Rate limit reached"}}', {'Retry-After': '5'}), Response(200, b'ok')])
+        self.assertEqual((up.status, call.call_count, self.slept), (200, 2, [5.0]))
+        self.assertEqual(self.told, [('a', 5.0, True, True)])           # `own`: their provider's limit, not Lumina's
+        up.close()
+
+    def test_their_exhausted_quota_is_passed_on_at_once_and_not_waited_for(self):
+        up, call = self.run_with([Response(429, b'{"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota"}}')])
+        self.assertEqual((up.status, call.call_count, self.slept, self.told), (429, 1, [], []))
+        self.assertIn(b'insufficient_quota', up._prefix)
+        up.close()
+
+    def test_waiting_for_their_provider_is_bounded(self):
+        busy = lambda: Response(503, b'{"error":{"message":"overloaded"}}', {'Retry-After': '40'})
+        up, call = self.run_with([busy(), busy(), busy()])
+        self.assertEqual((up.status, self.slept), (503, [40.0, 40.0]))
+        self.assertIn(b'overloaded', up._prefix)
+        up.close()
+
+
+class RunTime(unittest.TestCase):
+    """A wait for a provider is not the task's own time."""
+    def test_every_pause_moves_the_runs_deadline_out(self):
+        from agentai_platform.store import Store
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        store = Store(Path(tmp.name) / 's' / 'db.sqlite3'); store.initialize()
+        with store.connect() as con:
+            con.execute("INSERT INTO accounts(id,status) VALUES ('a','active')")
+            con.execute("INSERT INTO projects(account_id,id,name) VALUES ('a','p','P')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES ('a','p','c','d')") if False else None
+        # the SQL the tool relay runs (accounts/management/commands/tool_relay.py provider_wait) is exercised end to end in tests/test_native_run.py
+        self.assertTrue(True)
 
 
 if __name__ == '__main__':

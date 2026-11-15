@@ -538,6 +538,16 @@ def retry_pause(header, attempt, jitter=random.random):
     return base * (1 + 0.25 * jitter())
 
 
+def _is_own_quota_refusal(body):
+    """A customer's own provider saying their quota, balance or billing is used up: waiting does not help, so it is passed on at once."""
+    try:
+        error = json.loads(body).get('error', {})
+        text = (str(error.get('message', '')) + ' ' + str(error.get('type', '')) + ' ' + str(error.get('code', ''))).lower() if isinstance(error, dict) else ''
+    except (ValueError, AttributeError):
+        return False
+    return any(s in text for s in ('insufficient_quota', 'exceeded your current quota', 'billing', 'credit balance', 'insufficient credits', 'budget'))
+
+
 def _is_budget_refusal(body):
     """LiteLLM reports a permanent key-budget refusal as 429. It will not go away by waiting, so it is never retried."""
     try:
@@ -640,11 +650,7 @@ class ModelRelay:
                     break                                    # waited long enough: the runtime gets the provider's answer as it is
                 close_upstream(conn, response)
                 conn = None
-                if attempt == 0 and self.waiting is not None:
-                    try:
-                        self.waiting(account)                # tells the customer's timeline, once per call, that the task is waiting for the provider
-                    except Exception:
-                        pass
+                self._tell_waiting(account, pause, first=attempt == 0, own=False)
                 self.sleep(pause)
                 waited += pause
                 attempt += 1
@@ -676,6 +682,16 @@ class ModelRelay:
         up.close = close
         return up
 
+    def _tell_waiting(self, account, seconds, *, first, own):
+        """The task is waiting for a model provider: `first` is the first pause of this call (the timeline says so once per call), `seconds` is this pause (the task's time limit is
+        extended by it, so a wait never uses up the run's own time), `own` says whose limit it is (the customer's own provider, or Lumina's route)."""
+        if self.waiting is None:
+            return
+        try:
+            self.waiting(account, seconds, first, own)
+        except Exception:
+            pass
+
     def models(self, account):
         try:
             selected = self.store.choices(account)['selected']
@@ -706,8 +722,25 @@ class ModelRelay:
             except ModelKeyError as exc:
                 raise RelayError(502, str(exc), 'endpoint_not_public') from None
             streaming = bool(body.get('stream'))
-            conn, resp = open_upstream(endpoint, ips, '/chat/completions', json.dumps(body, separators=(',', ':')).encode(), cfg['key'],
-                                       accept='text/event-stream' if streaming else 'application/json', context=self.context)
+            payload = json.dumps(body, separators=(',', ':')).encode()
+            waited, attempt, prefix = 0.0, 0, b''
+            while True:
+                conn, resp = open_upstream(endpoint, ips, '/chat/completions', payload, cfg['key'],
+                                           accept='text/event-stream' if streaming else 'application/json', context=self.context)
+                if resp.status not in TEMPORARY_STATUSES:
+                    prefix = b''
+                    break
+                # The customer's own provider is busy or has limited their requests per minute. Nothing was streamed, so asking again is safe: wait here, as for Lumina's own
+                # route. A refusal that will not go away by waiting (their quota or balance is used up) is passed on at once, with the body that was read to look at it.
+                prefix = resp.read(65536)
+                pause = retry_pause(resp.getheader('Retry-After'), attempt, self.jitter)
+                if _is_own_quota_refusal(prefix) or waited + pause > RETRY_WAIT_SECONDS:
+                    break
+                close_upstream(conn, resp)
+                self._tell_waiting(account, pause, first=attempt == 0, own=True)
+                self.sleep(pause)
+                waited += pause
+                attempt += 1
         except BaseException:
             self._release(account)
             raise
@@ -715,7 +748,7 @@ class ModelRelay:
             close_upstream(conn, resp)
             self._release(account)
             raise RelayError(502, 'Your endpoint tried to redirect to another address, which is not allowed.', 'redirect_refused')
-        up = Upstream(resp.status, resp.getheader('Content-Type') or 'application/json', conn, resp)
+        up = Upstream(resp.status, resp.getheader('Content-Type') or 'application/json', conn, resp, prefix)
         original = up.close
         released = []
 
