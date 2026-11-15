@@ -15,6 +15,11 @@ def _public(row, con=None) -> dict:
     out = _public_base(row)
     if con is not None and row['kind'] == 'task_plan' and row['status'] == 'launched':
         out['run'], out['run_status'] = _run(con, row['account_id'], row['id'])
+        out['why_waiting'] = _why_waiting(json.loads(row['state_json']).get('plan') or {}, out['run'])
+        from .replan import Replanner, MAX_AUTO_REPLANS
+        out['proposals'] = Replanner(None, None).listing(con, row['account_id'], row['id'])
+        settings = con.execute('SELECT auto_replan,auto_used FROM plan_settings WHERE account_id=? AND block_id=?', (row['account_id'], row['id'])).fetchone()
+        out['replan'] = {'auto': bool(settings['auto_replan']) if settings else False, 'auto_used': settings['auto_used'] if settings else 0, 'auto_limit': MAX_AUTO_REPLANS}
     return out
 
 
@@ -36,6 +41,30 @@ def _run(con, account, block):
     else:
         status = 'completed'
     return run, status
+
+
+def _why_waiting(plan: dict, run: dict) -> dict:
+    """For every enabled phase that has not started: why it is not running yet, in a fixed vocabulary the web app words. A failed or stopped prerequisite blocks what depends on it.
+    {phase_id: {'reason': 'prerequisites'|'blocked'|'approval'|'turn', 'on': [phase ids]}}"""
+    by = {p['id']: p for p in plan.get('phases', [])}
+    out = {}
+    for pid, phase in by.items():
+        state = (run.get(pid) or {}).get('state')
+        if state not in ('pending', 'awaiting_approval') or not phase.get('enabled', True):
+            continue
+        if state == 'awaiting_approval':
+            out[pid] = {'reason': 'approval', 'on': []}
+            continue
+        deps = [d for d in phase.get('dependsOn', []) if by.get(d, {}).get('enabled', True)]
+        stopped = [d for d in deps if (run.get(d) or {}).get('state') in ('failed', 'cancelled')]
+        waiting = [d for d in deps if (run.get(d) or {}).get('state') not in ('completed', 'skipped')]
+        if stopped:
+            out[pid] = {'reason': 'blocked', 'on': stopped}
+        elif waiting:
+            out[pid] = {'reason': 'prerequisites', 'on': waiting}
+        else:
+            out[pid] = {'reason': 'turn', 'on': []}
+    return out
 
 
 def _public_base(row) -> dict:

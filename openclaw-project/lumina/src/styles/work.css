@@ -190,3 +190,9 @@ a.task { text-decoration: none; color: inherit; }
 .lj-policy { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-muted); }
 .est { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--text-secondary); }
 .est small { display: block; color: var(--text-muted); }
+
+/* Adapting a running plan */
+.adapt { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.adapt-card { border: 1px solid var(--line-2); border-radius: var(--radius-md); background: var(--surface-raised); padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); }
+.adapt-list { margin: 0; padding-left: var(--space-5); color: var(--ink); }
+.adapt-auto { font-size: var(--text-sm); color: var(--text-secondary); }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 
-from . import prompts, schema
+from . import prompts, replan, schema
 
 
 def extract_json(text: str):
@@ -21,6 +21,7 @@ def extract_json(text: str):
 class GenUiRuntime:
     def __init__(self, store, blocks):
         self.store, self.blocks = store, blocks
+        self.replans = replan.Replanner(store, blocks)
 
     def request_info(self, claim) -> tuple[str, dict]:
         with self.store.connect() as con:
@@ -50,6 +51,9 @@ class GenUiRuntime:
     def outgoing(self, claim, intent: str, context: dict) -> str:
         if intent == 'plan':
             return prompts.plan_prompt(claim.message, context.get('answers'))
+        if intent == 'replan':
+            with self.store.connect() as con:
+                return self.replans.prompt(con, claim, context)
         if intent == 'execute':
             with self.store.connect() as con:
                 row = con.execute('SELECT plan_json FROM plan_revisions WHERE account_id=? AND block_id=? AND revision=?',
@@ -88,6 +92,20 @@ class GenUiRuntime:
             return schema.validate_plan(data), None
         except schema.SpecError as exc:
             return None, str(exc)
+
+    def propose_revision(self, claim, context: dict, plan: dict) -> bool:
+        """The assistant's reply to a replan request was a valid plan: check it against what has happened, store it as a proposal, and say so in the chat in place of the raw JSON."""
+        stored = self.replans.store_reply(claim, context, plan)
+        with self.store.connect() as con:
+            row = con.execute('SELECT state,summary,auto FROM plan_proposals WHERE account_id=? AND block_id=? AND id=?', (claim.account_id, context['block'], context['proposal'])).fetchone()
+            msg = con.execute("SELECT id FROM chat_messages WHERE account_id=? AND conversation_id=? AND request_id=? AND provenance='agent' ORDER BY id DESC LIMIT 1",
+                              (claim.account_id, claim.conversation_id, claim.request_id)).fetchone()
+        if msg and row:
+            text = ((row['summary'] + (' It will be applied by itself.' if row['auto'] else ' Review it in the plan above, then approve or decline it.')) if stored
+                    else 'I could not make a usable revision: ' + (row['summary'] or 'the reply was not a valid plan') + ' The plan is unchanged.')
+            with self.blocks.coordinator.transaction() as con:
+                con.execute('UPDATE chat_messages SET content=? WHERE account_id=? AND id=?', (text[:2000], claim.account_id, msg['id']))
+        return stored
 
     def attach_plan(self, claim, context: dict, plan: dict) -> dict:
         with self.store.connect() as con:

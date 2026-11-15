@@ -814,7 +814,7 @@ class ChatDriver:
                   'error': (last['native_status'] or '').removeprefix('error:') or None}
         if native['status'] != 'ok':
             return self._failed(claim, gateway, session, native)
-        if info['intent'] == 'plan' and self.genui is not None:
+        if info['intent'] in ('plan', 'replan') and self.genui is not None:
             repaired = self._plan_reply(claim, gateway, info, session)
             if isinstance(repaired, RequestReceipt) or isinstance(repaired, (Parked, Defer)):
                 return repaired
@@ -923,6 +923,14 @@ class ChatDriver:
                 # every Lumina tool refused it (they only serve a live run), so the one repair could never succeed. The gate shuts again when this run ends.
                 con.execute('UPDATE customer_requests SET closing=0 WHERE account_id=? AND id=? AND cancel_requested=0', (claim.account_id, claim.request_id))
             return self._supervise(claim, gateway, info)
+        if info['intent'] == 'replan':
+            if plan is not None:
+                stored = self.genui.propose_revision(claim, info['context'], plan)
+                self._emit(claim, 'progress', {'summary': 'A revision of the plan is ready for your decision.' if stored else 'The assistant could not make a usable revision; the plan is unchanged.'}, 'gateway')
+            else:
+                self.genui.replans.fail(claim, info['context'], 'The assistant\'s reply could not be read as a plan (' + (reason or 'no plan found')[:120] + '). The plan is unchanged.')
+                self._emit(claim, 'progress', {'summary': 'The assistant could not make a usable revision; the plan is unchanged.'}, 'gateway')
+            return None
         if plan is not None:
             self.genui.attach_plan(claim, info['context'], plan)
             self._emit(claim, 'progress', {'summary': 'Plan drafted and ready to edit.'}, 'gateway')
