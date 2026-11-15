@@ -38,4 +38,12 @@ export interface Block {
   id: string; conversation_id: string; anchor_message_id: number | null; kind: 'form' | 'task_plan' | 'table' | 'chart' | 'comparison' | 'document'; schema_version: string;
   spec: unknown; state: any; version: number; status: 'draft' | 'submitted' | 'launched' | 'superseded' | 'final'; launched_request_id: string | null;
   run?: Record<string, PhaseRun>; run_status?: 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'stopped';
+  /** Why a phase that has not started is not running yet (the server's fixed vocabulary), a suggested revision of the running plan, and the customer's automatic-revision choice. */
+  why_waiting?: Record<string, { reason: 'prerequisites' | 'blocked' | 'approval' | 'turn'; on: string[] }>;
+  proposals?: Proposal[]; replan?: { auto: boolean; auto_used: number; auto_limit: number };
+}
+export interface PlanDiff { added: Phase[]; removed: string[]; changed: { id: string; title: string; fields: string[] }[]; reordered: boolean; title_changed: boolean }
+export interface Proposal {
+  id: string; trigger: 'failure' | 'invalidated' | 'instruction'; instruction: string; state: 'requested' | 'proposed' | 'applied' | 'declined' | 'superseded' | 'failed'; summary: string; auto: boolean;
+  base_revision: number; diff: PlanDiff | null; plan: Plan | null; created_epoch: number; decided_epoch: number | null;
 }

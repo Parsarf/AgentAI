@@ -9,13 +9,14 @@ import { elapsed } from '../../lib/format';
 import { phase as phaseOf } from '../../lib/tasks';
 import { useData } from '../../state/data';
 import * as I from '../Icons';
+import PlanAdaptation from './PlanAdaptation';
 import { Saved } from './Saved';
 import { useAutosave } from './useAutosave';
 
 const RUN_LABEL: Record<string, string> = { pending: 'Queued', running: 'Running', awaiting_approval: 'Needs approval', completed: 'Done', failed: 'Failed', skipped: 'Skipped', cancelled: 'Stopped' };
 
 function Card(props: {
-  p: Phase; n: number; plan: Plan; locked: boolean; open: boolean; issue?: string; dragging: boolean; run?: PhaseRun; onAct?(action: 'approve' | 'skip' | 'retry'): void; now?: number;
+  why?: { reason: string; on: string[] }; titles?: Record<string, string>; p: Phase; n: number; plan: Plan; locked: boolean; open: boolean; issue?: string; dragging: boolean; run?: PhaseRun; onAct?(action: 'approve' | 'skip' | 'retry'): void; now?: number;
   onToggleOpen(): void; onChange(next: Plan): void; onDragStart(): void; onDrop(): void; onDragEnd(): void;
 }) {
   const { p, n, plan, locked, open, issue } = props;
@@ -34,6 +35,10 @@ function Card(props: {
         {!locked && <button type="button" role="switch" aria-checked={p.enabled} aria-label={`${p.title} enabled`} className={`switch sm${p.enabled ? ' on' : ''}`} onClick={() => props.onChange(P.setEnabled(plan, p.id, !p.enabled))}><i /></button>}
       </div>
       {issue && <p className="err small" role="alert">{issue}</p>}
+      {props.why && props.why.reason !== 'approval' && (
+        <p className={`small ${props.why.reason === 'blocked' ? 'err' : 'muted'}`} role="status">
+          {props.why.reason === 'blocked' ? `Waiting: ${props.why.on.map(i => `“${props.titles?.[i] ?? i}”`).join(', ')} did not finish. Retry or skip ${props.why.on.length === 1 ? 'it' : 'them'}, or change the plan.`
+            : props.why.reason === 'prerequisites' ? `Waiting for ${props.why.on.map(i => `“${props.titles?.[i] ?? i}”`).join(', ')} to finish.` : 'Next to run.'}</p>)}
       {props.run?.state === 'awaiting_approval' && (
         <div className="approval" role="group" aria-label={`Approval needed: ${p.title}`}>
           <p><b>Approval needed before “<Emojified text={p.title} />” runs.</b></p>
@@ -105,6 +110,7 @@ export default function PlanBlock({ block, original, onChanged }: { block: Block
   const issues = useMemo(() => P.validate(plan), [plan]);
   const rows = useMemo(() => P.layers(plan), [plan]);
   const order = useMemo(() => new Map(plan.phases.map((p, i) => [p.id, i + 1])), [plan]);
+  const titles = useMemo(() => Object.fromEntries(plan.phases.map(p => [p.id, p.title])), [plan]);
   const issueFor = (id: string) => issues.find(i => i.phaseId === id)?.message;
   const general = issues.filter(i => !i.phaseId);
   const enabledCount = plan.phases.filter(p => p.enabled).length;
@@ -152,13 +158,14 @@ export default function PlanBlock({ block, original, onChanged }: { block: Block
             {ri > 0 && <div className="link" aria-hidden>↓</div>}
             <div className="layer">
               {row.map(p => (
-                <Card key={p.id} p={p} n={order.get(p.id)!} plan={plan} locked={phaseLocked(p.id)} open={open === p.id} issue={issueFor(p.id)} dragging={drag === p.id}
+                <Card key={p.id} why={launched ? block.why_waiting?.[p.id] : undefined} titles={titles} p={p} n={order.get(p.id)!} plan={plan} locked={phaseLocked(p.id)} open={open === p.id} issue={issueFor(p.id)} dragging={drag === p.id}
                   run={launched ? run[p.id] : undefined} now={now} onAct={a => post('phase', { phase_id: p.id, action: a })}
                   onToggleOpen={() => setOpen(open === p.id ? null : p.id)} onChange={commit}
                   onDragStart={() => setDrag(p.id)} onDrop={() => { if (drag) commit(P.movePhaseTo(plan, drag, p.id)); setDrag(null); }} onDragEnd={() => setDrag(null)} />))}
             </div>
           </div>))}
       </div>
+      {launched && <PlanAdaptation block={block} onChanged={onChanged} failed={Object.values(run).some(r => r.state === 'failed')} />}
       {rows.some(r => r.length > 1) && <p className="faint small">Phases side by side can run independently. Moving a phase changes the order within its row; “Runs after” controls what must finish first.</p>}
       {!locked && (
         <form className="inline" onSubmit={e => { e.preventDefault(); if (newTitle.trim()) { commit(P.addPhase(plan, null, newTitle)); setNewTitle(''); } }}>

@@ -46,3 +46,5 @@ test_goal_objectives
 test_estimates
 test_parallel_requests
 test_output_cutoff
+test_replan
+test_schedule_engine

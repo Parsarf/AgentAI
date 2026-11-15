@@ -78,8 +78,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "cbc0c88818babbef8620cc9536e958e5578e386e5bbd8e3c351658b1b51a1025",
-  "schema_columns": 692,
+  "schema_sha256": "9b449c21c51f18e623cdb508afe0233f5d4d046d818a4c5433de90bbafe2bc9e",
+  "schema_columns": 734,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -351,6 +351,11 @@
    "date": "2026-11-14",
    "by": "Claude Code, roadmap Phase 0-1 on the owner's instruction (owner to confirm)",
    "note": "Columns added by migrations 0038 and 0039 (685 to 692): customer_requests.versions_json (release commit, hashes of the assistant rules and tool names, runtime version, model route: no customer content); objectives.conversation_id, resume_policy, max_turns, max_seconds, pause_reason, auto_resumes (how a long job behaves and why it is paused: fixed sentences and the customer's own settings). No message content, no new recipient, no retention change. Judged not to need a policy wording change."
+  },
+  {
+   "date": "2026-11-15",
+   "by": "Claude Code, completing roadmap Phase 0-1 on the owner's instruction (owner to confirm)",
+   "note": "Migrations 0040 to 0042 (692 to 734 columns). 0040: request_slots and cell_slots (which request and which cell is running, with the host it runs on: ids and timestamps only; several customers now run at once). 0041: plan_proposals (a suggested revision of a running plan: the plan JSON, the customer's own change request text, a fixed-vocabulary summary and difference) and plan_settings (the customer's automatic-revision choice). 0042: schedules.prompt (what a scheduled run does: the customer's own words, the same class of content as a message), missed_policy, grace_seconds, approved_until_epoch, conversation_id, and schedule_runs (one row per schedule per day with a fixed-word outcome). All of it is the customer's own content or platform bookkeeping that stays on our server; the assistant request text goes to the same model provider as every chat message. No new recipient, no new retention time, nothing newly sent anywhere; plan_proposals, plan_settings and schedule_runs are restored from backups like plan_revisions and schedules, the slot tables never are. Judged not to need a policy wording change. schema_sha256 and schema_columns updated to match."
   }
  ],
  "assistant_recipients": {

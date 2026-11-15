@@ -304,6 +304,13 @@ class ChatDriver:
     def _quiesced(self, claim, gateway, session, *, conversation_id=None):
         """Execution ownership comes before new work: no run may be going on in this session unless a live request of this account owns it. A run nobody owns (the runtime resumed an
         interrupted turn by itself, or its request is over) is stopped here; one a live request owns means this request must wait its turn."""
+        active = getattr(gateway, 'active_sessions', None)
+        if active is not None:
+            try:
+                if not any(t['session_key'] == session for t in active()):
+                    return True                      # the cell's own turn state (read from disk, no websocket call) says nothing is running in this session: the full history is not needed
+            except CapabilityUnavailable:
+                pass                                 # not readable: ask the runtime itself, below
         page = gateway.history(session)
         if not page['active_run']:
             return True
@@ -339,7 +346,10 @@ class ChatDriver:
     def _outgoing(self, claim, info, notes=True):
         intent, context = info['intent'], info['context']
         text = self.genui.outgoing(claim, intent, context) if self.genui else claim.message
-        if notes and intent not in ('chat', 'browse'):       # plan, execute and phase prompts are Lumina's own text: the task id simply leads them
+        if intent == 'schedule' and notes:
+            text = (gen_prompts.progress_prompt(claim.request_id) + 'This is a scheduled run and nobody is watching. Do the task below. If you need the customer to answer, approve something or take over '
+                    'the browser, do not wait: say exactly what you need and stop. Never act on anything that needs their permission.\n\n' + text)
+        elif notes and intent not in ('chat', 'browse'):       # plan, execute and phase prompts are Lumina's own text: the task id simply leads them
             text = gen_prompts.progress_prompt(claim.request_id) + ('This request only drafts a plan. Do not execute its phases; the customer launches the editable plan separately.\n' if intent == 'plan' else '') + '\n' + text
         if not notes:
             return text  # A new native goal stores this exact text as its objective; goal replacement already clears the old run's goal.
@@ -389,6 +399,16 @@ class ChatDriver:
             pass                                   # no vault on this host, or it cannot be read: the choices above still go
         return lines
 
+    def _run_limit(self, claim):
+        """How long one run may take: the platform's limit, or a lower one a scheduled run was given (only server code can set it)."""
+        try:
+            with self.store.connect() as con:
+                row = con.execute('SELECT context_json FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
+            asked = json.loads(row['context_json'] or '{}').get('timeout_seconds') if row else None
+        except Exception:
+            asked = None
+        return min(self.run_timeout, asked) if type(asked) is int and asked > 0 else self.run_timeout
+
     def _present(self, claim, gateway, session, delivery):
         """_deliver, and if the runtime refuses to take the input again because a restart left it `interrupted`, present the same text under a fresh key (the interrupted entry stays
         inert, so the input runs once). The delivery then carries the new key; the old one is kept as its operation id."""
@@ -434,7 +454,7 @@ class ChatDriver:
             self._set_delivery(claim, delivery['attempt'], 'uncertain')
             raise
         timing.mark(claim.request_id, 'send_ack', attempt=delivery['attempt'], kind=delivery['kind'], runtime_status=ack.get('status', ''))
-        self._set_delivery(claim, delivery['attempt'], 'acknowledged', run_id=ack['run_id'], deadline=None if delivery['deadline_epoch'] else int(self.clock()) + self.run_timeout)       # presenting an input again never buys it more time
+        self._set_delivery(claim, delivery['attempt'], 'acknowledged', run_id=ack['run_id'], deadline=None if delivery['deadline_epoch'] else int(self.clock()) + self._run_limit(claim))       # presenting an input again never buys it more time
         if delivery['attempt'] == 1 and delivery['state'] == 'pending':
             self._emit(claim, 'progress', {'summary': 'The assistant has your message and is working on it.', 'step': 'working'}, 'gateway')
 
@@ -443,6 +463,7 @@ class ChatDriver:
         session = info['session'] or self._session(claim)
         seen = self._seen_activity(claim)
         spend, outage, nudged = {'next': 0}, None, {}
+        slices, started = 0, self.clock()
         while True:
             if self._cancel_requested(claim):
                 return self._stop(claim, gateway, session)
@@ -475,9 +496,13 @@ class ChatDriver:
                 outage = None
                 self._reassert(claim, gateway, session)          # it came back: a restart may have lost an input it had accepted but not started
                 continue
-            self._mirror(claim, gateway, session, seen)
+            slices += 1
+            if result['status'] != 'running' or slices % self._mirror_every(claim, started) == 0:
+                self._mirror(claim, gateway, session, seen)
             if result['status'] == 'running':
                 reason = self._human_wait(claim)
+                if reason and info['context'].get('unattended'):
+                    return self._unattended_stop(claim, gateway, session, reason)
                 if reason:
                     if self._parked_too_long(claim):
                         return self._waited_too_long(claim, gateway, session)
@@ -493,6 +518,12 @@ class ChatDriver:
             self._end_delivery(claim, delivery, result)
             self._continue_after_cutoff(claim, delivery, result, seen)
         return self._finish(claim, gateway, {**info, 'session': session})
+
+    def _mirror_every(self, claim, started):
+        """How many wait slices between looks at the session's whole history. Every slice (3 s) while a run is young, every second slice once it has gone on for two minutes: a long run's
+        reply is shown as it is written by the push stream's drafts, and the history is read on the cell's one CPU. The look after a run has ended is never skipped.
+        (The runtime's history `cursor` was measured for this and NOT used: its delta page can come back empty while the final reply is already there.)"""
+        return 2 if self.clock() - started > 120 else 1
 
     def _continue_after_cutoff(self, claim, delivery, result, seen):
         """A reply that ended because the model hit its output limit is not a finished task: ask it to carry on from where it stopped, in the same session and the same task
@@ -772,6 +803,17 @@ class ChatDriver:
             row = con.execute('SELECT parked_epoch FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
         return bool(row and row['parked_epoch']) and self.clock() - row['parked_epoch'] >= self.park_limit
 
+    def _unattended_stop(self, claim, gateway, session, reason):
+        """A scheduled run has nobody with it: when it needs an answer, a takeover or a permission it stops and says so, instead of waiting for a person who is not there. What it asked
+        for stays unanswered, so an unattended run can never do what the customer has not approved."""
+        self._abort_all(claim, gateway, session)
+        self._stop_browser_jobs(claim)
+        self._mirror(claim, gateway, session, set())
+        note = 'This scheduled run needed you (' + {'browser_question': 'a question about what to do', 'browser_takeover': 'you to take over the browser', 'location_permission': 'your location'}.get(reason, 'your input') + '), so it stopped. Open it to carry on.'
+        self._emit(claim, 'progress', {'summary': note}, 'gateway')
+        return self._close(claim, 'completed', self._last_reply(claim) or note, gateway, self._before(claim),
+                           verdict=outcome_mod.Verdict('blocked', 'unverified', note, 'Stopped: ' + note))
+
     def _waited_too_long(self, claim, gateway, session):
         """PARK_LIMIT: the run waited that long for a person who did not come back. It is stopped (it used to be parked again, with a fresh clock, for ever)."""
         self._abort_all(claim, gateway, session)
@@ -814,7 +856,7 @@ class ChatDriver:
                   'error': (last['native_status'] or '').removeprefix('error:') or None}
         if native['status'] != 'ok':
             return self._failed(claim, gateway, session, native)
-        if info['intent'] == 'plan' and self.genui is not None:
+        if info['intent'] in ('plan', 'replan') and self.genui is not None:
             repaired = self._plan_reply(claim, gateway, info, session)
             if isinstance(repaired, RequestReceipt) or isinstance(repaired, (Parked, Defer)):
                 return repaired
@@ -923,6 +965,14 @@ class ChatDriver:
                 # every Lumina tool refused it (they only serve a live run), so the one repair could never succeed. The gate shuts again when this run ends.
                 con.execute('UPDATE customer_requests SET closing=0 WHERE account_id=? AND id=? AND cancel_requested=0', (claim.account_id, claim.request_id))
             return self._supervise(claim, gateway, info)
+        if info['intent'] == 'replan':
+            if plan is not None:
+                stored = self.genui.propose_revision(claim, info['context'], plan)
+                self._emit(claim, 'progress', {'summary': 'A revision of the plan is ready for your decision.' if stored else 'The assistant could not make a usable revision; the plan is unchanged.'}, 'gateway')
+            else:
+                self.genui.replans.fail(claim, info['context'], 'The assistant\'s reply could not be read as a plan (' + (reason or 'no plan found')[:120] + '). The plan is unchanged.')
+                self._emit(claim, 'progress', {'summary': 'The assistant could not make a usable revision; the plan is unchanged.'}, 'gateway')
+            return None
         if plan is not None:
             self.genui.attach_plan(claim, info['context'], plan)
             self._emit(claim, 'progress', {'summary': 'Plan drafted and ready to edit.'}, 'gateway')

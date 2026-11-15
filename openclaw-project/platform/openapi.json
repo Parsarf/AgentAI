@@ -6354,6 +6354,186 @@
      }
     }
    }
+  },
+  "/v1/blocks/{id}/replan": {
+   "post": {
+    "summary": "Ask the assistant to revise a running plan (a phase failed, an earlier result changes what comes next, or the customer wants a change); the answer arrives as a proposal in the plan block",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Accepted: the assistant is preparing a suggested revision"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "trigger": {
+          "type": "string",
+          "enum": [
+           "failure",
+           "invalidated",
+           "instruction"
+          ]
+         },
+         "instruction": {
+          "type": "string",
+          "maxLength": 2000
+         }
+        },
+        "required": []
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/proposal": {
+   "post": {
+    "summary": "Approve or decline a suggested revision of a running plan. An approved revision is applied exactly as stored; phases that are running or finished never change",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "proposal_id": {
+          "type": "string"
+         },
+         "action": {
+          "type": "string",
+          "enum": [
+           "approve",
+           "decline"
+          ]
+         }
+        },
+        "required": [
+         "proposal_id",
+         "action"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/blocks/{id}/auto-replan": {
+   "post": {
+    "summary": "Let the assistant revise this plan by itself when a phase fails (at most twice), or turn that off",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful scoped result"
+     },
+     "400": {
+      "description": "Invalid input"
+     },
+     "401": {
+      "description": "Sign-in required"
+     },
+     "403": {
+      "description": "CSRF token missing or wrong"
+     },
+     "404": {
+      "description": "Unavailable or not yours"
+     },
+     "409": {
+      "description": "version_conflict or not allowed in the current state"
+     },
+     "429": {
+      "description": "Rate limited"
+     }
+    },
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "enabled"
+        ]
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {

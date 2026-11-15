@@ -66,6 +66,35 @@ class EnrollmentChecks(unittest.TestCase):
         with self.assertRaises(SupervisorBusy): self.supervisor.execute(self.claim('c', '3'))
         self.assertEqual(len(self.rows()), 2)
 
+    def start(self, account, digit):
+        return replace(self.claim(account, digit), kind='start', operation_id=digit * 31 + 'a', fence=1)
+
+    def stop(self, account, digit):
+        return replace(self.claim(account, digit), kind='stop', operation_id=digit * 31 + 'b', fence=1)
+
+    def test_a_cell_can_be_created_while_another_runs_and_the_running_ceiling_counts_only_starts(self):
+        self.supervisor.execute(self.claim()); self.supervisor.execute(self.start('a', '1'))
+        self.supervisor.execute(self.claim('b', '2'))                                      # creating a stopped cell never needed the running ceiling
+        with self.assertRaises(SupervisorBusy): self.supervisor.execute(self.start('b', '2'))      # the default ceiling is one running cell: the old behaviour for a start
+        self.supervisor.execute(self.stop('a', '1'))                                       # a stop always goes through: it is how room is made
+        self.supervisor.execute(self.start('b', '2'))
+
+    def test_a_higher_running_ceiling_lets_cells_run_side_by_side_and_still_stops_at_it(self):
+        host = HostSupervisor(self.root / 'multi', self.backend, enrollment=EnrollmentPolicy({**self.config, 'max_cells': 3, 'max_running': 2}), max_running=2)
+        for account, digit in (('a', '1'), ('b', '2'), ('c', '3')):
+            host.execute(self.claim(account, digit))
+        host.execute(self.start('a', '1')); host.execute(self.start('b', '2'))
+        with self.assertRaises(SupervisorBusy): host.execute(self.start('c', '3'))
+        with host.connect() as con:
+            self.assertEqual(sorted(r['account'] for r in con.execute("SELECT account FROM bindings WHERE state='running'")), ['a', 'b'])
+        host.execute(self.stop('a', '1')); host.execute(self.start('c', '3'))
+        with self.assertRaises(ValueError): HostSupervisor(self.root / 'bad', self.backend, max_running=0)
+
+    def test_the_policy_accepts_an_optional_running_ceiling_and_nothing_else_new(self):
+        EnrollmentPolicy({**self.config, 'max_running': 4})
+        for bad in ({'max_running': 0}, {'max_running': 'many'}, {'max_running': 201}, {'surprise': 1}):
+            with self.assertRaises(ValueError): EnrollmentPolicy({**self.config, **bad})
+
     def test_no_policy_preserves_manual_enrollment_requirement(self):
         host = HostSupervisor(self.root / 'manual', self.backend)
         with self.assertRaises(SupervisorBusy): host.execute(self.claim())

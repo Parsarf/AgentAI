@@ -71,8 +71,12 @@ def validate_receipt(claim, receipt):
 
 
 class HostSupervisor:
-    def __init__(self, root, backend, *, owner_uid=None, admission=None, enrollment=None):
+    def __init__(self, root, backend, *, owner_uid=None, admission=None, enrollment=None, max_running=1):
         self.root=Path(root)
+        # The host-side hard ceiling on cells running at the same time (an independent backstop to the app's live-capacity admission). 1 keeps the old behaviour; the production value is
+        # set in the host-owned enrollment policy (`max_running`) and raised when the server grows. Memory headroom (`admission`) still gates every start on its own.
+        if type(max_running) is not int or not 1<=max_running<=200: raise ValueError('invalid running ceiling')
+        self.max_running=max_running
         self.owner_uid=os.geteuid() if owner_uid is None else owner_uid
         self.backend=backend
         # Independent host-side dispatch bound (e.g. HeadroomAdmission); None only
@@ -193,8 +197,8 @@ class HostSupervisor:
                     raise Conflict('stale host revision')
                 if con.execute("SELECT 1 FROM journal WHERE status!='completed'").fetchone():
                     raise OutcomeUncertain('global unresolved effect')
-                if con.execute("SELECT 1 FROM bindings WHERE state='running' AND account!=?",(claim.account_id,)).fetchone():
-                    raise SupervisorBusy('global active cell')
+                if claim.kind in RUNNABLE and con.execute("SELECT count(*) FROM bindings WHERE state='running' AND account!=?",(claim.account_id,)).fetchone()[0]>=self.max_running:
+                    raise SupervisorBusy('global active cell')       # only what brings ANOTHER cell up counts: creating, backing up or stopping never needs the ceiling (a stop is how room is made)
                 if self.admission is not None and claim.kind in RUNNABLE:
                     self.admission(binding,claim.kind)
                 allowed={'create':{'absent'},'start':{'stopped'},'stop':{'running','stopped'},

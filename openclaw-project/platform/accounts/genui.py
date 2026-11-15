@@ -101,6 +101,40 @@ def block_stop(request, block_id):
     return _run(lambda: JsonResponse({'block': service().runner.stop(principal(request), block_id)}))
 
 
+@endpoint(['POST'], ['trigger', 'instruction'], field_limits={'trigger': 20, 'instruction': 2000})
+def block_replan(request, block_id):
+    """Ask the assistant to revise a running plan (a phase failed, an earlier result changes what comes next, or the customer wants a change). The answer arrives as a proposal."""
+    denied = _guard(request, 'block.action')
+    if denied:
+        return denied
+    trigger = request.input.get('trigger') or 'instruction'
+    result = _run(lambda: JsonResponse(service().runner.request_replan(principal(request), block_id, trigger, request.input.get('instruction') or ''), status=202))
+    return result
+
+
+@endpoint(['POST'], ['proposal_id', 'action'], field_limits={'proposal_id': 64, 'action': 12})
+def block_proposal(request, block_id):
+    """Approve or decline a suggested revision of a running plan."""
+    denied = _guard(request, 'block.action')
+    if denied:
+        return denied
+    action, proposal = request.input.get('action', ''), request.input.get('proposal_id', '')
+    if action not in ('approve', 'decline'):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    runner = service().runner
+    fn = runner.approve_proposal if action == 'approve' else runner.decline_proposal
+    return _run(lambda: JsonResponse({'block': fn(principal(request), block_id, proposal)}))
+
+
+@endpoint(['POST'], ['enabled'], structured=True)
+def block_auto_replan(request, block_id):
+    """Let the assistant revise this plan by itself when a phase fails (a few times at most), or turn that off again."""
+    denied = _guard(request, 'block.action')
+    if denied:
+        return denied
+    return _run(lambda: JsonResponse({'block': service().runner.set_auto_replan(principal(request), block_id, request.input.get('enabled'))}))
+
+
 @endpoint(['GET'])
 def component_registry(request):
     denied = customer(request)
