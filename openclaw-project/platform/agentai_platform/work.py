@@ -364,7 +364,9 @@ class WorkReader:
         label, tone = label_of(phase, row, activity=activity, waiting_on=waiting_on, ahead=ahead, wait=wait), tone_of(phase, row)
         if phase == 'ended' and attention == 'approval':           # the run is over but its question is not: say what is open, not "Done"
             label, tone = NEEDS['approval'], 'attention'
-        return {'id': row['id'], 'conversation_id': row['conversation_id'], 'title': self._title(con, row), 'follows': self._follows(row), 'created_epoch': row['created_epoch'],
+        parent = con.execute('SELECT parent_id FROM conversations WHERE account_id=? AND id=?', (row['account_id'], row['conversation_id'])).fetchone() if row['conversation_id'] else None
+        shown_conversation = (parent['parent_id'] if parent and parent['parent_id'] else row['conversation_id'])      # a phase that ran in a lane belongs, for the customer, to the plan's own chat
+        return {'id': row['id'], 'conversation_id': shown_conversation, 'title': self._title(con, row), 'follows': self._follows(row), 'created_epoch': row['created_epoch'],
                 'state': row['state'], 'phase': phase, 'label': label, 'tone': tone,
                 'activity': activity, 'now': now, 'ahead': ahead, 'wait': wait, 'attention': attention, 'attention_label': NEEDS.get(attention, '') if attention else '',
                 'outcome': outcome, 'verification': verification, 'note': note, 'goal': bool(row['goal_mode']), 'continuing': bool(row['continue_goal']), 'retry_of': row['retry_of'],

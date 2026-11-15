@@ -97,6 +97,15 @@ class Handler(BaseHTTPRequestHandler):
             stub.requests.append({'key': key, 'request': request})
             stub.spend[key] = stub.spend.get(key, 0) + 1
         out = decide(request.get('messages') or [], request.get('tools'))
+        with stub.lock:
+            stub.inflight += 1; stub.max_inflight = max(stub.max_inflight, stub.inflight)      # model calls going on at the same moment (parallel phases are proved by this being 2)
+        try:
+            self._answer(request, key, out, stub)
+        finally:
+            with stub.lock:
+                stub.inflight -= 1
+
+    def _answer(self, request, key, out, stub):
         self.send_response(200); self.send_header('Content-Type', 'text/event-stream'); self.end_headers()
 
         def send(delta, finish=None, usage=None):
@@ -136,6 +145,7 @@ class Handler(BaseHTTPRequestHandler):
 class StubModel:
     def __init__(self):
         self.requests, self.spend, self.lock = [], {}, threading.Lock()
+        self.inflight, self.max_inflight = 0, 0
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.server.daemon_threads = True
         self.server.stub = self

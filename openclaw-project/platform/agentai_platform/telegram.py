@@ -185,7 +185,7 @@ class TelegramService:
                 if not row:
                     raise Conflict('account setup incomplete')
                 project_id = row[0]
-            latest = con.execute('''SELECT c.id FROM conversations c WHERE c.account_id=? AND c.project_id=?
+            latest = con.execute('''SELECT c.id FROM conversations c WHERE c.account_id=? AND c.project_id=? AND c.parent_id IS NULL
                 AND EXISTS(SELECT 1 FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id)
                 ORDER BY c.created_at DESC,c.id DESC LIMIT 1''', (binding['account_id'], project_id)).fetchone()
         if latest:

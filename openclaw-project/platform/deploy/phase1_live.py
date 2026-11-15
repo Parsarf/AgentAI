@@ -108,6 +108,18 @@ def wait_for(fn, timeout, every=2.0):
     return None
 
 
+def root_action(name, timeout=300):
+    """Some steps need root (restart a service, restart a cell, change a limit in the model proxy). This process does not run as root: it asks and waits. The person running the proof does
+    the step and creates the .done file; see the section at the top of this file."""
+    open(f'/tmp/p1-act-{name}.request', 'w').write(str(int(time.time())))
+    end = time.time() + timeout
+    while time.time() < end:
+        if os.path.exists(f'/tmp/p1-act-{name}.done'):
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def cell_of(account):
     return (sql('SELECT l.observed_state,l.tenant_ref FROM lifecycle_cells l WHERE l.account_id=%s', [account]) or [[None, None]])[0]
 
@@ -169,12 +181,15 @@ def case_parallel(a_user, b_user, budget):
     set_ceiling(None)                                                                   # the host's live capacity decides, not a ceiling
     ca, cb = client(a_user), client(b_user)
     conv_a, conv_b = new_conversation(ca, a_user), new_conversation(cb, b_user)
+    # B's cell is stopped (it has never been used): wake it with a first message and wait, so that the two tasks below start together on two cells that are both up.
+    warm, _ = send(cb, conv_b, 'Reply with exactly the word: ready')
+    wait_for(lambda: warm and done(warm), 900, 3)
     sampler = Sampler(); sampler.start()
     started = int(time.time())
-    # Both customers ask at the same moment. B's cell has to be woken first (cold start); A's is already up.
+    # Both customers ask at the same moment, each for something that takes a while, so that the two runs overlap for real.
     results = {}
     def go(name, c, conv):
-        results[name] = send(c, conv, 'Reply with exactly the words: parallel proof ' + name, 'text')
+        results[name] = send(c, conv, 'Write a 200-word story about ' + ('a lighthouse' if name == 'A' else 'a train station') + '. Do not use any tools.', 'text')
     threads = [threading.Thread(target=go, args=(n, c, v)) for n, c, v in (('A', ca, conv_a), ('B', cb, conv_b))]
     for t in threads: t.start()
     for t in threads: t.join(60)
@@ -239,12 +254,12 @@ def case_queue(a_user, b_user, conv_a, conv_b):
 
 def case_kill_worker(b_user, conv_b):
     cb = client(b_user)
-    request = send(cb, conv_b, 'Write a 120-word story about a lighthouse keeper. Take your time and do not use any tools.')[0]
+    request = send(cb, conv_b, 'Write a 400-word story about a lighthouse keeper. Take your time and do not use any tools.')[0]
     running = wait_for(lambda: (sql("SELECT 1 FROM chat_deliveries WHERE request_id=%s AND state='acknowledged'", [request]) or None), 300, 1)
     if not running:
         record('P1-KILL-WORKER', 'Killing the request worker mid-run recovers with one run and no lost work', 'FAIL', 'the run never started')
         return
-    subprocess.run(['systemctl', 'restart', 'agentai-request-worker'], check=False)
+    acted = root_action('kill-worker')
     finished = wait_for(lambda: done(request), 600, 3)
     runs = scalar('SELECT count(DISTINCT native_run_id) FROM chat_deliveries WHERE request_id=%s', [request])
     receipts = scalar('SELECT count(*) FROM provider_receipts WHERE task_id=%s', [request])
@@ -257,12 +272,12 @@ def case_kill_worker(b_user, conv_b):
 def case_kill_cell(b_user, conv_b):
     cb = client(b_user)
     tenant = cell_of(B)[1]
-    request = send(cb, conv_b, 'Write a 120-word story about a mountain village. Take your time and do not use any tools.')[0]
+    request = send(cb, conv_b, 'Write a 400-word story about a mountain village. Take your time and do not use any tools.')[0]
     running = wait_for(lambda: (sql("SELECT 1 FROM chat_deliveries WHERE request_id=%s AND state='acknowledged'", [request]) or None), 300, 1)
     if not running or not tenant:
         record('P1-KILL-CELL', 'Restarting the assistant cell mid-run recovers with one run and no lost work', 'FAIL', 'the run never started')
         return
-    out = subprocess.run(['docker', 'restart', 'openclaw-cell-' + tenant], env={**os.environ, **CELLS_DOCKER}, capture_output=True, text=True)
+    acted = root_action('kill-cell')
     finished = wait_for(lambda: done(request), 900, 3)
     runs = scalar('SELECT count(DISTINCT native_run_id) FROM chat_deliveries WHERE request_id=%s', [request])
     receipts = scalar('SELECT count(*) FROM provider_receipts WHERE task_id=%s', [request])
@@ -270,34 +285,24 @@ def case_kill_cell(b_user, conv_b):
     state = request_row(request)
     ok = finished and state[0] == 'completed' and runs == 1 and receipts == 1 and replies >= 1
     record('P1-KILL-CELL', 'Restarting the assistant cell mid-run recovers with one run and no lost work', 'PASS' if ok else 'FAIL',
-           f'docker={out.returncode} state={state[:2] if state else None} runs={runs} receipts={receipts} replies={replies}')
+           f'acted={acted} state={state[:2] if state else None} runs={runs} receipts={receipts} replies={replies}')
 
 
 def case_rate_limit(b_user, conv_b):
-    """B's model key is limited to 2 requests a minute for the test: a task that needs several model calls must WAIT, say so, and finish (not fail on a 429)."""
+    """B's model key is limited to 2 requests a minute for the test (root step 'limit-on'): a task that needs several model calls must WAIT, say so, and finish (not fail on a 429)."""
     cb = client(b_user)
-    key_alias = None
-    changed = False
+    if not root_action('limit-on'):
+        record('P1-RATE-LIMIT', 'A busy provider is waited for, not turned into a failed task', 'NOT_RUN', 'the model proxy limit was not lowered')
+        return
     try:
-        out = subprocess.run(['docker', 'exec', 'openclaw-production-postgres-1', 'psql', '-U', 'litellm', '-d', 'litellm', '-At', '-c',
-                              "select key_alias from \"LiteLLM_VerificationToken\" order by created_at desc limit 0"], capture_output=True, text=True)
-        tenant = cell_of(B)[1]
-        update = subprocess.run(['docker', 'exec', 'openclaw-production-postgres-1', 'psql', '-U', 'litellm', '-d', 'litellm', '-At', '-c',
-                                 "update \"LiteLLM_VerificationToken\" set rpm_limit=2 where key_alias like '%' || '" + tenant + "' || '%' returning 1"], capture_output=True, text=True)
-        changed = update.stdout.strip() == '1'
-        if not changed:
-            record('P1-RATE-LIMIT', 'A busy provider is waited for, not turned into a failed task', 'NOT_RUN', 'could not find the test key to limit: ' + (update.stderr or update.stdout)[:200])
-            return
-        request = send(cb, conv_b, 'List three European capitals, one per line, then say which is the largest. No tools.')[0]
+        request = send(cb, conv_b, 'Use your tools: first list the files in your workspace, then create a file notes.txt with the word hello, then read it back, then tell me what it says.', 'auto')[0]
         finished = wait_for(lambda: done(request), 900, 3)
         state = request_row(request)
         said = scalar("SELECT count(*) FROM events WHERE task_id=%s AND public_payload LIKE '%%model provider%%'", [request])
         ok = finished and state[0] == 'completed' and state[1] == 'completed'
-        record('P1-RATE-LIMIT', 'A busy provider is waited for, not turned into a failed task', 'PASS' if ok else 'FAIL', f'state={state[:2] if state else None} timeline_says_waiting={said}')
+        record('P1-RATE-LIMIT', 'A busy provider is waited for, not turned into a failed task', 'PASS' if ok and said else 'FAIL', f'state={state[:2] if state else None} timeline_says_waiting={said}')
     finally:
-        if changed:
-            subprocess.run(['docker', 'exec', 'openclaw-production-postgres-1', 'psql', '-U', 'litellm', '-d', 'litellm', '-At', '-c',
-                            "update \"LiteLLM_VerificationToken\" set rpm_limit=120 where key_alias like '%' || '" + (cell_of(B)[1] or '') + "' || '%'"], capture_output=True, text=True)
+        root_action('limit-off', 120)
 
 
 LARGE_CASES = [

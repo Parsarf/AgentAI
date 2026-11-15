@@ -24,23 +24,26 @@ def build(store):
         nonce = arguments.pop('_lumina_origin', None)
         return wiring.cell_rpc(account)('tools.origin', {'name': name, 'arguments': arguments, 'nonce': nonce})
     def selection_admitted(account, personal):
-        """Exactly one funded live run, and its reservation is the kind (own key or Lumina's) the call claims."""
+        """At least one funded live run, and every one's reservation is the kind (own key or Lumina's) the call claims."""
         with store.connect() as con:
             rows = con.execute(f"""SELECT v.amount_microusd FROM task_reservations v
                 JOIN customer_requests r ON r.account_id=v.account_id AND r.id=v.task_id
                 JOIN accounts a ON a.id=r.account_id WHERE r.account_id=? AND a.status='active'
                 AND {request_states.live_run()}
-                AND v.state='active' LIMIT 2""", (account,)).fetchall()
-        return len(rows) == 1 and (rows[0]['amount_microusd'] == OWN_KEY_AMOUNT) == personal
+                AND v.state='active' LIMIT 8""", (account,)).fetchall()
+        # Several requests of one account can be live at once (the customer's task and phases of a plan in their lanes). A model call belongs to the account, and every live request of
+        # an account is admitted on the same route, so the call is admitted when ALL of them agree with it.
+        return len(rows) >= 1 and all((r['amount_microusd'] == OWN_KEY_AMOUNT) == personal for r in rows)
     def selected_route(account):
         with store.connect() as con:
             rows = con.execute(f"""SELECT r.context_json FROM customer_requests r
                 JOIN task_reservations v ON v.account_id=r.account_id AND v.task_id=r.id
                 JOIN accounts a ON a.id=r.account_id WHERE r.account_id=? AND a.status='active'
-                AND {request_states.live_run()} AND v.state='active' LIMIT 2""", (account,)).fetchall()
-        if len(rows) != 1:
+                AND {request_states.live_run()} AND v.state='active' LIMIT 8""", (account,)).fetchall()
+        selections = {json.loads(r['context_json'] or '{}').get('model_selection') for r in rows}
+        if not rows or len(selections) != 1:        # no admitted task, or live tasks that were admitted on different routes: no model call may be attributed to either
             raise model_keys.RelayError(403, 'No single admitted task owns this model call.', 'admission_mismatch')
-        selected = json.loads(rows[0]['context_json'] or '{}').get('model_selection')
+        selected = next(iter(selections))
         # Existing requests admitted before the snapshot release retain compatibility.
         return selected if isinstance(selected, str) else wiring.model_key_store(sealed=False).choices(account)['selected']
     events = wiring.event_service(store)
@@ -48,16 +51,15 @@ def build(store):
         """The model provider asked us to wait (a per-minute limit, or it is busy). The wait is not the task's own time: its run limit is moved out by as long as it waited. The
         account's one running task is told (once per call) in its timeline, so a pause reads as a pause, and whose limit it is."""
         with store.connect() as con:
-            rows = con.execute(f"SELECT r.id FROM customer_requests r WHERE r.account_id=? AND {request_states.live_run()} LIMIT 2", (account,)).fetchall()
-        if len(rows) != 1:
-            return
-        if seconds and seconds > 0:
-            with store.connect() as con:
-                con.execute("UPDATE chat_deliveries SET deadline_epoch=deadline_epoch+? WHERE account_id=? AND request_id=? AND state IN ('acknowledged','uncertain') AND deadline_epoch IS NOT NULL",
-                            (int(seconds) + 1, account, rows[0]['id']))
-        if first:
-            words = 'Your own model provider asked for a short wait (its limit, not Lumina\'s). Carrying on in a moment.' if own else 'Waiting a moment for the model provider, then carrying on.'
-            events.append(account, rows[0]['id'], 'progress', {'summary': words, 'step': 'working'}, 'gateway')
+            rows = con.execute(f"SELECT r.id FROM customer_requests r WHERE r.account_id=? AND {request_states.live_run()} LIMIT 8", (account,)).fetchall()
+        for row in rows:                                      # the call may belong to any of the account's live requests: each one's run limit moves out, and each is told
+            if seconds and seconds > 0:
+                with store.connect() as con:
+                    con.execute("UPDATE chat_deliveries SET deadline_epoch=deadline_epoch+? WHERE account_id=? AND request_id=? AND state IN ('acknowledged','uncertain') AND deadline_epoch IS NOT NULL",
+                                (int(seconds) + 1, account, row['id']))
+            if first:
+                words = 'Your own model provider asked for a short wait (its limit, not Lumina\'s). Carrying on in a moment.' if own else 'Waiting a moment for the model provider, then carrying on.'
+                events.append(account, row['id'], 'progress', {'summary': words, 'step': 'working'}, 'gateway')
     own_models = model_keys.ModelRelay(wiring.model_key_store(), wiring.own_model_on, admission=selection_admitted, selection=selected_route, waiting=provider_wait)
     memory = wiring.memory_service(store)                         # None unless fully configured; the tools then do not exist for anyone
     files = None                                                  # the file tool exists only where files can be stored at all
