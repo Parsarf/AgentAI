@@ -135,3 +135,93 @@ class Layout(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LiveAcceptance(unittest.TestCase):
+    """Tier B after every deploy: a failure puts the previous release back."""
+    def tree(self):
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        root = Path(os.path.realpath(tmp.name))      # (macOS puts temp folders behind a /private symlink: compare real paths)
+        for tree in ('app', 'sup'):
+            for release in ('old', 'new'):
+                (root / tree / 'releases' / release).mkdir(parents=True)
+            os.symlink(root / tree / 'releases' / 'new', root / tree / 'current')
+        (root / 'ui').mkdir(); (root / 'ui' / 'index.html').write_text('new')
+        (root / 'ui.prev').mkdir(); (root / 'ui.prev' / 'index.html').write_text('old')
+        (root / 'base').mkdir()
+        previous = {'sha': SHA, 'previous_sha': 'b' * 40, 'old_app': str(root / 'app' / 'releases' / 'old'), 'old_sup': str(root / 'sup' / 'releases' / 'old'), 'ui_replaced': True}
+        return root, previous
+
+    def test_a_rollback_switches_both_trees_the_web_bundle_and_the_recorded_commit_back_and_restarts_the_services(self):
+        root, previous = self.tree()
+        ran = []
+        done = deploy.rollback(previous, run=lambda argv: ran.append(argv), base=root / 'base', app=root / 'app', sup=root / 'sup', ui_parent=root)
+        self.assertEqual(os.path.realpath(root / 'app' / 'current'), str(root / 'app' / 'releases' / 'old'))
+        self.assertEqual(os.path.realpath(root / 'sup' / 'current'), str(root / 'sup' / 'releases' / 'old'))
+        self.assertEqual((root / 'ui' / 'index.html').read_text(), 'old')
+        self.assertEqual((root / 'base' / 'last').read_text().strip(), 'b' * 40)
+        self.assertEqual(ran, [['systemctl', 'restart', *deploy.UNITS, *deploy.APP_UNITS]])
+        self.assertTrue(any('web app bundle restored' in d for d in done))
+
+    def test_a_rollback_to_a_release_that_is_not_there_changes_nothing(self):
+        root, previous = self.tree()
+        previous['old_sup'] = str(root / 'sup' / 'releases' / 'gone')
+        ran = []
+        with self.assertRaises(ValueError):
+            deploy.rollback(previous, run=lambda argv: ran.append(argv), base=root / 'base', app=root / 'app', sup=root / 'sup', ui_parent=root)
+        self.assertEqual(ran, [])
+
+    def fake(self, root, *, passed, returncode=0):
+        class Result:
+            pass
+        calls = []
+        def run(argv):
+            calls.append(argv)
+            result = Result(); result.returncode = returncode
+            result.stdout = '{"passed": %s, "cases": [{"id": "LIVE-ANSWER", "passed": %s}]}\n' % (str(passed).lower(), str(passed).lower()) if argv[0] == 'systemd-run' else ''
+            result.stderr = ''
+            return result
+        return run, calls
+
+    def patched(self, root, previous):
+        (root / 'base' / 'last').write_text(SHA + '\n')
+        (root / 'base' / 'previous.json').write_text(__import__('json').dumps(previous))
+        saved = (deploy.LAST, deploy.PREVIOUS, deploy.TIERB, deploy.LOG, deploy.BASE, deploy.APP, deploy.SUP, deploy.UI_PARENT)
+        deploy.LAST, deploy.PREVIOUS, deploy.TIERB, deploy.LOG, deploy.BASE = root / 'base' / 'last', root / 'base' / 'previous.json', root / 'base' / 'tierb.json', root / 'base' / 'log', root / 'base'
+        deploy.APP, deploy.SUP, deploy.UI_PARENT = root / 'app', root / 'sup', root
+        self.addCleanup(lambda: (setattr(deploy, 'LAST', saved[0]), setattr(deploy, 'PREVIOUS', saved[1]), setattr(deploy, 'TIERB', saved[2]), setattr(deploy, 'LOG', saved[3]),
+                                 setattr(deploy, 'BASE', saved[4]), setattr(deploy, 'APP', saved[5]), setattr(deploy, 'SUP', saved[6]), setattr(deploy, 'UI_PARENT', saved[7])))
+        (root / 'app' / 'releases' / 'new' / 'deploy').mkdir()
+
+    def test_a_passing_acceptance_is_recorded_and_the_release_stays(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        run, calls = self.fake(root, passed=True)
+        self.assertEqual(deploy.accept(SHA, run=run), 0)
+        self.assertTrue(__import__('json').loads(deploy.TIERB.read_text())['passed'])
+        self.assertEqual(os.path.realpath(root / 'app' / 'current'), str(root / 'app' / 'releases' / 'new'))
+        self.assertEqual([c[0] for c in calls], ['systemd-run'])
+
+    def test_a_failing_acceptance_puts_the_previous_release_back_and_exits_40(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        run, calls = self.fake(root, passed=False)
+        self.assertEqual(deploy.accept(SHA, run=run), 40)
+        self.assertFalse(__import__('json').loads(deploy.TIERB.read_text())['passed'])
+        self.assertEqual(os.path.realpath(root / 'app' / 'current'), str(root / 'app' / 'releases' / 'old'))
+        self.assertEqual(deploy.LAST.read_text().strip(), 'b' * 40)
+        self.assertIn('systemctl', [c[0] for c in calls])
+
+    def test_a_crashed_acceptance_counts_as_a_failure(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        run, _ = self.fake(root, passed=True, returncode=1)
+        self.assertEqual(deploy.accept(SHA, run=run), 40)
+
+    def test_accepting_a_commit_that_is_not_the_deployed_one_is_refused(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        run, calls = self.fake(root, passed=True)
+        self.assertEqual(deploy.accept('c' * 40, run=run), 41)
+        self.assertEqual(calls, [])
+
+    def test_accept_is_one_of_the_three_exact_commands(self):
+        self.assertEqual(deploy.parse_command(f'accept {SHA}'), ('accept', SHA))
+        for bad in (f'accept {SHA}; id', 'accept', f'accept {SHA[:39]}'):
+            self.assertIsNone(deploy.parse_command(bad), bad)

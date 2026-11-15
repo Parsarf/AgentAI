@@ -41,7 +41,10 @@ UNITS = ['agentai-cell-bridge', 'agentai-browse', 'agentai-tool-relay', 'agentai
 # control socket the cells' lifecycle depends on, so it picks up new code at its next restart (say so in PENDING_DEPLOY.md when a change needs it).
 SELF = Path('/usr/local/sbin/agentai-deploy')
 MAX_BYTES = 400 * 1024 * 1024
-COMMAND = re.compile(r'^(deploy|deploy-dry) ([0-9a-f]{40})$')
+COMMAND = re.compile(r'^(deploy|deploy-dry|accept) ([0-9a-f]{40})$')
+PREVIOUS = BASE / 'previous.json'          # what the last deploy replaced: where `accept` goes back to when the live acceptance fails
+TIERB = BASE / 'tierb.json'                # the last live acceptance result: {sha, passed, at, cases}
+APP_UNITS = ['agentai-platform-app', 'agentai-push']       # the services that run the app tree (restarted by a rollback)
 REQUIRED = ('accounts', 'agentai_platform', 'deploy', 'manage.py', 'migrations', 'requirements.lock')
 
 
@@ -55,9 +58,72 @@ def say(message):
 
 
 def parse_command(text):
-    """-> (mode, sha), or None when the SSH command is anything but the two exact forms."""
+    """-> (mode, sha), or None when the SSH command is anything but the three exact forms (`deploy`, `deploy-dry`, `accept`, each with a 40-hex commit)."""
     match = COMMAND.match(text or '')
     return (match.group(1), match.group(2)) if match else None
+
+
+def rollback(previous, *, link=None, run=None, base=None, app=None, sup=None, ui_parent=None):
+    """Put the system back to what the last deploy replaced: the app tree and the supervisor tree (the symlinks), the web app bundle, then the services. -> a list of what was done.
+    Migrations stay (they only ever add, and the previous release was probed against the migrated database before the deploy switched). Everything is injectable for tests."""
+    link, run = link or switch, run or sh
+    base, app, sup, ui_parent = Path(base or BASE), Path(app or APP), Path(sup or SUP), Path(ui_parent or UI_PARENT)
+    done = []
+    for tree, key in ((app, 'old_app'), (sup, 'old_sup')):
+        target = Path(previous.get(key) or '')
+        if not target.is_dir() or target.parent.name != 'releases':
+            raise ValueError(f'cannot roll back: the previous {tree.name} release is not on this server')
+        link(tree / 'current', target)
+        done.append(f'{tree.name}/current -> {target.name}')
+    ui, prev = ui_parent / 'ui', ui_parent / 'ui.prev'
+    if previous.get('ui_replaced') and prev.is_dir():
+        failed = ui_parent / 'ui.failed'
+        shutil.rmtree(failed, ignore_errors=True)
+        if ui.exists():
+            os.rename(ui, failed)
+        os.rename(prev, ui)
+        done.append('web app bundle restored')
+    run(['systemctl', 'restart', *UNITS, *APP_UNITS])
+    if previous.get('previous_sha'):
+        (base / 'last').write_text(previous['previous_sha'] + '\n')
+        done.append('last -> ' + previous['previous_sha'][:7])
+    return done
+
+
+def accept(sha, *, run=None):
+    """`accept <commit>`: the live acceptance (deploy/acceptance_live.py) against the system that was just deployed. A failure puts the previous release back (rollback) and exits 40.
+    Run by the workflow right after `deploy`, under the same lock; it uploads nothing."""
+    run = run or sh
+    if not LAST.exists() or LAST.read_text().strip() != sha:
+        say(f'refused: {sha[:7]} is not the deployed commit, so there is nothing to accept')
+        return 41
+    script = Path(os.path.realpath(APP / 'current')) / 'deploy' / 'acceptance_live.py'
+    say(f'live acceptance of {sha[:7]}')
+    result = run(['systemd-run', '--wait', '--pipe', '--collect', f'--unit=accept-{sha[:7]}', '--property=User=agentai-platform', '--property=EnvironmentFile=/etc/agentai-platform/accounts.env',
+                  '--property=WorkingDirectory=/opt/agentai-platform/current', '--property=RuntimeMaxSec=1200', str(Path(os.path.realpath(APP / 'current')) / '.venv' / 'bin' / 'python'), str(script), sha])
+    lines = [line for line in (result.stdout or '').splitlines() if line.startswith('{"passed"')]
+    try:
+        report = json.loads(lines[-1]) if lines else {'passed': False, 'cases': []}
+    except ValueError:
+        report = {'passed': False, 'cases': []}
+    passed = bool(report.get('passed')) and result.returncode == 0
+    try:
+        TIERB.write_text(json.dumps({'sha': sha, 'passed': passed, 'at': int(time.time()), 'cases': report.get('cases', [])}))
+    except OSError:
+        pass
+    say((result.stdout or '')[-1200:])
+    if passed:
+        say(f'live acceptance passed for {sha[:7]}')
+        return 0
+    say(f'live acceptance FAILED for {sha[:7]}: putting the previous release back')
+    try:
+        previous = json.loads(PREVIOUS.read_text())
+        if previous.get('sha') != sha:
+            raise ValueError('the recorded previous release is for another commit')
+        say('rolled back: ' + '; '.join(rollback(previous, run=run)))
+    except (OSError, ValueError) as exc:
+        say(f'COULD NOT ROLL BACK ({exc}); the failed release is still live: roll back by hand (OPERATIONS.md, release.py)')
+    return 40
 
 
 def forget_manual(live_trees):
@@ -154,7 +220,7 @@ def switch(link: Path, target: Path):
 def main(argv=None, stdin=None):
     parsed = parse_command(os.environ.get('SSH_ORIGINAL_COMMAND', ''))
     if parsed is None:
-        print('refused: the only commands are "deploy <commit>" and "deploy-dry <commit>"', file=sys.stderr)
+        print('refused: the only commands are "deploy <commit>", "deploy-dry <commit>" and "accept <commit>"', file=sys.stderr)
         return 2
     mode, sha = parsed
     BASE.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -165,6 +231,8 @@ def main(argv=None, stdin=None):
     except OSError:
         say('refused: another deploy is running')
         return 3
+    if mode == 'accept':
+        return accept(sha)
     if mode == 'deploy' and LAST.exists() and LAST.read_text().strip() == sha:
         say(f'{sha[:7]} is already the deployed commit; nothing to do')
         return 0
@@ -260,6 +328,11 @@ def main(argv=None, stdin=None):
             sh(['systemctl', 'restart', *UNITS])
             return 20
         forget_manual([APP, SUP])                # both trees now hold exactly this commit: nothing on the server is a hand-made release any more
+        try:
+            previous_sha = LAST.read_text().strip() if LAST.exists() else ''
+            PREVIOUS.write_text(json.dumps({'sha': sha, 'previous_sha': previous_sha, 'old_app': old_app, 'old_sup': old_sup, 'ui_replaced': bool(manifest.get('ui')), 'at': int(time.time())}))
+        except OSError:
+            pass
         LAST.write_text(sha + '\n')
         if install_self(plat):
             say('the deploy program itself changed in this commit: the installed copy was replaced and the next deploy uses it')

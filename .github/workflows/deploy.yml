@@ -101,3 +101,21 @@ jobs:
           echo "Sending $SHA as '$MODE'"
           ssh -i "$key" -o IdentitiesOnly=yes -o UserKnownHostsFile="$hosts" -o StrictHostKeyChecking=yes -o BatchMode=yes \
               "$DEPLOY_USER@$DEPLOY_HOST" "$MODE $SHA" < "$RUNNER_TEMP/upload.tgz"
+      - name: Live acceptance (Tier B)
+        # A few real checks against the system that was just deployed (platform/deploy/acceptance_live.py, run by the server's deploy program). If one fails the server puts the
+        # previous release back by itself and this step (and the run) fails: a release that does not pass the live checks does not stay.
+        if: steps.tip.outputs.skip != 'true' && env.MODE == 'deploy'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/deploy_key"; hosts="$RUNNER_TEMP/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key"; printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$hosts"
+          trap 'shred -u "$key" 2>/dev/null || rm -f "$key"' EXIT
+          echo "Live acceptance of $SHA"
+          ssh -i "$key" -o IdentitiesOnly=yes -o UserKnownHostsFile="$hosts" -o StrictHostKeyChecking=yes -o BatchMode=yes \
+              "$DEPLOY_USER@$DEPLOY_HOST" "accept $SHA" < /dev/null
