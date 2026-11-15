@@ -96,6 +96,30 @@ def collect(con, last=30):
     return out
 
 
+SPANS = ('accepted_to_claimed', 'claimed_to_prepared', 'prepared_to_submitted', 'submitted_to_first_row', 'first_row_to_finished', 'accepted_to_finished')
+
+
+def percentile(values, q):
+    values = sorted(values)
+    if not values:
+        return None
+    index = (len(values) - 1) * q
+    low, high = int(index), min(int(index) + 1, len(values) - 1)
+    return round(values[low] + (values[high] - values[low]) * (index - low), 2)
+
+
+def summarize(rows):
+    """Median and 90th percentile of every span, separately for a COLD request (the cell had to be started for it) and a WARM one. A span a request did not record is left out of that
+    span's numbers (never counted as zero). -> {'cold': {span: {'n','median','p90'}}, 'warm': {...}}"""
+    out = {}
+    for kind, picked in (('cold', [r for r in rows if r.get('cell_ops') and 'start' in r['cell_ops']]), ('warm', [r for r in rows if not (r.get('cell_ops') and 'start' in r['cell_ops'])])):
+        out[kind] = {}
+        for span in SPANS:
+            values = [r[span] for r in picked if r.get(span) is not None and r[span] >= 0]
+            out[kind][span] = {'n': len(values), 'median': percentile(values, 0.5), 'p90': percentile(values, 0.9)}
+    return out
+
+
 def show(v):
     return '-' if v is None else f'{v:.2f}'
 
@@ -105,9 +129,18 @@ def main():
     ap.add_argument('db')
     ap.add_argument('--last', type=int, default=30)
     ap.add_argument('--json', action='store_true')
+    ap.add_argument('--summary', action='store_true', help='medians and 90th percentiles, cold (cell started for the request) and warm')
     args = ap.parse_args()
     con = sqlite3.connect(f'file:{args.db}?mode=ro', uri=True)
     rows = collect(con, args.last)
+    if args.summary:
+        report = summarize(rows)
+        if args.json:
+            print(json.dumps(report, indent=1))
+            return
+        for kind in ('cold', 'warm'):
+            print(f"{kind}: " + ', '.join(f"{span} n={v['n']} median={show(v['median'])} p90={show(v['p90'])}" for span, v in report[kind].items()))
+        return
     if args.json:
         print(json.dumps([{k: v for k, v in r.items() if k not in ('_t', '_raw', 'account')} for r in rows], indent=1))
         return

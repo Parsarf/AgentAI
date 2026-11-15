@@ -109,3 +109,34 @@ class RegistryDocumentHTTP(TestCase):
         with connection.cursor() as con:
             con.execute('SELECT count(*) FROM gen_artifact_events WHERE account_id=%s', [self.account_ids[0]])
             self.assertEqual(con.fetchone()[0], 0)
+
+
+class PlanAdaptationHTTP(TestCase):
+    """The three routes that let a customer change a running plan: signed-in only, scoped to the account, validated before anything is looked up."""
+    setUp = fixtures.ChatHTTPChecks.setUp
+    new_client = fixtures.ChatHTTPChecks.new_client
+    post = fixtures.ChatHTTPChecks.post
+    project = fixtures.ChatHTTPChecks.project
+    conversation = fixtures.ChatHTTPChecks.conversation
+
+    def test_routes_refuse_strangers_bad_input_and_other_accounts_plans(self):
+        a, b = self.clients
+        missing = 'f' * 32
+        for path, body in (('/replan', {'trigger': 'instruction', 'instruction': 'skip the tests'}), ('/proposal', {'proposal_id': missing, 'action': 'approve'}), ('/auto-replan', {'enabled': True})):
+            self.assertEqual(self.post(a, f'/v1/blocks/{missing}{path}', body).status_code, 404, path)           # no such plan: the same answer as someone else's plan
+            self.assertEqual(self.new_client().post(f'/v1/blocks/{missing}{path}', data=json.dumps(body), content_type='application/json', secure=True).status_code in (401, 403), True)
+        self.assertEqual(self.post(a, f'/v1/blocks/{missing}/proposal', {'proposal_id': missing, 'action': 'frobnicate'}).status_code, 400)
+        self.assertEqual(self.post(a, f'/v1/blocks/{missing}/replan', {'surprise': 'x'}).status_code, 400)
+        self.assertEqual(self.post(a, f'/v1/blocks/{missing}/replan', {'instruction': 'x' * 2001}).status_code, 400)
+        self.assertEqual(self.post(a, f'/v1/blocks/{missing}/auto-replan', {'enabled': 'yes'}).status_code, 400)
+
+    def test_another_accounts_plan_cannot_be_revised_or_decided(self):
+        from agentai_platform.genui import schema
+        from .chat import service
+        conversation = self.conversation()
+        plan = {'schemaVersion': '1.0', 'type': 'task_plan', 'title': 'Mine', 'phases': [
+            {'id': 'a', 'title': 'A', 'description': 'd', 'enabled': True, 'optional': False, 'requiresApproval': False, 'dependsOn': []}]}
+        block = service().blocks.create_plan(self.account_ids[0], conversation, schema.validate_plan(plan), key='http-adapt-1')
+        b = self.clients[1]
+        for path, body in (('/replan', {'trigger': 'instruction', 'instruction': 'change it'}), ('/proposal', {'proposal_id': 'e' * 32, 'action': 'decline'}), ('/auto-replan', {'enabled': True})):
+            self.assertEqual(self.post(b, f"/v1/blocks/{block['id']}{path}", body).status_code, 404, path)

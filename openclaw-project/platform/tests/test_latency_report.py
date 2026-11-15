@@ -122,3 +122,16 @@ class LatencyReportTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SummaryChecks(unittest.TestCase):
+    def test_medians_and_p90_are_kept_apart_for_cold_and_warm_requests_and_missing_spans_are_not_zero(self):
+        import importlib.util, pathlib
+        spec = importlib.util.spec_from_file_location('latency_report', pathlib.Path(__file__).resolve().parents[1] / 'deploy' / 'latency_report.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        rows = [{'cell_ops': ['start'], 'accepted_to_finished': v} for v in (100.0, 120.0, 180.0)] + \
+               [{'cell_ops': [], 'accepted_to_finished': v} for v in (20.0, 30.0, 40.0, 50.0, None)] + [{'cell_ops': None, 'accepted_to_finished': -1.0}]
+        report = module.summarize(rows)
+        self.assertEqual(report['cold']['accepted_to_finished'], {'n': 3, 'median': 120.0, 'p90': 168.0})
+        self.assertEqual(report['warm']['accepted_to_finished'], {'n': 4, 'median': 35.0, 'p90': 47.0})          # the missing one and the negative one are left out
+        self.assertEqual(report['warm']['accepted_to_claimed'], {'n': 0, 'median': None, 'p90': None})
