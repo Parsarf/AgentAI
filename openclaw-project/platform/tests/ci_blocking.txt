@@ -44,3 +44,5 @@ test_auto_deploy
 test_timing
 test_goal_objectives
 test_estimates
+test_parallel_requests
+test_output_cutoff

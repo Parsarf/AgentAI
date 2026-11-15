@@ -341,7 +341,7 @@ class CoordinatorRescindChecks(unittest.TestCase):
             self.assertIsNone(row['lease_owner']);self.assertIsNone(row['lease_until'])
             cell=con.execute("SELECT observed_state FROM lifecycle_cells WHERE account_id='a'").fetchone()[0]
             self.assertEqual(cell,'stopped')
-            slot=con.execute('SELECT account_id,state FROM lifecycle_slot WHERE id=1').fetchone()
+            slot=con.execute('SELECT account_id,state FROM cell_slots').fetchone()
             self.assertEqual(tuple(slot),('a','reserved'))
         self.assertTrue(self.engine.run(self.driver,'a',op['id'],capacity=CapacityResult(1,1,1,1,1,())))
         with self.store.connect() as con:

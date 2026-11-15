@@ -194,7 +194,7 @@ class RelayChecks(unittest.TestCase):
         resolver = resolver or (lambda host, port, type=0: [(2, 1, 6, '', ('127.0.0.1', up.port))])
         ep = parse_endpoint(f'https://{HOST}:{up.port}/v1') if up.port >= 1024 else None
         self.store.put('acct', ep, 'my-model', 'sk-customer-key-0001')
-        return ModelRelay(self.store, lambda account: self.on, resolver=lambda host, port, type=0: [(2, 1, 6, '', ('127.0.0.1', port))], public=public, context=up.client_context)
+        return ModelRelay(self.store, lambda account: self.on, resolver=lambda host, port, type=0: [(2, 1, 6, '', ('127.0.0.1', port))], public=public, context=up.client_context, sleep=lambda seconds: None)
 
     def call(self, relay, body=None, account='acct'):
         up = relay.chat(account, json.dumps(body or {'model': 'whatever-the-assistant-asked', 'messages': [{'role': 'user', 'content': 'hi'}]}).encode())

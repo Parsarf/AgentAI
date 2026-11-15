@@ -7,7 +7,7 @@ from agentai_platform.chat_driver import ChatDriver
 from agentai_platform.genui.runtime import GenUiRuntime
 from agentai_platform.genui.store import BlockStore
 from agentai_platform.goals import GoalChain
-from agentai_platform.lifecycle.profiles import host_capacity
+from agentai_platform.lifecycle.profiles import host_capacity_for
 from agentai_platform.panel.offer import PanelOffer
 from agentai_platform.request_worker import RequestWorker, where
 from agentai_platform.routing.display import DisplayDecider
@@ -28,7 +28,7 @@ def build_worker(store):
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))
     # Plan phases and goal turns are sent through the same chat service the web app uses (built fresh each tick, so an owner switch change is seen without a restart).
-    return RequestWorker(queue, driver, host_capacity, shadow=shadow, runner=lambda: wiring.chat_service().runner, goals=lambda: GoalChain(wiring.chat_service(), limit=settings.GOAL_CHAIN_LIMIT))
+    return RequestWorker(queue, driver, host_capacity_for(store), shadow=shadow, max_parallel=int(getattr(settings, 'REQUEST_WORKER_PARALLEL', 8)), runner=lambda: wiring.chat_service().runner, goals=lambda: GoalChain(wiring.chat_service(), limit=settings.GOAL_CHAIN_LIMIT))
 
 
 class Command(BaseCommand):
@@ -57,6 +57,6 @@ class Command(BaseCommand):
                 print(json.dumps(report, sort_keys=True), flush=True)   # counts and states only; no account detail
             if options['once']:
                 return
-            if report.get('finished') or report.get('followed'):
-                continue               # a request just ended (or a plan or goal step was queued): the next one is looked for at once
+            if report.get('finished') or report.get('followed') or report.get('started') or report.get('resumed'):
+                continue               # a request just ended or started (or a plan or goal step was queued): the next one is looked for at once
             time.sleep(options['interval'])

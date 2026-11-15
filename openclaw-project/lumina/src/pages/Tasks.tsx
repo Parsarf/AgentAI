@@ -8,6 +8,7 @@ import Permission from '../components/work/Permission';
 import TaskActions from '../components/work/TaskActions';
 import TaskDetail from '../components/work/TaskDetail';
 import { Elapsed, Status } from '../components/work/parts';
+import LongJobs from '../components/work/LongJobs';
 
 type Filter = 'all' | 'done' | 'unconfirmed' | 'incomplete' | 'failed' | 'stopped';
 const FILTERS: { key: Filter; label: string; match(t: TaskSummary): boolean }[] = [
@@ -60,6 +61,7 @@ function Activity() {
         <h2 id="act-needs">Needs you{needs.length > 0 && <span className="wk-count">{needs.length}</span>}</h2>
         {needs.length ? <ul className="wk-list">{needs.map(t => <NeedsYou key={t.id} task={t} />)}</ul> : <p className="wk-quiet">{loaded ? 'Nothing is waiting for you.' : 'Loading…'}</p>}
       </section>
+      <LongJobs />
       <section className="wk-section" aria-labelledby="act-going">
         <h2 id="act-going">In progress</h2>
         {going.length ? <ul className="wk-list">{going.map(t => <Item key={t.id} task={t} />)}</ul> : <p className="wk-quiet">{loaded ? <>Nothing is running. <Link to="/chat">Start something in a chat.</Link></> : 'Loading…'}</p>}

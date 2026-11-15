@@ -64,6 +64,12 @@ def _goal(raw):
             'tokens_used': raw.get('tokensUsed') if type(raw.get('tokensUsed')) is int else 0, 'note': str(raw.get('lastStatusNote') or '')[:300]}
 
 
+def _stop_reason(message):
+    """Why the model ended this assistant message, as the runtime records it on the message itself (`stop`, `length`, `toolUse`, `error` ...), or None. A short fixed word, never free text."""
+    found = message.get('stopReason')
+    return found[:20] if isinstance(found, str) and found.replace('_', '').replace('-', '').isalnum() else None
+
+
 class NativeGateway:
     """Gateway client over an injected ``rpc(method, params) -> dict`` callable.
 
@@ -182,7 +188,7 @@ class NativeGateway:
             native_id, text = meta.get('id'), _text(m.get('content'))
             if role and isinstance(native_id, str) and text:
                 rows.append({'id': native_id, 'role': role, 'content': text, 'seq': meta.get('seq'), 'run_id': meta.get('runId') if isinstance(meta.get('runId'), str) else None,
-                             'idempotency_key': idem, 'after': after if role == 'agent' else None})
+                             'idempotency_key': idem, 'after': after if role == 'agent' else None, **({'stop_reason': _stop_reason(m)} if role == 'agent' else {})})
         info = result.get('sessionInfo') or {}
         pending = result.get('pendingInputs')
         items = pending.get('items') if isinstance(pending, dict) else (pending if isinstance(pending, list) else [])
@@ -356,7 +362,7 @@ class SyntheticGateway:
         text = str(outcome.get('text', 'ack ' + run['id'])).strip()          # the runtime's history trims what the model wrote
         run['text'] = text
         if text:
-            self._row(run['session'], 'agent', text, run['id'])
+            self._row(run['session'], 'agent', text, run['id'])['stop_reason'] = outcome.get('stop_reason') or 'stop'
         for key, extra in run['steered']:                       # each steered input is answered in order, under a run id the runtime makes up (not the key it was sent under)
             self._row(run['session'], 'customer', extra, key=key + ':user')
             self._row(run['session'], 'agent', 'ack ' + extra[:40], 'rt-' + uuid.uuid4().hex[:12])

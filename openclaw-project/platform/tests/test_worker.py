@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.capacity import CapacityResult
 from agentai_platform.security import Principal,NotFound
@@ -51,7 +52,7 @@ class WorkerChecks(unittest.TestCase):
         op=self.request('create');r=self.worker(DisabledDriver()).tick()
         self.assertEqual(r['denied'],1);self.assertEqual(self.op_state(op),'pending')
     def test_capacity_wait_keeps_the_operation_pending(self):
-        op=self.request('create');self.capacity=lambda:CapacityResult(0,0,0,0,0,('memory_exhausted',))
+        op=self.request('create');self.capacity=lambda:CapacityResult(1,1,0,1,0,('disk_exhausted',))      # a new cell needs its volume
         r=self.worker().tick();self.assertEqual(r['waiting'],1);self.assertEqual(self.op_state(op),'pending');self.assertEqual(self.driver.effects,0)
         self.capacity=lambda:OK;self.assertEqual(self.worker().tick()['ran'],1)
     def test_supervisor_busy_is_a_wait_not_a_failure(self):
@@ -161,8 +162,16 @@ class WorkerChecks(unittest.TestCase):
 class CapacityChecks(unittest.TestCase):
     def cap(self,mem_gib,cpus=4,disk_gib=100):
         return host_capacity(now=datetime.now(timezone.utc),available=lambda:int(mem_gib*GIB),cpus=lambda:cpus,disk_free=lambda:disk_gib*GIB)
-    def test_measured_host_admits_one_and_cpu_is_the_bottleneck(self):
-        r=self.cap(13.2);self.assertEqual((r.memory_slots,r.cpu_slots),(3,1));self.assertEqual(r.admitted_slots,1)
+    def test_measured_host_admits_several_cells_by_live_memory_and_shared_cpu(self):
+        r=self.cap(13.2);self.assertEqual((r.memory_slots,r.cpu_slots),(4,4));self.assertEqual(r.admitted_slots,4)
+    def test_running_cells_are_deducted_so_a_full_host_admits_no_more(self):
+        free=lambda n:host_capacity(now=datetime.now(timezone.utc),available=lambda:int(13.2*GIB),total=lambda:int(15.6*GIB),cpus=lambda:4,disk_free=lambda:100*GIB,running_cells=n).admitted_slots
+        self.assertEqual([free(n) for n in range(6)],[4,3,2,1,0,0])
+    def test_a_bigger_host_admits_more_without_any_code_change(self):
+        big=host_capacity(now=datetime.now(timezone.utc),available=lambda:int(60*GIB),total=lambda:int(64*GIB),cpus=lambda:16,disk_free=lambda:1000*GIB)
+        self.assertGreaterEqual(big.admitted_slots,20)
+    def test_no_cpu_sharing_is_one_setting_away(self):
+        r=host_capacity(now=datetime.now(timezone.utc),available=lambda:int(13.2*GIB),cpus=lambda:4,disk_free=lambda:100*GIB,oversubscribe=1);self.assertEqual((r.cpu_slots,r.admitted_slots),(2,2))
     def test_exhausted_memory_admits_zero(self):
         r=self.cap(0.5);self.assertEqual(r.admitted_slots,0);self.assertIn('memory_exhausted',r.blockers)
     def test_small_cpu_or_disk_blocks(self):
@@ -257,11 +266,24 @@ class WakeChecks(unittest.TestCase):
         self.request('create'); self.worker().tick(); self.submit()
         self.assertEqual(self.worker().tick()['woken'], 0)
 
-    def test_other_accounts_waiting_request_shortens_idle_handover(self):
+    def _a_idle_two_minutes_and_b_waiting(self):
         self.request('create', 'a'); self.request('create', 'b'); self.worker(idle_after=10**12).tick()
         self.request('start', 'a'); self.worker(idle_after=10**12).tick()
         self.now += 120                                                            # idle for 2 minutes only
         self.submit('b')
+
+    def test_a_cell_keeps_running_while_the_host_has_room_for_the_waiting_account(self):
+        self._a_idle_two_minutes_and_b_waiting()
+        self.assertEqual(self.worker(wake=True, idle_after=10**12).tick()['drained'], 0)       # room for b's cell: a keeps running, b's cell is woken beside it
+
+    def test_a_full_host_hands_over_from_the_cell_idle_longest_after_a_short_idle(self):
+        self._a_idle_two_minutes_and_b_waiting()
+        with patch('agentai_platform.lifecycle.capacity.max_running_cells', lambda: 1):
+            self.assertEqual(self.worker(wake=True, idle_after=10**12).tick()['drained'], 1)
+
+    def test_a_full_host_by_memory_also_hands_over(self):
+        self._a_idle_two_minutes_and_b_waiting()
+        self.capacity = lambda: CapacityResult(0, 0, 9, 9, 0, ('memory_exhausted', 'cpu_exhausted'))
         self.assertEqual(self.worker(wake=True, idle_after=10**12).tick()['drained'], 1)
 
 

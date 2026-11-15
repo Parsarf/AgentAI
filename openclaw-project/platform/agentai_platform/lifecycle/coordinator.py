@@ -14,9 +14,11 @@ import uuid
 from agentai_platform.security import NotFound, Principal
 from agentai_platform.store import Store
 from agentai_platform.capacity import CapacityResult
-from .capacity import max_cells
+from .capacity import max_cells, max_running_cells
 from .supervisor import SupervisorBusy
-from .types import KINDS, Claim, Receipt, Conflict
+from .types import KINDS, RUNNABLE, Claim, Receipt, Conflict
+
+ROOM_BLOCKERS = frozenset({'memory_exhausted', 'cpu_exhausted', 'pids_exhausted'})    # what a cell that is already counted does not need more of (disk it does: its volume exists)
 
 IDENTIFIER = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 
@@ -233,25 +235,29 @@ class Coordinator:
             if state not in allowed[kind]: raise Conflict('operation requires a different observed state')
             # Even stopped maintenance/create need measured storage/isolation/profile
             # admission. Do not turn missing runtime proof into an unrestricted call.
-            if capacity.admitted_slots<1 or capacity.blockers:
+            # Only an operation that brings one MORE cell up needs free room. A stop, a backup of a stopped cell, or work on a cell that is already counted must
+            # still go through on a full host: a stop is how room is made. Host-wide blockers (stale measurement, isolation unverified) apply to every kind.
+            already=con.execute('SELECT 1 FROM cell_slots WHERE account_id=?',(account,)).fetchone() is not None
+            needs_room=kind in RUNNABLE and not already
+            blockers=capacity.blockers if needs_room else tuple(b for b in capacity.blockers if b not in ROOM_BLOCKERS)
+            if blockers or (needs_room and capacity.admitted_slots<1):
                 con.execute("UPDATE lifecycle_details SET error_code='capacity_wait' WHERE account_id=? AND operation_id=?",(account,operation))
                 return None
-            task_slot=con.execute('SELECT account_id FROM request_slot WHERE id=1').fetchone()
-            if task_slot and task_slot[0]!=account:
-                con.execute("UPDATE lifecycle_details SET error_code='capacity_wait' WHERE account_id=? AND operation_id=?",(account,operation))
-                return None
-            slot=con.execute('SELECT * FROM lifecycle_slot WHERE id=1').fetchone()
-            if slot and slot['account_id']!=account:
-                con.execute("UPDATE lifecycle_details SET error_code='capacity_wait' WHERE account_id=? AND operation_id=?",(account,operation))
-                return None
+            # Several cells run at once. A cell that is not already this account's may start only while the host has room for one more (the capacity
+            # numbers above deduct the running cells) and the owner's optional ceiling is not reached. Otherwise the start waits in line, unharmed.
+            slot=con.execute('SELECT * FROM cell_slots WHERE account_id=?',(account,)).fetchone()
             if not slot:
-                con.execute("INSERT INTO lifecycle_slot VALUES (1,?,?,?,'reserved')",(account,row['deployment_id'],operation))
+                ceiling=max_running_cells()
+                if needs_room and ceiling is not None and con.execute('SELECT count(*) FROM cell_slots').fetchone()[0]>=ceiling:
+                    con.execute("UPDATE lifecycle_details SET error_code='capacity_wait' WHERE account_id=? AND operation_id=?",(account,operation))
+                    return None
+                con.execute("INSERT INTO cell_slots(account_id,deployment_id,operation_id,state) VALUES (?,?,?,'reserved')",(account,row['deployment_id'],operation))
             if row['attempts']>=3:
                 # The attempts are used up (three effect-free refusals, e.g. no host headroom). The operation ends as failed instead of staying 'pending' for ever, where it was
                 # refused on every tick and blocked every later operation of the account (its cell could never be woken again). Nothing ran, so a retry is safe.
                 con.execute("UPDATE operations SET state='failed' WHERE account_id=? AND id=?",(account,operation))
                 con.execute("UPDATE lifecycle_details SET retry_safe=1,error_code='retry_limit',lease_owner=NULL,lease_until=NULL,updated_at=? WHERE account_id=? AND operation_id=?",(int(self.clock()),account,operation))
-                con.execute("DELETE FROM lifecycle_slot WHERE account_id=? AND operation_id=? AND state='reserved'",(account,operation))
+                con.execute("DELETE FROM cell_slots WHERE account_id=? AND operation_id=? AND state='reserved'",(account,operation))
                 self._audit(con,account,'supervisor',operation,kind,'failed')
                 return None
             fence=row['fence']+1
@@ -274,7 +280,7 @@ class Coordinator:
         con.execute('''UPDATE lifecycle_details SET error_code=?,retry_safe=0,updated_at=?
             WHERE account_id=? AND operation_id=?''',(code,int(self.clock()),row['account_id'],row['id']))
         con.execute("UPDATE lifecycle_cells SET observed_state='unknown' WHERE account_id=?",(row['account_id'],))
-        con.execute("UPDATE lifecycle_slot SET state='uncertain' WHERE account_id=?",(row['account_id'],))
+        con.execute("UPDATE cell_slots SET state='uncertain' WHERE account_id=?",(row['account_id'],))
         self._audit(con,row['account_id'],'supervisor',row['id'],row['kind'],'uncertain')
 
     def uncertain(self, claim):
@@ -343,11 +349,11 @@ class Coordinator:
                 WHERE account_id=? AND operation_id=?''',
                 (int(not receipt.applied and receipt.quiesced),'runtime_rejected' if not receipt.applied else None,int(self.clock()),account,operation))
             if receipt.state=='running':
-                slot=con.execute('SELECT account_id FROM lifecycle_slot WHERE id=1').fetchone()
-                if not slot or slot[0]!=account: raise Conflict('missing execution reservation')
-                con.execute("UPDATE lifecycle_slot SET state='active',operation_id=? WHERE account_id=?",(operation,account))
+                slot=con.execute('SELECT account_id FROM cell_slots WHERE account_id=?',(account,)).fetchone()
+                if not slot: raise Conflict('missing execution reservation')
+                con.execute("UPDATE cell_slots SET state='active',operation_id=? WHERE account_id=?",(operation,account))
             else:
-                con.execute('DELETE FROM lifecycle_slot WHERE account_id=?',(account,))
+                con.execute('DELETE FROM cell_slots WHERE account_id=?',(account,))
             if claim.kind=='backup' and receipt.applied:
                 con.execute('INSERT INTO lifecycle_backups VALUES (?,?,?,?,?)',(account,receipt.backup_ref,operation,generation,profile))
             self._audit(con,account,'supervisor',operation,claim.kind,result)

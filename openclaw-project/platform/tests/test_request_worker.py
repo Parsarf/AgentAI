@@ -43,7 +43,7 @@ class RequestWorkerChecks(unittest.TestCase):
         with self.store.connect() as con:
             con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) "
                         "VALUES ('a','op1','d-a','start','completed','k','h',1)")
-            con.execute("INSERT INTO lifecycle_slot VALUES (1,'a','d-a','op1',?)", (state,))
+            con.execute("INSERT INTO cell_slots(account_id,deployment_id,operation_id,state) VALUES ('a','d-a','op1',?)", (state,))
 
     def test_request_waits_without_a_running_cell_then_runs_and_keeps_the_cell_up(self):
         self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1')
@@ -56,8 +56,8 @@ class RequestWorkerChecks(unittest.TestCase):
         self.assertEqual([m['provenance'] for m in page['messages']], ['customer', 'agent'])
         self.assertTrue(page['execution_enabled'])
         with self.store.connect() as con:
-            self.assertEqual(con.execute('SELECT account_id FROM lifecycle_slot').fetchone()[0], 'a')   # cell stays up for idle sleep
-            self.assertIsNone(con.execute('SELECT 1 FROM request_slot').fetchone())
+            self.assertEqual(con.execute('SELECT account_id FROM cell_slots').fetchone()[0], 'a')   # cell stays up for idle sleep
+            self.assertIsNone(con.execute('SELECT 1 FROM request_slots').fetchone())
         self.assertEqual(self.worker.tick(), {'ran': 0})
 
     def test_failed_execution_leaves_the_request_uncertain_and_blocks_new_claims(self):
@@ -116,7 +116,7 @@ class RecoveredUsageChecks(RequestWorkerChecks):
         self.chat.send(self.a, conversation_id='c-a', message='hi', key='k1')
         with self.store.connect() as con:
             con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES ('a','op1','d-a','start','completed','k','h',1)")
-            con.execute("INSERT INTO lifecycle_slot VALUES (1,'a','d-a','op1','active')")
+            con.execute("INSERT INTO cell_slots(account_id,deployment_id,operation_id,state) VALUES ('a','d-a','op1','active')")
         with self.assertRaises(RuntimeError): worker.tick()
         gateway.fail_after_ack = False
         self.assertEqual(worker.tick(), {'ran': 1, 'finished': True})
@@ -161,8 +161,8 @@ class OrphanRequestChecks(RequestWorkerChecks):
             self.assertEqual(con.execute("SELECT state FROM customer_requests WHERE id='orphan'").fetchone()[0], 'failed')
             con.execute("INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,fence,lease_owner) "
                         "VALUES ('a','stuck','actor-a','p-a','c-a','ky','h','lost2','uncertain',?,1,'request-worker')", (self.now,))
-            con.execute("INSERT INTO request_slot VALUES (1,'a','stuck')")
+            con.execute("INSERT INTO request_slots(account_id,request_id,kind,claimed_epoch) VALUES ('a','stuck','interactive',0)")
         self.assertEqual(self.worker.tick(), {'reconciled': True})               # the NotFound loop is gone
         with self.store.connect() as con:
             self.assertEqual(con.execute("SELECT state FROM customer_requests WHERE id='stuck'").fetchone()[0], 'failed')
-            self.assertIsNone(con.execute('SELECT 1 FROM request_slot').fetchone())
+            self.assertIsNone(con.execute('SELECT 1 FROM request_slots').fetchone())

@@ -43,7 +43,7 @@ class Acceptance(Base):
         self.assertEqual(f['reservation'][0]['state'], 'settled')
         self.assertEqual(len(self.gateway.runs), 1)
         self.assertEqual(self.rows('SELECT state FROM tasks WHERE id=?', (sent['id'],))[0][0], 'completed')
-        self.assertEqual(self.rows('SELECT count(*) FROM request_slot')[0][0], 0)               # the running slot was handed back
+        self.assertEqual(self.rows('SELECT count(*) FROM request_slots')[0][0], 0)               # the running slot was handed back
 
     @case('A-VERSION-STAMP')
     def test_every_request_records_which_code_rules_tools_and_runtime_served_it(self):
@@ -90,7 +90,7 @@ class Acceptance(Base):
         self.assertEqual((f['request']['state'], f['request']['outcome']), ('cancelled', 'cancelled'))
         self.assertTrue([c for c in self.gateway.calls if c[0] == 'abort'])
         self.assertEqual(f['reservation'][0]['state'], 'settled')
-        self.assertEqual(self.rows('SELECT count(*) FROM request_slot')[0][0], 0)
+        self.assertEqual(self.rows('SELECT count(*) FROM request_slots')[0][0], 0)
 
     @case('A-GOAL-CHAIN')
     def test_keep_working_until_complete_runs_as_a_chain_of_admitted_turns(self):

@@ -60,7 +60,7 @@ class QueueAndDriver(Base):
         self.assertFalse(self.queue.finish(claim, receipt))                # the lease ran out during the close
         self.assertEqual(self.worker.tick(), {'reconciled': True})
         self.assertEqual(self.request(sent['id'])['state'], 'completed')
-        self.assertFalse(self.rows('SELECT 1 FROM request_slot'))
+        self.assertFalse(self.rows('SELECT 1 FROM request_slots'))
         self.assertEqual(len(self.rows('SELECT 1 FROM provider_receipts')), 1)
 
     def test_a_request_that_waited_long_is_not_abandoned_on_its_first_failed_reconnect(self):

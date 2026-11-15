@@ -57,6 +57,8 @@ def decide(messages, tools):
         return {'tool': 'write', 'args': {'path': 'notes/plan.txt', 'content': 'plan\n'}}
     if 'SCENARIO:slow' in user:
         return {'text': 'slow finished', 'delay': 6}
+    if 'SCENARIO:cutoff' in everything:                          # a reply that hits the provider's output limit, then (after Lumina asks it to continue) the rest
+        return {'text': 'Part one of the report. ', 'finish': 'length'} if answered == 0 else {'text': 'Part two, the end of the report.'}
     if 'SCENARIO:goal' in user or ('Active goal:' in everything and 'SCENARIO:goal' in everything):
         if answered >= 1:
             return {'tool': 'tool_call', 'args': {'id': 'openclaw:core:update_goal', 'args': {'status': 'complete', 'note': 'report is finished'}}}
@@ -123,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
                 send({}, 'stop', usage)
             else:
                 send({'content': out['text']})
-                send({}, 'stop', usage)
+                send({}, out.get('finish', 'stop'), usage)
             self.wfile.write(b'data: [DONE]\n\n'); self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             pass

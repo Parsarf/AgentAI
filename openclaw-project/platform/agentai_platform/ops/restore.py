@@ -28,7 +28,7 @@ LEDGER = ['usage_entries', 'provider_receipts', 'task_reservations', 'audit_even
 # Never restored: identity, billing and entitlements (current provider state wins), host-bound lifecycle, channels,
 # tickets, streams, connector grants and every global (non-account) table.
 LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships', 'entitlements', 'deployments', 'operations',
-        'lifecycle_cells', 'lifecycle_details', 'lifecycle_backups', 'lifecycle_slot', 'request_slot',
+        'lifecycle_cells', 'lifecycle_details', 'lifecycle_backups', 'lifecycle_slot', 'request_slot', 'request_slots', 'cell_slots',
         'billing_customers', 'billing_checkout_sessions', 'billing_subscriptions', 'billing_invoices', 'billing_flags', 'billing_inbox',
         'billing_operations', 'connector_connections', 'connector_link_states', 'connector_operations', 'telegram_links',
         'telegram_link_codes', 'telegram_outbox', 'telegram_updates', 'download_tickets', 'event_streams',

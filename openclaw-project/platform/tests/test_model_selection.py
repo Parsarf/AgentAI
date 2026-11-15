@@ -96,7 +96,7 @@ class SelectionChecks(unittest.TestCase):
             self.assertEqual(upstream.call_count, 2)
 
     def test_proxy_budget_exhaustion_is_terminal_but_real_rate_limits_are_preserved(self):
-        relay = mk.ModelRelay(self.store, lambda a: True)
+        relay = mk.ModelRelay(self.store, lambda a: True, sleep=lambda seconds: None)         # the waiting is tested in test_rate_limits; here it must not take real time
         response = Mock(status=429); response.getheader.return_value = 'application/json'
         response.read.return_value = b'{"error":{"message":"Budget has been exceeded! Key=private-secret","type":"BudgetExceededError"}}'
         conn = Mock(); conn.getresponse.return_value = response

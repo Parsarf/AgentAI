@@ -113,7 +113,7 @@ class FlowChecks(unittest.TestCase):
                 con.execute("INSERT INTO entitlements VALUES (?,?,'t','trial',?,datetime(?,'unixepoch'))", (x, 'e-' + x, json.dumps(LIMITS), self.now + 10**6))
         with self.store.connect() as con:
             con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES ('a','op1','d-a','start','completed','k','h',1)")
-            con.execute("INSERT INTO lifecycle_slot VALUES (1,'a','d-a','op1','active')")
+            con.execute("INSERT INTO cell_slots(account_id,deployment_id,operation_id,state) VALUES ('a','d-a','op1','active')")
         self.gw = Scripted([])
 
     def worker(self, gateway=None):
@@ -271,7 +271,7 @@ class FlowChecks(unittest.TestCase):
         rid = self.rows("SELECT request_id FROM plan_phase_runs WHERE phase_id='b'")[0]['request_id']
         with self.store.connect() as con:                                   # the runtime failed this phase
             con.execute("UPDATE customer_requests SET state='failed',result='boom' WHERE id=?", (rid,))
-            con.execute('DELETE FROM request_slot')
+            con.execute('DELETE FROM request_slots')
         self.chat.runner.tick()
         self.assertEqual(self.phases(block['id']), {'a': 'completed', 'b': 'failed', 'c': 'pending'})
         self.assertEqual(self.chat.blocks.get(self.a, block['id'])['run_status'], 'failed')
