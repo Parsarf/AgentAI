@@ -1,14 +1,16 @@
 [Unit]
-Description=Lumina mail and calendar dashboard: sync connected accounts
+Description=Lumina mail and calendar dashboard: keep connected accounts in sync, live
 After=network-online.target agentai-platform-app.service
 
 [Service]
-Type=oneshot
+Type=simple
 User=agentai-platform
 Group=agentai-platform
 WorkingDirectory=/opt/agentai-platform/current
 EnvironmentFile=/etc/agentai-platform/accounts.env
-ExecStart=/opt/agentai-platform/current/.venv/bin/python manage.py hub_sync
+ExecStart=/opt/agentai-platform/current/.venv/bin/python manage.py hub_sync --serve
+Restart=always
+RestartSec=5
 UMask=0077
 NoNewPrivileges=yes
 ProtectSystem=strict
@@ -23,8 +25,10 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 CapabilityBoundingSet=
 ReadWritePaths=/var/lib/agentai-platform
 ReadOnlyPaths=/etc/agentai-platform
-MemoryMax=256M
+MemoryMax=384M
 MemorySwapMax=0
-CPUQuota=25%
-TasksMax=16
-TimeoutStartSec=120
+CPUQuota=50%
+TasksMax=48
+
+[Install]
+WantedBy=multi-user.target

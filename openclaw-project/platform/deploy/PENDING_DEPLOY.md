@@ -78,3 +78,16 @@ is registered yet, so turning the switch on today would show two empty pages. Wh
    - The consent screen shows the Google project's app name. These credentials belong to the owner's ManagerAI project, so customers would see "ManagerAI": use a client of a
      Lumina project, or rename the app on the consent screen, before launch.
 5. **Other providers** need their own sign-in app and that service's review before any customer can connect one.
+
+### Live and complete (2026-11-16, the owner's decision)
+
+- **Everything is copied, not 90 days.** Mail: headers and previews of all the mail in what the customer chose (bodies still only when opened). Calendars: every past event and
+  two years ahead. The retention rows `mail_headers` and `calendar_events` now say "until you remove the account"; a number of days can be set there again and is honoured.
+  **The policy text must say this** before anyone else is invited.
+- **The sync is a service now, not a timer**: `agentai-hub-sync.service` runs `manage.py hub_sync --serve` for good. It asks each mailbox what changed every 20 seconds and
+  each calendar every 60, and works through a first fill without pausing (about 100 messages every second or two). On a server that had the timer: `systemctl disable --now
+  agentai-hub-sync.timer`, remove the timer unit, install the new service unit, `systemctl enable --now agentai-hub-sync.service`. The deploy program restarts it when it is
+  running, so it runs the new code.
+- **Open pages are live**: they ask `/v1/hub/pulse` every 8 seconds while visible and reload only when its mark changed.
+- **Google is reached over IPv4 first.** The production host has no working IPv6 route and Google lists IPv6 addresses first: each request took about 25 seconds and the first
+  sync never finished. Any future provider adapter on this host needs the same care.

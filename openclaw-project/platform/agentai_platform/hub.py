@@ -105,6 +105,18 @@ class HubService:
         self.sync.reconcile(principal.account_id)
         return {'requested': self.sync.request(principal.account_id, connection_id)}
 
+    def pulse(self, principal) -> dict:
+        """One cheap answer for an open page to ask every few seconds: `mark` changes whenever any connected account's mail or calendars changed, finished loading, or needs
+        its customer. The page reloads what it shows only when the mark differs from the one it has."""
+        with self.store.connect() as con:
+            self._enter(con, principal)
+            row = con.execute("""SELECT coalesce(max(last_change_epoch),0) AS changed,coalesce(sum(item_count),0) AS items,coalesce(sum(filled),0) AS filled,count(*) AS parts,
+                coalesce(sum(state='paused'),0) AS paused FROM hub_sync WHERE account_id=?""", (principal.account_id,)).fetchone()
+            accounts = con.execute("SELECT count(*) AS n,coalesce(sum(state!='connected'),0) AS needing FROM connector_connections WHERE account_id=? AND state!='revoked'",
+                                   (principal.account_id,)).fetchone()
+        loading = row['parts'] - row['filled']
+        return {'mark': f"{row['changed']}.{row['items']}.{row['filled']}.{row['parts']}.{row['paused']}.{accounts['n']}.{accounts['needing']}", 'loading': loading > 0, 'items': row['items']}
+
     # -- what the customer has open, for a message sent from the dashboard ---------------------------------------------------------------------------
     def looking_at(self, principal, raw) -> dict | None:
         """Check what the page says the customer has open, and reduce it to ids this account really has. Anything else is dropped: the page is not trusted to name a thread or

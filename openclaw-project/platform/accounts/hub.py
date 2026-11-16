@@ -2,6 +2,7 @@
 
     GET  /v1/hub                          accounts (state, capabilities, freshness), settings, unread counts, calendars
     POST /v1/hub/refresh                  {"connection_id"?}  make the sync of all accounts, or one, due now
+    GET  /v1/hub/pulse                    a mark that changes when anything changed: an open page asks every few seconds and reloads only then
     POST /v1/hub/settings                 {"timezone"?, "allow_images_from"?, "block_images_from"?}
     POST /v1/hub/link                     {"provider"}  begin signing in to a mail and calendar provider; answers with the address to send the customer to
     POST /v1/hub/ask                      {"conversation_id","message","key","looking_at"?}  a message to the assistant from the dashboard, with what is open (ids only)
@@ -171,6 +172,15 @@ def ask(request):
         return JsonResponse({'error': 'budget_denied', 'category': denial_category(error)}, status=402)
     except ValueError:
         return JsonResponse({'error': 'invalid_request'}, status=400)
+
+
+@endpoint(['GET'])
+def pulse(request):
+    """Has anything changed? An open Inbox or Calendar asks this every few seconds and reloads only when the mark differs."""
+    principal, stop = _enter(request, 'hub.pulse', 6000)
+    if stop:
+        return stop
+    return _run(lambda: wiring.hub_service().pulse(principal))
 
 
 @endpoint(['POST'], ['connection_id'], structured=True)

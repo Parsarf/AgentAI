@@ -5,6 +5,7 @@ import Accounts from '../components/hub/Accounts';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import Dock, { type Looking, type Suggestion } from '../components/hub/Dock';
 import MessageBody from '../components/hub/MessageBody';
+import { usePulse } from '../components/hub/usePulse';
 import { api } from '../lib/api';
 import { browserZone, failed, fileSize, fullTime, hub, LABEL_WORDS, LIST_ORDER, listTime, people, personName, problemWords, threadKey, validZone,
   type HubAccount, type Message, type Overview, type Thread } from '../lib/hub';
@@ -101,12 +102,16 @@ export default function Inbox() {
     try {
       const r = await hub.threads({ ...filters, cursor });
       if (mine !== request.current) return;                              // a newer filter was chosen while this one was on its way
-      setThreads(prev => (cursor && prev ? [...prev, ...r.threads] : r.threads)); setNext(r.next); setErr('');
+      setThreads(prev => (cursor && prev ? [...prev, ...r.threads] : r.threads)); setNext(r.next); setErr(''); further.current = !!cursor; if (!cursor) setFresh(false);
     } catch (e) { if (mine === request.current) { setErr(failed(e)); setThreads(prev => prev ?? []); } }
     finally { if (mine === request.current) setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, !!view]);
   useEffect(() => { setOlder(null); void load(); }, [load]);
+  // Live: when anything changed at the server, the accounts and the first page of the list are loaded again, quietly. If the customer has paged further down, the list is
+  // left as it is (reloading would throw them back to the top) and a line offers the new mail instead.
+  const further = useRef(false); const [fresh, setFresh] = useState(false);
+  usePulse(on, () => { void loadOverview(); if (further.current) setFresh(true); else void load(); });
 
   const open = useCallback(async (t: Thread) => {
     setSelected(threadKey(t)); setOpened(null); setOpenErr('');
@@ -192,12 +197,13 @@ export default function Inbox() {
         {(linkNote || connectNote) && <p className={`notice${linkNote.endsWith('…') ? '' : ' warning'}`} role="status">{linkNote || connectNote}</p>}
         {choosingAccount && <ChooseAccess account={choosingAccount} onDone={doneChoosing} onCancel={() => { setChoosing(null); setParams({}, { replace: true }); }} />}
         {needing.map(a => <p key={a.id} className="notice warning" role="status">{a.identity} needs you. What was loaded before is still shown. <Link to="/settings?tab=access">Open Access</Link></p>)}
-        {filling.length > 0 && <p className="notice" role="status">Loading mail from {filling.map(a => a.identity).join(', ')} for the first time. This list fills in as it arrives.</p>}
+        {filling.length > 0 && <p className="notice" role="status">Loading all mail from {filling.map(a => `${a.identity} (${a.mail?.items ?? 0} so far)`).join(', ')}. Newest first; this list fills in as it arrives.</p>}
+        {fresh && <p className="notice" role="status">There is new mail. <button type="button" className="btn small" onClick={() => { void load(); }}>Show it</button></p>}
         {view && !accounts.length ? (
           <div className="empty"><b>No mail account is connected</b><p className="muted">Connect an account and choose what Lumina may read. It shows up here.</p>
             <AddAccount providers={view.providers ?? []} primary /></div>
         ) : threads === null ? <p className="muted hub-pad" role="status">Loading…</p> : !threads.length && !loading ? (
-          <div className="empty">{query ? <>Nothing in the last 90 days matches “{query}”.</> : accounts.some(a => !a.granted.mail) && !accounts.some(a => a.granted.mail)
+          <div className="empty">{query ? <>Nothing matches “{query}”{filling.length ? ' in what has loaded so far' : ''}.</> : accounts.some(a => !a.granted.mail) && !accounts.some(a => a.granted.mail)
             ? <>Nothing has been chosen to show yet. Use “Choose what Lumina may read” beside the account.</> : <>Nothing here.</>}</div>
         ) : (
           <ul className="hub-threads" aria-label="Threads">
@@ -213,7 +219,7 @@ export default function Inbox() {
           </ul>)}
         {next && <p className="hub-pad"><button type="button" className="btn small" disabled={loading} onClick={() => load(next)}>{loading ? 'Loading…' : 'Show more'}</button></p>}
         {query && threads && !next && searchable.length > 0 && <div className="hub-older">
-          <p className="faint small">That was the last 90 days, which Lumina keeps a copy of. Older mail can be searched in your mail service:</p>
+          <p className="faint small">{filling.length ? 'Some of your mail is still loading, so older messages may be missing above. ' : ''}You can also search in your mail service itself:</p>
           {searchable.map(a => <button key={a.id} type="button" className="btn small" onClick={() => searchOlder(a.id)}>Search older mail in {a.identity}</button>)}
           {older && <div className="hub-older-found" role="status">
             {older.problem ? <p className="notice warning">{problemWords(older.problem)}</p> : <p className="small">{older.complete

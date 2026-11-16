@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import * as I from '../components/Icons';
 import Accounts from '../components/hub/Accounts';
 import Dock, { type Looking, type Suggestion } from '../components/hub/Dock';
+import { usePulse } from '../components/hub/usePulse';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
   validZone, zonedEpoch, type HubAccount, type HubCalendar, type HubEvent, type Overview } from '../lib/hub';
@@ -105,6 +106,7 @@ export default function CalendarPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!info, span.from, span.to, zone, shownAccounts.join(','), selection]);
   useEffect(() => { void load(); }, [load]);
+  usePulse(on, () => { void loadInfo(); void load(); });      // live: when anything changed at the server, the calendars and the events on screen are loaded again, quietly
   useEffect(() => { if ((view === 'week' || view === 'day') && grid.current && typeof grid.current.scrollTo === 'function') grid.current.scrollTo({ top: 7 * 44 }); }, [view, events === null]);
 
   const open = useCallback(async (e: HubEvent) => {
@@ -226,7 +228,7 @@ export default function CalendarPage() {
             <AddAccount providers={info.providers ?? []} primary /></div>
         ) : events === null ? <p className="muted hub-pad" role="status">Loading…</p>
         : found ? <div className="hub-agenda">{found.events.length ? agendaRows(list(found.events, [...new Set(found.events.flatMap(e => eventDays(e, zone, '0000-01-01', '9999-12-31').slice(0, 1)))].sort()))
-            : <div className="empty">No event from last month to a year ahead matches “{found.query}”.</div>}
+            : <div className="empty">No event matches “{found.query}”.</div>}
             {!found.complete && <p className="faint small">These are the closest matches. There are more.</p>}</div>
         : view === 'agenda' ? <div className="hub-agenda">{agendaRows(list(events, span.days)).length ? agendaRows(list(events, span.days)) : <div className="empty">Nothing in these 30 days.</div>}</div>
         : view === 'month' ? (

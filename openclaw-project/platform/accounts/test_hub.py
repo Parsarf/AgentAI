@@ -161,6 +161,23 @@ class Dashboard(Base):
         self.assertEqual(self.post(self.a, '/v1/hub/ask', {'conversation_id': conversation, 'message': '', 'key': 'k3456789'}).status_code, 400)
         self.assertEqual(ask(None, client=self.b, key='k4567890').status_code, 404)                                      # another account's chat
 
+    def test_an_open_page_can_ask_whether_anything_changed_and_the_service_loop_keeps_it_current(self):
+        self.fill()
+        first = self.a.get('/v1/hub/pulse', secure=True).json()
+        self.assertEqual((first['loading'], first['items'] > 0), (False, True))
+        self.assertEqual(self.a.get('/v1/hub/pulse', secure=True).json()['mark'], first['mark'])
+        self.assertEqual(self.b.get('/v1/hub/pulse', secure=True).json()['items'], 0)
+        mid = 'm-0009'
+        self.wa.mail[mid] = {'id': mid, 'threadId': 't-0009', 'subject': 'Just arrived', 'snippet': 'new', 'from': {'name': 'Ann', 'email': 'ann@x.test'},
+                             'to': [{'name': 'Me', 'email': 'me@alpha.test'}], 'internalDate': self.now * 1000, 'labelIds': ['L_IN', 'L_NEW'], 'files': []}
+        self.wa.mail_log.append((self.wa.bump(), mid))
+        with connection.cursor() as c:
+            c.execute("UPDATE hub_sync SET next_epoch=0,state='running',lease_epoch=%s WHERE domain='mail'", [self.now + 10**6])      # as a worker that was stopped mid-run would leave them
+        from accounts.management.commands.hub_sync import Command
+        Command().serve(sleep=lambda s: None, rounds=3)                                             # the service: takes the stuck rows back at its start, then syncs
+        self.assertNotEqual(self.a.get('/v1/hub/pulse', secure=True).json()['mark'], first['mark'])
+        self.assertEqual(self.a.get('/v1/hub/mail/threads?label=inbox&limit=1', secure=True).json()['threads'][0]['subject'], 'Just arrived')
+
     def test_nothing_in_the_dashboard_can_change_a_mailbox_or_a_calendar(self):
         self.fill()
         calls = (list(self.wa.calls), list(self.wp.calls))
@@ -247,7 +264,7 @@ class Off(Base):
     ON = set()
 
     def test_every_route_answers_feature_off_until_the_owner_switch_is_on(self):
-        for path in ('/v1/hub', '/v1/hub/mail/threads', '/v1/hub/mail/labels', '/v1/hub/mail/thread', '/v1/hub/mail/message', '/v1/hub/mail/search-older', '/v1/hub/events',
+        for path in ('/v1/hub', '/v1/hub/pulse', '/v1/hub/mail/threads', '/v1/hub/mail/labels', '/v1/hub/mail/thread', '/v1/hub/mail/message', '/v1/hub/mail/search-older', '/v1/hub/events',
                      '/v1/hub/event', '/v1/hub/events/search'):
             self.assertEqual(self.a.get(path, secure=True).status_code, 503, path)
         for path in ('/v1/hub/refresh', '/v1/hub/settings', '/v1/hub/calendars', '/v1/hub/link', '/v1/hub/link/finish', '/v1/hub/ask'):

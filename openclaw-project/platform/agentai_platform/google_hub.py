@@ -16,8 +16,12 @@ Tokens come from custody as `credential` and are never logged, returned or put i
 """
 from __future__ import annotations
 import base64
+import http.client
 import json
+import socket
+import ssl
 import time
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -37,7 +41,8 @@ GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me'
 CALENDAR = 'https://www.googleapis.com/calendar/v3'
 HOSTS = ('gmail.googleapis.com', 'www.googleapis.com', 'oauth2.googleapis.com')
 MAX_ANSWER = 12_000_000
-MAIL_PAGE = 25                         # one call per message for its headers: a page is kept small so a checkpoint is never far away
+MAIL_PAGE = 100                        # messages listed per page; their headers are then read several at a time
+PARALLEL = 8                           # header reads at once: well inside Google's per-user rate (a read costs 5 units of 250 a second)
 EVENT_PAGE = 250
 
 DECLARATION = Declaration(
@@ -66,12 +71,32 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class _V4First(http.client.HTTPSConnection):
+    """Connect over IPv4 when the host has an IPv4 address. Google's hosts list several IPv6 addresses first; on a server with no working IPv6 route every one of them is
+    tried and waited for before IPv4 is, which made each request take about 25 seconds (measured on the production host, 2026-11-16). The certificate is still checked
+    against the host's name."""
+    def connect(self):
+        try:
+            found = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
+        except OSError:
+            found = []
+        if not found:
+            return super().connect()
+        sock = socket.create_connection(found[0][4][:2], self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _V4Handler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_V4First, req, context=ssl.create_default_context())
+
+
 def default_http(method, url, headers, data=None, timeout=20):
     parts = urlsplit(url)
     if parts.scheme != 'https' or parts.hostname not in HOSTS or parts.port not in (None, 443):
         raise ProviderError(0, 'host_not_allowed')
     request = urllib.request.Request(url, data=data, method=method, headers=headers)
-    opener = urllib.request.build_opener(_NoRedirect())
+    opener = urllib.request.build_opener(_NoRedirect(), _V4Handler())
     try:
         with opener.open(request, timeout=timeout) as answer:
             return answer.status, dict(answer.headers), answer.read(MAX_ANSWER + 1)[:MAX_ANSWER]
@@ -281,7 +306,7 @@ class GoogleAdapter:
         if state.get('s'):
             query.append(('syncToken', state['s']))            # a sync token carries the window it was made for; no times may be sent with it
         else:
-            query += [('timeMin', _rfc3339(start_epoch)), ('timeMax', _rfc3339(end_epoch))]
+            query += [('timeMin', _rfc3339(start_epoch) if start_epoch else None), ('timeMax', _rfc3339(end_epoch))]      # no start: every past event
         if state.get('p'):
             query.append(('pageToken', state['p']))
         try:
@@ -304,6 +329,22 @@ class GoogleAdapter:
         return Changes(items, removed, json.dumps({'s': page.get('nextSyncToken')}) if page.get('nextSyncToken') else None, False)
 
     # -- mail ----------------------------------------------------------------------------------------------------------------------------------------
+    def _headers_of_all(self, credential, ids, names):
+        """The headers of several messages, read a few at a time. -> (messages, the ids that are no longer there). The first real failure is raised."""
+        def one(mid):
+            try:
+                return mid, self._headers_of(credential, mid, names), None
+            except ProviderError as error:
+                return mid, None, error
+        if not ids:
+            return [], []
+        with ThreadPoolExecutor(max_workers=min(PARALLEL, len(ids))) as pool:
+            results = list(pool.map(one, ids))
+        failure = next((e for _m, _h, e in results if e is not None and e.status != 404), None)
+        if failure is not None:
+            raise failure
+        return [h for _m, h, e in results if h is not None], [m for m, _h, e in results if e is not None]      # a message deleted between the list and the read is simply not there
+
     def _headers_of(self, credential, message_id, names):
         return to_message(self._get(credential, f'{GMAIL}/messages/{quote(message_id, safe="")}',
                                     [('format', 'metadata'), ('metadataHeaders', ['From', 'To', 'Cc', 'Subject', 'Date'])]), names)
@@ -321,14 +362,8 @@ class GoogleAdapter:
                 return Changes([], [], json.dumps({'h': state['h']}), False)
             label = wanted[state['i']]
             page = self._get(credential, GMAIL + '/messages', [('maxResults', min(int(limit or MAIL_PAGE), MAIL_PAGE)), ('pageToken', state.get('p')),
-                                                               ('q', '{after:%d is:starred}' % int(since_epoch)), ('labelIds', label), ('includeSpamTrash', 'true')])
-            items = []
-            for ref in page.get('messages', []):
-                try:
-                    items.append(self._headers_of(credential, ref['id'], names))
-                except ProviderError as error:
-                    if error.status != 404:
-                        raise                               # a message deleted between the list and the read is simply not there
+                                                               ('q', '{after:%d is:starred}' % int(since_epoch) if since_epoch else None), ('labelIds', label), ('includeSpamTrash', 'true')])
+            items, _gone = self._headers_of_all(credential, [ref['id'] for ref in page.get('messages', [])], names)      # Gmail lists newest first, so recent mail arrives first
             if page.get('nextPageToken'):
                 following = {'h': state['h'], 'i': state['i'], 'p': page['nextPageToken']}
             elif state['i'] + 1 < len(wanted):
@@ -350,14 +385,8 @@ class GoogleAdapter:
                     mid = str((item.get('message') or {}).get('id') or '')
                     if mid and mid not in changed:
                         changed.append(mid)
-        items = []
-        for mid in changed:
-            try:
-                items.append(self._headers_of(credential, mid, names))
-            except ProviderError as error:
-                if error.status != 404:
-                    raise
-                gone.add(mid)
+        items, missing = self._headers_of_all(credential, changed, names)
+        gone |= set(missing)
         if labels is not None:                                # it may have left what was chosen
             gone |= {m['id'] for m in items if not any(p['id'] in labels for p in m['provider_labels'])}
             items = [m for m in items if m['id'] not in gone]

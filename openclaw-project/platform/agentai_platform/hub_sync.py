@@ -1,7 +1,8 @@
 """The dashboard's background sync (roadmap #D2): a bounded copy of each connected account's mail headers and calendar events, kept current.
 
-What is copied, and no more. Mail: headers and a short snippet of what the customer granted, for the retention table's window (starred mail stays while starred). A body is
-never fetched here; hub.py fetches one when it is opened. Calendars: the provider's expanded instances from the window's start to its end.
+What is copied. Mail: headers and a short snippet of ALL the mail the customer granted (the owner's decision of 2026-11-16; the retention table's row is the window, and it
+can be a number of days again). A body is never fetched here; hub.py fetches one when it is opened. Calendars: the provider's expanded instances, every past one and two
+years ahead. It is kept live by asking each provider, every few seconds, what changed since last time (one cheap call).
 
 One row of `hub_sync` per thing that is synced (a connection's mail, or one calendar). A run takes a lease on its row, pages through the provider's changes with a
 checkpoint after every page (so a crash loses one page of work, never more), and gives the lease back. A run that is repeated changes nothing: the tables' uniqueness
@@ -28,15 +29,19 @@ BACKOFF = (60, 300, 900, 3600)
 PAUSING = ('needs_customer', 'refused')
 
 
-def mail_window_days() -> int:
-    return int(retention.BY_KEY['mail_headers'].days)
+def mail_window_days():
+    """How far back mail is copied, in days; None = all of it (the retention row decides)."""
+    days = retention.BY_KEY['mail_headers'].days
+    return None if days is None else int(days)
 
 
-def events_back_days() -> int:
-    return int(retention.BY_KEY['calendar_events'].days)
+def events_back_days():
+    """How far back events are copied, in days; None = every past event."""
+    days = retention.BY_KEY['calendar_events'].days
+    return None if days is None else int(days)
 
 
-EVENTS_AHEAD_DAYS = 366
+EVENTS_AHEAD_DAYS = 731                # two years ahead
 WINDOW_SLIP_DAYS = 30                  # a calendar's window is moved forward (a clean refill) once it has slipped this far
 LIST_INTERVAL = 1800                   # how often an account's list of calendars is read again
 
@@ -46,9 +51,11 @@ def _grant_key(parts) -> str:
 
 
 class HubSync:
-    def __init__(self, store, connectors, client, *, clock=time.time, page=100, pages_per_run=10, interval=300, lease=180):
+    def __init__(self, store, connectors, client, *, clock=time.time, page=100, pages_per_run=10, interval=20, calendar_interval=60, lease=180):
         self.store, self.connectors, self.client, self.clock = store, connectors, client, clock
-        self.page, self.pages_per_run, self.interval, self.lease = page, pages_per_run, interval, lease
+        # `interval`: how soon a mailbox that is up to date is asked again for what changed (one cheap call). Calendars a little less often. This is what makes the
+        # dashboard live without the provider having to call Lumina.
+        self.page, self.pages_per_run, self.interval, self.calendar_interval, self.lease = page, pages_per_run, interval, calendar_interval, lease
 
     # -- which rows exist: follows the connection and its grants ----------------------------------------------------------------------------------------
     def _hub_connections(self, con, account_id=None):
@@ -208,7 +215,7 @@ class HubSync:
         with self.store.connect() as con:
             con.execute("""UPDATE hub_sync SET state='waiting',lease_epoch=NULL,last_sync_epoch=?,last_change_epoch=CASE WHEN ? THEN ? ELSE last_change_epoch END,
                 next_epoch=?,failures=0,last_error=NULL,last_error_epoch=NULL WHERE account_id=? AND connection_id=? AND domain=? AND resource_id=?""",
-                        (now, int(changed), now, now if more else now + self.interval, account, connection, domain, resource))
+                        (now, int(changed), now, now if more else now + (self.interval if domain == 'mail' else self.calendar_interval), account, connection, domain, resource))
         try:
             self.client.freshness.read(account, connection, where[1], resource, complete=not more)
         except Exception:
@@ -239,7 +246,8 @@ class HubSync:
 
     def _mail(self, account, connection, resource, declaration, adapter, credential, where):
         labels = self._labels(account, connection)
-        since = int(self.clock()) - mail_window_days() * DAY
+        days = mail_window_days()
+        since = 0 if days is None else int(self.clock()) - days * DAY      # 0: all the mail that was granted
         changed, more, resynced = False, True, False
         for _ in range(self.pages_per_run):
             state = self._state(account, connection, 'mail', resource)
@@ -306,7 +314,8 @@ class HubSync:
     # -- calendars --------------------------------------------------------------------------------------------------------------------------------------
     def _calendar(self, account, connection, calendar_id, declaration, adapter, credential, where):
         now = int(self.clock())
-        start, end = now - events_back_days() * DAY, now + EVENTS_AHEAD_DAYS * DAY
+        back = events_back_days()
+        start, end = (0 if back is None else now - back * DAY), now + EVENTS_AHEAD_DAYS * DAY      # 0: every past event
         changed, more, resynced = False, True, False
         state = self._state(account, connection, 'calendar', calendar_id)
         if state['window_end_epoch'] is None or end - state['window_end_epoch'] > WINDOW_SLIP_DAYS * DAY:
@@ -396,12 +405,14 @@ def sweep(con, now) -> dict:
     """Retention for the dashboard's copies, run by the one sweeper (retention.py) inside its transaction: mail headers past the window (starred mail stays), opened bodies
     past theirs (the headers stay; the body is fetched again if it is opened again), events that ended before the window."""
     done = {}
-    cutoff = now - mail_window_days() * DAY
-    old = con.execute('SELECT DISTINCT account_id,connection_id,thread_id FROM hub_messages WHERE sent_epoch<? AND starred=0', (cutoff,)).fetchall()
-    done['mail_headers'] = con.execute('DELETE FROM hub_messages WHERE sent_epoch<? AND starred=0', (cutoff,)).rowcount
-    for r in old:
-        rebuild_thread(con, r['account_id'], r['connection_id'], r['thread_id'])
+    if mail_window_days() is not None:                       # a limit on how far back mail is kept (None: all of it stays until the account is removed)
+        cutoff = now - mail_window_days() * DAY
+        old = con.execute('SELECT DISTINCT account_id,connection_id,thread_id FROM hub_messages WHERE sent_epoch<? AND starred=0', (cutoff,)).fetchall()
+        done['mail_headers'] = con.execute('DELETE FROM hub_messages WHERE sent_epoch<? AND starred=0', (cutoff,)).rowcount
+        for r in old:
+            rebuild_thread(con, r['account_id'], r['connection_id'], r['thread_id'])
     done['mail_bodies'] = con.execute('''UPDATE hub_messages SET body_text=NULL,body_html=NULL,attachments_json=NULL,body_fetched_epoch=NULL,body_opened_epoch=NULL
         WHERE body_fetched_epoch IS NOT NULL AND coalesce(body_opened_epoch,body_fetched_epoch)<?''', (now - int(retention.BY_KEY['mail_bodies'].days) * DAY,)).rowcount
-    done['calendar_events'] = con.execute('DELETE FROM hub_events WHERE end_epoch<?', (now - events_back_days() * DAY,)).rowcount
+    if events_back_days() is not None:
+        done['calendar_events'] = con.execute('DELETE FROM hub_events WHERE end_epoch<?', (now - events_back_days() * DAY,)).rowcount
     return done
