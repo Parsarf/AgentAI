@@ -100,14 +100,14 @@ function BrowserStage({ task }: { task: TaskView }) {
 export function Workspace({ id }: { id: string }) {
   const { app } = useData(); const { loaded } = useWork();
   const { task, full, rows } = useTask(id);
-  if (!task) return <div className="wk-record"><Link className="wk-back" to="/tasks"><I.Chevron width={14} height={14} />Activity</Link>
+  if (!task) return <div className="wk-record"><Link className="wk-back" to="/activity"><I.Chevron width={14} height={14} />Activity</Link>
     <p className={loaded ? 'err' : 'muted'} role={loaded ? 'alert' : 'status'}>{loaded ? 'That task was not found.' : 'Loading…'}</p></div>;
   const approvals = task.needs.filter((n): n is Approval => n.kind === 'approval'); const others = task.needs.filter(n => n.kind !== 'approval');
   const browser = !!full?.browser && !!app?.features.browse; const words = verdict(task);
   return (
     <div className={`ws${browser ? ' with-browser' : ''}`}>
       <header className="ws-head">
-        <Link className="wk-back" to={task.conversation_id ? `/chat/${task.conversation_id}` : '/tasks'}><I.Chevron width={14} height={14} />{task.conversation_id ? 'Back to the chat' : 'Activity'}</Link>
+        <Link className="wk-back" to={task.conversation_id ? `/chat/${task.conversation_id}` : '/activity'}><I.Chevron width={14} height={14} />{task.conversation_id ? 'Back to the chat' : 'Activity'}</Link>
         <h1>{task.title}</h1>
         <div className="wk-record-status"><Status task={task} /><Elapsed task={full ?? task} />{full?.browser?.host && <span>{full.browser.host}</span>}<TaskActions task={task} /></div>
         {words && <p className="wk-verdict">{words}</p>}
@@ -130,5 +130,5 @@ export default function Live() {
   if (id) return <Workspace key={id} id={id} />;
   if (!loaded) return <p className="muted" role="status">Loading…</p>;
   const current = tasks.find(t => t.phase === 'needs_you' || t.phase === 'working') ?? tasks.find(isOpen);      // what is going on or waiting on you, before anything merely queued or held
-  return <Navigate to={current ? `/live/${current.id}` : '/tasks'} replace />;
+  return <Navigate to={current ? `/live/${current.id}` : '/activity'} replace />;
 }
