@@ -104,3 +104,8 @@
   --menu-row-hover: rgb(255 255 255 / .07); --menu-row-selected: rgb(255 255 255 / .06); --menu-row-active: rgb(255 255 255 / .11);
   --switch-off: rgb(120 120 128 / .32);
 }
+
+/* Mail and calendar dashboard: the colours a customer can give a calendar (the server stores the name, never a colour). Each reads on --surface as a fill at 22% with its own text. */
+:root {
+  --cal-blue: #5b9dff; --cal-green: #3fcf8e; --cal-amber: #f5b942; --cal-red: #f0716f; --cal-violet: #9d85ff; --cal-teal: #3ccfcf; --cal-pink: #f27fb8; --cal-grey: #a3a5af;
+}

@@ -40,7 +40,8 @@ function UsageCard() {
 
 export function Settings() {
   const { app, signOut } = useData(); const s = useSettings(); const [style, setStyle] = useAnswerStyle();
-  const [tab, setTab] = useState<Tab>('general'); const list = useRef<HTMLDivElement>(null);
+  const [tab, setTab] = useState<Tab>(() => { const asked = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+    return TABS.some(t => t.id === asked) ? asked as Tab : 'general'; }); const list = useRef<HTMLDivElement>(null);      // a link elsewhere can open a tab: /settings?tab=access
   const move = (e: React.KeyboardEvent, i: number) => {
     const next = e.key === 'ArrowRight' ? (i + 1) % TABS.length : e.key === 'ArrowLeft' ? (i + TABS.length - 1) % TABS.length : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : -1;
     if (next < 0) return; e.preventDefault(); setTab(TABS[next].id); list.current?.querySelectorAll<HTMLElement>('[role=tab]')[next]?.focus();
