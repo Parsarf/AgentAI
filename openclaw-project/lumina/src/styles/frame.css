@@ -1,0 +1,160 @@
+/* The workspace frame: rail, context, canvas, inspector, assistant (components/frame/). Colours only from tokens. The page scrolls; the side zones are sticky columns with
+   their own scrolling, and a `fill` workspace makes the canvas the height of the window. */
+:root { --rail-w: 60px; --frame-gap: 8px; --toolbar-h: 56px; --bottom-bar-h: 64px; }
+:root[data-compact='true'] { --toolbar-h: 48px; }
+
+.frame { position: relative; display: flex; align-items: flex-start; min-height: 100dvh; isolation: isolate; }
+.frame-work { flex: 1 1 auto; min-width: 0; padding: var(--frame-gap) var(--frame-gap) var(--frame-gap) 0; }
+.skip { position: absolute; left: var(--space-2); top: -100px; z-index: var(--z-menu); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-overlay); color: var(--text-primary); }
+.skip:focus { top: var(--space-2); }
+
+/* Rail: chrome, so it sits on the darkest surface and its icons have no coloured backgrounds. */
+.rail-nav { position: sticky; top: 0; flex: 0 0 var(--rail-w); height: 100dvh; display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; z-index: var(--z-nav); }
+.rail-brand { display: grid; place-items: center; width: 40px; height: 40px; color: var(--accent); }
+.rail-brand svg { filter: drop-shadow(0 0 8px rgb(var(--accent-rgb) / .6)); }   /* the brand mark keeps its one permanent glow */
+.rail-group, .rail-end { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.rail-end { margin-top: auto; }
+.rail-item, .rail-nav [data-safety='button'] { position: relative; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--radius-md); background: none; color: var(--text-muted); cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.rail-item:hover, .rail-nav [data-safety='button']:hover { color: var(--text-primary); background: var(--fill-hover); }
+.rail-item[aria-current='page'], .rail-item[aria-pressed='true'] { color: var(--text-primary); background: var(--fill-pressed); }
+.rail-item[aria-current='page']::before { content: ''; position: absolute; left: -8px; top: 50%; width: 3px; height: 18px; margin-top: -9px; border-radius: var(--radius-pill); background: var(--accent); box-shadow: 0 0 8px rgb(var(--accent-rgb) / .8); }
+.rail-nav [data-safety='button'] .lbl, .rail-tip { position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-overlay); box-shadow: var(--shadow-overlay);
+  color: var(--text-primary); font-size: var(--text-sm); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity var(--dur-fast) var(--ease); z-index: var(--z-menu); }
+.rail-item:hover .rail-tip, .rail-item:focus-visible .rail-tip, .rail-nav [data-safety='button']:hover .lbl, .rail-nav [data-safety='button']:focus-visible .lbl { opacity: 1; }
+.rail-tip .kbd { margin-left: 6px; }
+.rail-count { position: absolute; top: 4px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-pill); background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: var(--weight-semibold); line-height: 16px; text-align: center; }
+.rail-avatar .avatar { width: 30px; height: 30px; font-size: var(--text-sm); }
+
+/* Phone: the bottom bar, and the More sheet. */
+.bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-nav); display: flex; justify-content: space-around; align-items: center; height: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom));
+  padding: 0 var(--space-2) env(safe-area-inset-bottom); background: var(--surface-base); border-top: 1px solid var(--border-subtle); }
+.bottom-bar .rail-item { width: auto; min-width: 56px; height: 52px; display: flex; flex-direction: column; gap: 2px; align-items: center; justify-content: center; padding: 0 var(--space-2); }
+.bottom-bar .rail-tip { position: static; transform: none; opacity: 1; padding: 0; background: none; box-shadow: none; color: inherit; font-size: 11px; }
+.bottom-bar .rail-item[aria-current='page']::before { left: 50%; top: 0; width: 18px; height: 3px; margin: 0 0 0 -9px; }
+.bottom-bar .rail-count { right: 8px; }
+.more-list { display: grid; gap: var(--space-1); }
+.more-list .rail-item, .more-list [data-safety='button'] { display: flex; justify-content: flex-start; gap: var(--space-3); width: 100%; height: 48px; padding: 0 var(--space-3); color: var(--text-secondary); }
+.more-list .rail-tip, .more-list [data-safety='button'] .lbl { position: static; transform: none; opacity: 1; padding: 0; background: none; box-shadow: none; color: inherit; font-size: var(--text-base); }
+.more-list .rail-count { position: static; margin-left: auto; }
+.more-list .rail-item[aria-current='page']::before { display: none; }
+.w-compact .frame-work { padding: var(--frame-gap) var(--frame-gap) calc(var(--bottom-bar-h) + env(safe-area-inset-bottom) + var(--frame-gap)); }
+
+/* Workspace: context | canvas | inspector, a flex row. */
+.wsp { display: flex; align-items: flex-start; min-width: 0; }
+.zone { min-width: 0; }
+.zone-context, .zone-inspector { position: sticky; top: var(--frame-gap); height: calc(100dvh - 2 * var(--frame-gap)); display: flex; flex-direction: column; }
+.zone-context { flex: 0 0 var(--wsp-context, 264px); }
+.zone-inspector { flex: 0 0 var(--wsp-inspector, 400px); border-radius: var(--radius-lg); background: var(--surface-canvas); border: 1px solid var(--border-subtle); }
+.zone-head { display: flex; align-items: center; gap: var(--space-1); min-height: 40px; padding: var(--space-1) var(--space-1) 0 var(--space-3); }
+.zone-label { flex: 1; min-width: 0; color: var(--text-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); letter-spacing: .06em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--space-2) var(--space-2) var(--space-3); }
+.zone-inspector .zone-body { padding: var(--space-2) var(--space-4) var(--space-4); }
+.zone-canvas { position: relative; isolation: isolate; flex: 1 1 auto; min-width: 0; min-height: calc(100dvh - 2 * var(--frame-gap)); padding: 0 var(--space-5) var(--space-5); border-radius: var(--radius-lg);
+  background: var(--surface-canvas); border: 1px solid var(--border-subtle); overflow: clip; }
+.zone-canvas:focus { outline: 0; }
+.wsp-fill .zone-canvas { height: calc(100dvh - 2 * var(--frame-gap)); display: flex; flex-direction: column; padding-bottom: var(--space-3); }
+.wsp-fill .zone-canvas > .wsp-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.w-compact .wsp-fill .zone-canvas { height: calc(100dvh - var(--bottom-bar-h) - env(safe-area-inset-bottom) - 2 * var(--frame-gap)); min-height: 0; }
+.w-compact .zone-canvas { min-height: calc(100dvh - var(--bottom-bar-h) - 2 * var(--frame-gap)); padding: 0 var(--space-3) var(--space-4); border-radius: var(--radius-md); }
+.zone-canvas > .globe { position: absolute; inset: 0; z-index: -1; border-radius: inherit; }
+.wsp-plain { display: block; }
+
+/* Resize handles between zones. A hairline appears on hover and focus; the whole 10px strip is the target. */
+.split { position: sticky; top: var(--frame-gap); flex: 0 0 10px; height: calc(100dvh - 2 * var(--frame-gap)); cursor: col-resize; touch-action: none; outline: 0; }
+.split::after { content: ''; position: absolute; top: var(--space-5); bottom: var(--space-5); left: 4px; width: 2px; border-radius: 2px; background: transparent; transition: background var(--dur-fast) var(--ease); }
+.split:hover::after, .split:focus-visible::after, :root[data-resizing='true'] .split::after { background: var(--accent-line); }
+.split:focus-visible::after { background: var(--accent); }
+:root[data-resizing='true'] { cursor: col-resize; user-select: none; }
+
+/* The canvas toolbar: the page title and its controls, staying at the top while the page scrolls. */
+.wsp-toolbar { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--space-2); flex-wrap: nowrap; min-height: var(--toolbar-h); margin: 0 calc(-1 * var(--space-2)) var(--space-2); padding: var(--space-2);
+  background: var(--surface-canvas); }
+.wsp-title { flex: 1; min-width: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wsp-tools { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.wsp-zone-toggle { flex: none; }
+.w-compact .wsp-tools { gap: var(--space-1); }
+
+/* Sheets: zones without room to dock, and dialogs of their own. They lie over the page in the top layer, so they never hide the focused element behind them. */
+.sheet-scrim { position: fixed; inset: 0; z-index: var(--z-modal); display: flex; justify-content: flex-end; background: rgb(0 0 0 / .55); animation: scrim-in var(--dur) var(--ease); }
+.sheet-scrim.side-left { justify-content: flex-start; }
+.sheet-scrim.side-bottom { align-items: flex-end; justify-content: stretch; }
+.sheet { display: flex; flex-direction: column; width: min(480px, 100%); height: 100%; background: var(--surface); border-left: 1px solid var(--border-default); box-shadow: var(--shadow-overlay); animation: sheet-in var(--dur-slow) var(--ease); }
+.side-left .sheet { border-left: 0; border-right: 1px solid var(--border-default); animation-name: sheet-in-left; }
+.side-bottom .sheet { width: 100%; height: auto; max-height: 85dvh; border: 0; border-top: 1px solid var(--border-default); border-radius: var(--radius-lg) var(--radius-lg) 0 0; animation-name: sheet-in-up; padding-bottom: env(safe-area-inset-bottom); }
+.sheet.zone-sheet { width: min(360px, 92vw); background: var(--surface-canvas); }
+.sheet.zone-sheet-wide { width: min(560px, 100%); }
+.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-5) var(--space-5) var(--space-3); }
+.zone-sheet .sheet-head { padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4); align-items: center; }
+.zone-sheet .sheet-title { font-size: var(--text-md); }
+.sheet-title { min-width: 0; font-size: var(--text-xl); font-weight: var(--weight-semibold); }
+.sheet-body { flex: 1; overflow: auto; display: grid; align-content: start; gap: var(--space-4); padding: var(--space-3) var(--space-5) var(--space-5); }
+.zone-sheet .sheet-body { display: block; padding: var(--space-2) var(--space-3) var(--space-4); }
+.sheet-foot { display: grid; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); }
+@keyframes scrim-in { from { opacity: 0; } }
+@keyframes sheet-in { from { transform: translateX(24px); opacity: 0; } }
+@keyframes sheet-in-left { from { transform: translateX(-24px); opacity: 0; } }
+@keyframes sheet-in-up { from { transform: translateY(24px); opacity: 0; } }
+@media (max-width: 599px) { .sheet, .sheet.zone-sheet, .sheet.zone-sheet-wide { width: 100%; border-left: 0; border-right: 0; } }
+
+/* Shared pieces: empty states, the inspector body, tables, the virtualized list. */
+.empty-state { display: grid; gap: var(--space-2); justify-items: start; }
+.empty-title { color: var(--text-primary); font-weight: var(--weight-medium); }
+.empty-text { color: var(--text-secondary); }
+.empty-action { margin-top: var(--space-2); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.inspector { display: grid; gap: var(--space-4); }
+.inspector-head { display: grid; gap: var(--space-2); }
+.inspector-title { font-size: var(--text-lg); font-weight: var(--weight-semibold); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.inspector-meta { color: var(--text-secondary); font-size: var(--text-sm); }
+.inspector-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.inspector-body { display: grid; gap: var(--space-4); min-width: 0; }
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: var(--text-base); }
+.table th { position: sticky; top: var(--toolbar-h); z-index: 1; padding: var(--space-2) var(--space-3); text-align: left; font-weight: var(--weight-medium); color: var(--text-muted); font-size: var(--text-sm); background: var(--surface-canvas); }
+.table td { padding: var(--space-3); border-top: 1px solid var(--border-subtle); vertical-align: middle; }
+:root[data-compact='true'] .table td { padding: var(--space-2) var(--space-3); }
+.table tr.clickable { cursor: pointer; }
+.table tr.clickable:hover td { background: var(--fill-subtle); }
+.table tr[aria-selected='true'] td { background: var(--accent-soft); }
+.table tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.table-sort { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.table-sort:hover { color: var(--text-primary); }
+th[aria-sort='ascending'] .table-sort::after { content: ' ↑'; } th[aria-sort='descending'] .table-sort::after { content: ' ↓'; }
+.vlist { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; contain: strict; }
+.vlist-rows { list-style: none; margin: 0; padding-left: 0; padding-right: 0; padding-bottom: 0; }
+.vlist-rows > li { overflow: hidden; }
+
+/* Chat in the frame: the thread column is centred in the canvas; the composer stays at the bottom of the window. */
+.wsp .chatpage { --chrome: calc(2 * var(--frame-gap) + var(--toolbar-h) + var(--space-2) + 2px); padding-top: 0; }
+.w-compact .wsp .chatpage { --chrome: calc(2 * var(--frame-gap) + var(--toolbar-h) + var(--space-2) + 2px + var(--bottom-bar-h)); }
+.wsp .chatpage .dock { background: linear-gradient(180deg, transparent, var(--surface-canvas) 30%); }
+.w-compact .wsp .chatpage .dock { bottom: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom)); }
+.chats-column { display: flex; flex-direction: column; gap: var(--space-2); min-height: 100%; }
+.chats-column .newchat { width: 100%; }
+.chats-search { position: relative; }
+.chats-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.chats-search .input { padding-left: 32px; min-height: var(--control-sm); background: var(--fill-subtle); border-color: var(--border-subtle); }
+.chats-column .chatlist { position: static; max-height: none; overflow: visible; padding: 0; background: none; border: 0; }
+.chats-all { align-self: flex-start; margin-top: auto; }
+.chat-inspector { display: grid; gap: var(--space-5); }
+.ci-section { display: grid; gap: var(--space-2); }
+.ci-h { color: var(--text-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); letter-spacing: .06em; text-transform: uppercase; }
+.ci-task { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.ci-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ci-row { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2); border-radius: var(--radius-sm); }
+.ci-row.static { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-2); }
+a.ci-row:hover { background: var(--fill-hover); }
+.ci-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ci-meta { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.ci-files { grid-template-columns: minmax(0, 1fr); }
+.zone-canvas:has(> .globe) > .wsp-toolbar { position: static; background: none; }   /* over the globe the toolbar has no band of its own */
+
+/* The frame's stress-test pages (gen/FrameStress.tsx): throwaway content only. */
+.stress-col { display: grid; gap: 2px; }
+.stress-row { display: grid; gap: 2px; width: 100%; height: 100%; padding: var(--space-2) var(--space-3); border: 0; border-bottom: 1px solid var(--border-subtle); background: none; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.stress-row b, .stress-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stress-grid { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(7, minmax(80px, 1fr)); }
+.stress-cell { height: 44px; border: 1px solid var(--border-subtle); font-size: var(--text-xs); color: var(--text-muted); padding: 2px 4px; }
+.stress-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
+.stress-tile { text-align: left; overflow-wrap: anywhere; min-height: 90px; color: inherit; cursor: pointer; }
+.rail-item:focus-visible, .split:focus-visible { border-radius: var(--radius-md); }

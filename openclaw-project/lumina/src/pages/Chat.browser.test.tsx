@@ -21,11 +21,12 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const at = (path: string) => render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/chat/:id?" element={<Chat />} /></Routes></MemoryRouter>);
 
+// UI remodel (phase 1): the chat's tools moved from their own row above the thread into the canvas toolbar, beside the page title (decision 3 of phase-prompts/ui-remodel).
 describe('the browser icon is on every chat page', () => {
-  it('sits in the compact tools row without a conversation header', async () => {
+  it('sits in the canvas toolbar without a conversation header', async () => {
     const { container } = at('/chat/a');
     const icon = await screen.findByRole('button', { name: /^Use my own browser/ });
-    const header = container.querySelector('.thread-tools')!;
+    const header = container.querySelector('.wsp-tools')!;
     expect(container.querySelector('.thread-head')).toBeNull();
     expect(header.contains(icon)).toBe(true);
     expect(container.querySelectorAll('.own-browser').length).toBe(1);
@@ -35,7 +36,7 @@ describe('the browser icon is on every chat page', () => {
     const { container } = at('/chat');
     const icon = await screen.findByRole('button', { name: /^Use my own browser/ });
     expect(container.querySelector('.thread-head')).toBeNull();
-    expect(container.querySelector('.thread-tools')!.contains(icon)).toBe(true);
+    expect(container.querySelector('.wsp-tools')!.contains(icon)).toBe(true);
     expect(container.querySelectorAll('.own-browser').length).toBe(1);
   });
 });

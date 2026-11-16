@@ -23,6 +23,10 @@ import { isActive, type ThreadTask } from '../lib/tasks';
 import { useData } from '../state/data';
 import Orb from '../components/Orb';
 import { Emojified } from '../components/Emoji';
+import Workspace from '../components/frame/Workspace';
+import ChatsColumn from '../components/frame/ChatsColumn';
+import ChatInspector from '../components/frame/ChatInspector';
+import { chatTitle } from '../lib/chats';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
 const same = <T,>(prev: T, next: T): T => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
@@ -126,10 +130,13 @@ export default function Chat() {
     void nav(`/chat/${r.conversation_id}`);
   };
 
+  const produced = id ? made.filter(a => a.conversation_id === id || (a.task_id && byRequest.has(a.task_id))) : [];
   return (
+    <Workspace title={current ? chatTitle(current) : 'Chat'} assistant={false} context={<ChatsColumn />} contextLabel="Chats"
+      inspector={id ? <ChatInspector tasks={mine} files={produced} blocks={blocks} onError={setErr} /> : null} inspectorKind="panel" inspectorLabel="In this chat"
+      tools={<><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive' || action === 'delete') void nav('/history'); else void loadThread(); }} />}</>}>
     <div className="chatpage">
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
-        <div className="thread-tools"><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive' || action === 'delete') void nav('/history'); else void loadThread(); }} />}</div>
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}
@@ -159,5 +166,6 @@ export default function Chat() {
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); toEnd(true); }}>Jump to latest ↓</button>}
         <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} onStop={stopTarget ? () => { void cancel(stopTarget.id); } : open.some(t => t.phase === 'stopping') ? () => {} : undefined} stopping={!!stopping || (!stopTarget && open.some(t => t.phase === 'stopping'))} />}</div>
       </section>
-    </div>);
+    </div>
+    </Workspace>);
 }

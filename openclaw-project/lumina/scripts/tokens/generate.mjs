@@ -1,0 +1,70 @@
+// Generates every theme colour of Lumina from three inputs: a base colour, an accent colour and a contrast value, working in OKLCH (a perceptually uniform space).
+// The output, src/styles/theme.css, is committed. Run `node scripts/tokens/generate.mjs` after changing an input; `--check` fails when the file is out of date (the build runs it).
+// Normal contrast reproduces the hand-set dark theme that came before it (src/styles/theme.test.ts holds the old values and checks the difference is below what anyone can see).
+// A light theme would be another base with the ladders below mirrored; nothing here assumes the base is dark except the default inputs.
+import { readFileSync, writeFileSync } from 'node:fs';
+import { hexToOklch, hexToRgb, oklchToHex } from './oklch.mjs';
+
+export const INPUTS = { base: '#060608', accent: '#7455ff' };
+export const CONTRAST = { normal: 1, more: 1.7 };
+
+// Surfaces: how far above the base each one sits, in OKLCH lightness at contrast 1. More contrast spreads the steps further apart.
+const SURFACES = { 'surface-base': 0, 'surface-inset': 0.0112, 'surface-sidebar': 0.0228, 'surface-canvas': 0.0228, 'surface': 0.0458, 'surface-raised': 0.078, 'surface-overlay': 0.096 };
+const SURFACE_CHROMA = { 'surface-base': 0.0446, 'surface-inset': 0.0535, 'surface-sidebar': 0.0438, 'surface-canvas': 0.0438, 'surface': 0.0502, 'surface-raised': 0.0501, 'surface-overlay': 0.0538 };   // chroma per unit of lightness: a faint cool tint
+const SURFACE_HUE = { 'surface-base': 0, 'surface-inset': -16.6, 'surface-sidebar': 0, 'surface-canvas': 0, 'surface': -11.2, 'surface-raised': -9.1, 'surface-overlay': -7.7 };
+// Text: how far below the brightest text each step sits. More contrast pulls the lower steps up.
+const TEXT = { 'text-primary': [0, 0.004, 0.7], 'text-secondary': [0.2386, 0.0146, -8.6], 'text-muted': [0.3305, 0.0182, -10.9], 'text-disabled': [0.4717, 0.0179, -12] };
+const TEXT_TOP = 0.962;
+// Accent family: [lightness step, chroma factor, hue step] from the accent.
+const ACCENT = { 'accent': [0, 1, 0], 'accent-hover': [0.0791, 0.8018, 3.4], 'accent-pressed': [-0.0582, 1.0197, -1.8], 'accent-text': [0.202, 0.4964, 6.6], 'accent-2': [0.1266, 0.6669, 9] };
+// Status colours are facts, not brand: fixed in OKLCH, a little lighter at more contrast.
+const STATUS = { success: { l: 0.7746, c: 0.148, h: 166.1 }, warning: { l: 0.8208, c: 0.147, h: 80.7 }, danger: { l: 0.6869, c: 0.1649, h: 22.4 } };
+// White overlays: [alpha at contrast 1]. More contrast makes fills and hairlines stronger.
+const OVERLAYS = { 'fill-subtle': 0.03, 'fill-hover': 0.05, 'fill-pressed': 0.09, 'border-subtle': 0.07, 'border-default': 0.12, 'border-strong': 0.22 };
+
+const rgbText = hex => hexToRgb(hex).map(x => Math.round(x * 255)).join(' ');
+const r3 = x => Math.round(x * 1000) / 1000;
+
+/** -> { name: value } for every colour token, at one contrast. */
+export function generate({ base = INPUTS.base, accent = INPUTS.accent, contrast = CONTRAST.normal } = {}) {
+  const b = hexToOklch(base), a = hexToOklch(accent), out = {};
+  // More contrast comes mostly from text and hairlines: lighter surfaces would eat into it.
+  for (const [name, step] of Object.entries(SURFACES)) { const l = b.l + step * Math.min(contrast, 1.1); out[name] = oklchToHex({ l, c: SURFACE_CHROMA[name] * l, h: b.h + SURFACE_HUE[name] }); }
+  for (const [name, [step, c, dh]] of Object.entries(TEXT)) out[name] = oklchToHex({ l: Math.min(0.99, TEXT_TOP + (contrast - 1) * 0.03) - step / contrast ** 1.4, c, h: b.h + dh });
+  for (const [name, [dl, f, dh]] of Object.entries(ACCENT)) out[name] = oklchToHex({ l: a.l + dl * (name === 'accent-text' ? Math.min(contrast, 1.25) : 1), c: a.c * f, h: a.h + dh });
+  out['accent-rgb'] = rgbText(out.accent);
+  out['on-accent'] = '#ffffff';
+  for (const [name, s] of Object.entries(STATUS)) { const hex = oklchToHex({ ...s, l: s.l + (contrast - 1) * 0.06 }); out[name] = hex; out[`${name}-rgb`] = rgbText(hex); }
+  out['on-danger'] = oklchToHex({ l: 0.1602, c: 0.0385, h: STATUS.danger.h });
+  for (const [name, alpha] of Object.entries(OVERLAYS)) out[name] = `rgb(255 255 255 / ${r3(Math.min(0.6, alpha * (name.startsWith("fill") ? Math.sqrt(contrast) : contrast ** 1.5)))})`;   // fills grow less than hairlines: a hovered row must keep its text readable
+  return out;
+}
+
+const SOFT = (more) => `  --accent-soft: rgb(var(--accent-rgb) / ${more ? '.22' : '.14'});
+  --accent-line: rgb(var(--accent-rgb) / ${more ? '.75' : '.5'});
+  --success-soft: rgb(var(--success-rgb) / ${more ? '.2' : '.12'});
+  --warning-soft: rgb(var(--warning-rgb) / ${more ? '.18' : '.1'});
+  --danger-soft: rgb(var(--danger-rgb) / ${more ? '.18' : '.1'});`;
+const block = (selector, tokens, more) => `${selector} {\n${Object.entries(tokens).map(([k, v]) => `  --${k}: ${v};`).join('\n')}\n${SOFT(more)}\n}`;
+
+export function render() {
+  const normal = generate(), more = generate({ contrast: CONTRAST.more });
+  return `/* GENERATED by scripts/tokens/generate.mjs from base ${INPUTS.base}, accent ${INPUTS.accent}, contrast ${CONTRAST.normal} and ${CONTRAST.more}. Do not edit: change the inputs and run it again. */
+${block(':root', normal, false)}
+/* More contrast: chosen in Settings, or the system's own preference unless the person chose normal contrast. */
+${block(":root[data-contrast='more']", more, true)}
+@media (prefers-contrast: more) {
+${block("  :root:not([data-contrast='normal'])", more, true).replace(/\n/g, '\n  ')}
+}
+`;
+}
+
+const FILE = new URL('../../src/styles/theme.css', import.meta.url);
+if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta.url) {
+  const text = render();
+  if (process.argv.includes('--check')) {
+    let have = ''; try { have = readFileSync(FILE, 'utf8'); } catch { /* missing */ }
+    if (have !== text) { console.error('src/styles/theme.css is out of date: run node scripts/tokens/generate.mjs'); process.exit(1); }
+    console.log('theme check: theme.css matches its inputs');
+  } else { writeFileSync(FILE, text); console.log('wrote src/styles/theme.css'); }
+}

@@ -1,4 +1,6 @@
 @import './tokens.css';
+@import './theme.css';
+@import './frame.css';
 @import './ui.css';
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
