@@ -48,7 +48,7 @@ READS_PER_SECOND = 20                  # Gmail allows 250 quota units a second p
                                        # well over 100 a second; Google answered "rate limit", and the first fill stopped after 300 messages and backed off for up to an hour
                                        # (production, 2026-11-16). At 40 a second with 8 in flight Google still answered 429 rateLimitExceeded (it also limits concurrent
                                        # requests per user), so: 20 a second, 4 in flight, and a refused read is tried again after a short wait (READ_RETRIES).
-READ_RETRIES = (2, 4, 6)               # seconds to wait before trying a refused (429) header read again; Google's own Retry-After wins when it is longer
+READ_RETRIES = (2, 4, 6)               # seconds to wait before trying a refused (429) header read again; still refused, the run stops and comes back in a minute
 EVENT_PAGE = 250
 
 DECLARATION = Declaration(
@@ -126,6 +126,8 @@ def _failure(status, headers, raw) -> ProviderError:
     retry = next((v for k, v in (headers or {}).items() if k.lower() == 'retry-after'), None)
     if status == 403 and code in ('rateLimitExceeded', 'userRateLimitExceeded'):
         status = 429
+    if status == 429 and retry is None:
+        retry = 60                         # Gmail's limits are counted per minute and it rarely says when: a minute
     return ProviderError(status, code, retry_after=retry)
 
 
@@ -364,7 +366,7 @@ class GoogleAdapter:
                 except ProviderError as error:
                     if error.status != 429 or attempt == len(READ_RETRIES):
                         return mid, None, error
-                    self.sleep(max(READ_RETRIES[attempt], float(error.retry_after or 0)))      # Google said "too fast": wait a little and read this one again
+                    self.sleep(READ_RETRIES[attempt])      # Google said "too fast": wait a little and read this one again (a longer wait is the whole run's)
         if not ids:
             return [], []
         with ThreadPoolExecutor(max_workers=min(PARALLEL, len(ids))) as pool:

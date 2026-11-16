@@ -207,7 +207,7 @@ class Faults(Both):
         self.run_sync()
         self.assertIn((self.ca, 't-0009'), self.ids(label='inbox'))
 
-    def test_a_busy_provider_is_tried_again_later_with_a_growing_pause(self):
+    def test_a_busy_provider_is_tried_again_later_with_a_growing_pause_and_a_rate_limit_when_the_provider_says(self):
         self.sync.reconcile()
         self.wa.fail = [ProviderError(503), ProviderError(429, retry_after=30)]
         row = next(r for r in self.sync.due(50) if r['domain'] == 'mail' and r['connection_id'] == self.ca)
@@ -215,7 +215,8 @@ class Faults(Both):
         first = self.rows("SELECT * FROM hub_sync WHERE connection_id=? AND domain='mail'", (self.ca,))[0]
         self.assertEqual((first['state'], first['last_error'], first['next_epoch'] - self.now), ('waiting', 'retry_later', 60))
         self.assertEqual(self.sync.run(first), 'failed')
-        self.assertEqual(self.rows("SELECT next_epoch FROM hub_sync WHERE connection_id=? AND domain='mail'", (self.ca,))[0]['next_epoch'] - self.now, 300)
+        # A rate limit is retried when the provider said (30 s here), not after the growing pause (300 s): its limits are counted per minute (production, 2026-11-16).
+        self.assertIn(self.rows("SELECT next_epoch FROM hub_sync WHERE connection_id=? AND domain='mail'", (self.ca,))[0]['next_epoch'] - self.now, range(28, 33))
         self.assertEqual(self.hub.accounts(self.a)[0]['mail']['error'], 'retry_later')
         self.assertEqual(self.sync.run(self.rows("SELECT * FROM hub_sync WHERE connection_id=? AND domain='mail'", (self.ca,))[0]), 'changed')
         self.assertIsNone(self.hub.accounts(self.a)[0]['mail']['error'])
