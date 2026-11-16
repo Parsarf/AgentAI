@@ -225,7 +225,9 @@ class HubSync:
     def _failed(self, row, kind, retry_at):
         now = int(self.clock())
         pause = BACKOFF[min(row['failures'], len(BACKOFF) - 1)]
-        when = max(now + pause, int(retry_at or 0))
+        # When the provider said when to come back (a rate limit), that is when: its limits are counted per minute, and a growing pause turned a first fill that is
+        # refused every few hundred messages into one page an hour (production, 2026-11-16). Anything else waits longer each time it fails again.
+        when = now + max(1, min(3600, int(retry_at - time.time()))) if retry_at else now + pause      # retry_at is on the wall clock; `now` may be a test's
         with self.store.connect() as con:
             con.execute("""UPDATE hub_sync SET state=?,lease_epoch=NULL,failures=failures+1,last_error=?,last_error_epoch=?,next_epoch=?
                 WHERE account_id=? AND connection_id=? AND domain=? AND resource_id=?""",

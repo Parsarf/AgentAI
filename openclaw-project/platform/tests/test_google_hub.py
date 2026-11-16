@@ -444,3 +444,9 @@ class ReadsArePaced(unittest.TestCase):
         found, gone = adapter._headers_of_all({'access_token': 't'}, ['m1', 'm2'], {})
         self.assertEqual((sorted(m['id'] for m in found), gone, waits), (['m1', 'm2'], [], [2]))
 
+    def test_a_rate_limit_without_a_time_is_retried_after_a_minute(self):
+        from agentai_platform import google_hub
+        error = google_hub._failure(429, {}, b'{"error": {"errors": [{"reason": "rateLimitExceeded"}]}}')
+        self.assertEqual((error.status, error.code, error.retry_after), (429, 'rateLimitExceeded', 60))
+        self.assertEqual(google_hub._failure(429, {'Retry-After': '7'}, b'{}').retry_after, '7')
+
