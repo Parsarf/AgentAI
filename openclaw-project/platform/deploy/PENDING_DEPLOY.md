@@ -47,7 +47,11 @@ No server step. The request worker, the app, the tool relay and the lifecycle wo
 Switch the release back with `release.py` (or let the live acceptance do it). The new tables and columns stay and are ignored by the previous release. Before rolling
 back, turn `connector_writes`, `synthetic_connector` and `account_self_service` off and disable the three timers, so nothing of the new code is half in use.
 
-## The mail and calendar dashboard (branch `mail-calendar-dashboard`, not merged)
+## The mail and calendar dashboard
+
+**Done on 2026-11-16:** merged (pull request #50) and live; the sync timer is installed and its fact recorded; the Google client id and secret are in the server's
+environment file; the owner turned `mail_calendar_dashboard` on that day (both confirmations recorded on their word; **the policy text for the copy is still to be written and
+published**). `customer_uploads` is off. The steps below are kept as the record.
 
 Built so far: the provider-neutral model, the background sync, the reading routes (`/v1/hub/...`) and the owner switch `mail_calendar_dashboard` (off). No real provider
 is registered yet, so turning the switch on today would show two empty pages. When this is deployed:

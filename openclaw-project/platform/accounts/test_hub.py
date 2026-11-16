@@ -203,10 +203,15 @@ class SignIn(Base):
         asked = parse_qs(urlsplit(begun.json()['authorize_url']).query)
         self.assertEqual(asked['redirect_uri'], ['https://app.test/v1/hub/link/callback'])
         self.assertNotIn('secret-1', begun.content.decode())
-        back = self.a.get('/v1/hub/link/callback', {'state': asked['state'][0], 'code': 'good-code'}, secure=True)
+        # The browser comes back from another site WITHOUT Lumina's session cookie (it is SameSite=Strict): a client that is not signed in stands for that request.
+        from django.test import Client
+        back = Client().get('/v1/hub/link/callback', {'state': asked['state'][0], 'code': 'good-code'}, secure=True)
         self.assertEqual(back.status_code, 302)
-        self.assertTrue(back['Location'].startswith('/app/inbox?connected='))
-        connection = back['Location'].split('=')[1]
+        self.assertEqual(back['Location'], '/app/inbox#link-state=' + asked['state'][0] + '&link-code=good-code')      # in the fragment: never sent to a server, never logged
+        self.assertEqual(self.rows('SELECT count(*) FROM connector_connections')[0][0], 0)                             # nothing is connected by the return itself
+        done = self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'})
+        self.assertEqual(done.status_code, 201, done.content)
+        connection = done.json()['connection_id']
         seen = self.a.get('/v1/hub', secure=True).json()['accounts']
         self.assertEqual([(x['identity'], x['provider_label'], x['granted']) for x in seen], [('dana@gmail.test', 'Google', {'mail': False, 'calendar': False})])
         offered = self.a.get(f'/v1/integrations/{connection}/resources', secure=True).json()['resources']
@@ -220,15 +225,22 @@ class SignIn(Base):
         self.assertEqual([t['subject'] for t in self.a.get('/v1/hub/mail/threads?label=all', secure=True).json()['threads']], ['Subject 1'])
         self.assertNotIn('at-1', json.dumps(self.a.get('/v1/hub', secure=True).json()) + json.dumps(self.a.get('/v1/controls', secure=True).json()))      # a token never reaches a browser
 
-    def test_a_callback_that_is_declined_replayed_or_from_another_person_connects_nothing(self):
+    def test_a_return_that_is_declined_replayed_or_from_another_person_connects_nothing(self):
         from urllib.parse import parse_qs, urlsplit
+        from django.test import Client
         state = parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google'}).json()['authorize_url']).query)['state'][0]
-        self.assertEqual(self.a.get('/v1/hub/link/callback', {'error': 'access_denied', 'state': state}, secure=True)['Location'], '/app/inbox?connect=declined')
-        self.assertEqual(self.b.get('/v1/hub/link/callback', {'state': state, 'code': 'good-code'}, secure=True)['Location'], '/app/inbox?connect=failed')       # another person's browser
-        self.assertEqual(self.a.get('/v1/hub/link/callback', {'state': state, 'code': 'wrong'}, secure=True)['Location'], '/app/inbox?connect=failed')
-        self.assertEqual(self.a.get('/v1/hub/link/callback', {'state': state, 'code': 'good-code'}, secure=True)['Location'], '/app/inbox?connect=failed')       # burnt by the failed attempt
+        stranger = Client()
+        self.assertEqual(stranger.get('/v1/hub/link/callback', {'error': 'access_denied', 'state': state}, secure=True)['Location'], '/app/inbox?connect=declined')
+        self.assertEqual(stranger.get('/v1/hub/link/callback', {'state': state}, secure=True)['Location'], '/app/inbox?connect=failed')
+        self.assertEqual(stranger.get('/v1/hub/link/callback', {'state': 'x' * 300, 'code': 'c'}, secure=True)['Location'], '/app/inbox?connect=failed')
+        finish = lambda client, code='good-code', s=state: self.post(client, '/v1/hub/link/finish', {'state': s, 'code': code})
+        self.assertEqual(finish(self.b).status_code, 409)                                           # another person cannot finish this sign-in
+        self.assertEqual(finish(self.a, 'wrong').status_code, 409)
+        self.assertEqual(finish(self.a).status_code, 409)                                           # the state was burnt by the failed attempt
+        self.assertEqual(finish(self.a, s='').status_code, 400)
         self.assertEqual(self.rows('SELECT count(*) FROM connector_connections')[0][0], 0)
         self.assertEqual(self.post(self.a, '/v1/hub/link', {'provider': 'nobody'}).status_code, 503)
+        self.assertIn(stranger.post('/v1/hub/link/finish', '{}', content_type='application/json', secure=True).status_code, (401, 403))      # finishing needs the signed-in person
 
 
 class Off(Base):
@@ -238,6 +250,6 @@ class Off(Base):
         for path in ('/v1/hub', '/v1/hub/mail/threads', '/v1/hub/mail/labels', '/v1/hub/mail/thread', '/v1/hub/mail/message', '/v1/hub/mail/search-older', '/v1/hub/events',
                      '/v1/hub/event', '/v1/hub/events/search'):
             self.assertEqual(self.a.get(path, secure=True).status_code, 503, path)
-        for path in ('/v1/hub/refresh', '/v1/hub/settings', '/v1/hub/calendars', '/v1/hub/link', '/v1/hub/ask'):
+        for path in ('/v1/hub/refresh', '/v1/hub/settings', '/v1/hub/calendars', '/v1/hub/link', '/v1/hub/link/finish', '/v1/hub/ask'):
             self.assertEqual(self.post(self.a, path, {}).status_code, 503, path)
         self.assertFalse(self.a.get('/v1/app', secure=True).json()['features']['dashboard'])

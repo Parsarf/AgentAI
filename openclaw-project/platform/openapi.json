@@ -7775,7 +7775,7 @@
   },
   "/v1/hub/link/callback": {
    "get": {
-    "summary": "Where the provider sends the customer back (state, code). Finishes the sign-in with no grants and redirects to the Inbox; a refused or replayed callback connects nothing",
+    "summary": "Where the provider sends the browser back. No session arrives with a request from another site, so this only redirects to the Inbox with the two values in the address fragment; the page then calls /v1/hub/link/finish",
     "security": [
      {
       "sessionCookie": []
@@ -7962,6 +7962,37 @@
   "/v1/uploads/{file_id}/delete": {
    "post": {
     "summary": "Permanently delete an uploaded file; its bytes go unless another upload shares them",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/link/finish": {
+   "post": {
+    "summary": "Finish a sign-in from the signed-in page: {\"state\",\"code\"} as the provider sent them back; answers with the new connection id (no grants yet). A refused or replayed state connects nothing",
     "security": [
      {
       "sessionCookie": []

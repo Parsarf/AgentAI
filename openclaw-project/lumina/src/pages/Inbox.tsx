@@ -5,6 +5,7 @@ import Accounts from '../components/hub/Accounts';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import Dock, { type Looking, type Suggestion } from '../components/hub/Dock';
 import MessageBody from '../components/hub/MessageBody';
+import { api } from '../lib/api';
 import { browserZone, failed, fileSize, fullTime, hub, LABEL_WORDS, LIST_ORDER, listTime, people, personName, problemWords, threadKey, validZone,
   type HubAccount, type Message, type Overview, type Thread } from '../lib/hub';
 import { useData } from '../state/data';
@@ -75,6 +76,20 @@ export default function Inbox() {
     catch (e) { setErr(failed(e)); setView(v => v ?? { accounts: [], settings: { timezone: null, image_senders: [] }, counts: { unread: 0, by_account: {} }, calendars: [], labels: [], colours: [], read_only: true }); }
   }, []);
   useEffect(() => { if (on) void loadOverview(); }, [on, loadOverview]);
+  // Coming back from a provider: its return cannot carry the session (it arrives from another site), so the server handed the two values to this page in the address
+  // fragment. The page finishes the sign-in itself, from inside Lumina, and takes them out of the address at once.
+  const [linkNote, setLinkNote] = useState('');
+  const finishing = useRef(false);
+  useEffect(() => {
+    if (!on || finishing.current || !window.location.hash.includes('link-state=')) return;
+    const given = new URLSearchParams(window.location.hash.slice(1)); const state = given.get('link-state'), code = given.get('link-code');
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    if (!state || !code) return;
+    finishing.current = true; setLinkNote('Connecting your account…');
+    api<{ connection_id: string }>('POST', '/v1/hub/link/finish', { state, code })
+      .then(async r => { setLinkNote(''); await loadOverview(); setChoosing(r.connection_id); })
+      .catch(() => setLinkNote(CONNECT_NOTE.failed));
+  }, [on, loadOverview]);
 
   const filters = useMemo(() => ({ label, accounts: providerLabel ? [providerLabel.account] : shownAccounts, provider_label: providerLabel?.id, unread: unread || undefined,
     attachments: attachments || undefined, q: query || undefined, limit: 50 }), [label, providerLabel, shownAccounts, unread, attachments, query]);
@@ -174,7 +189,7 @@ export default function Inbox() {
         </header>
         <p className="hub-readonly faint small">Read only for now: nothing here changes your mailbox, and opening a message does not mark it as read there.</p>
         {err && <p className="notice warning" role="alert">{err}</p>}
-        {connectNote && <p className="notice warning" role="status">{connectNote}</p>}
+        {(linkNote || connectNote) && <p className={`notice${linkNote.endsWith('…') ? '' : ' warning'}`} role="status">{linkNote || connectNote}</p>}
         {choosingAccount && <ChooseAccess account={choosingAccount} onDone={doneChoosing} onCancel={() => { setChoosing(null); setParams({}, { replace: true }); }} />}
         {needing.map(a => <p key={a.id} className="notice warning" role="status">{a.identity} needs you. What was loaded before is still shown. <Link to="/settings?tab=access">Open Access</Link></p>)}
         {filling.length > 0 && <p className="notice" role="status">Loading mail from {filling.map(a => a.identity).join(', ')} for the first time. This list fills in as it arrives.</p>}

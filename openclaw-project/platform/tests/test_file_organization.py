@@ -25,11 +25,13 @@ def office(kind='docx', *, extra=None, types=None, rels=None, encrypted=False):
     part = {'docx': 'word/document.xml', 'xlsx': 'xl/workbook.xml', 'pptx': 'ppt/presentation.xml'}[kind]
     out = io.BytesIO()
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
-        z.writestr('[Content_Types].xml', types or f'<Types><Override PartName="/{part}" ContentType="{MAIN[kind]}"/></Types>')
-        z.writestr('_rels/.rels', rels or '<Relationships><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="' + part + '"/></Relationships>')
-        z.writestr(part, '<document><body>Quarterly numbers</body></document>')
+        # A fixed time on every part: a zip records when each part was written, so without this two "identical" files built a moment apart would differ.
+        put = lambda name, data: z.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), data, zipfile.ZIP_DEFLATED)
+        put('[Content_Types].xml', types or f'<Types><Override PartName="/{part}" ContentType="{MAIN[kind]}"/></Types>')
+        put('_rels/.rels', rels or '<Relationships><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="' + part + '"/></Relationships>')
+        put(part, '<document><body>Quarterly numbers</body></document>')
         for name, data in (extra or {}).items():
-            z.writestr(name, data)
+            put(name, data)
     data = out.getvalue()
     if encrypted:
         data = data.replace(b'PK\x03\x04\x14\x00\x00\x00', b'PK\x03\x04\x14\x00\x01\x00', 1).replace(b'PK\x01\x02\x14\x03\x14\x00\x00\x00', b'PK\x01\x02\x14\x03\x14\x00\x01\x00', 1)

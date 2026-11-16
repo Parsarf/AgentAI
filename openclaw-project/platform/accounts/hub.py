@@ -5,7 +5,8 @@
     POST /v1/hub/settings                 {"timezone"?, "allow_images_from"?, "block_images_from"?}
     POST /v1/hub/link                     {"provider"}  begin signing in to a mail and calendar provider; answers with the address to send the customer to
     POST /v1/hub/ask                      {"conversation_id","message","key","looking_at"?}  a message to the assistant from the dashboard, with what is open (ids only)
-    GET  /v1/hub/link/callback            where the provider sends the customer back; finishes the sign-in and returns them to the Inbox to choose what may be read
+    GET  /v1/hub/link/callback            where the provider sends the browser back (no session arrives with it): hands the values to the Inbox page in the address fragment
+    POST /v1/hub/link/finish              {"state","code"}  the signed-in page finishes the sign-in; the new account then has nothing chosen yet
     GET  /v1/hub/mail/threads             ?label=inbox&accounts=a,b&provider_label=&unread=1&starred=1&attachments=1&person=&after=&before=&q=&cursor=&limit=
     GET  /v1/hub/mail/labels              the providers' own labels or folders, per account
     GET  /v1/hub/mail/thread              ?connection=&id=&images=1     opens the last message (its body is fetched now if it was not yet)
@@ -108,27 +109,41 @@ def link(request):
 
 @endpoint(['GET'])
 def link_callback(request):
-    """Where the provider sends the customer back. Whatever happened, they land on the Inbox: with the new account to choose what it may read, or with a plain note that
-    it did not work. Nothing from the provider is shown, and a refused or replayed callback connects nothing."""
+    """Where the provider sends the customer's browser back. This request arrives FROM ANOTHER SITE, so the browser does not send Lumina's session cookie with it (the cookie
+    is SameSite=Strict, on purpose): there is nobody signed in here, and nothing can be finished here. It only hands the two values on to the Inbox page, in the part of the
+    address a browser never sends to a server or writes to a log (the fragment). The page then finishes the sign-in itself, from inside Lumina, with the session and a
+    CSRF token (`link_finish`). Nothing from the provider is shown; a value of the wrong shape is dropped."""
+    from urllib.parse import quote
+    state, code = request.GET.get('state', ''), request.GET.get('code', '')
+    if request.GET.get('error') == 'access_denied':
+        return HttpResponseRedirect('/app/inbox?connect=declined')
+    if not state or not code or len(state) > 200 or len(code) > 2000:
+        return HttpResponseRedirect('/app/inbox?connect=failed')
+    return HttpResponseRedirect('/app/inbox#link-state=' + quote(state, safe='') + '&link-code=' + quote(code, safe=''))
+
+
+@endpoint(['POST'], ['state', 'code'], structured=True)
+def link_finish(request):
+    """Finish a sign-in: the signed-in person's own page hands over what the provider sent back. The state is single use and bound to this person; a refused or replayed
+    one connects nothing. -> the new connection's id (it has no grants yet: the page asks what may be read)."""
     principal, stop = _enter(request, 'hub.link', 20)
     if stop:
-        return HttpResponseRedirect('/app/inbox?connect=failed')
-    state, code = request.GET.get('state', ''), request.GET.get('code', '')
-    if not state or not code or len(state) > 200 or len(code) > 2000:
-        return HttpResponseRedirect('/app/inbox?connect=' + ('declined' if request.GET.get('error') == 'access_denied' else 'failed'))
+        return stop
     from agentai_platform.connectors import ConnectorError
     from agentai_platform.permissions import NotPermitted
+    state, code = request.input.get('state'), request.input.get('code')
+    if not isinstance(state, str) or not isinstance(code, str) or not state or not code or len(state) > 200 or len(code) > 2000:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
     connectors = wiring.connector_service()
     provider = wiring.sign_in_providers().get(connectors.link_service(principal, state) or '')
     if provider is None:
-        return HttpResponseRedirect('/app/inbox?connect=failed')
+        return JsonResponse({'error': 'link_failed'}, status=409)
     try:
         connection = connectors.finish_link(principal, state, code, _redirect_address(), provider['exchange'], needs_any=provider['needs_any'])
     except (ConnectorError, NotPermitted):
-        return HttpResponseRedirect('/app/inbox?connect=failed')
-    from urllib.parse import quote
+        return JsonResponse({'error': 'link_failed'}, status=409)
     audit(request.user.pk, request.account_id, connection, 'hub.link', 'completed', request.request_id)
-    return HttpResponseRedirect('/app/inbox?connected=' + quote(connection, safe=''))
+    return JsonResponse({'connection_id': connection}, status=201)
 
 
 @endpoint(['POST'], ['conversation_id', 'message', 'key', 'looking_at'], structured=True)

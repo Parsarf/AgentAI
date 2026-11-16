@@ -214,6 +214,28 @@ describe('Inbox', () => {
     expect(calls.find(c => c.url === '/v1/hub/refresh')?.body).toEqual({ connection_id: 'c9' });
   });
 
+  it('finishes a sign-in when the provider sends the browser back, and takes the values out of the address', async () => {
+    const fresh = account({ id: 'c9', identity: 'new@first.test', granted: { mail: false, calendar: false }, mail: null });
+    let connected = false;
+    server(base({ '/v1/hub': () => overview({ accounts: connected ? [account(), fresh] : [account()] }),
+      'POST /v1/hub/link/finish': () => { connected = true; return new Response(JSON.stringify({ connection_id: 'c9' }), { status: 201 }); },
+      '/v1/integrations/c9/resources': { resources: [{ kind: 'mailbox', id: '*', name: 'All mail' }] } }));
+    window.history.replaceState(null, '', '/inbox#link-state=s%2F1&link-code=4%2Fabc');
+    show();
+    expect(await screen.findByRole('dialog', { name: 'Choose what Lumina may read in new@first.test' })).toBeTruthy();
+    expect(calls.find(c => c.url === '/v1/hub/link/finish')?.body).toEqual({ state: 's/1', code: '4/abc' });
+    expect(calls.filter(c => c.url === '/v1/hub/link/finish').length).toBe(1);
+    expect(window.location.hash).toBe('');                                                        // gone from the address at once, so it is not kept or shared
+  });
+
+  it('says plainly when the provider return could not be finished', async () => {
+    server(base({ 'POST /v1/hub/link/finish': () => new Response(JSON.stringify({ error: 'link_failed' }), { status: 409 }) }));
+    window.history.replaceState(null, '', '/inbox#link-state=s1&link-code=c1');
+    show();
+    expect(await screen.findByText('The account could not be connected. Nothing was connected. Please try again.')).toBeTruthy();
+    expect(window.location.hash).toBe('');
+  });
+
   it('says plainly when a sign-in did not connect anything, and offers the choice again for an account with nothing chosen', async () => {
     const fresh = account({ id: 'c9', identity: 'new@first.test', granted: { mail: false, calendar: false }, mail: null });
     server(base({ '/v1/hub': overview({ accounts: [account(), fresh] }), '/v1/integrations/c9/resources': { resources: [] } })); show('/inbox?connect=declined');
