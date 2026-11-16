@@ -1,10 +1,11 @@
 import { useEffect, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Message } from '../../lib/conversations';
-import { isMoving, needLine, orbFor, receipt, verdict, type Approval, type TaskView } from '../../lib/work';
+import { isMoving, isPrompt, needLine, orbFor, receipt, verdict, type Approval, type TaskView } from '../../lib/work';
 import { useTask } from '../../state/work';
 import Orb from '../Orb';
 import Permission from './Permission';
+import Prompts from './ChangeApproval';
 import TaskActions from './TaskActions';
 import TaskDetail from './TaskDetail';
 import { Elapsed, Status } from './parts';
@@ -25,10 +26,11 @@ export default function TaskStrip({ id, eager = true, notes = [], stopping = fal
   if (!task) return null;
   const view = stopping && task.phase !== 'ended' ? { ...task, phase: 'stopping' as const, label: 'Stopping', tone: 'pending' as const, activity: null, now: [] } : task;
   const ended = view.phase === 'ended'; const orb = orbFor(view);
-  const approvals = view.needs.filter((n): n is Approval => n.kind === 'approval'); const others = view.needs.filter(n => n.kind !== 'approval');
+  const approvals = view.needs.filter((n): n is Approval => n.kind === 'approval'); const others = view.needs.filter(n => !isPrompt(n));
+  const prompts = view.needs.filter(isPrompt).length;
   const parts = full ? receipt(full.evidence) : view.steps ? [`${view.steps} ${view.steps === 1 ? 'step' : 'steps'}`] : [];
   const words = verdict(view); const plain = ended && view.outcome === 'completed' && view.verification !== 'unverified';
-  const quiet = plain && !view.steps && !notes.length && !approvals.length && !view.controls.goal_resume;
+  const quiet = plain && !view.steps && !notes.length && !prompts && !view.controls.goal_resume;
   if (quiet) return null;
   const hasDetail = view.steps > 0 || notes.length > 0 || !!full?.checklist || !ended;
   return (
@@ -53,6 +55,7 @@ export default function TaskStrip({ id, eager = true, notes = [], stopping = fal
         <p className="wk-receipt" role="status"><Status task={view} />{parts.map(p => <span key={p} className="wk-receipt-part">{p}</span>)}</p>)}
       {ended && words && <p className={`wk-verdict${view.tone === 'bad' ? ' bad' : ''}`}>{words}</p>}
       {approvals.map(a => <Permission key={a.id} call={a} />)}
+      <Prompts needs={view.needs} />
       {others.map(n => (
         <div key={n.kind} className="wk-need"><p>{needLine(n)}</p>{n.kind !== 'location_permission' && <Link className="btn primary small" to={`/live/${view.id}`}>{n.kind === 'browser_control' ? 'Back to the browser' : 'Open the browser'}</Link>}</div>))}
       <div className="wk-foot">

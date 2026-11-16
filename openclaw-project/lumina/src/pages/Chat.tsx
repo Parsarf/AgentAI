@@ -129,7 +129,7 @@ export default function Chat() {
   return (
     <div className="chatpage">
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
-        <div className="thread-tools"><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</div>
+        <div className="thread-tools"><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive' || action === 'delete') void nav('/history'); else void loadThread(); }} />}</div>
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}

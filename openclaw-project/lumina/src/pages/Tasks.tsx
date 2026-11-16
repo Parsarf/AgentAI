@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import * as I from '../components/Icons';
 import { ago } from '../lib/format';
-import { isOpen, needLine, verdict, type Approval, type TaskSummary } from '../lib/work';
+import { isOpen, isPrompt, needLine, verdict, type Approval, type TaskSummary } from '../lib/work';
 import { useTask, useWork } from '../state/work';
 import Permission from '../components/work/Permission';
+import Prompts from '../components/work/ChangeApproval';
 import TaskActions from '../components/work/TaskActions';
 import TaskDetail from '../components/work/TaskDetail';
 import { Elapsed, Status } from '../components/work/parts';
@@ -36,11 +37,12 @@ function Item({ task, children }: { task: TaskSummary; children?: React.ReactNod
 
 /** What needs the customer, with the thing to do right on the line: a permission prompt is answered here, the browser is one click away, a held task can be resumed. */
 function NeedsYou({ task }: { task: TaskSummary }) {
-  const approvals = task.needs.filter((n): n is Approval => n.kind === 'approval'); const others = task.needs.filter(n => n.kind !== 'approval');
+  const approvals = task.needs.filter((n): n is Approval => n.kind === 'approval'); const others = task.needs.filter(n => !isPrompt(n));
   return (
     <Item task={task}>
       <div className="wk-item-extra">
         {approvals.map(a => <Permission key={a.id} call={a} />)}
+        <Prompts needs={task.needs} />
         {others.map(n => <div key={n.kind} className="wk-need"><p>{needLine(n)}</p>{n.kind !== 'location_permission' && <Link className="btn primary small" to={`/live/${task.id}`}>Open the browser</Link>}</div>)}
         {task.attention === 'goal' && <p className="wk-verdict">{verdict(task)}</p>}
         <TaskActions task={task} />

@@ -19,3 +19,26 @@
 .set-id { display: flex; align-items: center; gap: var(--space-3); min-width: 0; } .set-id b { overflow-wrap: anywhere; }
 .set-avatar { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--weight-semibold); font-size: var(--text-md); }
 @media (max-width: 640px) { .set-big { font-size: var(--text-2xl); } }
+
+/* -- Settings > Access and the data controls (components/AccessPage.tsx, DataControls.tsx, Organization.tsx) -- */
+.acc-list, .acc-plain, .acc-fresh, .acc-kinds, .acc-pick-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.acc-card { border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-raised); padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
+.acc-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.acc-says { margin: 0; font-size: var(--text-md); }
+.acc-fresh li, .acc-plain li { color: var(--text-secondary); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.acc-kinds li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-sm); }
+.acc-more summary { cursor: pointer; color: var(--text-secondary); font-size: var(--text-sm); width: fit-content; }
+.acc-more[open] summary { margin-bottom: var(--space-2); }
+.acc-pick { display: grid; gap: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.acc-pick-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.acc-pick-write { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: var(--text-sm); }
+.acc-sub { margin: var(--space-3) 0 var(--space-1); font-size: var(--text-sm); color: var(--text-secondary); font-weight: var(--weight-regular); }
+.acc-table-wrap { overflow-x: auto; }
+.acc-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: var(--text-sm); }
+.acc-table th, .acc-table td { text-align: left; vertical-align: top; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-subtle); }
+.acc-table thead th { color: var(--text-muted); font-weight: var(--weight-regular); font-size: var(--text-xs); border-top: 0; }
+.acc-table tbody th { font-weight: var(--weight-regular); width: 34%; }
+.acc-table td { color: var(--text-secondary); }
+.org-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--border-subtle); }
+.org-row:first-child { border-top: 0; }
+.org-groups { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }

@@ -9,7 +9,20 @@ export type Verification = 'verified' | 'unverified' | 'not_applicable';
 
 export interface Doing { key: string; category: string; label: string; detail: string }
 export interface Approval { kind: 'approval'; id: string; tool: string; service: string; arguments: Record<string, unknown>; expires_epoch: number }
-export type Need = Approval | { kind: 'browser_question' | 'browser_control' | 'browser_handoff'; before?: string } | { kind: 'location_permission' };
+/** What a prepared change will do, rendered by the server from the exact payload that would be sent (never from the assistant's words). */
+export interface ChangePreview {
+  title: string; destination: string; summary: string; changes: { field: string; before: unknown; after: unknown }[]; affected: number;
+  irreversible: string | null; can_undo: boolean; undo_seconds: number | null; compensations: { kind: string; label: string }[];
+}
+/** A change in a connected service that waits for the customer's approval of exactly this payload. */
+export interface ActionNeed { kind: 'action'; id: string; payload_hash: string; preview: ChangePreview; needs_admin: boolean; approved_by_you: boolean; expires_epoch: number }
+/** Several changes approved together: one approval covers every step shown. */
+export interface WorkflowNeed { kind: 'workflow'; id: string; title: string; steps_hash: string; steps: ChangePreview[]; expires_epoch: number }
+/** A question the assistant asked that can wait. */
+export interface QuestionNeed { kind: 'question'; id: string; question: string; options: string[]; expires_epoch: number }
+export type Need = Approval | ActionNeed | WorkflowNeed | QuestionNeed | { kind: 'browser_question' | 'browser_control' | 'browser_handoff'; before?: string } | { kind: 'location_permission' };
+/** The needs that are answered right where the task is shown (a prompt with its own buttons), as opposed to the ones answered in the browser view. */
+export const isPrompt = (n: Need): n is Approval | ActionNeed | WorkflowNeed | QuestionNeed => n.kind === 'approval' || n.kind === 'action' || n.kind === 'workflow' || n.kind === 'question';
 export interface Controls { stop: boolean; pause: boolean; resume: boolean; retry: boolean; goal_resume: boolean; goal_clear: boolean; steer: boolean }
 
 /** What every list shows. */

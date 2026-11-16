@@ -9,9 +9,12 @@ import YourBrowser from '../components/YourBrowser';
 import OwnModel from '../components/OwnModel';
 import MemoryNotes from '../components/MemoryNotes';
 import SpendingLimits from '../components/SpendingLimits';
+import AccessPage from '../components/AccessPage';
+import DataControls from '../components/DataControls';
+import Organization from '../components/Organization';
 import '../components/settings.css';
 
-const TABS = [{ id: 'general', label: 'General' }, { id: 'assistant', label: 'Assistant' }, { id: 'usage', label: 'Usage' }, { id: 'account', label: 'Account' }] as const;
+const TABS = [{ id: 'general', label: 'General' }, { id: 'assistant', label: 'Assistant' }, { id: 'access', label: 'Access' }, { id: 'usage', label: 'Usage' }, { id: 'account', label: 'Account' }] as const;
 type Tab = (typeof TABS)[number]['id'];
 const usd = (m?: number) => (m == null ? '—' : `$${(m / 1e6).toFixed(2)}`);
 
@@ -58,10 +61,11 @@ export function Settings() {
             <p className="muted" aria-live="polite">{STYLE_INFO[style].hint}</p>
             <p className="faint">Longer answers cost a little more. Ultra (generated code in a sandbox) is planned and not available.</p></section></>}
         {tab === 'assistant' && <><YourBrowser /><OwnModel /><MemoryNotes /></>}
+        {tab === 'access' && <AccessPage />}
         {tab === 'usage' && <><UsageCard /><SpendingLimits /><Credits /></>}
-        {tab === 'account' && <section className="panel card set-card" aria-labelledby="acct-h"><h2 id="acct-h" className="sr">Account</h2>
+        {tab === 'account' && <><section className="panel card set-card" aria-labelledby="acct-h"><h2 id="acct-h" className="sr">Account</h2>
           <div className="set-id"><span className="set-avatar" aria-hidden="true">{(app?.user.email?.[0] ?? '?').toUpperCase()}</span><div><b>{app?.user.email}</b><p className="faint">Signed in</p></div></div>
-          <div className="int-row"><button className="btn" onClick={signOut}>Sign out</button><a className="btn tertiary" href="/account/">Classic view</a></div></section>}
+          <div className="int-row"><button className="btn" onClick={signOut}>Sign out</button><a className="btn tertiary" href="/account/">Classic view</a></div></section><Organization /><DataControls /></>}
       </div>
     </div>);
 }
