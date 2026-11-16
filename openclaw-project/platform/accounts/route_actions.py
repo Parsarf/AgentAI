@@ -31,6 +31,7 @@ ROUTES = {
     'v1/projects/<str:project_id>/files': {R: 'file.read', W: 'file.write'}, 'v1/projects/<str:project_id>/files/<str:file_id>/preview': 'file.read',
     'v1/projects/<str:project_id>/bundle': 'file.read', 'v1/files': 'file.read', 'v1/files/bundle': 'file.read', 'v1/export/table': 'file.read',
     'v1/conversations/<str:conversation_id>/export': 'file.read', 'v1/artifacts/<str:artifact_id>/delete': 'file.write',
+    'v1/catalogue': 'file.read', 'v1/catalogue/place': 'file.write', 'v1/folders': 'file.write', 'v1/folders/<str:folder_id>': 'file.write', 'v1/uploads/<str:file_id>/delete': 'file.write',
     'v1/artifacts/<str:artifact_id>/versions/<str:version>/preview': 'file.read', 'v1/artifacts/<str:artifact_id>/versions/<str:version>/app': 'file.read',
     'v1/artifacts/<str:artifact_id>/versions/<str:version>/ticket': 'file.read', 'v1/media/<str:image_id>': 'file.read', 'v1/genui/artifacts/<str:artifact_id>/asset': 'file.read',
     'v1/conversations': {R: 'conversation.read', W: 'conversation.write'}, 'v1/conversations/<str:conversation_id>': {R: 'conversation.read', W: 'conversation.write'},

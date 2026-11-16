@@ -474,7 +474,13 @@ def storage_ready():
 
 
 def uploads_on():
-    return storage_ready() and settings.UPLOADS_ENABLED
+    """May customers upload? The host has storage and uploads enabled in its configuration, and the owner's switch is on."""
+    return storage_ready() and settings.UPLOADS_ENABLED and switch_on('customer_uploads')
+
+
+def catalogue(db=None):
+    from agentai_platform.catalogue import Catalogue
+    return Catalogue(db or store())
 
 
 def file_service(db=None):

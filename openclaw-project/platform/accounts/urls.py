@@ -39,6 +39,7 @@ urlpatterns += [
  path('v1/files',fl.account_files),path('v1/files/bundle',fl.account_bundle),path('v1/export/table',fl.export_table),
  path('v1/conversations/<str:conversation_id>/export',fl.export_conversation),
  path('v1/artifacts/<str:artifact_id>/delete',fl.delete_artifact),
+ path('v1/catalogue',fl.catalogue),path('v1/catalogue/place',fl.place),path('v1/folders',fl.folders),path('v1/folders/<str:folder_id>',fl.folder),path('v1/uploads/<str:file_id>/delete',fl.delete_upload),
  path('v1/artifacts/<str:artifact_id>/versions/<str:version>/preview',fl.artifact_preview),
  path('v1/apps/player', app_views.player),
  path('v1/artifacts/<str:artifact_id>/versions/<str:version>/app', app_views.source),
