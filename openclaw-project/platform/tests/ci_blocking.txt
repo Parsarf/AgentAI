@@ -54,3 +54,4 @@ test_permissions
 test_connector_layer
 test_actions
 test_data_lifecycle
+test_hub

@@ -50,8 +50,16 @@ RULES: tuple[Rule, ...] = (
          note='The knowledge index does not exist yet. When it does, a removed source takes its passages with it.'),
     Rule('connections', 'Connected services: what is connected, what it may reach, and how fresh its data is', None, 'until you remove the connection or delete your account', 'customer',
          ('connector_connections', 'connector_grants', 'connector_freshness', 'connector_secrets', 'connector_drafts', 'browser_profiles', 'mcp_connections', 'mcp_tool_choices',
-          'action_auto_approvals', 'telegram_links', 'telegram_link_codes', 'telegram_outbox', 'telegram_updates'),
+          'action_auto_approvals', 'telegram_links', 'telegram_link_codes', 'telegram_outbox', 'telegram_updates', 'hub_sync', 'hub_calendars', 'hub_settings'),
          change='Remove a connection in Settings. Its tokens are deleted at once.'),
+    # The dashboard's copy of connected mail and calendars (#D2). The sync window IS these rows: hub_sync.py reads its limits from here.
+    Rule('mail_headers', 'Mail from your connected accounts: who it is from and to, the subject and a short preview', 90,
+         'from when the message was sent (starred mail is kept while it is starred)', 'sweeper', ('hub_messages', 'hub_threads'),
+         change='Remove the account in Mail, or choose which labels it may read.', note='Older mail is not copied: it is searched in your mail service when you ask.'),
+    Rule('mail_bodies', 'The full text of a message, and the names of its attachments', 90, 'from when you or your assistant last opened it', 'sweeper', (),
+         note='A message is only fetched in full when it is opened.'),
+    Rule('calendar_events', 'Events from your connected calendars', 31, 'from when the event ended', 'sweeper', ('hub_events',),
+         change='Remove the account in Calendar, or choose which calendars it may read.', note='Events up to twelve months ahead are kept current.'),
     Rule('connection_setup', 'Unfinished attempts to connect a service', 1, 'from when the attempt ended', 'sweeper', ('connector_link_states',)),
     Rule('connector_records', 'Records of what was read or changed in connected services', 180, 'from when it finished', 'sweeper',
          ('connector_operations', 'connector_revocations', 'mcp_calls', 'actions', 'handoffs', 'workflows'),
@@ -151,6 +159,8 @@ def sweep(store, *, now=None, storage=None) -> dict:
             done['schedule_runs'] = con.execute("DELETE FROM schedule_runs WHERE day<? AND state NOT IN ('firing','started')", (day,)).rowcount
             done['spend_marks'] = con.execute('DELETE FROM spend_marks WHERE epoch<?', (epoch(BY_KEY['spend_marks'].days),)).rowcount
             done['audit'] = _audit_delete(con, iso(BY_KEY['audit'].days))
+            from . import hub_sync
+            done.update(hub_sync.sweep(con, now))
             expired = [dict(r) for r in con.execute("SELECT id,account_id,archive_ref FROM account_jobs WHERE kind='export' AND archive_ref IS NOT NULL AND finished_epoch<?",
                                                     (epoch(BY_KEY['exports'].days),))]
             for job in expired:

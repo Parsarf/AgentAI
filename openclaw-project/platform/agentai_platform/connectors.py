@@ -444,8 +444,12 @@ class ConnectorService:
             if not organizations.connector_allowed(con, principal.account_id, service):
                 raise ConnectorError('your organization does not allow this service')
             secret_ref = custody_put(self.custody, con, principal.account_id, service, json.dumps(tokens).encode()) if tokens else None
-            for old in con.execute("SELECT id,secret_ref FROM connector_connections WHERE account_id=? AND service=? AND state!='revoked'", (principal.account_id, service)).fetchall():
-                self._revoke(con, principal, old['id'], old['secret_ref'])
+            # A provider with several accounts per person (declared `several_accounts`, the dashboard's mail and calendar providers: #D2) keeps its other accounts:
+            # connecting again replaces only the connection to the same identity. Every other connector has one connection, replaced by a new one.
+            several = bool(getattr(declared, 'several_accounts', False))
+            for old in con.execute("SELECT id,secret_ref,identity_label FROM connector_connections WHERE account_id=? AND service=? AND state!='revoked'", (principal.account_id, service)).fetchall():
+                if not several or old['identity_label'].lower() == identity.lower():
+                    self._revoke(con, principal, old['id'], old['secret_ref'])
             connection_id = uuid.uuid4().hex
             con.execute('''INSERT INTO connector_connections(account_id,id,service,state,identity_label,granted_scopes,selected_resources,secret_ref,created_epoch,updated_epoch,
                 expires_epoch,refresh_after_epoch,mcp_connection_id) VALUES (?,?,?,'connected',?,?,'[]',?,?,?,?,?,?)''',
@@ -560,6 +564,10 @@ class ConnectorService:
         also('handoffs_ended', "UPDATE handoffs SET state='expired',answered_epoch=? WHERE account_id=? AND state='waiting' AND action_id IN (SELECT id FROM actions WHERE account_id=? AND connection_id=?)",
              (now, account, account, connection_id))
         also('schedules_paused', "UPDATE schedules SET state='paused',pause_reason='Its connection was removed.' WHERE account_id=? AND needs_connection_id=? AND state='active'", (account, connection_id))
+        # The dashboard's copy of this connection's mail and calendars goes with it (#D2): headers, opened bodies, events, calendars and the sync state.
+        for name, table in (('mail_messages_removed', 'hub_messages'), ('mail_threads_removed', 'hub_threads'), ('events_removed', 'hub_events'),
+                            ('calendars_removed', 'hub_calendars'), ('sync_removed', 'hub_sync')):
+            also(name, f'DELETE FROM {table} WHERE account_id=? AND connection_id=?', (account, connection_id))
         try:
             con.execute('INSERT INTO connector_revocations(account_id,id,connection_id,source,stopped_json,created_epoch) VALUES (?,?,?,?,?,?)',
                         (account, uuid.uuid4().hex, connection_id, source, json.dumps(stopped, sort_keys=True), now))
