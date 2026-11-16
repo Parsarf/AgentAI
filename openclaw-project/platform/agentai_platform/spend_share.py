@@ -21,6 +21,14 @@ class SpendShare:
         with self.store.connect() as con:
             con.execute('INSERT OR IGNORE INTO spend_marks(account_id,request_id,kind,spend_microusd,epoch) VALUES (?,?,?,?,?)', (account, request, kind, spend, int(self.clock())))
 
+    def close(self, account, request):
+        """A request is over but its end could not be read (the runtime was unreachable, the provider's total could not be fetched): end it where it started. It then takes no
+        share of anything, and, above all, it is not counted as still running beside every later request of the account (which halved their cost). Changes nothing when the
+        request has no start mark or already has an end mark."""
+        with self.store.connect() as con:
+            con.execute("""INSERT OR IGNORE INTO spend_marks(account_id,request_id,kind,spend_microusd,epoch)
+                SELECT account_id,request_id,'end',spend_microusd,? FROM spend_marks WHERE account_id=? AND request_id=? AND kind='start'""", (int(self.clock()), account, request))
+
     def cost(self, account, request, now_spend=None):
         """-> this request's share of the key's spend so far (to its end mark if it has one, else to `now_spend`), or None when it has no start mark (the caller falls back to end - start)."""
         with self.store.connect() as con:
@@ -29,7 +37,15 @@ class SpendShare:
                 return None
             rows = con.execute('SELECT request_id,kind,spend_microusd,id FROM spend_marks WHERE account_id=? AND epoch>=? ORDER BY spend_microusd,id',
                                (account, own['epoch'] - WINDOW)).fetchall()
-        return self.walk([(r['request_id'], r['kind'], r['spend_microusd']) for r in rows], request, now_spend)
+            # A request that is over but left no end mark (an ending that never reached `close`, or one from before `close` existed) is not running: it ends where it started.
+            ended = {r['request_id'] for r in rows if r['kind'] == 'end'}
+            open_ids = sorted({r['request_id'] for r in rows if r['kind'] == 'start' and r['request_id'] not in ended and r['request_id'] != request})
+            over = set()
+            for i in range(0, len(open_ids), 400):
+                part = open_ids[i:i + 400]
+                over |= {r[0] for r in con.execute(f"SELECT id FROM customer_requests WHERE account_id=? AND state IN ('completed','failed','cancelled') AND id IN ({','.join('?' * len(part))})",
+                                                   (account, *part))}
+        return self.walk([(r['request_id'], r['kind'], r['spend_microusd']) for r in rows if r['request_id'] not in over], request, now_spend)
 
     @staticmethod
     def walk(marks, request, now_spend=None):

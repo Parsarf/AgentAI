@@ -55,6 +55,31 @@ class Stored(unittest.TestCase):
         self.share.mark('x', 'r2', 'start', -5); self.share.mark('x', 'r2', 'frog', 5)
         self.assertIsNone(self.share.cost('x', 'r2'))
 
+    def test_a_request_that_ended_without_a_reading_does_not_share_later_requests_costs(self):
+        self.share.mark('x', 'gone', 'start', 100)                               # abandoned: the runtime was unreachable, its end was never read
+        self.share.close('x', 'gone')
+        self.share.mark('x', 'r', 'start', 500); self.share.mark('x', 'r', 'end', 600)
+        self.assertEqual(self.share.cost('x', 'r'), 100)                         # all of it, not half
+        self.assertEqual(self.share.cost('x', 'gone'), 0)
+        self.share.close('x', 'r'); self.share.close('x', 'never-started')       # closing again, or something that never started, changes nothing
+        self.assertEqual(self.share.cost('x', 'r'), 100)
+        self.assertIsNone(self.share.cost('x', 'never-started'))
+
+    def test_a_leftover_start_mark_of_a_finished_request_is_ignored(self):
+        with self.store.connect() as con:                                       # a request that is over, with a start mark and no end mark (written before `close` existed)
+            con.execute("INSERT INTO accounts(id,status) VALUES ('x','active')")
+            con.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES ('x','d',1,'ready')")
+            con.execute("INSERT INTO projects(account_id,id,name) VALUES ('x','p','P')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES ('x','p','c','d')")
+            for rid, state in (('old', 'failed'), ('beside', 'running')):
+                con.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)
+                    VALUES ('x',?,'actor','p','c',?,'h','m',?,1)''', (rid, rid, state))
+        self.share.mark('x', 'old', 'start', 100)
+        self.share.mark('x', 'r', 'start', 500); self.share.mark('x', 'r', 'end', 600)
+        self.assertEqual(self.share.cost('x', 'r'), 100)
+        self.share.mark('x', 'beside', 'start', 600); self.share.mark('x', 'r2', 'start', 600); self.share.mark('x', 'r2', 'end', 700)
+        self.assertEqual(self.share.cost('x', 'r2'), 50)                         # one that really is still running does share
+
     def test_overlap_through_the_database(self):
         for who, kind, total in (('a', 'start', 0), ('b', 'start', 5), ('a', 'end', 10), ('b', 'end', 15)):
             self.share.mark('x', who, kind, total)

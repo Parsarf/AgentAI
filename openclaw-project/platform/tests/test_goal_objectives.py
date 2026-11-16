@@ -114,6 +114,60 @@ class Checks(Base):
         with self.assertRaises(Conflict):
             self.jobs.configure(self.a, job['id'], max_turns=50)                         # a cancelled job is never changed or resumed
 
+    def _stop_for_good(self, job_id):
+        for request_id in self.jobs.cancel(self.a, job_id):                               # what POST /v1/objectives/<id>/cancel does with the ids
+            try:
+                self.chat.cancel(self.a, request_id)
+            except Exception:
+                pass
+
+    def test_stop_for_good_reaches_a_resume_turn_and_the_job_never_goes_on(self):
+        self.say('long job', key='g1', goal=True)
+        self.turn('active')
+        job = self.job()
+        self.jobs.configure(self.a, job['id'], max_turns=2)
+        self.turn('active')                                                              # paused at its budget
+        self.jobs.configure(self.a, job['id'], max_turns=10)
+        self.chat.goal_action(self.a, 'c-a', 'resume', key='r1')                         # the resume turn waits: it was never registered with the job
+        self._stop_for_good(job['id'])
+        self.turn('active'); self.turn('active')
+        self.assertEqual(self.rows("SELECT count(*) FROM customer_requests WHERE state IN ('waiting','starting','running')")[0][0], 0)
+        self.assertEqual(self.rows("SELECT state FROM customer_requests WHERE intent='goal_resume'")[0][0], 'cancelled')
+        self.assertEqual([(j['state'], j['cancelled']) for j in self.jobs.listing(self.a)], [('cancelled', True)])      # and no second job appeared
+
+    def test_a_cancelled_job_is_never_continued_even_when_its_turn_could_not_be_stopped(self):
+        self.say('long job', key='g1', goal=True)
+        self.turn('active')                                                              # turn 2 is waiting
+        job = self.job()
+        self.jobs.objectives.cancel(self.a, job['id'])                                   # cancelled, but the turn was not stopped (the stop request was lost)
+        self.turn('active')                                                              # it runs and asks for another turn
+        self.assertEqual(self.rows("SELECT count(*) FROM customer_requests WHERE state='waiting'")[0][0], 0)
+        last = self.rows("SELECT continue_goal,outcome_note FROM customer_requests ORDER BY sequence DESC LIMIT 1")[0]
+        self.assertEqual(last['continue_goal'], 0)
+        self.assertIn('cancelled', last['outcome_note'])
+
+    def test_a_resume_turn_cancelled_with_its_job_does_not_start_a_new_job(self):
+        self.say('long job', key='g1', goal=True)
+        self.turn('active')
+        job = self.job()
+        self.jobs.configure(self.a, job['id'], max_turns=2)
+        self.turn('active')
+        self.jobs.configure(self.a, job['id'], max_turns=10)
+        self.chat.goal_action(self.a, 'c-a', 'resume', key='r1')
+        self.jobs.objectives.cancel(self.a, job['id'])                                   # cancelled while the resume turn waits, and the turn itself was not stopped
+        self.turn('active')
+        self.assertEqual(len(self.jobs.listing(self.a)), 1)
+        self.assertEqual(self.rows("SELECT count(*) FROM customer_requests WHERE state='waiting'")[0][0], 0)
+
+    def test_turns_that_can_never_be_recorded_do_not_stand_in_front_of_the_ones_that_can(self):
+        with self.store.connect() as con:                                                # sixty old turns that were continued before checkpoints existed
+            for n in range(60):
+                con.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,goal_mode,continue_goal,continues)
+                    VALUES ('a',?,'actor-a','p-a','c-a',?,'h','m','completed',?,1,1,?)''', (f'old{n}', f'old{n}', int(self.now), f'old{n - 1}' if n else None))
+        self.say('finish the report', key='g1', goal=True)
+        self.turn('complete'); self.goals.tick()
+        self.assertIn('completed', [j['state'] for j in self.jobs.listing(self.a)])
+
     def test_bad_settings_are_refused(self):
         self.say('long job', key='g1', goal=True); self.turn('active')
         job = self.job()

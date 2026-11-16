@@ -39,6 +39,14 @@ class CutOffChecks(unittest.TestCase):
             texts = [r[0] for r in con.execute("SELECT content FROM chat_messages WHERE provenance='agent' ORDER BY id")]
         self.assertEqual(texts, ['Part one.', 'Part two.'])
 
+    def test_a_reply_cut_off_before_any_text_is_continued_too(self):
+        def script(message, run, gateway):                                       # cut off inside a tool call (a large file written in one step): the last message has no text at all
+            return {'text': '', 'stop_reason': 'length'} if message != CUTOFF_TEXT else {'text': 'The file is complete.'}
+        request, deliveries, notes = self.run_script(script)
+        self.assertEqual(request['state'], 'completed')
+        self.assertEqual([d['payload'] == CUTOFF_TEXT for d in deliveries], [False, True])
+        self.assertTrue(any('length limit' in n for n in notes))
+
     def test_a_normal_stop_is_never_continued(self):
         request, deliveries, _ = self.run_script(lambda message, run, gateway: {'text': 'All done.'})
         self.assertEqual((request['state'], len(deliveries)), ('completed', 1))

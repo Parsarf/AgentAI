@@ -25,7 +25,7 @@ NATIVE_TO_APP = {
     'failed': 'failed', 'error': 'failed',
     'cancelled': 'cancelled', 'canceled': 'cancelled', 'cleared': 'cancelled',
 }
-MAX_CHECKPOINTS = 200
+MAX_CHECKPOINTS = 500     # as many as the most turns a customer may allow one job (goal_objectives: max_turns up to 500), so the turn limit can always be counted
 MAX_CHILDREN = 20
 
 

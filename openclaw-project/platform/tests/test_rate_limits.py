@@ -180,5 +180,14 @@ class Limiter(unittest.TestCase):
         self.assertEqual(len(self.sent), 3)                              # and it did not ask (and get refused) a second time
 
 
+
+class BusyWording(unittest.TestCase):
+    def test_only_a_real_busy_answer_is_called_busy(self):
+        from agentai_platform.chat_driver import BUSY_FAILURE, failure_message
+        for text in ('HTTP 429', 'status=529 overloaded', 'error: 429.', 'Rate limit reached'):
+            self.assertEqual(failure_message(text), BUSY_FAILURE, text)
+        for text in ('prompt is too long: 214290 tokens > 200000 maximum', 'request req_0152946 was refused', 'cost 0.429 exceeded'):      # those digits inside another number are not a status
+            self.assertNotEqual(failure_message(text), BUSY_FAILURE, text)
+
 if __name__ == '__main__':
     unittest.main()

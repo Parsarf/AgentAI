@@ -230,7 +230,7 @@ class RequestQueue:
             blockers=[b for b in capacity.blockers if not (self.require_cell and b in ('memory_exhausted','cpu_exhausted','pids_exhausted'))]
             if blockers:return None
             if not self.require_cell and capacity.admitted_slots<1:return None
-            skip=set(exclude)
+            skip,held=set(exclude),set()
             while True:
                 # An account whose run is parked on a person has one execution already: its next request waits (same session lane, same cell). An account that already
                 # runs a task, or holds an uncertain one, waits for it.
@@ -252,8 +252,13 @@ class RequestQueue:
                     AND NOT EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state!='active')
                     AND (?=0 OR EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state='active'))
                     ORDER BY coalesce((SELECT max(q.claimed_epoch) FROM customer_requests q WHERE q.account_id=r.account_id),0),r.sequence LIMIT 25""",(BACKGROUND_PER_ACCOUNT,1 if self.require_cell else 0)).fetchall()
-                row=next((r for r in rows if r['account_id'] not in skip),None)
+                row=next((r for r in rows if r['account_id'] not in skip and r['id'] not in held),None)
                 if not row:return None
+                # A model call cannot say which of an account's requests it is for, so the relay serves an account only while all its live requests were admitted on the SAME
+                # model route. A request admitted on another route (the customer changed their model while a plan's phases run) therefore waits for those to end, instead of
+                # starting beside them and getting every model call of both refused.
+                if self._other_route_live(c,row):
+                    held.add(row['id']);continue
                 authorized=c.execute("SELECT 1 FROM accounts a JOIN memberships m ON m.account_id=a.id WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.status='active' AND m.role='customer'",(row['account_id'],row['actor_id'])).fetchone()
                 if authorized:break
                 # Skip requests whose author/account was revoked while they waited.
@@ -265,6 +270,13 @@ class RequestQueue:
             c.execute("UPDATE customer_requests SET state='starting',fence=?,lease_owner=?,lease_until=?,claimed_epoch=? WHERE account_id=? AND id=?",(fence,owner,now+lease_seconds,now,row['account_id'],row['id']))
             self.coordinator._audit(c,row['account_id'],'worker',row['id'],'request_claim','pending')
             return RequestClaim(row['account_id'],row['id'],row['project_id'],row['actor_id'],row['message'],fence,owner,row['conversation_id'])
+    @staticmethod
+    def _route(row):
+        try:return json.loads(row['context_json'] or '{}').get('model_selection')
+        except (ValueError,AttributeError):return None
+    def _other_route_live(self,c,row):
+        mine=self._route(row)
+        return any(self._route(o)!=mine for o in c.execute("SELECT context_json FROM customer_requests WHERE account_id=? AND id!=? AND state IN ('starting','running','uncertain')",(row['account_id'],row['id'])))
     def _fenced(self,c,claim):
         row=c.execute('SELECT * FROM customer_requests WHERE account_id=? AND id=?',(claim.account_id,claim.request_id)).fetchone()
         if not row:raise NotFound()

@@ -15,7 +15,7 @@ class Checks(unittest.TestCase):
         self.store = Store(Path(self.tmp.name) / 's' / 'db.sqlite3'); self.store.initialize()
         self.n = 0
         with self.store.connect() as con:
-            for a in ('a', 'b'):
+            for a in ('a', 'b', 'c', 'd', 'e', 'f'):
                 con.execute("INSERT INTO accounts(id,status) VALUES (?,'active')", (a,))
                 con.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES (?,?,1,'ready')", (a, 'd-' + a))
                 con.execute("INSERT INTO projects(account_id,id,name) VALUES (?,?,'P')", (a, 'p-' + a))
@@ -56,11 +56,18 @@ class Checks(unittest.TestCase):
         self.assertEqual(got['cost_microusd'], {'typical': 3000, 'upper': 20000})
 
     def test_a_new_account_borrows_numbers_from_everyone_and_only_numbers(self):
-        for _ in range(estimates.MIN_ALL):
-            self.task('b', 60, 5000)
+        for i in range(estimates.MIN_ALL):
+            self.task('bcdef'[i % 5], 60, 5000)
         got = self.get('a', 'chat')
         self.assertEqual((got['scope'], got['based_on'], got['seconds']['typical']), ('all', estimates.MIN_ALL, 60))
         self.assertEqual(set(got), {'kind', 'based_on', 'scope', 'seconds', 'cost_microusd'})
+
+    def test_numbers_from_other_customers_are_shown_only_when_enough_customers_stand_behind_them(self):
+        for i in range(estimates.MIN_ALL * 2):
+            self.task('bcde'[i % 4], 60, 5000)                         # plenty of tasks, but from four customers: a range would describe a handful of identifiable people
+        self.assertIsNone(self.get('a', 'chat'))
+        self.task('f', 60, 5000)
+        self.assertEqual(self.get('a', 'chat')['scope'], 'all')
 
     def test_only_finished_successful_recent_tasks_of_the_same_kind_count(self):
         for _ in range(5):

@@ -10,6 +10,7 @@ from agentai_platform.goals import GoalChain
 from agentai_platform.lifecycle.profiles import host_capacity_for
 from agentai_platform.panel.offer import PanelOffer
 from agentai_platform.request_worker import RequestWorker, where
+from agentai_platform.schedule_engine import ScheduleEngine
 from agentai_platform.routing.display import DisplayDecider
 from agentai_platform.routing.shadow import ShadowRouter
 from accounts import wiring
@@ -28,7 +29,8 @@ def build_worker(store):
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))
     # Plan phases and goal turns are sent through the same chat service the web app uses (built fresh each tick, so an owner switch change is seen without a restart).
-    return RequestWorker(queue, driver, host_capacity_for(store), shadow=shadow, max_parallel=int(getattr(settings, 'REQUEST_WORKER_PARALLEL', 8)), runner=lambda: wiring.chat_service().runner, goals=lambda: GoalChain(wiring.chat_service(), limit=settings.GOAL_CHAIN_LIMIT))
+    return RequestWorker(queue, driver, host_capacity_for(store), shadow=shadow, max_parallel=int(getattr(settings, 'REQUEST_WORKER_PARALLEL', 8)), runner=lambda: wiring.chat_service().runner,
+                         schedules=lambda: ScheduleEngine(store, wiring.chat_service(), enabled=lambda: switches.is_on('customer_schedules')), goals=lambda: GoalChain(wiring.chat_service(), limit=settings.GOAL_CHAIN_LIMIT))
 
 
 class Command(BaseCommand):
@@ -45,6 +47,7 @@ class Command(BaseCommand):
         worker = build_worker(store)
         from agentai_platform.location import Locations
         locations = Locations(store)
+        shown_active = None
         while True:
             try:
                 # Heal old cancelled/queued disagreements before lifecycle drain or admission.
@@ -53,10 +56,14 @@ class Command(BaseCommand):
                 report = worker.tick() if wiring.switch_on('customer_execution') else {'idle': 'customer_execution is off'}
             except Exception as exc:   # one failed request must not stop the loop; the queue marks it uncertain
                 report = where(exc)    # the error's type and the code lines it passed through: never its message, never a value
-            if report != {'ran': 0}:
+            # An idle tick is not printed. With several requests at once the report always carries `active` (how many are running), so "idle" is "nothing but that count, and the
+            # count did not change": otherwise the journal gets a line every second for ever.
+            idle = {k: v for k, v in report.items() if k != 'active'} == {'ran': 0} and report.get('active') == shown_active
+            if not idle:
                 print(json.dumps(report, sort_keys=True), flush=True)   # counts and states only; no account detail
+                shown_active = report.get('active', shown_active)
             if options['once']:
                 return
-            if report.get('finished') or report.get('followed') or report.get('started') or report.get('resumed'):
+            if report.get('finished') or report.get('followed') or report.get('started') or report.get('resumed') or report.get('scheduled'):
                 continue               # a request just ended or started (or a plan or goal step was queued): the next one is looked for at once
             time.sleep(options['interval'])

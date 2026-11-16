@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from . import activity as activity_mod, outcome as outcome_mod, spend_limits, timing, versions
@@ -86,7 +87,7 @@ def failure_message(error) -> str:
     text = str(error or '').lower()
     if any(s in text for s in ('budget_exhausted', 'allowance is exhausted', 'insufficient credits', 'billing error', 'credit balance')):
         return ALLOWANCE_FAILURE
-    if any(s in text for s in ('rate-limit', 'rate limit', 'ratelimit', 'too many requests', 'overloaded', '429', '529')):
+    if any(s in text for s in ('rate-limit', 'rate limit', 'ratelimit', 'too many requests', 'overloaded')) or re.search(r'(?<!\w)(?<!\d\.)(429|529)(?!\w)(?!\.\d)', text):      # the status code itself, not those digits inside another number
         return BUSY_FAILURE
     if 'timeout' in text:
         return 'The assistant took too long and was stopped. Please try a smaller request.'
@@ -609,7 +610,9 @@ class ChatDriver:
         keys = {d['idempotency_key'] for d in deliveries}
         mine = lambda row: row.get('run_id') in runs or row.get('after') in keys         # a steered input's reply has a run id of its own: it is tied to the input it follows
         rows = [r for r in page['messages'] if r['role'] == 'agent' and mine(r)]
-        for run_id, reason in {r.get('run_id'): r.get('stop_reason') for r in rows if r.get('run_id') and r.get('stop_reason')}.items():     # why each run's LAST reply ended (rows are in order)
+        last_stops = {r.get('run_id'): r.get('stop_reason') for r in rows if r.get('run_id') and r.get('stop_reason')}     # why each run's LAST reply ended (rows are in order)
+        last_stops.update({run_id: reason for run_id, reason in (page.get('stop_reasons') or {}).items() if run_id in runs})      # the runtime's own last word per run wins: it also covers a last message with no text
+        for run_id, reason in last_stops.items():
             seen.difference_update({k for k in seen if k[0] == 'stop' and k[1] == run_id})
             seen.add(('stop', run_id, reason))
         with self.coordinator.transaction() as con:
@@ -1096,6 +1099,7 @@ class ChatDriver:
             if gateway is not None:
                 self._reconcile_usage(gateway, claim, before)
             self.ledger.settle(account=claim.account_id, task=claim.request_id, effects_quiesced=True, all_routes_reconciled=True)
+        self.shares.close(claim.account_id, claim.request_id)       # however it ended, it is no longer running beside the account's other requests
         outcome = verdict.outcome if verdict else state
         task_state = {'completed': 'completed', 'partial': 'completed', 'blocked': 'blocked', 'failed': 'failed', 'cancelled': 'cancelled'}[outcome]
         with self.coordinator.transaction() as con:

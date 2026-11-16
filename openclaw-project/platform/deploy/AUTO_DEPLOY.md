@@ -30,7 +30,7 @@ so it can run only that program: no shell, no forwarding, no other command. The 
 Right after `deploy`, the workflow sends `accept <commit>` (the third command the key may run). The server's deploy program then runs `deploy/acceptance_live.py` as the app user against what
 was just deployed: the app is ready and every migration applied; the owner's test account gets one real answer, charged once and settled (a few cents of model time at most; its assistant is woken
 if it sleeps); the request carries the version stamp of that commit; a second account cannot read it. **If one check fails the deploy program puts the previous release back by itself**
-(both trees, the web bundle, the services, `last`) and exits 40, so the workflow run goes red. The result is kept in `/var/lib/agentai-deploy/tierb.json`; what the last deploy replaced is in
+(both trees, the web bundle, the services, `last`) and exits 40, so the workflow run goes red. One exception: when the answer could not be checked for a reason that is not the release (the host had no room to wake the test account's assistant, the model provider was busy, the test account's allowance is used up, or the test account is missing) the release **stays** and the program exits 42. The run is still red, so somebody looks; run the workflow again when the cause is cleared. The result is kept in `/var/lib/agentai-deploy/tierb.json`; what the last deploy replaced is in
 `previous.json`. A failure to roll back is said loudly in the log and needs a person (OPERATIONS.md, `release.py`). The wider proof (two accounts at once, killing the worker or the cell, rate limits,
 large tasks) is `deploy/phase1_live.py` with `deploy/phase1_root.sh`: run it by hand before a launch or after a big change.
 

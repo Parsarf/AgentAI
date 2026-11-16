@@ -8,7 +8,8 @@ Run as the app user with the app environment loaded (agentai-deploy does this): 
   LIVE-STAMP     that request carries a version stamp whose release is the commit that was just deployed
   LIVE-ISOLATION a second account cannot read that request
 
-Costs well under a cent. Exit 0 when every check passed, 1 when any did not. Results: /var/lib/agentai-deploy/tierb-<sha>.json is written by agentai-deploy from this output.
+Costs well under a cent. Exit 0 when every check passed, 1 when any did not, 3 when the answer could not be CHECKED for a reason that is not the release (the test account is
+missing, the host had no room to wake its assistant, the model provider was busy, the test account's allowance is used up): the release is then left in place, not rolled back. Results: /var/lib/agentai-deploy/tierb-<sha>.json is written by agentai-deploy from this output.
 The wider proof (two accounts at once, killing the worker or the cell, rate limits, large tasks) is deploy/phase1_live.py: run it by hand before a launch or after a big change.
 """
 import json
@@ -54,6 +55,30 @@ def post(c, path, body):
     return c.post(path, data=json.dumps(body), content_type='application/json', secure=True)
 
 
+def unchecked(why):
+    """The live answer could not be checked, and the cause is the surroundings, not the release: say so and exit 3 (agentai-deploy keeps the release and reports it)."""
+    print(json.dumps({'passed': False, 'inconclusive': True, 'why': why, 'cases': RESULTS}), flush=True)
+    return 3
+
+
+def outside_cause(request, row):
+    """Why the test request did not complete, when that is known to be outside the release; else None (a failure counts against the release)."""
+    if not request or not row:
+        return None
+    state = row[0][0]
+    if state == 'waiting' and sql("""SELECT 1 FROM lifecycle_details d JOIN operations o ON o.account_id=d.account_id AND o.id=d.operation_id
+            WHERE d.account_id=%s AND d.error_code='capacity_wait' AND o.state='pending'""", [A]):
+        return 'the host had no room to start the test account\'s assistant (every assistant was busy)'
+    if state == 'failed':
+        from agentai_platform.chat_driver import ALLOWANCE_FAILURE, BUSY_FAILURE
+        result = (sql('SELECT result FROM customer_requests WHERE id=%s', [request]) or [[None]])[0][0]
+        if result == BUSY_FAILURE:
+            return 'the model provider was too busy to answer'
+        if result == ALLOWANCE_FAILURE:
+            return 'the test account\'s model allowance is used up'
+    return None
+
+
 def main():
     sha = sys.argv[1] if len(sys.argv) > 1 else ''
     wait = int(sys.argv[sys.argv.index('--wait') + 1]) if '--wait' in sys.argv else 600
@@ -63,7 +88,12 @@ def main():
     migrations = sorted(p.name for p in (pathlib.Path('/opt/agentai-platform/current/migrations')).glob('*.sql'))
     applied = {r[0] for r in sql('SELECT version FROM schema_migrations')}
     record('LIVE-READY', 'The app is ready and every migration is applied', ready.status_code == 200 and set(migrations) <= applied, f'ready={ready.status_code} missing={sorted(set(migrations) - applied)[:3]}')
-    user = Identity.objects.get(account_id=A, role='customer').user
+    try:
+        user = Identity.objects.get(account_id=A, role='customer').user
+    except (Identity.DoesNotExist, Identity.MultipleObjectsReturned):
+        if RESULTS[0]['passed']:
+            return unchecked('the owner\'s test account is not on this server (or has more than one customer)')
+        raise
     c = client(user)
     project = c.get('/v1/projects', secure=True).json()['projects'][0]['id']
     conversation = post(c, '/v1/conversations', {'project_id': project}).json().get('conversation', {}).get('id')
@@ -95,6 +125,9 @@ def main():
     if conversation:
         post(c, f'/v1/conversations/{conversation}/archive', {})               # the test chat never stays in the account's list
     failed = [r for r in RESULTS if not r['passed']]
+    why = outside_cause(request, row) if not done else None
+    if why and all(r['passed'] for r in RESULTS if r['id'] in ('LIVE-READY', 'LIVE-ISOLATION')):
+        return unchecked(why)
     print(json.dumps({'passed': not failed, 'cases': RESULTS}), flush=True)
     return 1 if failed else 0
 

@@ -92,6 +92,8 @@ def rollback(previous, *, link=None, run=None, base=None, app=None, sup=None, ui
 
 def accept(sha, *, run=None):
     """`accept <commit>`: the live acceptance (deploy/acceptance_live.py) against the system that was just deployed. A failure puts the previous release back (rollback) and exits 40.
+    When the script says the answer could not be checked for a reason outside the release (its exit 3: no room on the host, the provider busy, the test account's allowance or the
+    account itself missing) nothing is rolled back and this exits 42: the run still goes red, so somebody looks, but a good release (or an urgent fix) is not undone by the weather.
     Run by the workflow right after `deploy`, under the same lock; it uploads nothing."""
     run = run or sh
     if not LAST.exists() or LAST.read_text().strip() != sha:
@@ -107,14 +109,19 @@ def accept(sha, *, run=None):
     except ValueError:
         report = {'passed': False, 'cases': []}
     passed = bool(report.get('passed')) and result.returncode == 0
+    unchecked = not passed and result.returncode == 3 and report.get('inconclusive') is True
     try:
-        TIERB.write_text(json.dumps({'sha': sha, 'passed': passed, 'at': int(time.time()), 'cases': report.get('cases', [])}))
+        TIERB.write_text(json.dumps({'sha': sha, 'passed': passed, 'at': int(time.time()), 'cases': report.get('cases', []),
+                                     **({'inconclusive': True, 'why': str(report.get('why', ''))[:200]} if unchecked else {})}))
     except OSError:
         pass
     say((result.stdout or '')[-1200:])
     if passed:
         say(f'live acceptance passed for {sha[:7]}')
         return 0
+    if unchecked:
+        say(f'live acceptance of {sha[:7]} could NOT BE CHECKED ({str(report.get("why", ""))[:200]}). The release stays. Run the acceptance again when that is cleared.')
+        return 42
     say(f'live acceptance FAILED for {sha[:7]}: putting the previous release back')
     try:
         previous = json.loads(PREVIOUS.read_text())

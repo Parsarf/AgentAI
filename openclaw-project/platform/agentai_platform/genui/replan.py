@@ -53,13 +53,16 @@ def check_against_runs(runs: dict, old: dict, new: dict):
     o, n = {p['id']: p for p in old['phases']}, {p['id']: p for p in new['phases']}
     for pid, run in runs.items():
         state = run['state']
-        if state in LOCKED:
+        if state in LOCKED and pid in o:
             if pid not in n:
                 raise ReplanRefused(f'"{o[pid]["title"]}" has already {"finished" if state == "completed" else "started"}, so it cannot be removed.')
             if n[pid] != o[pid]:
                 raise ReplanRefused(f'"{o[pid]["title"]}" has already {"finished" if state == "completed" else "started"}, so it cannot be changed.')
-        elif state == 'failed' and pid in n and n[pid] != o.get(pid):
-            if {**o[pid], 'enabled': False} != n[pid]:
+        elif state == 'failed' and pid in o:
+            # The same rule the runner applies when the revision is approved (PlanRunner._apply_edit): a proposal that could never be applied is refused here, with the reason.
+            if pid not in n:
+                raise ReplanRefused(f'"{o[pid]["title"]}" failed. It can only be switched off and replaced by a new phase, not removed.')
+            if n[pid] != o[pid] and {**o[pid], 'enabled': False} != n[pid]:
                 raise ReplanRefused(f'"{o[pid]["title"]}" failed. It can only be switched off and replaced by a new phase, not rewritten.')
 
 

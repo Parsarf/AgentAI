@@ -4,9 +4,10 @@ import type { Block, PlanDiff, Proposal } from '../../lib/genui/schema';
 import { Emojified } from '../Emoji';
 
 const FIELD_WORDS: Record<string, string> = { title: 'name', description: 'instructions', checkpoint: 'checkpoint', enabled: 'on or off', optional: 'optional', requiresApproval: 'approval', dependsOn: 'what it runs after' };
-export const changeLines = (d: PlanDiff): string[] => [
+/** `titles`: the current plan's phase titles by id, so a removed phase is named as the customer knows it (its id is only the fallback). */
+export const changeLines = (d: PlanDiff, titles: Record<string, string> = {}): string[] => [
   ...d.added.map(p => `Adds “${p.title}”`),
-  ...d.removed.map(id => `Removes the phase “${id}”`),
+  ...d.removed.map(id => `Removes the phase “${titles[id] ?? id}”`),
   ...d.changed.map(c => `Changes “${c.title}” (${c.fields.map(f => FIELD_WORDS[f] ?? f).join(', ')})`),
   ...(d.reordered ? ['Changes the order of the phases'] : []),
   ...(d.title_changed ? ['Renames the plan'] : []),
@@ -19,6 +20,7 @@ export default function PlanAdaptation({ block, onChanged, failed }: { block: Bl
   const [text, setText] = useState(''); const [busy, setBusy] = useState(''); const [err, setErr] = useState('');
   const proposals = block.proposals ?? []; const latest = proposals[0]; const waiting = proposals.find(p => p.state === 'requested'); const ready = proposals.find(p => p.state === 'proposed');
   const replan = block.replan ?? { auto: false, auto_used: 0, auto_limit: 2 };
+  const titles: Record<string, string> = Object.fromEntries(((block.state?.plan?.phases ?? []) as { id: string; title: string }[]).map(p => [p.id, p.title]));
   const done = block.run_status === 'completed' || block.run_status === 'stopped';
   const call = async (key: string, path: string, body: unknown) => {
     setBusy(key); setErr('');
@@ -33,7 +35,7 @@ export default function PlanAdaptation({ block, onChanged, failed }: { block: Bl
         <div className="adapt-card" role="group" aria-label="Suggested revision">
           <p><b>Suggested change to the plan</b><span className="faint small"> · {TRIGGER_WORDS[ready.trigger]}{ready.auto ? ' · it will be applied by itself' : ''}</span></p>
           {ready.instruction && <p className="muted small">You wrote: <Emojified text={ready.instruction} /></p>}
-          {ready.diff && <ul className="adapt-list">{changeLines(ready.diff).map(l => <li key={l}><Emojified text={l} /></li>)}</ul>}
+          {ready.diff && <ul className="adapt-list">{changeLines(ready.diff, titles).map(l => <li key={l}><Emojified text={l} /></li>)}</ul>}
           <p className="faint small">Phases that are running or finished stay exactly as they are.</p>
           {!ready.auto && <div className="actions"><button className="btn small primary" disabled={!!busy} onClick={() => void call('approve', 'proposal', { proposal_id: ready.id, action: 'approve' })}>{busy === 'approve' ? 'Applying…' : 'Apply this change'}</button>
             <button className="btn small" disabled={!!busy} onClick={() => void call('decline', 'proposal', { proposal_id: ready.id, action: 'decline' })}>No thanks</button></div>}

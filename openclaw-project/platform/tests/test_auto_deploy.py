@@ -215,6 +215,29 @@ class LiveAcceptance(unittest.TestCase):
         run, _ = self.fake(root, passed=True, returncode=1)
         self.assertEqual(deploy.accept(SHA, run=run), 40)
 
+    def test_an_acceptance_that_could_not_be_checked_keeps_the_release_and_exits_42(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        class Result:
+            returncode, stderr = 3, ''
+            stdout = '{"passed": false, "inconclusive": true, "why": "the model provider was too busy to answer", "cases": []}\n'
+        calls = []
+        def run(argv):
+            calls.append(argv)
+            return Result()
+        self.assertEqual(deploy.accept(SHA, run=run), 42)
+        self.assertEqual(os.path.realpath(root / 'app' / 'current'), str(root / 'app' / 'releases' / 'new'))          # nothing was rolled back
+        self.assertEqual(deploy.LAST.read_text().strip(), SHA)
+        self.assertEqual([c[0] for c in calls], ['systemd-run'])
+        recorded = __import__('json').loads(deploy.TIERB.read_text())
+        self.assertEqual((recorded['passed'], recorded['inconclusive']), (False, True))
+
+    def test_a_failed_check_that_only_claims_to_be_unchecked_is_still_rolled_back(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        class Result:
+            returncode, stderr = 1, ''
+            stdout = '{"passed": false, "inconclusive": true, "cases": []}\n'
+        self.assertEqual(deploy.accept(SHA, run=lambda argv: Result()), 40)
+
     def test_accepting_a_commit_that_is_not_the_deployed_one_is_refused(self):
         root, previous = self.tree(); self.patched(root, previous)
         run, calls = self.fake(root, passed=True)
