@@ -14,7 +14,7 @@ the queue like any request, and its ending is recorded here when it ends. Stop p
 from __future__ import annotations
 import time
 
-from .durable import ObjectiveService
+from .durable import MAX_CHECKPOINTS, ObjectiveService
 from .lifecycle.coordinator import Coordinator
 from .lifecycle.types import Conflict
 from .security import NotFound, Principal
@@ -59,6 +59,12 @@ class GoalObjectives:
                     ORDER BY created_epoch DESC,id DESC LIMIT 1""", (account, first['conversation_id'], *OPEN_STATES)).fetchone()
                 if joined:
                     return joined['id']
+                # A job cancelled WHILE this resume turn was waiting or running still owns it: the turn must not become a new job that carries on (cancel is sticky).
+                stopped = con.execute('''SELECT o.id FROM objectives o JOIN customer_requests r ON r.account_id=o.account_id AND r.id=?
+                    WHERE o.account_id=? AND o.conversation_id=? AND o.cancelled=1 AND o.updated_epoch>=r.created_epoch ORDER BY o.updated_epoch DESC,o.id DESC LIMIT 1''',
+                                      (root, account, first['conversation_id'])).fetchone()
+                if stopped:
+                    return stopped['id']
         objective = self.objectives.create(principal, first['project_id'], task_id=root)
         with self.coordinator.transaction() as con:
             con.execute('UPDATE objectives SET conversation_id=? WHERE account_id=? AND id=?', (first['conversation_id'], account, objective))
@@ -71,7 +77,10 @@ class GoalObjectives:
             return [dict(r) for r in con.execute("""SELECT r.account_id,r.id,r.actor_id,r.conversation_id,r.state,r.outcome,r.outcome_note,r.continue_goal,r.intent,r.created_epoch
                 FROM customer_requests r WHERE r.goal_mode=1 AND r.state IN ('completed','failed','cancelled') AND r.conversation_id IS NOT NULL AND r.created_epoch>=?
                 AND NOT EXISTS (SELECT 1 FROM objective_checkpoints k WHERE k.account_id=r.account_id AND k.receipt_id=r.id)
-                ORDER BY r.sequence LIMIT 50""", (int(self.clock()) - RECENT_SECONDS,)).fetchall()]
+                AND NOT (r.continue_goal=1 AND EXISTS (SELECT 1 FROM customer_requests c WHERE c.account_id=r.account_id AND c.continues=r.id))
+                ORDER BY r.sequence DESC LIMIT 50""", (int(self.clock()) - RECENT_SECONDS,)).fetchall()][::-1]
+        # The NEWEST fifty, oldest of them first: a turn that can never get a checkpoint (its job was cancelled, or it was continued before checkpoints existed) must not
+        # stand in front of the turns that can. A turn that asked for another and already has it is recorded when it is continued (may_continue), never here.
 
     def record(self, request: dict) -> str | None:
         """One checkpoint for a finished turn, and the objective's state after it. Safe to repeat. -> objective id."""
@@ -121,6 +130,18 @@ class GoalObjectives:
 
     def may_continue(self, request: dict):
         """Before the next turn of a chain is admitted. -> (True, None), or (False, the plain reason it pauses here)."""
+        # Cancel is sticky, and it is looked at FIRST: a cancelled job takes no checkpoint, so asking `record` alone could not tell "cancelled" from "no record kept".
+        try:
+            known = self.for_request(Principal(request['account_id'], request['actor_id'], 'customer'), request)
+        except (Conflict, NotFound):
+            known = None
+        if known is not None:
+            with self.store.connect() as con:
+                before = self.view(con, request['account_id'], known)
+            if before is not None and before['cancelled']:
+                return False, 'This job was cancelled.'
+            if before is not None and before['turns'] >= MAX_CHECKPOINTS:
+                return False, f'This job reached the most turns one job can have ({MAX_CHECKPOINTS}).'
         objective = self.record(request)
         if objective is None:
             return True, None                # no objective could be kept (very old chain, revoked customer): the chain's own rules still apply
@@ -183,8 +204,14 @@ class GoalObjectives:
         return self.get(principal, objective_id)
 
     def cancel(self, principal: Principal, objective_id: str):
-        """Sticky: the job never continues or resumes again. -> the request ids of turns that must be stopped (the caller stops them)."""
-        return self.objectives.cancel(principal, objective_id)
+        """Sticky: the job never continues or resumes again. -> the request ids of turns that must be stopped (the caller stops them): the turns registered with the job AND every
+        goal turn of its chat that is waiting or running now. The second part is what reaches a resume turn (never registered) and the turns of a job past the child limit."""
+        children = self.objectives.cancel(principal, objective_id)
+        with self.store.connect() as con:
+            row = con.execute('SELECT conversation_id FROM objectives WHERE account_id=? AND id=?', (principal.account_id, objective_id)).fetchone()
+            live = [r['id'] for r in con.execute("""SELECT id FROM customer_requests WHERE account_id=? AND conversation_id=? AND goal_mode=1
+                AND state IN ('waiting','starting','running','uncertain') ORDER BY sequence""", (principal.account_id, row['conversation_id']))] if row and row['conversation_id'] else []
+        return children + [r for r in live if r not in children]
 
     def due_auto_resumes(self):
         """Jobs whose customer chose `auto`, paused by an interrupted or failed turn, with resumes left and nothing of theirs running or waiting."""

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run: Lumina connected services: refresh tokens before they end, purge the tokens of removed connections
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=agentai-connector-refresh.service
+
+[Install]
+WantedBy=timers.target

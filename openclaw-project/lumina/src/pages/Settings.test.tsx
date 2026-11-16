@@ -10,6 +10,9 @@ vi.mock('../components/OwnModel', () => ({ default: () => <p>Own model card</p> 
 vi.mock('../components/MemoryNotes', () => ({ default: () => <p>Memory card</p> }));
 vi.mock('../components/Credits', () => ({ default: () => <p>Credits card</p> }));
 vi.mock('../components/SpendingLimits', () => ({ default: () => <p>Spending limits card</p> }));
+vi.mock('../components/AccessPage', () => ({ default: () => <p>Access page</p> }));
+vi.mock('../components/DataControls', () => ({ default: () => <p>Data controls</p> }));
+vi.mock('../components/Organization', () => ({ default: () => <p>Organization card</p> }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe('Settings', () => {
   it('shows only one section at a time, starting with General', () => {
@@ -25,7 +28,11 @@ describe('Settings', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Assistant' }));
     expect(screen.getByText('Your browser card')).toBeTruthy(); expect(screen.getByText('Memory card')).toBeTruthy();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Assistant' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Access', selected: true })).toBeTruthy(); expect(screen.getByText('Access page')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Access' }), { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Usage', selected: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Account' }));
+    expect(screen.getByText('Organization card')).toBeTruthy(); expect(screen.getByText('Data controls')).toBeTruthy();
   });
   it('shows what was used with no limit by default, next to the card where a limit can be set', async () => {
     vi.mocked(api).mockResolvedValue({ reported_microusd: 400000, held_microusd: 0, day_reported_microusd: 150000, period_remaining_microusd: null, period_limit_microusd: null } as any);

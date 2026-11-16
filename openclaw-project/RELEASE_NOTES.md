@@ -1,3 +1,21 @@
+# Roadmap Phase 2 and 3: permissions, connected services, changes with approval, leaving (15 Nov 2026, not yet deployed)
+
+Built and tested on branch `phase-0-1-review-fixes`; nothing is merged or deployed (the phases are deployed together). Every customer-facing part is behind an owner
+switch that is off. Status and evidence: `plans/product/roadmap/phase-02.md`, `phase-03.md`. Deploy-day steps: `platform/deploy/PENDING_DEPLOY.md`.
+
+- **Organizations and roles (#12, #15):** every account is an organization of one whose owner it is. Four roles, one permission table, one function every route and tool asks. An organization can decide tools, services, kinds of change, spending limits and own model keys for its members.
+- **What a connection may reach (#13, #14):** a new connection reaches nothing until its customer chooses. Settings > Access shows every connection, tool, saved login, model key and memory from the same records the checks read.
+- **Tokens (#16, #17):** sealed custody, a refresh job, and removal that takes effect at the next call with a receipt of what was stopped.
+- **Data lifecycle (#18 to #21):** one retention table with one sweeper; an export archive with a manifest; deletion with a verification scan of every store; a guided way to close an account with seven days to change one's mind.
+- **The connector contract (#22 to #25):** declaration plus adapter, six error kinds, one paging helper that always says when a result is partial, freshness per resource, version tokens.
+- **Changes in connected services (#26 to #29, #83):** the assistant prepares; the customer approves the exact payload; Lumina sends it once, checks it, and resumes the chat. Undo where the service allows it, registered follow-ups where it does not, workflows that reverse themselves on failure. Waiting for a person holds no assistant.
+- **Retention is enforced for the first time** once the timer is installed: activity records 30 days, security records 180 days. The privacy policy wording for this is prepared in the branch and must be read before it is published.
+- **Needs:** migrations 0044 to 0047 (additive); the connector key file; three timers; a restart of the app, request worker, tool relay and lifecycle worker. Tests: 96 new platform tests, 20 new account tests, 8 new blocking acceptance cases, 26 new web tests.
+
+# Fixes from the review of Phase 0-1 (15 Nov 2026, not yet deployed)
+
+On the same branch. Long jobs: "Stop for good" now always stops. Cost: a task is no longer charged half after an abandoned one. Plans: a revision that could never be applied is refused when proposed. Worker: no log line every second. Model change during a plan no longer fails both tasks. Deploy: a live check that could not be made does not roll a good release back. Estimates from other customers need five customers behind them. Details in the commit `e9c32ec`.
+
 # Reliability fixes (14 Nov 2026, not yet deployed)
 
 Bug fixes only; no feature was added or removed. Tests: `platform/tests/test_reliability_fixes.py`, `platform/accounts/test_limits.py`.

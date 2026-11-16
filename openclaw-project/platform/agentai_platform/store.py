@@ -60,9 +60,10 @@ class Store:
         except (sqlite3.Error,OSError): return False
 
     def _authorize(self, con, principal: Principal):
+        # An active member of an active account, whatever their role: what a role may DO is asked per action (security.allowed). A removed member is not one.
         require_customer(principal)
-        row=con.execute("SELECT 1 FROM memberships m JOIN accounts a ON a.id=m.account_id WHERE m.account_id=? AND m.actor_id=? AND m.role='customer' AND m.status='active' AND a.status='active'",(principal.account_id,principal.actor_id)).fetchone()
-        if not row: raise NotFound("unavailable")
+        from .permissions import member_role
+        if member_role(con,principal.account_id,principal.actor_id) is None: raise NotFound("unavailable")
 
     def list_projects(self, principal: Principal) -> list[dict]:
         with self.connect() as con:

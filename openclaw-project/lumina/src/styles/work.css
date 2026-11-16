@@ -196,3 +196,21 @@ a.task { text-decoration: none; color: inherit; }
 .adapt-card { border: 1px solid var(--line-2); border-radius: var(--radius-md); background: var(--surface-raised); padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); }
 .adapt-list { margin: 0; padding-left: var(--space-5); color: var(--ink); }
 .adapt-auto { font-size: var(--text-sm); color: var(--text-secondary); }
+
+/* -- Prompts for a change in a connected service, several together, and a question that can wait (components/work/ChangeApproval.tsx) -- */
+.wk-change-card { align-items: stretch; }
+.wk-change-kicker { margin: 0; color: var(--text-muted); font-size: var(--text-xs); letter-spacing: .02em; }
+.wk-change { display: grid; gap: var(--space-1); min-width: 0; }
+.wk-change-where, .wk-change-note { margin: 0; color: var(--text-secondary); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.wk-change-step { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.wk-change-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); table-layout: fixed; margin: var(--space-1) 0; }
+.wk-change-table th, .wk-change-table td { text-align: left; vertical-align: top; padding: var(--space-1) var(--space-2); border-top: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+.wk-change-table thead th { color: var(--text-muted); font-weight: var(--weight-regular); font-size: var(--text-xs); border-top: 0; }
+.wk-change-table tbody th { color: var(--text-secondary); font-weight: var(--weight-regular); width: 22%; }
+.wk-change-table td:nth-child(2) { color: var(--text-muted); }
+.wk-change-warn { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); background: var(--warning-soft); color: var(--text-primary); font-size: var(--text-sm); }
+.wk-change-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-3); }
+.wk-change-steps > li { padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.wk-question-options { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.wk-change-card form.inline { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.wk-change-card form.inline .input { flex: 1 1 24ch; min-width: 0; }

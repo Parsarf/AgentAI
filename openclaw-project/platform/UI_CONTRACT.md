@@ -28,7 +28,7 @@ Images and fonts: same origin or `data:`. Calls go to the same origin only (`con
  "features":{"chat":true,"execution":true,"files":false,"uploads":false,"convert":false,"telegram":false,"connectors":false,"billing_mode":"open","requests":true,"usage":true},
  "limits":{"max_message_chars":16000,"max_projects":10,"max_conversations_per_project":100},"links":{"classic_ui":"/account/","sign_out":"/auth/logout"}}
 ```
-`features` is the **only** thing that should decide which screens and buttons exist. `execution:false` means messages are saved and wait. `billing_mode`: `invite_only` | `open` (free access) | `paid_required`.
+`features` is the **only** thing that should decide which screens and buttons exist. Since roadmap Phase 2-3 it also carries `connected_services` (services built on the connector contract can be connected), `connector_writes` (the assistant may prepare changes in them for approval), `self_service` (export, delete a chat, close the account) and `role` (owner | admin | member | viewer: a viewer's buttons that act are refused by the server with 403 `not_permitted`). `execution:false` means messages are saved and wait. `billing_mode`: `invite_only` | `open` (free access) | `paid_required`.
 
 ## Resources
 | Screen | Endpoints |

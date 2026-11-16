@@ -21,6 +21,9 @@ export function useWorkOptional(): WorkState | null {
   return useSyncExternalStore(client ? client.subscribe : NONE_SUBSCRIBE, (client ? client.snapshot : NONE_SNAPSHOT) as () => WorkState | null, (client ? client.snapshot : NONE_SNAPSHOT) as () => WorkState | null);
 }
 
+/** The work client when a WorkProvider is above, else null (the component gallery, tests). For a prompt that refreshes the picture after it was answered. */
+export function useWorkClientOptional(): WorkClient | null { return useContext(Ctx); }
+
 export function useWorkClient(): WorkClient {
   const client = useContext(Ctx);
   if (!client) throw new Error('WorkProvider is missing');

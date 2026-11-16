@@ -276,6 +276,113 @@ class Acceptance(Base):
                 check.doCleanups()
 
 
+    # -- roadmap Phase 2 and 3: permissions, connected services, the action pipeline, leaving ------------------------------------------------------------
+    def _helper(self, cls):
+        """A second fixture (its own database) for the cases that need connected services or account jobs."""
+        helper = cls('setUp'); helper.setUp(); self.addCleanup(helper.doCleanups)
+        return helper
+
+    def _connected(self):
+        from tests.connector_fixture import ConnectorBase
+        h = self._helper(ConnectorBase)
+        return h, h.connect()
+
+    @case('A-GRANT-BOUNDARY')
+    def test_a_connection_reaches_only_what_its_customer_chose(self):
+        from agentai_platform.connector_kit import ConnectorFault
+        h, connection = self._connected()
+        h.bench.seed('a', 'inbox', 2); h.bench.seed('a', 'archive', 2, prefix='Hidden')
+        self.assertEqual(len(h.client.list(h.a, connection, 'folder', 'inbox')[0]), 2)
+        with self.assertRaises(ConnectorFault):
+            h.client.list(h.a, connection, 'folder', 'archive')
+        self.assertEqual([r for r in h.client.search(h.a, connection, 'Hidden')[0]], [])
+        with self.assertRaises(ConnectorFault):
+            h.client.list(h.b, connection, 'folder', 'inbox')                                      # and never another account's
+
+    @case('A-PARTIAL-IS-SAID')
+    def test_a_partial_result_is_never_presented_as_complete(self):
+        from agentai_platform.connector_tools import ConnectorTools
+        h, connection = self._connected()
+        h.bench.seed('a', 'inbox', 70)
+        tools = ConnectorTools(h.store, h.connectors, h.client, h.actions, h.workflows, clock=lambda: h.now, enabled=lambda a: True)
+        text, error = tools.call('a', {'connection': connection, 'resource_kind': 'folder', 'resource_id': 'inbox'}, name='lumina_connector_list', request_id='req-a')
+        result = json.loads(text)
+        self.assertEqual((error, result['complete'], result['count'], result['total_estimate']), (False, False, 50, 70))
+        self.assertIn('PARTIAL RESULT', result['result'])
+
+    @case('A-ACTION-EXACT-ONCE')
+    def test_an_approved_change_is_sent_once_as_approved_and_checked_even_when_its_answer_is_lost(self):
+        h, connection = self._connected()
+        payload = {'folder': 'inbox', 'title': 'Plan', 'body': 'Draft'}
+        action = h.actions.propose(h.a, connection, 'note.create', payload, request_id='req-a')
+        self.assertEqual(h.bench.rows('a'), [])                                                    # preparing sends nothing
+        h.actions.approve(h.a, action['id'], action['payload_hash'])
+        h.bench.fault('a', 'write', 'silent')                                                      # the write happens and its answer never arrives
+        h.runner.tick(); h.runner.tick(); h.runner.tick()
+        done = h.actions.get(h.a, action['id'])
+        notes = [(r['title'], r['body']) for r in h.bench.rows('a')]
+        self.assertEqual((done['state'], done['verified'], notes), ('done', True, [('Plan', 'Draft')]))      # one effect, exactly what was approved, read back
+
+    @case('A-ACTION-CHANGED-PAYLOAD')
+    def test_a_change_that_is_no_longer_the_one_approved_is_not_made(self):
+        h, connection = self._connected()
+        action = h.actions.propose(h.a, connection, 'note.create', {'folder': 'inbox', 'title': 'Plan', 'body': 'Draft'}, request_id='req-a')
+        h.actions.approve(h.a, action['id'], action['payload_hash'])
+        with h.store.connect() as con:
+            con.execute('UPDATE actions SET payload_json=? WHERE id=?', (json.dumps({'folder': 'inbox', 'title': 'Plan', 'body': 'Something else'}), action['id']))
+        h.runner.tick()
+        self.assertEqual((h.actions.get(h.a, action['id'])['ended_reason'], h.bench.rows('a')), ('payload_changed', []))
+
+    @case('A-ACTION-UNDO')
+    def test_a_change_can_be_undone_and_the_undo_is_approved_like_any_change(self):
+        h, connection = self._connected()
+        done = h.do(connection, 'note.create', {'folder': 'inbox', 'title': 'Plan', 'body': 'Draft'})
+        undo = h.actions.undo(h.a, done['id'])
+        h.runner.tick()
+        self.assertEqual([r['deleted'] for r in h.bench.rows('a')], [0])                           # nothing until the undo itself is approved
+        h.actions.approve(h.a, undo['id'], undo['payload_hash']); h.runner.tick()
+        self.assertEqual(([r['deleted'] for r in h.bench.rows('a')], h.actions.get(h.a, done['id'])['state']), ([1], 'undone'))
+
+    @case('A-WORKFLOW-WALKBACK')
+    def test_a_workflow_that_fails_at_its_last_step_leaves_the_earlier_steps_reversed(self):
+        h, connection = self._connected()
+        h.bench.seed('a', 'inbox', 1)
+        steps = [{'connection_id': connection, 'kind': 'note.create', 'payload': {'folder': 'inbox', 'title': t, 'body': ''}} for t in ('One', 'Two')]
+        steps.append({'connection_id': connection, 'kind': 'note.update', 'payload': {'id': 'inbox-0000', 'body': 'x'}})
+        workflow = h.workflows.propose(h.a, 'Three steps', steps, request_id='req-a')
+        h.workflows.approve(h.a, workflow['id'], workflow['steps_hash'])
+        h.bench.edit_elsewhere('a', 'inbox-0000', body='changed by someone else')
+        h.runner.tick()
+        after = h.workflows.get(h.a, workflow['id'])
+        live = [r['title'] for r in h.bench.rows('a') if r['title'] in ('One', 'Two') and not r['deleted']]
+        self.assertEqual((after['state'], [r['step'] for r in after['report']['reversed']], live), ('reversed', [2, 1], []))
+
+    @case('A-ROLE-VIEWER')
+    def test_a_viewer_cannot_make_the_assistant_act(self):
+        from agentai_platform import permissions
+        from agentai_platform.tool_relay import ToolPermit
+        h, connection = self._connected()
+        h.orgs.add_member(h.a, 'b', 'actor-b', 'viewer')
+        with h.store.connect() as con:
+            self.assertEqual((permissions.may(con, 'b', 'actor-b', 'task.run'), permissions.may(con, 'b', 'actor-b', 'conversation.read')), (False, True))
+        self.assertIn('not allowed', ToolPermit(h.store).refusal('b', 'req-b', 'lumina_browser'))
+
+    @case('A-OFFBOARD-CLEAN')
+    def test_a_closed_account_leaves_only_what_stays_by_design(self):
+        from agentai_platform.data_lifecycle import KEPT_AT_DELETION, _tables_with_account
+        from tests.test_data_lifecycle import Base as LifecycleBase
+        h = self._helper(LifecycleBase)
+        h.jobs.cooling_off = 0
+        h.jobs.start_offboarding(h.a); h.jobs.choose_export(h.a, False)
+        for _ in range(8):
+            h.jobs.tick()
+        with h.store.connect() as con:
+            left = {t for t in _tables_with_account(con) if con.execute(f'SELECT 1 FROM "{t}" WHERE account_id=?', ('a',)).fetchone()}
+            job = con.execute("SELECT state,report_json FROM account_jobs WHERE account_id='a' AND kind='deletion'").fetchone()
+            other = con.execute("SELECT count(*) FROM chat_messages WHERE account_id='b'").fetchone()[0]
+        self.assertEqual((job['state'], json.loads(job['report_json'])['verification']['clean'], left - set(KEPT_AT_DELETION), other), ('completed', True, set(), 1))
+
+
 class RunnerChecks(unittest.TestCase):
     """deploy/acceptance.py: what makes a deploy refuse."""
     def runner(self):

@@ -25,6 +25,9 @@ whether it can be turned on yet, and why not.
 | Browser saved logins | OFF, blocked | protected storage; secure login screen |
 | Customer schedules | LOCKED | Phase 15 safety checks |
 | Claude Code for customers | LOCKED | isolated workspaces and a metered key |
+| Assistants prepare changes in connected services (`connector_writes`) | OFF, blocked | the connector key file installed on the server (`connector_custody_ready`); you confirm that assistants may change things in connected services after each customer's approval |
+| Test only: a fake connected service (`synthetic_connector`) | OFF | nothing. Turn it on only to run the live proof (`deploy/phase23_live.py`) with a test account, then off again |
+| Customers export their data, delete it and close their account themselves (`account_self_service`) | OFF, blocked | the account-jobs timer and the retention timer installed and running (`data_jobs_timer`); the privacy policy that describes it published; you confirm that a closed account is gone for good after seven days |
 
 "Blocked" cards show a **Before it can be turned on** list. When setup work finishes, the deployment tooling marks the
 matching fact true in `feature-switches/facts.json`; the owner never edits that file by hand.

@@ -52,9 +52,13 @@ class ScheduleEngine:
         local = dt.datetime.fromtimestamp(now, ZoneInfo(row['timezone']))
         slot = local.replace(hour=row['hour_local'], minute=row['minute_local'], second=0, microsecond=0)
         if local < slot:
-            return None
-        day = local.date().isoformat()
-        late = (local - slot).total_seconds()
+            # Today's time has not come. Yesterday's run is still owed if the day turned before it was looked at (the host was down over midnight): it then follows the schedule's
+            # own policy like any late run. One day back and no further: nothing is back-filled. A schedule made after that time owes nothing for it.
+            slot = (local - dt.timedelta(days=1)).replace(hour=row['hour_local'], minute=row['minute_local'], second=0, microsecond=0)
+            if row['created_epoch'] > slot.timestamp():
+                return None
+        day = slot.date().isoformat()
+        late = now - slot.timestamp()          # real seconds, not wall-clock arithmetic: on the day the clocks go forward a time in the skipped hour is not "an hour late"
         with self.coordinator.transaction() as con:
             if con.execute('SELECT 1 FROM schedule_runs WHERE account_id=? AND schedule_id=? AND day=?', (row['account_id'], row['id'], day)).fetchone():
                 return None                                         # today's run (or its reason not to run) is already recorded

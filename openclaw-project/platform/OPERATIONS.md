@@ -350,6 +350,31 @@ On the 4-CPU / 16 GiB server that is about three; 8 CPU / 32 GiB about 8; 16 CPU
 * **Memory per cell.** Idle about 0.5 GiB; under a heavy task 1.3 to 1.6 GiB (the runtime itself warns at 1.0 and 1.5 GiB). The capacity model charges the 2 GiB cap per cell.
 * **A test account's chat limit.** The owner's own account is near the per-project chat limit; anything that makes chats (the live proof) archives them afterwards.
 
+## 18d. Permissions, connected services, changes and leaving (roadmap Phase 2 and 3, built 2026-11-15, not deployed)
+
+Everything below is off until its owner switch is on; `deploy/PENDING_DEPLOY.md` has the steps for the day it is deployed.
+
+- **Who may do what.** One table (`agentai_platform/permissions.py`) and one function (`security.allowed`). Every route names an action (`accounts/route_actions.py`); the
+  account middleware refuses a role that lacks it with 403 `not_permitted`. Every customer is an organization of one whose owner they are, so nothing changes for them.
+  A new route with no row fails `accounts/test_phase23.py`; a new relay tool with no row fails `tests/test_permissions.py`.
+- **A person's role.** `organization_members`. Changing it (`POST /v1/organization/members/<actor>/role`) ends that person's sessions. There is no invitation screen yet;
+  to put an existing customer into an organization use `OrganizationService.add_member` from a shell.
+- **What an organization decides** (`organization_policies`, `POST /v1/organization/policy`): tools allowed, services allowed, kinds of change (allowed, an admin as well,
+  blocked), spending limits for members, own model keys. A member sees these as "set by your organization".
+- **Connected services.** `platform/CONNECTORS.md`. Tokens are sealed in `connector_secrets` with the key in `AGENTAI_CONNECTOR_KEY_FILE` (back it up; without it the
+  tokens cannot be opened). `manage.py connector_refresh` (timer) renews tokens and purges those of removed connections; its log lines are a connection id and an outcome.
+  A connection that shows "needs you" must be reconnected by its customer. Removing one is always possible and answers with a receipt (`connector_revocations`).
+- **A change in a connected service** is a row in `actions`. To see what is waiting: `SELECT id,kind,state,ended_reason FROM actions WHERE state IN ('proposed','approved','executing','uncertain')`.
+  `uncertain` means the answer to a write never came: the request worker reads it back on its next pass and never sends it again blindly. One that stays `uncertain` has a
+  connection that can no longer be asked (see `ended_reason`); look at the provider by hand before telling the customer.
+- **How long things are kept.** One table, `agentai_platform/retention.py`. `manage.py retention_sweep --dry-run` prints it; without `--dry-run` it deletes what is older
+  than its row allows (timer `agentai-retention`, daily). A new table without a row fails `tests/test_data_lifecycle.py` and the privacy test.
+- **Exports, deletions, closing an account** are rows in `account_jobs`, moved by `manage.py account_jobs` (timer, every minute). Each has its checkpoints in `steps_json`
+  and carries on from the last one. `manage.py offboard_account --account <id> --status` shows where one stands; `--account <id> [--export] [--cooling-off-days N]` starts
+  one for a customer who asked by email. A job `waiting` for `cell` or `memory` is retried every pass; one that ends `failed` has a verification scan that found something:
+  read `report_json` (`verification.found` says where) and fix that store before running it again.
+- **The live proof** for both phases: `deploy/phase23_live.py` (needs the switches `synthetic_connector` and `connector_writes` on, and the key file).
+
 ## 19. Experimental "ultrafast" decider (owner testing only, 2026-10-30)
 
 Safety switch `standard_browser` (Safety console, Browser group). ON for everyone by default. Turn it OFF for **your own account** (choose a time limit: it comes back by itself) and your next browser task is decided the jev-ultrafast way instead of the standard way. **Both run on the same sandboxed browser stage and the same loop** (`browse/loop.py`), so every stop and limit applies to both: payment and sign-in stops, human checks, the denied-sites list, address checks, a clean profile each task, step and time limits, budget, Stop and hand-over. The switch only chooses who decides each step (`browse/service_main.py`, `jev_for`). It is read when a task starts. Nobody else can use it: the account id in `/etc/agentai-supervisor/ultrafast-owner` (copied from `AGENTAI_SAFETY_OWNER_ACCOUNT`) must match, and the switch cannot be changed for all users.

@@ -40,6 +40,7 @@ DOING = {'search': 'Searching the web', 'read': 'Reading a page', 'browse': 'Usi
          'file': 'Working with a file', 'subagent': 'Working with a helper', 'other': 'Using a tool'}
 NEEDS = {
     'approval': 'Waiting for your permission',
+    'question': 'Waiting for your answer',
     'browser_question': 'Waiting for your answer',
     'browser_control': 'You have the browser',
     'browser_handoff': 'Waiting for you in the browser',
@@ -296,6 +297,26 @@ class WorkReader:
             except ValueError:
                 pending = None
             waiting.setdefault(run['request_id'], []).append({'kind': BROWSER_NEEDS[run['status']], 'before': str((pending or {}).get('label') or '')[:200]})
+        # Work handed to the customer that can wait for days (roadmap #83): a change in a connected service to approve, several to approve together, a question to answer.
+        # The turn that asked has ended; what it asked is still theirs to answer, and is shown on that task.
+        if self._has(con, 'handoffs'):
+            for h in con.execute("SELECT * FROM handoffs WHERE account_id=? AND state='waiting' AND expires_epoch>? AND request_id IS NOT NULL ORDER BY created_epoch", (account, int(now))).fetchall():
+                if h['kind'] == 'question':
+                    need = {'kind': 'question', 'id': h['id'], 'question': h['question'], 'options': json.loads(h['options_json']), 'expires_epoch': h['expires_epoch']}
+                elif h['kind'] == 'action_approval':
+                    a = con.execute("SELECT id,payload_hash,preview_json,needs_admin,approved_by FROM actions WHERE account_id=? AND id=? AND state='proposed'", (account, h['action_id'])).fetchone()
+                    if not a:
+                        continue
+                    need = {'kind': 'action', 'id': a['id'], 'payload_hash': a['payload_hash'], 'preview': json.loads(a['preview_json']), 'needs_admin': bool(a['needs_admin']),
+                            'approved_by_you': bool(a['approved_by']), 'expires_epoch': h['expires_epoch']}
+                else:
+                    w = con.execute("SELECT id,title,steps_hash FROM workflows WHERE account_id=? AND id=? AND state='proposed'", (account, h['workflow_id'])).fetchone()
+                    if not w:
+                        continue
+                    steps = [json.loads(r[0]) for r in con.execute('SELECT preview_json FROM actions WHERE account_id=? AND workflow_id=? AND undo_of IS NULL AND compensates IS NULL ORDER BY workflow_position',
+                                                                   (account, w['id']))]
+                    need = {'kind': 'workflow', 'id': w['id'], 'title': w['title'], 'steps_hash': w['steps_hash'], 'steps': steps, 'expires_epoch': h['expires_epoch']}
+                waiting.setdefault(h['request_id'], []).append(need)
         return waiting
 
     @staticmethod
@@ -357,13 +378,15 @@ class WorkReader:
             attention = waiting_on
         elif phase == 'paused':
             attention = 'paused'
-        elif any(n['kind'] == 'approval' for n in needs):          # the run ended on "I need your permission": the prompt is still the customer's to answer
+        elif any(n['kind'] in ('approval', 'action', 'workflow') for n in needs):          # the run ended on "I need your permission": the prompt is still the customer's to answer
             attention = 'approval'
+        elif any(n['kind'] == 'question' for n in needs):
+            attention = 'question'
         elif controls['goal_resume']:
             attention = 'goal'
         label, tone = label_of(phase, row, activity=activity, waiting_on=waiting_on, ahead=ahead, wait=wait), tone_of(phase, row)
-        if phase == 'ended' and attention == 'approval':           # the run is over but its question is not: say what is open, not "Done"
-            label, tone = NEEDS['approval'], 'attention'
+        if phase == 'ended' and attention in ('approval', 'question'):           # the run is over but its question is not: say what is open, not "Done"
+            label, tone = NEEDS[attention], 'attention'
         parent = con.execute('SELECT parent_id FROM conversations WHERE account_id=? AND id=?', (row['account_id'], row['conversation_id'])).fetchone() if row['conversation_id'] else None
         shown_conversation = (parent['parent_id'] if parent and parent['parent_id'] else row['conversation_id'])      # a phase that ran in a lane belongs, for the customer, to the plan's own chat
         return {'id': row['id'], 'conversation_id': shown_conversation, 'title': self._title(con, row), 'follows': self._follows(row), 'created_epoch': row['created_epoch'],

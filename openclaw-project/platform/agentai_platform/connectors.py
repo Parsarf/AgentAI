@@ -115,6 +115,16 @@ class SyntheticCustody:
             del self._items[ref]
 
 
+
+def custody_put(custody, con, account_id, label, secret):
+    """Store a secret from inside the caller's transaction, on the caller's connection when the backend keeps its secrets in this database (so both commit together)."""
+    return custody.put_in(con, account_id, label, secret) if hasattr(custody, 'put_in') else custody.put(account_id, label, secret)
+
+
+def custody_delete(custody, con, account_id, ref):
+    return custody.delete_in(con, account_id, ref) if hasattr(custody, 'delete_in') else custody.delete(account_id, ref)
+
+
 @dataclass(frozen=True)
 class ProviderConfig:
     client_id: str
@@ -135,6 +145,19 @@ class ReadGrant:
     connection_id: str
     service: str
     secret_ref: str = field(repr=False)
+    scope: tuple = ()                 # ((resource kind, resource id or '*', access), ...): what this connection may reach (roadmap #13)
+
+
+@dataclass(frozen=True)
+class WriteGrant:
+    connection_id: str
+    service: str
+    secret_ref: str = field(repr=False)
+    scope: tuple = ()
+
+
+SYSTEM_ACTOR = 'system'               # the actor recorded when Lumina itself ends a connection (the provider revoked it, a policy changed, the account is leaving)
+REVOKE_SOURCES = ('customer', 'admin', 'policy', 'provider', 'offboarding')
 
 
 @dataclass(frozen=True)
@@ -173,12 +196,21 @@ def _b64(data: bytes) -> str:
 
 class ConnectorService:
     def __init__(self, store, *, custody: Custody | None = None, providers: dict | None = None,
-                 catalog: dict | None = None, clock=time.time):
+                 catalog: dict | None = None, clock=time.time, registry=None, notify=None):
         self.store, self.clock = store, clock
         self.custody = custody or DisabledCustody()
         self.providers = providers or {}
-        self.catalog = catalog or CATALOG
+        self.registry = registry         # connector_kit.Registry: the connectors built on the contract (Phase 3). Their write kinds come from their declarations
+        self.notify = notify             # callable(account_id, connection_id, reason): tell the customer once that a connection needs them; None = say nothing
+        self.catalog = dict(catalog or CATALOG)
+        for provider in (registry.providers() if registry is not None else ()):
+            d = registry.declaration(provider)
+            self.catalog[provider] = Service(provider, d.label, 'researcher', frozenset(d.scopes), needs_selection=False,
+                                             writable_kinds=frozenset(w.name for w in d.write_kinds), disclosure=d.disclosure)
         self.coordinator = Coordinator(store, clock=clock)
+
+    def declared(self, service):
+        return self.registry.declaration(service) if self.registry is not None else None
 
     # ---------- listing ----------
 
@@ -217,7 +249,7 @@ class ConnectorService:
         now = int(self.clock())
         with self.coordinator.transaction() as con:
             self.store._authorize(con, principal)
-            verifier_ref = self.custody.put(principal.account_id, 'pkce', verifier.encode())
+            verifier_ref = custody_put(self.custody, con, principal.account_id, 'pkce', verifier.encode())
             con.execute('DELETE FROM connector_link_states WHERE expires_epoch<?', (now,))
             con.execute('''INSERT INTO connector_link_states(account_id,state_hash,actor_id,service,redirect_uri,
                 verifier_ref,selected_resources,expires_epoch) VALUES (?,?,?,?,?,?,?,?)''',
@@ -277,7 +309,7 @@ class ConnectorService:
         # Transaction 2: store the connection; replacing an older one revokes it.
         with self.coordinator.transaction() as con:
             self.store._authorize(con, principal)
-            secret_ref = self.custody.put(principal.account_id, row['service'], json.dumps(result.tokens).encode())
+            secret_ref = custody_put(self.custody, con, principal.account_id, row['service'], json.dumps(result.tokens).encode())
             for old in con.execute('''SELECT id,secret_ref FROM connector_connections WHERE account_id=?
                 AND service=? AND state!='revoked' ''', (principal.account_id, row['service'])).fetchall():
                 self._revoke(con, principal, old['id'], old['secret_ref'])
@@ -293,20 +325,152 @@ class ConnectorService:
 
     # ---------- read gating ----------
 
-    def authorize_read(self, principal: Principal, service: str, resource: str | None = None) -> ReadGrant:
+    def authorize_read(self, principal: Principal, service: str, resource: str | None = None, *, resource_kind: str | None = None) -> ReadGrant:
+        """May this person's assistant read `resource` through their connection to `service`? -> a grant carrying the connection's whole scope.
+        A connector built on the contract (a declaration with resource kinds) reaches only what its customer chose: with no grant it reaches nothing."""
+        return self._authorize(principal, service, resource, resource_kind, 'read', ReadGrant)
+
+    def authorize_write(self, principal: Principal, service: str, resource: str, *, resource_kind: str) -> WriteGrant:
+        """The same for a change: the resource must be granted for writing. This is not approval of any particular change (that is the action record: actions.py)."""
+        return self._authorize(principal, service, resource, resource_kind, 'write', WriteGrant)
+
+    def _authorize(self, principal, service, resource, resource_kind, access, kind):
         svc = self.catalog.get(service)
         with self.store.connect() as con:
             self.store._authorize(con, principal)
             row = con.execute('''SELECT id,state,secret_ref,selected_resources FROM connector_connections
                 WHERE account_id=? AND service=? AND state!='revoked' ORDER BY created_epoch DESC LIMIT 1''',
                               (principal.account_id, service)).fetchone()
+            scope = self.scope(con, principal.account_id, row['id']) if row else ()
+            declared = self.declared(service)
+            if svc and row and row['state'] == 'connected' and declared is not None and declared.resource_kinds:
+                if resource is None or resource_kind is None or not self.granted(con, principal.account_id, row['id'], resource_kind, resource, access):
+                    raise NotFound('unavailable')
         if not svc or not row:
             raise NotFound('unavailable')
         if row['state'] != 'connected':
             raise ConnectorError('reconnect required')
+        if access == 'write' and (declared is None or not declared.resource_kinds):
+            raise WriteDisabled('provider writes are not enabled for this connector')
         if svc.needs_selection and resource not in json.loads(row['selected_resources']):
             raise NotFound('unavailable')
-        return ReadGrant(row['id'], service, row['secret_ref'])
+        return kind(row['id'], service, row['secret_ref'], scope)
+
+    # ---------- resource grants (roadmap #13) ----------
+
+    @staticmethod
+    def scope(con, account_id, connection_id) -> tuple:
+        try:
+            return tuple((r[0], r[1], r[2]) for r in con.execute('SELECT resource_kind,resource_id,access FROM connector_grants WHERE account_id=? AND connection_id=? ORDER BY resource_kind,resource_id',
+                                                                (account_id, connection_id)))
+        except Exception as error:
+            if 'no such table' in str(error):
+                return ()
+            raise
+
+    @staticmethod
+    def granted(con, account_id, connection_id, resource_kind, resource_id, access='read') -> bool:
+        """Is this one resource covered? By its own grant or by "everything" of its kind; a write needs a write grant, which also covers reading."""
+        rows = con.execute('SELECT access FROM connector_grants WHERE account_id=? AND connection_id=? AND resource_kind=? AND resource_id IN (?,?)',
+                           (account_id, connection_id, str(resource_kind), str(resource_id), '*')).fetchall()
+        return any(r[0] == 'write' or access == 'read' for r in rows)
+
+    def grants(self, principal: Principal, connection_id: str) -> list[dict]:
+        with self.store.connect() as con:
+            self._connection(con, principal, connection_id)
+            return [dict(r) for r in con.execute('''SELECT resource_kind,resource_id,resource_name,access,granted_epoch FROM connector_grants
+                WHERE account_id=? AND connection_id=? ORDER BY resource_kind,resource_name,resource_id''', (principal.account_id, connection_id))]
+
+    def set_grants(self, principal: Principal, connection_id: str, grants) -> list[dict]:
+        """Replace what a connection may reach with exactly this list: [{'kind','id','name'?,'access'}]. An id of '*' is "everything of this kind" and has to be asked for
+        in so many words; an empty list means it can reach nothing again."""
+        from .security import require
+        if not isinstance(grants, list) or len(grants) > 500:
+            raise ValueError('invalid grants')
+        clean = {}
+        for g in grants:
+            if (not isinstance(g, dict) or not isinstance(g.get('kind'), str) or not isinstance(g.get('id'), str) or not 1 <= len(g['kind']) <= 40
+                    or not 1 <= len(g['id']) <= 300 or g.get('access', 'read') not in ('read', 'write') or not isinstance(g.get('name', ''), str)):
+                raise ValueError('invalid grant')
+            clean[(g['kind'], g['id'])] = (g.get('name', '')[:200], g.get('access', 'read'))
+        with self.coordinator.transaction() as con:
+            row = self._connection(con, principal, connection_id)
+            require(principal, 'connection.create', con=con)
+            if row['state'] == 'revoked':
+                raise NotFound('unavailable')
+            declared = self.declared(row['service'])
+            if declared is not None and {kind for kind, _ in clean} - set(declared.resource_kinds):
+                raise ValueError('this service has no such kind of resource')
+            if declared is not None and not declared.write_kinds and any(access == 'write' for _, access in clean.values()):
+                raise ValueError('this service cannot be changed through Lumina')
+            now = int(self.clock())
+            con.execute('DELETE FROM connector_grants WHERE account_id=? AND connection_id=?', (principal.account_id, connection_id))
+            for (kind, rid), (name, access) in sorted(clean.items()):
+                con.execute('INSERT INTO connector_grants(account_id,connection_id,resource_kind,resource_id,resource_name,access,granted_by,granted_epoch) VALUES (?,?,?,?,?,?,?,?)',
+                            (principal.account_id, connection_id, kind, rid, name, access, principal.actor_id, now))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, connection_id, 'connector.grants.set', 'completed')
+        return self.grants(principal, connection_id)
+
+    @staticmethod
+    def describe_scope(scope, declared=None) -> str:
+        """The plain sentence of the permission page, from the same rows enforcement reads: "Can read: 2 calendars. Cannot change anything." """
+        def count(rows):
+            parts = []
+            for kind in sorted({k for k, _i, _a in rows}):
+                ids = [i for k, i, _a in rows if k == kind]
+                parts.append(f'every {kind}' if '*' in ids else f'{len(ids)} {kind}{"s" if len(ids) != 1 else ""}')
+            return ', '.join(parts)
+        if not scope:
+            return 'Can read: nothing yet (nothing has been chosen). Cannot change anything.'
+        writes = [g for g in scope if g[2] == 'write']
+        return f'Can read: {count(scope)}. ' + (f'Can change (each change still needs your approval): {count(writes)}.' if writes else 'Cannot change anything.')
+
+    # ---------- connectors built on the contract ----------
+
+    def connect_declared(self, principal: Principal, service: str, identity: str, *, tokens: dict | None = None, scopes=(), expires_in=None, mcp_connection_id=None) -> str:
+        """Host-side: record a connection to a connector built on the contract, after its own linking step succeeded (an OAuth exchange, a token the customer entered in a
+        protected form, or a remote MCP connection that already exists). Tokens go to custody; the connection starts with NO grants."""
+        from . import organizations
+        from .security import require
+        declared = self.declared(service)
+        if declared is None:
+            raise ConnectorNotConfigured('connector not configured')
+        if not isinstance(identity, str) or not 1 <= len(identity) <= 320:
+            raise ConnectorError('link failed')
+        now = int(self.clock())
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            require(principal, 'connection.create', con=con)
+            if not organizations.connector_allowed(con, principal.account_id, service):
+                raise ConnectorError('your organization does not allow this service')
+            secret_ref = custody_put(self.custody, con, principal.account_id, service, json.dumps(tokens).encode()) if tokens else None
+            for old in con.execute("SELECT id,secret_ref FROM connector_connections WHERE account_id=? AND service=? AND state!='revoked'", (principal.account_id, service)).fetchall():
+                self._revoke(con, principal, old['id'], old['secret_ref'])
+            connection_id = uuid.uuid4().hex
+            con.execute('''INSERT INTO connector_connections(account_id,id,service,state,identity_label,granted_scopes,selected_resources,secret_ref,created_epoch,updated_epoch,
+                expires_epoch,refresh_after_epoch,mcp_connection_id) VALUES (?,?,?,'connected',?,?,'[]',?,?,?,?,?,?)''',
+                        (principal.account_id, connection_id, service, identity, json.dumps(sorted(scopes)), secret_ref, now, now,
+                         now + int(expires_in) if expires_in else None, None, mcp_connection_id))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, connection_id, 'connector.link.complete', 'completed')
+            return connection_id
+
+    def needs_customer(self, account_id: str, connection_id: str, reason: str = 'reconnect') -> bool:
+        """A connection can no longer be used without its customer (the provider refused the token, a refresh needs a new consent). Marked once, told once. -> True when it
+        was newly marked."""
+        now = int(self.clock())
+        with self.coordinator.transaction() as con:
+            changed = con.execute('''UPDATE connector_connections SET state='reconnect_required',needs_reason=?,updated_epoch=? WHERE account_id=? AND id=? AND state='connected' ''',
+                                  (str(reason)[:40], now, account_id, connection_id)).rowcount == 1
+            tell = con.execute('UPDATE connector_connections SET needs_notified_epoch=? WHERE account_id=? AND id=? AND state=\'reconnect_required\' AND needs_notified_epoch IS NULL',
+                               (now, account_id, connection_id)).rowcount == 1
+            if changed:
+                self.coordinator._audit(con, account_id, SYSTEM_ACTOR, connection_id, 'connector.reconnect_required', 'completed')
+        if tell and self.notify is not None:
+            try:
+                self.notify(account_id, connection_id, reason)
+            except Exception:
+                pass                             # the page still shows it; the notice is a convenience
+        return changed
 
     def credential_for(self, principal: Principal, grant: ReadGrant) -> dict:
         """Host-side adapters only. Binds the reference to the caller's account."""
@@ -335,16 +499,77 @@ class ConnectorService:
                 return 0
             return self._revoke(con, principal, connection_id, row['secret_ref'])
 
-    def _revoke(self, con, principal, connection_id, secret_ref) -> int:
+    def revoke(self, principal: Principal, connection_id: str, source: str = 'customer') -> dict:
+        """End a connection (roadmap #17): one audited operation, with a receipt of what was stopped. From this moment no call uses its token (every call reads the connection's
+        state first), its tokens leave custody, what it had been allowed to reach is forgotten, anything waiting on it is ended and anything scheduled on it is paused."""
+        from .security import require
+        if source not in REVOKE_SOURCES:
+            raise ValueError('invalid source')
+        with self.coordinator.transaction() as con:
+            row = self._connection(con, principal, connection_id)
+            require(principal, 'connection.remove', con=con)
+            if row['state'] == 'revoked':
+                return self._receipt(con, principal.account_id, connection_id) or {'connection_id': connection_id, 'already': True}
+            self._revoke(con, principal, connection_id, row['secret_ref'], source=source)
+            return self._receipt(con, principal.account_id, connection_id)
+
+    def revoke_by_system(self, account_id: str, connection_id: str, source: str) -> dict | None:
+        """The same, started by Lumina: the provider revoked the access (seen at a call or a refresh), an organization policy no longer allows the service, or the account is
+        being offboarded. Needs no signed-in person; it is audited under the system actor."""
+        if source not in REVOKE_SOURCES:
+            raise ValueError('invalid source')
+        with self.coordinator.transaction() as con:
+            row = con.execute('SELECT * FROM connector_connections WHERE account_id=? AND id=?', (account_id, identifier(connection_id))).fetchone()
+            if not row or row['state'] == 'revoked':
+                return None
+            self._revoke(con, Principal(account_id, SYSTEM_ACTOR, 'system'), connection_id, row['secret_ref'], source=source)
+            return self._receipt(con, account_id, connection_id)
+
+    def revocations(self, principal: Principal, limit: int = 20) -> list[dict]:
+        with self.store.connect() as con:
+            self.store._authorize(con, principal)
+            return [{'id': r['id'], 'connection_id': r['connection_id'], 'source': r['source'], 'stopped': json.loads(r['stopped_json']), 'created_epoch': r['created_epoch']}
+                    for r in con.execute('SELECT * FROM connector_revocations WHERE account_id=? ORDER BY created_epoch DESC,id LIMIT ?', (principal.account_id, max(1, min(int(limit), 100))))]
+
+    @staticmethod
+    def _receipt(con, account_id, connection_id):
+        r = con.execute('SELECT * FROM connector_revocations WHERE account_id=? AND connection_id=? ORDER BY created_epoch DESC LIMIT 1', (account_id, connection_id)).fetchone()
+        return {'id': r['id'], 'connection_id': r['connection_id'], 'source': r['source'], 'stopped': json.loads(r['stopped_json']), 'created_epoch': r['created_epoch']} if r else None
+
+    def _revoke(self, con, principal, connection_id, secret_ref, source='customer') -> int:
         """Access is revoked first and unconditionally; credential deletion is best effort.
         If custody deletion fails the reference is kept for ``purge_revoked`` and audited uncertain."""
         now = int(self.clock())
         cur = con.execute('''UPDATE connector_operations SET state='cancelled' WHERE account_id=?
             AND connection_id=? AND state IN ('pending','running')''', (principal.account_id, connection_id))
+        stopped = {'operations_cancelled': cur.rowcount}
+
+        def also(name, sql, args):
+            # Tables of later migrations: an older database simply has nothing there to stop.
+            try:
+                stopped[name] = con.execute(sql, args).rowcount
+            except Exception as error:
+                if 'no such table' not in str(error) and 'no such column' not in str(error):
+                    raise
+        account = principal.account_id
+        also('grants_removed', 'DELETE FROM connector_grants WHERE account_id=? AND connection_id=?', (account, connection_id))
+        also('freshness_removed', 'DELETE FROM connector_freshness WHERE account_id=? AND connection_id=?', (account, connection_id))
+        also('automatic_approvals_removed', 'DELETE FROM action_auto_approvals WHERE account_id=? AND connection_id=?', (account, connection_id))
+        also('actions_ended', "UPDATE actions SET state='expired',ended_reason='connection_removed',updated_epoch=? WHERE account_id=? AND connection_id=? AND state IN ('proposed','approved')",
+             (now, account, connection_id))
+        also('handoffs_ended', "UPDATE handoffs SET state='expired',answered_epoch=? WHERE account_id=? AND state='waiting' AND action_id IN (SELECT id FROM actions WHERE account_id=? AND connection_id=?)",
+             (now, account, account, connection_id))
+        also('schedules_paused', "UPDATE schedules SET state='paused',pause_reason='Its connection was removed.' WHERE account_id=? AND needs_connection_id=? AND state='active'", (account, connection_id))
+        try:
+            con.execute('INSERT INTO connector_revocations(account_id,id,connection_id,source,stopped_json,created_epoch) VALUES (?,?,?,?,?,?)',
+                        (account, uuid.uuid4().hex, connection_id, source, json.dumps(stopped, sort_keys=True), now))
+        except Exception as error:
+            if 'no such table' not in str(error):
+                raise
         deleted = True
         if secret_ref:
             try:
-                self.custody.delete(principal.account_id, secret_ref)
+                custody_delete(self.custody, con, principal.account_id, secret_ref)
             except Exception:
                 deleted = False
         con.execute('''UPDATE connector_connections SET state='revoked',secret_ref=?,revoked_epoch=?,
@@ -361,7 +586,7 @@ class ConnectorService:
             for row in con.execute("SELECT account_id,id,secret_ref FROM connector_connections "
                                    "WHERE state='revoked' AND secret_ref IS NOT NULL").fetchall():
                 try:
-                    self.custody.delete(row['account_id'], row['secret_ref'])
+                    custody_delete(self.custody, con, row['account_id'], row['secret_ref'])
                 except Exception:
                     continue
                 con.execute('UPDATE connector_connections SET secret_ref=NULL WHERE account_id=? AND id=?',
@@ -387,7 +612,8 @@ class ConnectorService:
             conn = self._connection(con, principal, connection_id)
             if conn['state'] != 'connected':
                 raise ConnectorError('reconnect required')
-            if kind in WRITE_KINDS:
+            declared = self.catalog.get(conn['service'])
+            if kind in WRITE_KINDS or (declared is not None and kind in declared.writable_kinds):
                 self._authorize_write(conn['service'], kind, digest, target, authorization)
             elif kind not in READ_KINDS:
                 raise ConnectorError('unsupported operation')
@@ -500,18 +726,18 @@ class BrowserProfiles:
         """Called by the protected login flow only; stores a reference, returns nothing."""
         with self.coordinator.transaction() as con:
             row = self._profile(con, principal, profile_id)
-            ref = self.custody.put(principal.account_id, 'browser-credential', secret)
+            ref = custody_put(self.custody, con, principal.account_id, 'browser-credential', secret)
             if row['credential_ref']:
-                self.custody.delete(principal.account_id, row['credential_ref'])
+                custody_delete(self.custody, con, principal.account_id, row['credential_ref'])
             con.execute('UPDATE browser_profiles SET credential_ref=? WHERE account_id=? AND id=?',
                         (ref, principal.account_id, profile_id))
 
     def save_session(self, principal: Principal, profile_id: str, cookie_jar: bytes) -> None:
         with self.coordinator.transaction() as con:
             row = self._profile(con, principal, profile_id)
-            ref = self.custody.put(principal.account_id, 'browser-session', cookie_jar)
+            ref = custody_put(self.custody, con, principal.account_id, 'browser-session', cookie_jar)
             if row['session_ref']:
-                self.custody.delete(principal.account_id, row['session_ref'])
+                custody_delete(self.custody, con, principal.account_id, row['session_ref'])
             con.execute('UPDATE browser_profiles SET session_ref=? WHERE account_id=? AND id=?',
                         (ref, principal.account_id, profile_id))
 
@@ -537,7 +763,7 @@ class BrowserProfiles:
             row = self._profile(con, principal, profile_id)
             for ref in (row['credential_ref'], row['session_ref']):
                 if ref:
-                    self.custody.delete(principal.account_id, ref)
+                    custody_delete(self.custody, con, principal.account_id, ref)
             con.execute('''UPDATE browser_profiles SET state='revoked',credential_ref=NULL,session_ref=NULL
                 WHERE account_id=? AND id=?''', (principal.account_id, profile_id))
             self.coordinator._audit(con, principal.account_id, principal.actor_id, profile_id,

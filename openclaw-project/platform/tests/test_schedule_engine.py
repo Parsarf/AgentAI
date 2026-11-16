@@ -145,6 +145,30 @@ class MissedRuns(Base):
         self.assertEqual(self.runs(sid), [('2026-11-19', 'started', '')])
 
 
+    def test_a_run_owed_when_the_day_turned_follows_the_policy_one_day_back_and_no_further(self):
+        late = self.schedule('Late', hour=23, minute=30, missed_policy='run_once')
+        skipped = self.schedule('Skipped', hour=22, missed_policy='skip', grace_seconds=900)
+        self.now = epoch(19, 0, 20)                                                 # down since the 16th, back twenty minutes after midnight
+        report = self.engine.tick()
+        self.assertEqual((report['fired'], report['missed']), (1, 1))
+        self.assertEqual(self.runs(late), [('2026-11-18', 'started', '')])           # yesterday's run, once; the 16th and 17th are not back-filled
+        self.assertEqual(self.runs(skipped), [('2026-11-18', 'missed', 'missed_window')])
+        self.engine.tick()
+        self.assertEqual(len(self.requests()), 1)
+        fresh = self.schedule('New', hour=23, missed_policy='run_once')              # made after yesterday's time: it owes nothing for yesterday
+        self.engine.tick()
+        self.assertEqual(self.runs(fresh), [])
+
+    def test_a_time_in_the_hour_the_clocks_skip_runs_and_is_not_called_missed(self):
+        self.now = dt.datetime(2026, 3, 28, 12, 0, tzinfo=ZONE).timestamp()
+        with self.store.connect() as con:                                          # the account's plan period covers this earlier date too
+            con.execute("UPDATE entitlements SET limits_json=? WHERE account_id='a'", (json.dumps({**LIMITS, 'period_start_epoch': int(self.now) - 10**6}),))
+        sid = self.schedule('Night', hour=2, minute=30, missed_policy='skip', grace_seconds=900)
+        self.now = dt.datetime(2026, 3, 29, 3, 0, 30, tzinfo=ZONE).timestamp()      # 02:00 to 03:00 does not exist on this day in Berlin: 03:00 is the first moment after 02:30
+        self.assertEqual(self.engine.tick()['fired'], 1)
+        self.assertEqual(self.runs(sid), [('2026-03-29', 'started', '')])
+
+
 class Authority(Base):
     def test_an_expired_grant_denies_and_the_day_says_why(self):
         sid = self.schedule(approve_days=1)

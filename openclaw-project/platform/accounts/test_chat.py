@@ -275,7 +275,9 @@ class UiContractChecks(ChatHTTPChecks):
         self.assertEqual(anon.get('/v1/app', secure=True).status_code, 401)
         app = self.clients[0].get('/v1/app', secure=True).json()
         self.assertEqual(app['user']['email'], 'chatter@example.invalid')
-        self.assertEqual(set(app['features']), {'chat', 'execution', 'browse', 'files', 'uploads', 'convert', 'telegram', 'connectors', 'mcp', 'billing_mode', 'requests', 'usage'})
+        self.assertEqual(set(app['features']), {'chat', 'execution', 'browse', 'files', 'uploads', 'convert', 'telegram', 'connectors', 'mcp', 'billing_mode', 'requests', 'usage',
+                                                'connected_services', 'connector_writes', 'self_service', 'role'})      # roadmap Phase 2-3: three switches (all off) and the person's role
+        self.assertEqual((app['features']['role'], app['features']['connector_writes'], app['features']['self_service']), ('owner', False, False))
         self.assertNotIn('account_id', json.dumps(app))                     # the shell never needs, and is never handed, internal ids
         d = tempfile.mkdtemp()
         with override_settings(UI_BUNDLE_DIR=d):
@@ -360,7 +362,7 @@ class GoalHttpChecks(ChatHTTPChecks):
 
 class OpenApiDriftChecks(ChatHTTPChecks):
     """Every public route must be documented, and nothing undocumented may be advertised: a new UI is built from this file."""
-    DISABLED = {'streams', 'exports', 'memory', 'schedules', 'integrations', 'controls'}   # routes that answer 404 by design
+    DISABLED = {'streams', 'memory', 'schedules'}   # routes that answer 404 by design
 
     def test_routes_and_spec_agree(self):
         import re

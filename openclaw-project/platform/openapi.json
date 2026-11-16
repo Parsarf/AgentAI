@@ -1226,77 +1226,6 @@
     "parameters": []
    }
   },
-  "/v1/exports": {
-   "get": {
-    "summary": "Disabled exports capability; authenticated customer required",
-    "responses": {
-     "503": {
-      "description": "Audit/storage/capability unavailable"
-     },
-     "400": {
-      "description": "Invalid input or routing override"
-     },
-     "401": {
-      "description": "Identity or credentials required"
-     },
-     "403": {
-      "description": "CSRF or unsupported support privilege"
-     },
-     "404": {
-      "description": "Unavailable or not owned"
-     },
-     "429": {
-      "description": "Rate limit"
-     }
-    },
-    "security": [
-     {
-      "sessionCookie": []
-     }
-    ]
-   }
-  },
-  "/v1/exports/{id}": {
-   "get": {
-    "summary": "Scoped ownership asserted before disabled exports capability",
-    "responses": {
-     "503": {
-      "description": "Audit/storage/capability unavailable"
-     },
-     "400": {
-      "description": "Invalid input or routing override"
-     },
-     "401": {
-      "description": "Identity or credentials required"
-     },
-     "403": {
-      "description": "CSRF or unsupported support privilege"
-     },
-     "404": {
-      "description": "Unavailable or not owned"
-     },
-     "429": {
-      "description": "Rate limit"
-     }
-    },
-    "security": [
-     {
-      "sessionCookie": []
-     }
-    ],
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "maxLength": 96
-      }
-     }
-    ]
-   }
-  },
   "/v1/memory": {
    "get": {
     "summary": "Disabled memory capability; authenticated customer required",
@@ -1401,77 +1330,6 @@
   "/v1/schedules/{id}": {
    "get": {
     "summary": "Scoped ownership asserted before disabled schedules capability",
-    "responses": {
-     "503": {
-      "description": "Audit/storage/capability unavailable"
-     },
-     "400": {
-      "description": "Invalid input or routing override"
-     },
-     "401": {
-      "description": "Identity or credentials required"
-     },
-     "403": {
-      "description": "CSRF or unsupported support privilege"
-     },
-     "404": {
-      "description": "Unavailable or not owned"
-     },
-     "429": {
-      "description": "Rate limit"
-     }
-    },
-    "security": [
-     {
-      "sessionCookie": []
-     }
-    ],
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "maxLength": 96
-      }
-     }
-    ]
-   }
-  },
-  "/v1/integrations": {
-   "get": {
-    "summary": "Disabled integrations capability; authenticated customer required",
-    "responses": {
-     "503": {
-      "description": "Audit/storage/capability unavailable"
-     },
-     "400": {
-      "description": "Invalid input or routing override"
-     },
-     "401": {
-      "description": "Identity or credentials required"
-     },
-     "403": {
-      "description": "CSRF or unsupported support privilege"
-     },
-     "404": {
-      "description": "Unavailable or not owned"
-     },
-     "429": {
-      "description": "Rate limit"
-     }
-    },
-    "security": [
-     {
-      "sessionCookie": []
-     }
-    ]
-   }
-  },
-  "/v1/integrations/{id}": {
-   "get": {
-    "summary": "Scoped ownership asserted before disabled integrations capability",
     "responses": {
      "503": {
       "description": "Audit/storage/capability unavailable"
@@ -1718,77 +1576,6 @@
     "parameters": []
    }
   },
-  "/v1/controls": {
-   "get": {
-    "summary": "Disabled controls capability; authenticated customer required",
-    "responses": {
-     "503": {
-      "description": "Audit/storage/capability unavailable"
-     },
-     "400": {
-      "description": "Invalid input or routing override"
-     },
-     "401": {
-      "description": "Identity or credentials required"
-     },
-     "403": {
-      "description": "CSRF or unsupported support privilege"
-     },
-     "404": {
-      "description": "Unavailable or not owned"
-     },
-     "429": {
-      "description": "Rate limit"
-     }
-    },
-    "security": [
-     {
-      "sessionCookie": []
-     }
-    ]
-   }
-  },
-  "/v1/controls/{id}": {
-   "get": {
-    "summary": "Scoped ownership asserted before disabled controls capability",
-    "responses": {
-     "503": {
-      "description": "Audit/storage/capability unavailable"
-     },
-     "400": {
-      "description": "Invalid input or routing override"
-     },
-     "401": {
-      "description": "Identity or credentials required"
-     },
-     "403": {
-      "description": "CSRF or unsupported support privilege"
-     },
-     "404": {
-      "description": "Unavailable or not owned"
-     },
-     "429": {
-      "description": "Rate limit"
-     }
-    },
-    "security": [
-     {
-      "sessionCookie": []
-     }
-    ],
-    "parameters": [
-     {
-      "name": "id",
-      "in": "path",
-      "required": true,
-      "schema": {
-       "type": "string",
-       "maxLength": 96
-      }
-     }
-    ]
-   }
-  },
   "/v1/operations/{operation_id}": {
    "get": {
     "summary": "Read a lifecycle operation owned by the current account",
@@ -2004,7 +1791,7 @@
   },
   "/v1/requests": {
    "get": {
-    "summary": "List the current account’s saved requests",
+    "summary": "List the current account\u2019s saved requests",
     "security": [
      {
       "sessionCookie": []
@@ -5378,7 +5165,7 @@
   },
   "/v1/account/mcp": {
    "get": {
-    "summary": "List this account’s MCP connections, presets, enabled tool definitions and exact calls needing attention; never credentials",
+    "summary": "List this account\u2019s MCP connections, presets, enabled tool definitions and exact calls needing attention; never credentials",
     "responses": {
      "200": {
       "description": "Successful account-scoped result; no stored credentials returned"
@@ -6079,7 +5866,7 @@
   },
   "/v1/location": {
    "get": {
-    "summary": "Read the signed-in account’s pending device-location request (or null). Expired and cancelled requests are excluded.",
+    "summary": "Read the signed-in account\u2019s pending device-location request (or null). Expired and cancelled requests are excluded.",
     "responses": {
      "200": {
       "description": "Account-scoped result; never returns coordinates"
@@ -6206,7 +5993,7 @@
   },
   "/v1/model-key/select": {
    "post": {
-    "summary": "Choose a host-catalog Lumina model or one of this account’s saved key profiles. Applies to the next task without deleting keys. Refused while any work is pending.",
+    "summary": "Choose a host-catalog Lumina model or one of this account\u2019s saved key profiles. Applies to the next task without deleting keys. Refused while any work is pending.",
     "requestBody": {
      "required": true,
      "content": {
@@ -6533,6 +6320,1054 @@
       }
      }
     }
+   }
+  },
+  "/v1/controls": {
+   "get": {
+    "summary": "What your assistant can access: every connection with what it may reach (generated from the grants enforcement reads), remote tools, the tools it has, saved logins (names only), the model key (host and last four characters), memory, and what acts without you",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/integrations": {
+   "get": {
+    "summary": "Services that can be connected and the ones that are, with their grants and freshness",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/integrations/synthetic/connect": {
+   "post": {
+    "summary": "Test only (owner switch synthetic_connector): connect the fake service",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/integrations/{connection_id}": {
+   "get": {
+    "summary": "One connection: grants, freshness per resource, kinds of change, automatic approvals",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/integrations/{connection_id}/resources": {
+   "get": {
+    "summary": "What the service offers to choose from (calendars, folders, labels, repositories, projects): the picker",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/integrations/{connection_id}/grants": {
+   "post": {
+    "summary": "Replace what a connection may reach: {\"grants\":[{\"kind\",\"id\",\"name\",\"access\"}]}; an id of \"*\" is everything of that kind; an empty list means nothing",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/integrations/{connection_id}/remove": {
+   "post": {
+    "summary": "End a connection: no call uses it from this moment, its tokens are deleted, and the answer is the receipt of what was stopped",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/integrations/{connection_id}/auto-approve": {
+   "post": {
+    "summary": "Allow or stop one kind of change on this connection going ahead without asking: {\"kind\",\"enabled\",\"include_irreversible\"}",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/actions": {
+   "get": {
+    "summary": "Changes in connected services: prepared, approved, done, undone (optionally ?request=<task id>)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/actions/{action_id}": {
+   "get": {
+    "summary": "One change with its preview, rendered from the stored payload, and its payload hash",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/actions/{action_id}/approve": {
+   "post": {
+    "summary": "Approve exactly the payload with this hash: {\"payload_hash\"} (an admin approving a member's change adds \"account\")",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/actions/{action_id}/decline": {
+   "post": {
+    "summary": "Decline a prepared change; nothing is sent",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/actions/{action_id}/undo": {
+   "post": {
+    "summary": "Prepare the inverse of a finished change as a new change, to be approved like any other",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/actions/{action_id}/compensate": {
+   "post": {
+    "summary": "Prepare a registered follow-up for a change that cannot be undone: {\"kind\"}",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/workflows/{workflow_id}": {
+   "get": {
+    "summary": "A workflow with every step's preview and the hash one approval covers",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/workflows/{workflow_id}/approve": {
+   "post": {
+    "summary": "Approve all steps of a workflow: {\"steps_hash\"}; any change to any step voids it",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/workflows/{workflow_id}/decline": {
+   "post": {
+    "summary": "Decline a workflow; nothing is sent",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/handoffs": {
+   "get": {
+    "summary": "What is waiting for the customer (approvals and questions) and how long each kind of wait lasts",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/handoffs/{handoff_id}/answer": {
+   "post": {
+    "summary": "Answer a question the assistant asked: {\"answer\"}",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/organization": {
+   "get": {
+    "summary": "The caller's organization: members with roles, the caller's role and what it may do, and the policy",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/organization/policy": {
+   "get": {
+    "summary": "The organization's policy",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   },
+   "post": {
+    "summary": "Set or clear one policy: {\"key\",\"value\"} (value null: the member decides again)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/organization/members/{actor_id}/role": {
+   "post": {
+    "summary": "Change a member's role: {\"role\"}; their sessions end so the next request sees it",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/organization/members/{actor_id}/remove": {
+   "post": {
+    "summary": "Remove a member and start the offboarding of their account's data",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/retention": {
+   "get": {
+    "summary": "How long each kind of data is kept, what starts the clock and what the customer can change: generated from the one retention table",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/exports": {
+   "get": {
+    "summary": "This account's data exports",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   },
+   "post": {
+    "summary": "Ask for an archive of this account's data (an owner may add organization=1)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/exports/{export_id}": {
+   "get": {
+    "summary": "One export: state, checkpoints, size",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/exports/{export_id}/ticket": {
+   "post": {
+    "summary": "A single-use download link for the archive that expires",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/exports/{export_id}/download": {
+   "get": {
+    "summary": "The archive (application/zip). The single-use ticket in the query proves the caller; no session is used",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/conversations/{conversation_id}/delete": {
+   "post": {
+    "summary": "Delete one chat: its messages, plans, shown results and timeline",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/account/offboarding": {
+   "get": {
+    "summary": "Where closing the account stands, and what remains by design",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   },
+   "post": {
+    "summary": "Start closing the account: work stops at once, then it waits for the export choice",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/account/offboarding/{action}": {
+   "post": {
+    "summary": "export (make an archive first), skip (no archive) or cancel (possible until the deletion starts)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
    }
   }
  },

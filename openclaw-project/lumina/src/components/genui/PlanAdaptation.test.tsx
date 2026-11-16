@@ -15,6 +15,7 @@ describe('PlanAdaptation', () => {
   it('words a revision as a list of changes', () => {
     expect(changeLines(diff)).toEqual(['Adds “Another way”', 'Changes “Ship it” (what it runs after)']);
     expect(changeLines({ ...diff, added: [], changed: [], removed: ['old'], reordered: true, title_changed: true })).toEqual(['Removes the phase “old”', 'Changes the order of the phases', 'Renames the plan']);
+    expect(changeLines({ ...diff, added: [], changed: [], removed: ['old'] }, { old: 'Draft the report' })).toEqual(['Removes the phase “Draft the report”']);      // named as the customer knows it
   });
 
   it('shows a suggested revision with what it changes, and applies it only when asked', async () => {

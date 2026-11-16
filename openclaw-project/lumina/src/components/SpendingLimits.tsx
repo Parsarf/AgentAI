@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError } from '../lib/api';
 
 type Field = 'task' | 'daily' | 'period';
-interface View { limits: { task_microusd: number | null; daily_microusd: number | null; period_microusd: number | null }; chosen: boolean }
+interface View { limits: { task_microusd: number | null; daily_microusd: number | null; period_microusd: number | null }; chosen: boolean; set_by_organization?: boolean }
 
 const FIELDS: { id: Field; label: string; hint: string }[] = [
   { id: 'task', label: 'One task', hint: 'A task that reaches this is stopped and keeps what it finished.' },
@@ -16,10 +16,10 @@ export const validAmount = (text: string) => { const t = text.trim().replace(/^\
 /** Settings > Usage: the spending limits you choose for yourself. Lumina sets none; an empty field means no limit. */
 export default function SpendingLimits() {
   const [values, setValues] = useState<Record<Field, string> | null>(null);
-  const [busy, setBusy] = useState(false); const [note, setNote] = useState(''); const [problem, setProblem] = useState('');
+  const [busy, setBusy] = useState(false); const [note, setNote] = useState(''); const [problem, setProblem] = useState(''); const [locked, setLocked] = useState(false);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  const apply = (v: View) => setValues({ task: shown(v.limits.task_microusd), daily: shown(v.limits.daily_microusd), period: shown(v.limits.period_microusd) });
+  const apply = (v: View) => { setLocked(!!v.set_by_organization); setValues({ task: shown(v.limits.task_microusd), daily: shown(v.limits.daily_microusd), period: shown(v.limits.period_microusd) }); };
   useEffect(() => { api<View>('GET', '/v1/spending-limits').then(v => { if (alive.current) apply(v); }).catch(() => { /* not on this server: the card stays hidden */ }); }, []);
 
   if (!values) return null;
@@ -44,15 +44,16 @@ export default function SpendingLimits() {
     <section className="panel card set-card" aria-labelledby="limits-h">
       <div className="set-head"><h2 id="limits-h">Spending limits</h2><span className="badge alt">{none ? 'No limit' : 'Your limits'}</span></div>
       <p className="muted">Lumina does not limit what you spend. Set your own limits here if you want them; leave a field empty for no limit.</p>
+      {locked && <p className="muted" role="note">These limits are set by your organization. Ask an owner or admin to change them.</p>}
       <form onSubmit={save} style={{ display: 'grid', gap: 'var(--space-3)' }} noValidate>
         {FIELDS.map(f => (
           <label key={f.id}>{f.label} (US dollars)
-            <input className="input" inputMode="decimal" autoComplete="off" placeholder="No limit" value={values[f.id]} disabled={busy} maxLength={10}
+            <input className="input" inputMode="decimal" autoComplete="off" placeholder="No limit" value={values[f.id]} disabled={busy || locked} maxLength={10}
               aria-invalid={bad.includes(f.id)} aria-describedby={`limit-${f.id}-hint`} onChange={e => { setNote(''); setValues({ ...values, [f.id]: e.target.value }); }} />
             <span className="faint" id={`limit-${f.id}-hint`}>{f.hint}</span>
           </label>))}
         <div className="int-row">
-          <button className="btn" type="submit" disabled={busy || bad.length > 0}>{busy ? 'Saving…' : 'Save limits'}</button>
+          <button className="btn" type="submit" disabled={busy || locked || bad.length > 0}>{busy ? 'Saving…' : 'Save limits'}</button>
           {!none && <button className="btn tertiary" type="button" disabled={busy} onClick={() => { setNote(''); setValues({ task: '', daily: '', period: '' }); }}>Clear all</button>}
         </div>
       </form>

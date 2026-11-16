@@ -174,7 +174,7 @@ class NativeGateway:
         kind = result.get('kind', 'tail')
         if kind not in {'tail', 'delta', 'reset'}:
             raise CapabilityUnavailable('unsupported history response')
-        rows, after, annotated = [], None, []
+        rows, after, annotated, stops = [], None, [], {}
         for m in result.get('messages') or []:
             if not isinstance(m, dict):
                 continue
@@ -186,6 +186,8 @@ class NativeGateway:
                 after = idem[:-5] if idem and idem.endswith(':user') else None       # the input this user row is (None: not one of ours)
             annotated.append({**m, '__after': after} if role == 'agent' else m)
             native_id, text = meta.get('id'), _text(m.get('content'))
+            if role == 'agent' and isinstance(meta.get('runId'), str) and _stop_reason(m):
+                stops[meta['runId']] = _stop_reason(m)       # why each run's LAST assistant message ended, also when that message has no text (a reply cut off inside a tool call)
             if role and isinstance(native_id, str) and text:
                 rows.append({'id': native_id, 'role': role, 'content': text, 'seq': meta.get('seq'), 'run_id': meta.get('runId') if isinstance(meta.get('runId'), str) else None,
                              'idempotency_key': idem, 'after': after if role == 'agent' else None, **({'stop_reason': _stop_reason(m)} if role == 'agent' else {})})
@@ -195,7 +197,7 @@ class NativeGateway:
         queued = pending.get('total') if isinstance(pending, dict) else (len(pending) if isinstance(pending, list) else 0)
         active = bool(info.get('hasActiveRun')) or (type(queued) is int and queued > 0 and any(not isinstance(i, dict) or i.get('state') != 'interrupted' for i in items or []))
         waiting = [{'run_id': i.get('runId'), 'state': i.get('state')} for i in items or [] if isinstance(i, dict) and isinstance(i.get('runId'), str)]
-        return {'kind': kind, 'messages': rows, 'cursor': None, 'active_run': active, 'pending': waiting, 'activity': activity.extract(annotated)}
+        return {'kind': kind, 'messages': rows, 'cursor': None, 'active_run': active, 'pending': waiting, 'activity': activity.extract(annotated), 'stop_reasons': stops}
 
     def session_goal(self, session):
         """The session's goal, or None."""
@@ -361,6 +363,7 @@ class SyntheticGateway:
             return
         text = str(outcome.get('text', 'ack ' + run['id'])).strip()          # the runtime's history trims what the model wrote
         run['text'] = text
+        self.sessions[run['session']].setdefault('stops', {})[run['id']] = outcome.get('stop_reason') or 'stop'      # the runtime records it on the message, with or without text
         if text:
             self._row(run['session'], 'agent', text, run['id'])['stop_reason'] = outcome.get('stop_reason') or 'stop'
         for key, extra in run['steered']:                       # each steered input is answered in order, under a run id the runtime makes up (not the key it was sent under)
@@ -417,7 +420,7 @@ class SyntheticGateway:
                 after = key[:-5] if key and key.endswith(':user') else None
             rows.append({**r, 'after': after if r['role'] == 'agent' else None})
         pending = [{'run_id': k, 'state': 'interrupted'} for k in sorted(self.interrupted)]
-        return {'kind': 'tail', 'messages': rows, 'cursor': None, 'active_run': self.active_run(session) is not None, 'pending': pending, 'activity': []}
+        return {'kind': 'tail', 'messages': rows, 'cursor': None, 'active_run': self.active_run(session) is not None, 'pending': pending, 'activity': [], 'stop_reasons': dict(self.sessions[session].get('stops') or {})}
 
     # -- goals ---------------------------------------------------------------------------------------------------------------------------------
     def session_goal(self, session):

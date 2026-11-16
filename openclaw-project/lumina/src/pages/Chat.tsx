@@ -78,6 +78,10 @@ export default function Chat() {
     if (!latestId || before.id !== latestId) return;                                              // first sight of this task: the thread was just loaded
     if ((before.count !== undefined && messageCount !== before.count) || (before.phase !== undefined && phase !== before.phase)) { void loadThread(); void loadList(); }
   }, [latestId, messageCount, phase, loadThread, loadList]);
+  // Several tasks of one chat can be going at once (phases of a plan running side by side). The effect above follows only the newest one, so any task of this chat starting,
+  // ending or changing phase also reloads the thread: a phase that finishes shows in the plan at once, not at the next safety poll.
+  const tasksSignal = mine.map(t => `${t.id}:${t.phase}`).join('|'); const knownSignal = useRef<string | null>(null);
+  useEffect(() => { const before = knownSignal.current; knownSignal.current = tasksSignal; if (before !== null && before !== tasksSignal) { void loadThread(); void loadList(); } }, [tasksSignal, loadThread, loadList]);
   useEffect(() => { if (!working) return; const t = setInterval(() => { void loadThread(); void loadList(); }, work.mode === 'stream' ? 30000 : 3000); return () => clearInterval(t); }, [working, work.mode, loadThread, loadList]);
   useEffect(() => { if (msgs.length !== lastCount.current) { lastCount.current = msgs.length; if (stick.current) toEnd(true); else setNewBelow(true); } }, [msgs.length, tasks.length]);
   const draftLength = live.draft?.text.length ?? 0; const liveLabel = live.task?.label; const liveNeeds = live.task?.needs.length ?? 0; const liveNow = live.task?.now.length ?? 0;
@@ -125,7 +129,7 @@ export default function Chat() {
   return (
     <div className="chatpage">
       <section className={`thread-col${fresh ? ' fresh' : ''}`}>
-        <div className="thread-tools"><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive') void nav('/history'); else void loadThread(); }} />}</div>
+        <div className="thread-tools"><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive' || action === 'delete') void nav('/history'); else void loadThread(); }} />}</div>
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}

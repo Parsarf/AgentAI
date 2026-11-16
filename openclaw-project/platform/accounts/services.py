@@ -112,10 +112,14 @@ def consume(raw, purpose, password, request_id):
 def customer_scope(user, epoch):
     identity = Identity.objects.filter(user=user, role='customer', verified=True, epoch=epoch).first()
     if not identity or not user.is_active: raise Denied()
-    with connection.cursor() as c:
-        c.execute("SELECT 1 FROM memberships m JOIN accounts a ON a.id=m.account_id WHERE m.account_id=%s AND m.actor_id=%s AND m.status='active' AND m.role='customer' AND a.status='active'", [identity.account_id,str(user.pk)])
-        if not c.fetchone(): raise Denied()
+    if role_of(identity.account_id, user.pk) is None: raise Denied()      # an active member of an active account, in any role; what the role may do is asked per route
     return identity.account_id
+
+def role_of(account_id, actor_id):
+    """The person's role in this account's organization right now (owner | admin | member | viewer), or None when they may not act in it (permissions.member_role)."""
+    from agentai_platform.permissions import member_role
+    connection.ensure_connection()
+    return member_role(connection.connection, account_id, str(actor_id))
 
 def operator_scope(request, account, action):
     if not request.user.is_authenticated:

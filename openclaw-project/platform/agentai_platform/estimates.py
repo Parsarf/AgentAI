@@ -9,6 +9,7 @@ import time
 
 KINDS = ('chat', 'browse', 'plan', 'execute', 'phase', 'goal')
 MIN_OWN, MIN_ALL = 5, 20             # fewer finished tasks than this is not a basis for a range
+MIN_ACCOUNTS = 5                     # a range from all customers is shown only when at least this many customers' tasks are in it: with fewer it would describe one identifiable customer
 WINDOW_SECONDS = 60 * 86400          # older history says little about today's models and code
 SAMPLE = 400
 
@@ -41,6 +42,13 @@ def _history(con, kind, since, account=None):
     return [(int(r['seconds']), int(r['cost'])) for r in rows if r['seconds'] is not None and r['seconds'] >= 0]
 
 
+def _accounts(con, kind, since) -> int:
+    """How many different customers have a finished task of this kind in the window."""
+    where = "r.goal_mode=1 OR r.intent IN ('goal_continue','goal_resume')" if kind == 'goal' else 'r.goal_mode=0 AND r.intent=?'
+    return con.execute(f"""SELECT count(DISTINCT r.account_id) FROM customer_requests r WHERE r.state='completed' AND coalesce(r.outcome,'completed')='completed'
+        AND r.created_epoch>=? AND ({where})""", [since] + ([] if kind == 'goal' else [kind])).fetchone()[0]
+
+
 def estimate(con, account_id: str, kind: str, *, now=None) -> dict | None:
     """-> {'kind','based_on','scope','seconds':{'typical','upper'},'cost_microusd':{'typical','upper'}} or None when there is too little history to say."""
     if kind not in KINDS:
@@ -49,7 +57,7 @@ def estimate(con, account_id: str, kind: str, *, now=None) -> dict | None:
     history, scope = _history(con, kind, since, account_id), 'yours'
     if len(history) < MIN_OWN:
         history, scope = _history(con, kind, since), 'all'
-        if len(history) < MIN_ALL:
+        if len(history) < MIN_ALL or _accounts(con, kind, since) < MIN_ACCOUNTS:
             return None
     seconds, cost = sorted(h[0] for h in history), sorted(h[1] for h in history)
     return {'kind': kind, 'based_on': len(history), 'scope': scope,

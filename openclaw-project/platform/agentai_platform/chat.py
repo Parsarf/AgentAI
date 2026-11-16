@@ -122,7 +122,7 @@ class ChatService:
                 (SELECT substr(m.content,1,240) FROM chat_messages m WHERE m.account_id=c.account_id AND m.conversation_id=c.id AND coalesce(m.native_message_id,'') NOT LIKE 'ui-answer:%' ORDER BY m.id DESC LIMIT 1) AS preview,
                 (SELECT count(*) FROM customer_requests r WHERE r.account_id=c.account_id AND r.conversation_id=c.id
                     AND r.state IN """ + request_states.sql_list(request_states.ACTIVE) + """) AS active
-                FROM conversations c WHERE c.account_id=? AND c.parent_id IS NULL"""            # lanes (a plan's hidden child conversations) are never listed
+                FROM conversations c WHERE c.account_id=? AND c.parent_id IS NULL AND c.deleted_epoch IS NULL"""            # lanes (a plan's hidden child conversations) are never listed
             args: list = [principal.account_id]
             sql += ' AND c.archived_epoch IS ' + ('NOT NULL' if archived else 'NULL')
             if project_id is not None:
@@ -140,7 +140,7 @@ class ChatService:
         identifier(conversation_id)
         with self.coordinator.transaction() as con:
             self.store._authorize(con, principal)
-            if not con.execute('SELECT 1 FROM conversations WHERE account_id=? AND id=?', (principal.account_id, conversation_id)).fetchone():
+            if not con.execute('SELECT 1 FROM conversations WHERE account_id=? AND id=? AND deleted_epoch IS NULL', (principal.account_id, conversation_id)).fetchone():
                 raise NotFound('unavailable')
             con.execute('UPDATE conversations SET archived_epoch=coalesce(archived_epoch,?) WHERE account_id=? AND id=?',
                         (int(self.clock()), principal.account_id, conversation_id))
@@ -151,7 +151,7 @@ class ChatService:
         identifier(conversation_id)
         with self.coordinator.transaction() as con:
             self.store._authorize(con, principal)
-            row = con.execute('SELECT project_id,archived_epoch FROM conversations WHERE account_id=? AND id=?', (principal.account_id, conversation_id)).fetchone()
+            row = con.execute('SELECT project_id,archived_epoch FROM conversations WHERE account_id=? AND id=? AND deleted_epoch IS NULL', (principal.account_id, conversation_id)).fetchone()
             if not row:
                 raise NotFound('unavailable')
             if row['archived_epoch'] is not None:
@@ -165,7 +165,7 @@ class ChatService:
     def conversation(self, principal: Principal, conversation_id: str):
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            row = con.execute('SELECT id,project_id,created_at,title,archived_epoch FROM conversations WHERE account_id=? AND id=?',
+            row = con.execute('SELECT id,project_id,created_at,title,archived_epoch FROM conversations WHERE account_id=? AND id=? AND deleted_epoch IS NULL',      # a chat the customer deleted is gone for every caller
                               (principal.account_id, conversation_id)).fetchone()
             if not row:
                 raise NotFound('unavailable')

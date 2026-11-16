@@ -80,6 +80,29 @@ class ClaimChecks(Pool):
         self.queue.finish(first, self._receipt(first))
         self.assertEqual(self.claim().account_id, 'a')
 
+    def test_a_request_admitted_on_another_model_route_waits_for_the_accounts_live_requests(self):
+        self.cell('a')
+        self.send('a', 'k1', 1)
+        first = self.claim()
+        with self.store.connect() as con:                                # a phase of a plan in its lane (it could run beside the first), admitted after the customer changed their model
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id,parent_id) VALUES ('a','p-a','lane-a','d-a','c1-a')")
+        other = self.chat.send(self.who['a'], conversation_id='lane-a', message='phase', key='k2')
+        other_id = other['request']['id'] if 'request' in other else other['id']
+        with self.store.connect() as con:
+            con.execute("UPDATE customer_requests SET context_json=? WHERE id=?", (json.dumps({'model_selection': 'key:other'}), other_id))
+        self.assertIsNone(self.claim())                                  # two routes live at once would get every model call of both refused
+        self.assertEqual(self.state_of(other_id), 'waiting')
+        self.queue.finish(first, self._receipt(first))
+        self.assertEqual(self.claim().request_id, other_id)
+
+    def test_requests_on_the_same_route_still_run_side_by_side(self):
+        self.cell('a')
+        self.send('a', 'k1', 1)
+        with self.store.connect() as con:
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id,parent_id) VALUES ('a','p-a','lane-a','d-a','c1-a')")
+        self.chat.send(self.who['a'], conversation_id='lane-a', message='phase', key='k2')
+        self.assertEqual(sum(self.claim() is not None for _ in range(3)), 2)
+
     def _receipt(self, claim):
         from agentai_platform.request_queue import RequestReceipt
         with self.store.connect() as con:

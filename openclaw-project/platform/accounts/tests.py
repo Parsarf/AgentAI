@@ -67,9 +67,12 @@ class AccountBoundaryTests(TestCase):
 
     def test_all_sensitive_routes_gate_identity_and_execution(self):
         c=self.new_client(); a=self.signed()
-        for route in ['exports','memory','schedules','integrations','controls','tasks','streams']:
+        for route in ['exports','memory','schedules','tasks','streams']:      # 'exports' is a real route now, behind the owner switch account_self_service (off)
             self.assertEqual(c.get('/v1/'+route,secure=True).status_code,401)
             self.assertEqual(a.get('/v1/'+route,secure=True).status_code,503)
+        for route in ['integrations','controls','retention','actions','handoffs','organization']:      # roadmap Phase 2-3: real routes, still identity-gated
+            self.assertEqual(c.get('/v1/'+route,secure=True).status_code,401)
+            self.assertEqual(a.get('/v1/'+route,secure=True).status_code,200)
         # Phase 8: artifact list moved under project file routes.
         self.assertEqual(a.get('/v1/artifacts',secure=True).status_code,404)
         # Phase 6: conversation listing is enabled; creation/reads stay account-scoped.

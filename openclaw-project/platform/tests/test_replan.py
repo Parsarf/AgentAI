@@ -40,6 +40,10 @@ class PureChecks(unittest.TestCase):
         gone = copy.deepcopy(BASE); gone['phases'].pop(0); gone['phases'][0]['dependsOn'] = []
         with self.assertRaises(replan.ReplanRefused) as why: replan.check_against_runs(runs, old, schema.validate_plan(gone))
         self.assertIn('already finished', str(why.exception))
+        dropped = copy.deepcopy(BASE); dropped['phases'].pop(1)                              # the failed phase simply left out: approving that could never be applied, so it is refused here
+        for p in dropped['phases']: p['dependsOn'] = [d for d in p['dependsOn'] if d != 'b']
+        with self.assertRaises(replan.ReplanRefused) as why: replan.check_against_runs(runs, old, schema.validate_plan(dropped))
+        self.assertIn('not removed', str(why.exception))
         edited = copy.deepcopy(BASE); edited['phases'][0]['description'] = 'something else'
         with self.assertRaises(replan.ReplanRefused): replan.check_against_runs(runs, old, schema.validate_plan(edited))
         rewritten = copy.deepcopy(BASE); rewritten['phases'][1]['description'] = 'try again differently'

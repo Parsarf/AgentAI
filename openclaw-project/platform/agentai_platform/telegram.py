@@ -110,10 +110,8 @@ class TelegramService:
     # ---------- ingress (provider side) ----------
 
     def _alive(self, con, account_id, actor_id):
-        row = con.execute('''SELECT 1 FROM accounts a JOIN memberships m ON m.account_id=a.id
-            WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.status='active'
-            AND m.role='customer' ''', (account_id, actor_id)).fetchone()
-        return bool(row)
+        from .permissions import may
+        return may(con, account_id, actor_id, 'task.run')      # a linked chat acts for its person only while they may still run tasks
 
     def _reply(self, con, chat_id, text, account_id=None):
         now = int(self.clock())

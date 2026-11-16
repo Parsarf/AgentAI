@@ -5,12 +5,19 @@ import { api } from '../lib/api';
 import { chatTitle, type ChatSummary } from '../lib/chats';
 import { exportError, saveFrom } from '../lib/files';
 import { useData } from '../state/data';
-export default function ChatActions({ chat, onChanged }: { chat: ChatSummary; onChanged(action: 'rename' | 'archive' | 'restore'): void }) {
+export default function ChatActions({ chat, onChanged }: { chat: ChatSummary; onChanged(action: 'rename' | 'archive' | 'restore' | 'delete'): void }) {
   const app = (useData() as ReturnType<typeof useData> | null)?.app;       // also rendered outside the signed-in shell (previews, tests): then nothing optional is offered
   const save = async (format: string) => {
     if (busy) return;
     setBusy(true); setErr('');
     try { await saveFrom(`/v1/conversations/${chat.id}/export`, { format }, `${chatTitle(chat)}.${format}`); } catch (error) { setErr(exportError(error)); } finally { setBusy(false); }
+  };
+  const [deleting, setDeleting] = useState(false);
+  const remove = async () => {
+    if (busy) return;
+    setBusy(true); setErr('');
+    try { await api('POST', `/v1/conversations/${chat.id}/delete`, {}); setDeleting(false); onChanged('delete'); }
+    catch { setErr('Could not delete this chat. If a task is still running in it, stop it first.'); } finally { setBusy(false); }
   };
   const [renaming, setRenaming] = useState(false); const [name, setName] = useState(chatTitle(chat)); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const perform = async (action: 'rename' | 'archive' | 'restore') => {
@@ -25,9 +32,14 @@ export default function ChatActions({ chat, onChanged }: { chat: ChatSummary; on
         { id: 'archive', label: chat.archived_epoch ? 'Restore chat' : 'Archive chat', disabled: busy, onSelect: () => { void perform(chat.archived_epoch ? 'restore' : 'archive'); } },
         ...(app?.features.convert ? [{ id: 'pdf', label: 'Download chat as PDF', separatorBefore: true, disabled: busy, onSelect: () => { void save('pdf'); } },
           { id: 'docx', label: 'Download chat as Word', disabled: busy, onSelect: () => { void save('docx'); } }] : []),
-        { id: 'md', label: 'Download chat as Markdown', separatorBefore: !app?.features.convert, disabled: busy, onSelect: () => { void save('md'); } }]}
+        { id: 'md', label: 'Download chat as Markdown', separatorBefore: !app?.features.convert, disabled: busy, onSelect: () => { void save('md'); } },
+        ...(app?.features.self_service ? [{ id: 'delete', label: 'Delete chat…', separatorBefore: true, disabled: busy, onSelect: () => { setErr(''); setDeleting(true); } }] : [])]}
       trigger={({ props }) => <button type="button" className="iconbtn small ghost" aria-label={`Options for ${chatTitle(chat)}`} {...props}><I.More width={18} height={18} /></button>} />
-    {err && !renaming && <p className="err" role="alert">{err}</p>}
+    {err && !renaming && !deleting && <p className="err" role="alert">{err}</p>}
+    {deleting && <div className="cmd-back" role="presentation" onMouseDown={() => setDeleting(false)}><div className="cmd chat-rename" role="dialog" aria-modal="true" aria-label="Delete chat" onMouseDown={e => e.stopPropagation()}>
+      <h2>Delete this chat?</h2><p className="muted">Its messages, plans, results and activity are removed for good. Files it made stay in Files until you delete them there.</p>
+      {err && <p className="err" role="alert">{err}</p>}<div><button type="button" className="btn" autoFocus onClick={() => setDeleting(false)}>Keep it</button><button type="button" className="btn danger" disabled={busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Delete chat'}</button></div>
+    </div></div>}
     {renaming && <div className="cmd-back" role="presentation" onMouseDown={() => setRenaming(false)}><form className="cmd chat-rename" role="dialog" aria-modal="true" aria-label="Rename chat" onMouseDown={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); void perform('rename'); }}>
       <h2>Rename chat</h2><label htmlFor={`rename-${chat.id}`} className="sr">Chat name</label><input id={`rename-${chat.id}`} autoFocus value={name} maxLength={90} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setRenaming(false); }} />
       {err && <p className="err" role="alert">{err}</p>}<div><button type="button" className="btn" onClick={() => setRenaming(false)}>Cancel</button><button type="submit" className="btn primary" disabled={busy || !name.trim()}>Save</button></div>

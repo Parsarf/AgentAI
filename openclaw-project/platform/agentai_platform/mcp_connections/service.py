@@ -513,6 +513,30 @@ class ConnectionService:
                         (self.seal(principal.account_id, connection, credentials), principal.account_id, connection))
             con.execute("UPDATE mcp_calls SET state='rejected' WHERE account_id=? AND connection_id=? AND state IN ('pending','approved')", (principal.account_id, connection))
 
+    def refresh_due(self, *, lead=600) -> dict:
+        """Keep OAuth connections fresh (roadmap #16): one whose access token ends within `lead` seconds is exercised once, under its own lease (the per-connection lock), so
+        the token is renewed before a task needs it. A refresh the provider refuses leaves the connection "authentication required", which is what the customer sees as
+        "needs you". -> counts; never a credential."""
+        report = {'refreshed': 0, 'needs_customer': 0, 'temporary': 0}
+        now = self.clock()
+        with self.store.connect() as con:
+            rows = [dict(r) for r in con.execute("SELECT * FROM mcp_connections WHERE enabled=1 AND auth_method='oauth' AND state='connected' AND busy_until<=? LIMIT 50", (int(now),))]
+        for row in rows:
+            try:
+                expires = self.open(row).get('expires_at')
+            except ConnectionError:
+                continue
+            if not isinstance(expires, (int, float)) or expires - now > lead:
+                continue
+            try:
+                result = self.test(self._principal_for(row['account_id']), row['id'])
+                report['needs_customer' if result.get('authorize_url') else 'refreshed'] += 1
+            except ConnectionError as error:
+                report['needs_customer' if error.code in ('authentication_required', 'oauth_state_invalid', 'additional_permission_required') else 'temporary'] += 1
+            except NotFound:
+                continue
+        return report
+
     def disconnect(self, principal, connection):
         with self.coordinator.transaction() as con:
             row = self.row(con, principal, connection)

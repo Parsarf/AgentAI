@@ -63,15 +63,48 @@ class Identity:
         return account
 
 
+class ToolPermit:
+    """May this tool run for this task? Two questions, both read from the database at the moment of the call: does the person the task belongs to hold a role that includes
+    the tool's action (permissions.TOOL_ACTIONS), and does their organization allow this kind of tool (organizations.tool_allowed). A tool no row names is refused: a new tool
+    must name its action (a test checks every registered tool does)."""
+
+    def __init__(self, store):
+        self.store = store
+
+    def listed(self, account, name):
+        from . import organizations
+        try:
+            with self.store.connect() as con:
+                return organizations.tool_allowed(con, account, name)
+        except Exception:
+            return True                                             # listing is a convenience; the call itself is checked below
+
+    def refusal(self, account, request_id, name):
+        from . import organizations, permissions
+        action = permissions.tool_action(name)
+        if action is None:
+            return 'This tool is not available.'
+        with self.store.connect() as con:
+            if not organizations.tool_allowed(con, account, name):
+                return 'Your organization does not allow this tool. Nothing was done. Tell the customer, and carry on without it if you can.'
+            if request_id is not None:
+                row = con.execute('SELECT actor_id FROM customer_requests WHERE account_id=? AND id=?', (account, request_id)).fetchone()
+                if not row or not permissions.may(con, account, row['actor_id'], action):
+                    return 'The person this task belongs to is not allowed to do this. Nothing was done. Tell them, and carry on without it if you can.'
+        return None
+
+
 class Relay:
     """The MCP protocol and the tools; no sockets (the handler below owns those)."""
 
-    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None, location=None, files=None, show=None):
+    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None, location=None, files=None, show=None, connectors=None, permit=None):
         self.tool, self.progress, self.origin, self.remote = tool, progress, origin, remote
         self.location = location
         self.memory = memory                                        # longterm_memory.MemoryTools or None; its two tools exist for an account only while the owner's switch is on
         self.files = files                                          # file_tools.FileTools or None; hands the customer a file the assistant wrote, converted on request
         self.show = show                                            # show_tool.ShowTools or None; shows a table, chart, cards or a form under the reply
+        self.connectors = connectors                                # connector_tools.ConnectorTools or None; reads through connected services and proposes changes for approval
+        self.permit = permit                                        # ToolPermit or None: the role and organization-policy check asked before a tool runs (roadmap #12, #15)
         self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
         if location is not None:
             from .location import NAME, TOOL as LOCATION_TOOL
@@ -107,11 +140,13 @@ class Relay:
                     spec = copy.deepcopy(spec)
                     spec['inputSchema'].setdefault('properties', {})['_lumina_origin'] = {'type': 'string', 'description': 'Runtime ownership proof. Leave unset.'}
                     specs.append(spec)
-            for extra in (self.memory, self.files, self.show):
+            for extra in (self.memory, self.files, self.show, self.connectors):
                 if extra is not None and extra.enabled(account):
                     for spec in extra.specs():
                         spec['inputSchema']['properties']['_lumina_origin'] = {'type': 'string', 'description': 'Runtime-generated ownership proof. Leave unset; the runtime supplies it.'}
                         specs.append(spec)
+            if self.permit is not None:
+                specs = [s for s in specs if self.permit.listed(account, s['name'])]      # a tool the organization does not allow is not offered at all
             return self._ok(rid, {'tools': specs})
         if method == 'tools/call':
             params = message.get('params') or {}
@@ -121,18 +156,19 @@ class Relay:
             memory_call = self.memory is not None and name in self.memory.names and self.memory.enabled(account)
             files_call = self.files is not None and name in self.files.names and self.files.enabled(account)
             show_call = self.show is not None and name in self.show.names and self.show.enabled(account)
+            connector_call = self.connectors is not None and name in self.connectors.names and self.connectors.enabled(account)
             if not isinstance(params.get('arguments') or {}, dict):
                 return self._error(rid, -32602, 'invalid arguments')
-            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call and not memory_call and not files_call and not show_call):
+            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call and not memory_call and not files_call and not show_call and not connector_call):
                 return self._error(rid, -32602, 'unknown tool')
             location_call = self.location is not None and name == 'lumina_request_location'
-            busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'files' if files_call else 'show' if show_call else 'progress' if name == PROGRESS_NAME else 'browser')
+            busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'files' if files_call else 'show' if show_call else 'connectors' if connector_call else 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:
                 if busy_key in self._busy:
                     return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
                 self._busy.add(busy_key)
             try:
-                handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.files if files_call else self.show if show_call else self.progress if name == PROGRESS_NAME else self.tool
+                handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.files if files_call else self.show if show_call else self.connectors if connector_call else self.progress if name == PROGRESS_NAME else self.tool
                 arguments = params.get('arguments') or {}
                 bound = {}
                 if self.origin is not None:
@@ -152,6 +188,11 @@ class Relay:
                         return self._ok(rid, self._result('This tool call does not belong to an admitted live task. Nothing was started or changed. Do not retry this call in another task.', True))
                     bound['request_id'] = request_id
                 arguments = {k: v for k, v in arguments.items() if k != '_lumina_origin'}
+                if self.permit is not None:
+                    refusal = self.permit.refusal(account, bound.get('request_id'), name)
+                    if refusal:
+                        log.warning('tool_not_permitted tool=%s', name)
+                        return self._ok(rid, self._result(refusal, True))
                 if remote_call and self.origin is not None:
                     # Continue checking admission while a remote operation is in flight.
                     def remote_closed():

@@ -598,3 +598,272 @@
   cost: {free: true, route: none}
   cleanup: leave toggle off
   status: ready
+
+# ---- Roadmap Phase 2 (permissions and account lifecycle) and Phase 3 (integration and action infrastructure) ----
+# Every assertion reads facts the platform holds (rows, receipts, files), never the assistant's prose. Tier A versions of the starred cases run in CI
+# (platform/tests/test_acceptance.py); the live versions are run by platform/deploy/phase23_live.py with the synthetic connector behind its test-only switch.
+
+- id: P2-ROLE-VIEWER
+  capability: role-based access control (#12)
+  gate: 2
+  setup: two accounts in one organization, the second as viewer
+  input: the viewer sends a message, connects a service, and reads their chats
+  assertions: send and connect answer 403 not_permitted with the action named;
+    reading answers 200; no customer_requests row was made for the refused send
+  forbidden_effects: [a task started by a viewer, a connection made by a viewer]
+  oracle: HTTP status + customer_requests + connector_connections rows
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: remove the member
+  status: ready
+
+- id: P2-GRANT-BOUNDARY
+  capability: resource-level permissions (#13)
+  gate: 2
+  setup: synthetic connection granted two folders; a third folder holds records
+  input: list, read and search the third folder through the connector client and through the assistant's tools
+  assertions: every route answers not_found; search results contain no record of
+    the third folder; connector_grants holds exactly the two rows
+  forbidden_effects: [a record of an ungranted resource in any result]
+  oracle: connector_grants rows + tool result JSON
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: remove the connection
+  status: ready
+
+- id: P2-ACCESS-PAGE-IS-ENFORCEMENT
+  capability: permission visibility (#14)
+  gate: 2
+  setup: synthetic connection with grants
+  input: GET /v1/controls before and after the grants change
+  assertions: the grants on the page equal the connector_grants rows; the
+    sentence changes with them; the response holds no token, key or secret reference
+  forbidden_effects: [a secret in the response]
+  oracle: /v1/controls body compared with connector_grants
+  timeout_s: 30
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P2-ORG-POLICY
+  capability: organization policy enforcement (#15)
+  gate: 2
+  setup: organization with a member; policy tools_allowed without browser, write_kinds send=blocked
+  input: member's assistant lists tools and proposes a send
+  assertions: the browser tools are not listed and are refused when called; the
+    proposal is refused (refused) and no actions row exists
+  forbidden_effects: [a blocked tool run, a blocked change stored]
+  oracle: tool relay result + actions rows
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: clear the policy
+  status: ready
+
+- id: P2-REFRESH-SOAK
+  capability: credential refresh (#16)
+  gate: 2
+  setup: synthetic connection with a token that ends in ten minutes
+  input: forty refresh cycles; then a forced invalid refresh token
+  assertions: each cycle swaps the sealed token and leaves one custody row; the
+    invalid token ends in state reconnect_required with one notice, not a loop
+  forbidden_effects: [two refreshes of one connection at once, a token in a log line]
+  oracle: connector_connections + connector_secrets rows
+  timeout_s: 120
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: remove the connection
+  status: ready
+
+- id: P2-REVOKE-RECEIPT
+  capability: credential revocation lifecycle (#17)
+  gate: 2
+  setup: connection with a pending change, an automatic approval and a schedule that needs it
+  input: remove the connection
+  assertions: the next call is refused; custody holds no token of it; the
+    pending change is expired; the schedule is paused with the reason; one
+    connector_revocations row lists what was stopped
+  forbidden_effects: [a call that used the token after removal]
+  oracle: connector_revocations.stopped_json + actions + schedules + connector_secrets
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P2-RETENTION-TABLE
+  capability: data retention management (#18)
+  gate: 2
+  setup: rows older and younger than each swept limit
+  input: manage.py retention_sweep
+  assertions: only rows older than their row's limit are gone; every table of
+    the database belongs to exactly one retention rule; a second run removes nothing
+  forbidden_effects: [a deleted message or file, a deleted row younger than its limit]
+  oracle: row counts by table + retention.unassigned() == []
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P2-EXPORT-ARCHIVE
+  capability: customer data export (#19)
+  gate: 2
+  setup: account with chats, a file, memory, a connection and a receipt
+  input: POST /v1/exports, then the single-use download link
+  assertions: manifest.json lists every file with its item count and SHA-256,
+    each matching the archive; the original file bytes are in it; no token or
+    sealed secret is in it; nothing of another account is in it; the link works once
+  forbidden_effects: [a secret in the archive, another account's data]
+  oracle: the archive's bytes + manifest
+  timeout_s: 120
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: the archive expires after 7 days
+  status: ready
+
+- id: P2-OFFBOARD-SCAN
+  capability: customer data deletion and account offboarding (#20, #21)
+  gate: 2
+  setup: disposable account with data in every store
+  input: start offboarding, skip the export, let the cooling-off pass
+  assertions: the verification scan finds nothing outside what stays by design
+    (account record as deleted, the deletion line of the security record,
+    financial_records, account_jobs); the file store has no folder of the
+    account; custody has no token of it; the other account is untouched
+  forbidden_effects: [a row of the account left in a table that must be empty, any change to another account]
+  oracle: account_jobs.report_json.verification + a count per table for the account id
+  timeout_s: 600
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none (the account is gone)
+  status: ready
+
+- id: P3-ERROR-KINDS
+  capability: the connector contract (#22)
+  gate: 3
+  setup: synthetic provider with queued faults
+  input: calls that hit 429, 503, 401, 403, 404, 409, 412 and an unknown status
+  assertions: each becomes exactly one of retry_later, needs_customer, refused,
+    not_found, conflict, invalid; no provider text reaches the caller
+  forbidden_effects: [a raw provider error in a tool result]
+  oracle: ConnectorFault.kind per call
+  timeout_s: 30
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P3-PARTIAL-IS-SAID
+  capability: general pagination handling (#23)
+  gate: 3
+  setup: 70 records in a granted folder; the connector's cap is 50 items
+  input: the assistant lists the folder, then continues
+  assertions: the first result has complete=false, count=50, total_estimate=70
+    and the words PARTIAL RESULT; the continuation returns the other 20 with complete=true
+  forbidden_effects: [a partial set presented as complete]
+  oracle: tool result JSON fields
+  timeout_s: 30
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P3-FRESHNESS
+  capability: data freshness tracking (#24)
+  gate: 3
+  setup: two granted folders
+  input: a partial read of one and a complete read of the other, then time passes
+  assertions: connector_freshness holds last_read for both and last_full_sync only
+    for the complete one; past the kind's limit the resource is flagged stale and still readable
+  forbidden_effects: [stale data refused instead of flagged]
+  oracle: connector_freshness rows + /v1/controls freshness
+  timeout_s: 30
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P3-CONFLICT
+  capability: concurrent edit detection (#25)
+  gate: 3
+  setup: a change prepared against version 1 of a record; the record is then edited elsewhere
+  input: approve and run the change
+  assertions: the action ends failed with ended_reason conflict; conflict_json
+    holds the customer's version, the current version and the proposed change;
+    the record still holds the other edit
+  forbidden_effects: [the other edit overwritten]
+  oracle: actions.conflict_json + the provider record
+  timeout_s: 30
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P3-WRITE-CYCLE
+  capability: action previews, approval, execution, verification, undo (#26, #27)
+  gate: 3
+  setup: synthetic connection with a write grant; the next write is forced to succeed without answering
+  input: propose, approve by hash, run, then undo
+  assertions: before approval the provider has no record; after it exactly one,
+    equal to the approved payload; actions.verified=1; the undo is its own
+    action, approved separately, and afterwards the original is undone
+  forbidden_effects: [a second record, a write before approval, a write of a changed payload]
+  oracle: synthetic_records + actions + connector_operations rows
+  timeout_s: 120
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P3-COMPENSATION
+  capability: compensating actions (#28)
+  gate: 3
+  setup: a sent message (cannot be undone)
+  input: ask for undo, then for the registered follow-up, then for one that was not registered
+  assertions: undo is refused; the registered correction is prepared with the
+    wording defined in code and sent only after its own approval; the
+    unregistered one is refused; compensation_json was written before the send
+  forbidden_effects: [a follow-up nobody registered, a follow-up sent without approval]
+  oracle: actions rows (compensates, payload_json, compensation_json)
+  timeout_s: 60
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P3-WORKFLOW-WALKBACK
+  capability: cross-application workflows (#29)
+  gate: 3
+  setup: a three-step workflow whose third step will hit a conflict
+  input: approve once and run
+  assertions: workflows.state=reversed; report lists steps 2 and 1 as undone in
+    that order; neither record is live at the provider; a workflow with a step
+    that cannot be undone placed first is refused at proposal
+  forbidden_effects: [a finished step left in effect without being reported]
+  oracle: workflows.report_json + synthetic_records
+  timeout_s: 120
+  retries: 0
+  cost: {free: true, route: none}
+  cleanup: none
+  status: ready
+
+- id: P3-HANDOFF-RESUME
+  capability: human handoff (#83)
+  gate: 3
+  setup: a prepared change whose approval is awaited; nothing else running
+  input: wait an hour, approve, let the worker pass run
+  assertions: while waiting no request_slots row and no running request exist
+    for it; after approval the change is done once and one new request exists in
+    the same conversation whose context names the handoff; a wait that ends
+    unanswered leaves the action expired and starts nothing
+  forbidden_effects: [a slot or a cell held for the wait, a change made after expiry]
+  oracle: handoffs + actions + customer_requests + request_slots rows
+  timeout_s: 4000
+  retries: 0
+  cost: {free: false, route: litellm}
+  cleanup: none
+  status: ready

@@ -194,6 +194,38 @@ class Coordinator:
             self._audit(con,account,'lifecycle-worker',operation,kind,'pending')
             return self._public(con,account,operation)
 
+    def request_account_deletion(self, account, *, key, generation):
+        """Remove the cell of an account that is being deleted at its own customer's request (roadmap #20): its volume, its workspace and its own model key.
+
+        A machine decision may never delete (request_system). This is not one: it is allowed only while the account is in the state `deleting` AND a deletion job its customer
+        (or an operator, for them) started is open, which is after the cooling-off period has passed. The cell must already be stopped."""
+        identifier(account);identifier(key)
+        if type(generation) is not int or generation<1: raise ValueError('invalid generation')
+        body=json.dumps({'kind':'delete','generation':generation,'profile':None,'backup':None,'system':True,'offboarding':True},sort_keys=True,separators=(',',':'))
+        digest=hashlib.sha256(body.encode()).hexdigest()
+        with self.transaction() as con:
+            existing=con.execute('SELECT * FROM operations WHERE account_id=? AND idempotency_key=?',(account,key)).fetchone()
+            if existing:
+                if existing['request_hash']!=digest: raise Conflict('idempotency payload changed')
+                return self._public(con,account,existing['id'])
+            status=con.execute('SELECT status FROM accounts WHERE id=?',(account,)).fetchone()
+            if not status or status[0]!='deleting' or not con.execute("SELECT 1 FROM account_jobs WHERE account_id=? AND kind='deletion' AND state IN ('requested','running','waiting')",(account,)).fetchone():
+                raise Conflict('the account is not being deleted')
+            cell=con.execute('''SELECT c.*,d.generation FROM lifecycle_cells c JOIN deployments d
+                ON d.account_id=c.account_id AND d.id=c.deployment_id WHERE c.account_id=?''',(account,)).fetchone()
+            if not cell: raise NotFound()
+            if cell['generation']!=generation: raise Conflict('stale generation')
+            if cell['observed_state'] not in ('stopped','absent'): raise Conflict('cell is not in the required state')
+            if con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')",(account,)).fetchone():
+                raise Conflict('account operation unresolved')
+            operation=uuid.uuid4().hex
+            con.execute('''INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation)
+                VALUES (?,?,?,'delete','pending',?,?,?)''',(account,operation,cell['deployment_id'],key,digest,generation))
+            con.execute('''INSERT INTO lifecycle_details(account_id,operation_id,target_profile,backup_ref,updated_at)
+                VALUES (?,?,?,?,?)''',(account,operation,cell['profile_revision'],None,int(self.clock())))
+            self._audit(con,account,'offboarding',operation,'delete','pending')
+            return self._public(con,account,operation)
+
     def _public(self, con, account, operation):
         row=con.execute('''SELECT o.id,o.kind,o.state,o.generation,d.attempts,d.error_code
             FROM operations o JOIN lifecycle_details d ON d.account_id=o.account_id AND d.operation_id=o.id

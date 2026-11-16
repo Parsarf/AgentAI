@@ -175,7 +175,7 @@ export default function PlanBlock({ block, original, onChanged }: { block: Block
       <footer>
         {!launched && !locked ? (<>
           <button className="btn primary" disabled={busy || issues.length > 0 || status === 'conflict' || status === 'saving'} onClick={launch}>{busy ? 'Launching…' : `Launch plan (${enabledCount} phase${enabledCount === 1 ? '' : 's'})`}</button>
-          <span className="faint">Phases run one after another, each reporting its result here. Phases marked “ask me first” wait for your approval.</span>
+          <span className="faint">Phases run in order, each reporting its result here; phases that do not depend on each other can run at the same time. Phases marked “ask me first” wait for your approval.</span>
           <Estimate kind="phase" label="A phase usually takes" /></>)
           : launched ? <span className="faint">Each phase is a separate step in the chat. Open a finished phase to read its result.</span>
           : <span className="faint">Waiting for the plan to be created.</span>}

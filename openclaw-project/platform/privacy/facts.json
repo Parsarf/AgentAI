@@ -4,7 +4,7 @@
  "contact_email": "raouparsa@gmail.com",
  "policy_file": "deploy/vercel/public/privacy.html",
  "policy_url": "https://getlumina.pro/privacy",
- "policy_updated": "2026-11-13",
+ "policy_updated": "2026-11-15",
  "derived": {
   "retention": {
    "browse_pictures_and_trace_hours": 24.0,
@@ -15,6 +15,31 @@
    "plaintext_snapshots_keep_newest": 3,
    "plaintext_snapshots_max_days": 30,
    "plaintext_snapshot_cleanup_matches_real_names": true,
+   "retention_table": {
+    "days": {
+     "events": 30,
+     "download_tickets": 1,
+     "browser_pictures": 1,
+     "connection_setup": 1,
+     "connector_records": 180,
+     "schedule_runs": 180,
+     "spend_marks": 30,
+     "audit": 180,
+     "exports": 7,
+     "logs": 7,
+     "backups": 30
+    },
+    "swept": [
+     "audit",
+     "connection_setup",
+     "connector_records",
+     "download_tickets",
+     "events",
+     "exports",
+     "schedule_runs",
+     "spend_marks"
+    ]
+   },
    "defined_but_unscheduled": {
     "event_timeline_days": 30,
     "retention_command_days": [
@@ -25,7 +50,9 @@
      30
     ]
    },
-   "scheduled_retention_jobs": []
+   "scheduled_retention_jobs": [
+    "deploy/agentai-retention.service"
+   ]
   },
   "extension": {
    "permissions": [
@@ -78,8 +105,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "9b449c21c51f18e623cdb508afe0233f5d4d046d818a4c5433de90bbafe2bc9e",
-  "schema_columns": 734,
+  "schema_sha256": "205fa0d79d3b6e7ad6a2d08311b94fd57a558c7b26105580c2d6c1d56cec246f",
+  "schema_columns": 923,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -221,7 +248,7 @@
   "tabGroups",
   "storage",
   "wss://backend.getlumina.pro",
-  "13 November 2026",
+  "15 November 2026",
   "6,000",
   "80 controls",
   "until you ask us to delete",
@@ -255,7 +282,10 @@
   "Location you choose to share",
   "latitude, longitude and accuracy",
   "saved model selections",
-  "jsDelivr"
+  "jsDelivr",
+  "180 days",
+  "90 days",
+  "activity record of a task"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -356,6 +386,11 @@
    "date": "2026-11-15",
    "by": "Claude Code, completing roadmap Phase 0-1 on the owner's instruction (owner to confirm)",
    "note": "Migrations 0040 to 0042 (692 to 734 columns). 0040: request_slots and cell_slots (which request and which cell is running, with the host it runs on: ids and timestamps only; several customers now run at once). 0041: plan_proposals (a suggested revision of a running plan: the plan JSON, the customer's own change request text, a fixed-vocabulary summary and difference) and plan_settings (the customer's automatic-revision choice). 0042: schedules.prompt (what a scheduled run does: the customer's own words, the same class of content as a message), missed_policy, grace_seconds, approved_until_epoch, conversation_id, and schedule_runs (one row per schedule per day with a fixed-word outcome). All of it is the customer's own content or platform bookkeeping that stays on our server; the assistant request text goes to the same model provider as every chat message. No new recipient, no new retention time, nothing newly sent anywhere; plan_proposals, plan_settings and schedule_runs are restored from backups like plan_revisions and schedules, the slot tables never are. Judged not to need a policy wording change. schema_sha256 and schema_columns updated to match."
+  },
+  {
+   "date": "2026-11-15",
+   "by": "Claude Code, roadmap Phase 2-3 on the owner's instruction (NOT YET PUBLISHED: the owner reviews the wording before this branch is merged and deployed)",
+   "note": "Migrations 0043 to 0047 (734 to 923 columns). 0043 (Phase 1, not recorded before): conversations.parent_id, plan_phase_runs.conversation_id, spend_marks (bookkeeping, no content). 0044: organizations, organization_members (who belongs with which role: ids only), organization_policies (what an organization decides for its members), accounts.organization_id. 0045: connector_grants (which calendars, folders or repositories a connection may reach, with the names the customer saw), connector_secrets (connected services' tokens, sealed with a key in a root-only file; never exported, never restored), connector_revocations (a receipt of what was stopped: counts), connector_freshness (when a resource was last read: timestamps and counts), refresh bookkeeping on connector_connections, schedules.needs_connection_id and pause_reason. 0046: actions (a change prepared in a connected service: the exact content to be sent, its preview and its outcome; the customer's own content, the same class as a message), action_auto_approvals, handoffs (a question or approval waiting for the customer), workflows, and the synthetic test service's own two tables (hold nothing of a customer's). 0047: account_jobs (the checkpoints and report of an export, a deletion or an offboarding: counts, never content), financial_records (amounts and dates kept after an account is deleted), conversations.deleted_epoch. Nothing in these tables is sent anywhere new: connected services stay off behind the owner switches connectors_linking, connector_writes and synthetic_connector, and self-service export, deletion and offboarding behind account_self_service; the policy stays silent about them until a switch is turned on (README, 'update the policy FIRST'). ONE THING DOES CHANGE WHAT CUSTOMERS ARE TOLD: this release ships the retention sweeper (deploy/agentai-retention.timer, manage.py retention_sweep), which for the first time enforces limits that were only defined: the step-by-step activity record of a task 30 days (and for chats older than 90 days), security records and account email records 180 days. The policy's last retention row was therefore split into three rows with those limits, the summary list gained one line, and the date became 15 November 2026. The rest of the row ('kept until you ask us to delete them') is unchanged and still true. The timer must be installed with this release (PENDING_DEPLOY.md), or the policy promises limits nothing enforces; check_server.py warns when the two disagree."
   }
  ],
  "assistant_recipients": {
