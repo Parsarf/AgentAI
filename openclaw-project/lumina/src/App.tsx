@@ -8,7 +8,8 @@ import Tasks from './pages/Tasks';
 import Login from './pages/Login';
 import Live from './pages/Live';
 import Inbox from './pages/Inbox';
-import { Automations, Calendar, Integrations, Settings } from './pages/Info';
+import CalendarPage from './pages/CalendarPage';
+import { Automations, Integrations, Settings } from './pages/Info';
 import Files from './pages/Files';
 import { useData } from './state/data';
 
@@ -27,7 +28,7 @@ export default function App() {
         <Route element={<Shell />}>
           <Route index element={<Chat />} /><Route path="home" element={<Home />} /><Route path="history" element={<History />} /><Route path="chat" element={<Chat />} /><Route path="chat/:id" element={<Chat />} />
           <Route path="gen-gallery" element={<Suspense fallback={null}><Gallery /></Suspense>} /><Route path="tasks" element={<Tasks />} /><Route path="tasks/:id" element={<Tasks />} />
-          <Route path="live" element={<Live />} /><Route path="live/:id" element={<Live />} /><Route path="browser" element={<Navigate to="/live" replace />} /><Route path="browser/:id" element={<OldBrowserLink />} /><Route path="files" element={<Files />} /><Route path="inbox" element={<Inbox />} /><Route path="calendar" element={<Calendar />} />
+          <Route path="live" element={<Live />} /><Route path="live/:id" element={<Live />} /><Route path="browser" element={<Navigate to="/live" replace />} /><Route path="browser/:id" element={<OldBrowserLink />} /><Route path="files" element={<Files />} /><Route path="inbox" element={<Inbox />} /><Route path="calendar" element={<CalendarPage />} />
           <Route path="automations" element={<Automations />} /><Route path="integrations" element={<Integrations />} /><Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

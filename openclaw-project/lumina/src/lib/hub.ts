@@ -133,9 +133,16 @@ export function addMonths(day: string, n: number): string {
   return key({ year: t.getUTCFullYear(), month: t.getUTCMonth() + 1, day: 1 });
 }
 const dateOf = (day: string) => { const [y, m, d] = day.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d, 12)); };
-export const dayTitle = (day: string, style: 'long' | 'short' | 'weekday' | 'month' = 'long') => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC',
-  ...(style === 'long' ? { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' } : style === 'short' ? { weekday: 'short', day: 'numeric' }
-    : style === 'weekday' ? { weekday: 'short' } : { month: 'long', year: 'numeric' }) }).format(dateOf(day));
+const wording = (day: string, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...options }).format(dateOf(day));
+/** A day in words. 'long': Wednesday, May 20, 2026. 'short': Wed 20. 'weekday': Wed. 'month': May 2026. */
+export const dayTitle = (day: string, style: 'long' | 'short' | 'weekday' | 'month' = 'long') => (style === 'long' ? wording(day, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  : style === 'short' ? `${wording(day, { weekday: 'short' })} ${Number(day.slice(8))}` : style === 'weekday' ? wording(day, { weekday: 'short' }) : wording(day, { month: 'long', year: 'numeric' }));
+/** A run of days in words: "May 18 to 24, 2026", "April 27 to May 3, 2026", "December 29, 2025 to January 4, 2026". */
+export function rangeTitle(from: string, to: string): string {
+  const month = (d: string) => wording(d, { month: 'long' }), year = (d: string) => d.slice(0, 4), date = (d: string) => Number(d.slice(8));
+  if (year(from) !== year(to)) return `${month(from)} ${date(from)}, ${year(from)} to ${month(to)} ${date(to)}, ${year(to)}`;
+  return from.slice(0, 7) === to.slice(0, 7) ? `${month(from)} ${date(from)} to ${date(to)}, ${year(to)}` : `${month(from)} ${date(from)} to ${month(to)} ${date(to)}, ${year(to)}`;
+}
 export const clock = (epoch: number, zone: string) => new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' }).format(new Date(epoch * 1000));
 /** When a message arrived, as a list shows it: the time today, the weekday this week, else the date. */
 export function listTime(epoch: number, zone: string, now: number): string {

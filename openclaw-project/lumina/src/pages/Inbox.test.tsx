@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { readFileSync } from 'node:fs';
 import Inbox from './Inbox';
 import { frameDocument } from '../components/hub/MessageBody';
 import type { HubAccount, HubCaps, Message, Overview, Thread } from '../lib/hub';
@@ -201,11 +200,11 @@ describe('the frame a message is shown in', () => {
 });
 
 describe('no provider is named in the dashboard', () => {
-  it('has no provider name in any page, component or helper of the dashboard', () => {
+  it('has no provider name in any page, component, helper or style of the dashboard', () => {
+    const sources = import.meta.glob<string>(['/src/pages/Inbox.tsx', '/src/pages/CalendarPage.tsx', '/src/components/hub/*.tsx', '/src/lib/hub.ts', '/src/styles/hub.css'],
+      { query: '?raw', import: 'default', eager: true });
     const names = /\b(google|gmail|microsoft|outlook|office365|yahoo|icloud|imap|exchange)\b/i;
-    for (const file of ['src/pages/Inbox.tsx', 'src/components/hub/Accounts.tsx', 'src/components/hub/MessageBody.tsx', 'src/lib/hub.ts', 'src/styles/hub.css']) {
-      const hits = readFileSync(file, 'utf8').split('\n').filter(line => names.test(line));
-      expect(hits, file).toEqual([]);
-    }
+    expect(Object.keys(sources).length).toBeGreaterThanOrEqual(6);
+    for (const [file, text] of Object.entries(sources)) expect(text.split('\n').filter(line => names.test(line)), file).toEqual([]);
   });
 });

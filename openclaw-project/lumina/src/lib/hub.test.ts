@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, addMonths, ago, dayKey, eventDays, eventTime, layoutDay, listTime, minuteOfDay, people, startOfWeek, zonedEpoch, type HubEvent } from './hub';
+import { addDays, addMonths, ago, dayKey, dayTitle, eventDays, eventTime, layoutDay, listTime, minuteOfDay, people, rangeTitle, startOfWeek, zonedEpoch, type HubEvent } from './hub';
 
 const event = (over: Partial<HubEvent>): HubEvent => ({ connection_id: 'c', calendar_id: 'k', id: 'e', series_id: null, title: 'T', busy_only: false, start_epoch: 0, end_epoch: 0, all_day: false,
   start_date: null, end_date: null, timezone: null, place: '', conference_url: null, my_response: null, exception: false, cancelled: false, visibility: 'default', colour: 'blue', ...over });
@@ -20,6 +20,11 @@ describe('time in a timezone', () => {
   it('does date arithmetic on days, not on seconds', () => {
     expect([addDays('2026-02-27', 3), addDays('2026-01-01', -1), addMonths('2026-01-31', 1), addMonths('2026-12-05', 1)]).toEqual(['2026-03-02', '2025-12-31', '2026-02-01', '2027-01-01']);
     expect([startOfWeek('2026-11-18'), startOfWeek('2026-11-16'), startOfWeek('2026-11-18', 0)]).toEqual(['2026-11-16', '2026-11-16', '2026-11-15']);
+  });
+  it('words a day and a run of days', () => {
+    expect([dayTitle('2026-05-20'), dayTitle('2026-05-20', 'short'), dayTitle('2026-05-20', 'weekday'), dayTitle('2026-05-20', 'month')]).toEqual(['Wednesday, May 20, 2026', 'Wed 20', 'Wed', 'May 2026']);
+    expect([rangeTitle('2026-05-18', '2026-05-24'), rangeTitle('2026-04-27', '2026-05-03'), rangeTitle('2025-12-29', '2026-01-04')])
+      .toEqual(['May 18 to 24, 2026', 'April 27 to May 3, 2026', 'December 29, 2025 to January 4, 2026']);
   });
   it('words a list time and a sync age plainly', () => {
     const now = at('2026-11-18T15:00:00Z');
