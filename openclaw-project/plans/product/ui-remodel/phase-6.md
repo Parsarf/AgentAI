@@ -20,6 +20,7 @@
 - Search (`/v1/search`, five queries): 6-11 ms on the server; about 140 ms round trip from the browser. Target under 200 ms: met.
 - Inbox: the first rows came 484 ms after the click, because the list waited for the accounts overview before asking for threads (two round trips in a row). Fixed in a follow-up (the list asks for every account's mail at once until the customer narrows them; one round trip fewer) and measured again below.
 - Opening a thread: headers 29 ms, body 303 ms; the next thread, fetched ahead, 40 ms.
+- After the follow-up (#54, deployed `fbb164c`): Inbox first rows 349-419 ms (three runs). The rest is the server: every authenticated API call takes about 120 ms on this host (even `/v1/hub/pulse`, which reads one row; `/readyz` answers in 27 ms), and the thread list takes 110-300 ms while the mailbox's first fill writes to the same database. **The 300 ms target is not met yet**; the next step is server-side (the per-request cost of the account API, and the list query during a fill), outside this remodel.
 
 ## Decisions taken
 - The contrast setting has three states (device, normal, more) so the system preference is honoured by default and can still be overridden either way.

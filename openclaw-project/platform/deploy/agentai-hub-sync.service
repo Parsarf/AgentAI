@@ -8,6 +8,8 @@ User=agentai-platform
 Group=agentai-platform
 WorkingDirectory=/opt/agentai-platform/current
 EnvironmentFile=/etc/agentai-platform/accounts.env
+# Eight header reads run at once during a first fill; glibc gives each thread its own memory arena and keeps it. Two arenas stop that growth.
+Environment=MALLOC_ARENA_MAX=2
 ExecStart=/opt/agentai-platform/current/.venv/bin/python manage.py hub_sync --serve
 Restart=always
 RestartSec=5
@@ -25,7 +27,8 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 CapabilityBoundingSet=
 ReadWritePaths=/var/lib/agentai-platform
 ReadOnlyPaths=/etc/agentai-platform
-MemoryMax=384M
+# A first fill of a large mailbox passed 384 MB and was killed in a loop (production, 2026-11-16); steady state is about 75 MB.
+MemoryMax=1G
 MemorySwapMax=0
 CPUQuota=50%
 TasksMax=48
