@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import FrameWorkspace from '../components/frame/Workspace';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import * as I from '../components/Icons';
@@ -127,7 +128,8 @@ export function Workspace({ id }: { id: string }) {
 /** /live/:id is a task's workspace. /live on its own is not a destination any more: it goes to the task that is running, or to Activity. */
 export default function Live() {
   const { id } = useParams(); const { tasks, loaded } = useWork();
-  if (id) return <Workspace key={id} id={id} />;
+  // The task's own heading names it; the canvas toolbar only says which place this is.
+  if (id) return <FrameWorkspace title={<span className="wsp-title">Lumina’s browser</span>}><Workspace key={id} id={id} /></FrameWorkspace>;
   if (!loaded) return <p className="muted" role="status">Loading…</p>;
   const current = tasks.find(t => t.phase === 'needs_you' || t.phase === 'working') ?? tasks.find(isOpen);      // what is going on or waiting on you, before anything merely queued or held
   return <Navigate to={current ? `/live/${current.id}` : '/activity'} replace />;

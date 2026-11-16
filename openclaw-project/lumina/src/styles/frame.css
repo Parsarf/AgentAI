@@ -249,3 +249,21 @@ a.ci-row:hover { background: var(--fill-hover); }
 .w-compact .act-kind, .w-compact .act-steps, .w-medium .act-steps { display: none; }
 .zone-inspector .wk-record, .zone-sheet .wk-record { padding: 0; max-width: none; }
 .bottom-bar .kbd, .more-list .kbd { display: none; }
+
+/* Phone: every control is a 44 px touch target (WCAG asks 24; the plan asks 44 on touch). */
+.w-compact .btn.small, .w-compact .chip.small, .w-compact .btn, .w-compact .chip { min-height: var(--touch-min); }
+.w-compact .iconbtn.small { width: var(--touch-min); height: var(--touch-min); }
+.w-compact .seg-item { min-height: 38px; }
+.w-compact .hub-label, .w-compact .files-folder, .w-compact .chatitem, .w-compact .mini-day, .w-compact .cmd-row, .w-compact .help-row { min-height: var(--touch-min); }
+.w-compact .hub-pick, .w-compact .hub-calendar-row input, .w-compact .hub-toggles input { width: 22px; height: 22px; }
+.w-compact .hub-calendar-row, .w-compact .hub-toggles label { min-height: var(--touch-min); display: flex; align-items: center; }
+.greeting .greeting-title { font: inherit; letter-spacing: inherit; margin: 0; }
+.wk-record-head .wk-record-title { font-size: var(--text-xl); font-weight: var(--weight-semibold); letter-spacing: -.02em; line-height: var(--leading-tight); overflow-wrap: anywhere; }
+.hub-pick-area { flex: none; display: grid; place-items: center; width: 44px; cursor: pointer; }
+.hub-pick-area .hub-pick { margin: 0; }
+.w-compact .tile-head h2 a, .w-compact .file-open, .w-compact .act-title a, .w-compact .table-sort, .w-compact .wk-back { display: inline-flex; align-items: center; min-height: var(--touch-min); }
+.w-compact .seg-item, .w-compact .hub-week-day button, .w-compact .hub-month-cell > button:first-child { min-height: var(--touch-min); min-width: var(--touch-min); }
+.w-compact .hub-event.block { min-height: 28px; }
+.w-compact .phase-title { min-height: var(--touch-min); }
+.w-compact .switch.sm { width: 42px; height: 24px; } .w-compact .switch.sm i { width: 18px; height: 18px; } .w-compact .switch.sm.on i { transform: translateX(18px); }
+.w-compact input[type='range'] { min-height: var(--touch-min); }

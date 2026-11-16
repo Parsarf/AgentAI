@@ -286,8 +286,8 @@ export default function Inbox() {
       footer={<>{loading && next && <p className="hub-pad faint small" role="status">Loading more…</p>}{olderPart}</>}
       renderRow={(t, index) => { const k = threadKey(t); const account = byId[t.connection_id]; const who = people(t.people, account?.identity); return (
         <div className={`hub-row${picked.has(k) ? ' picked' : ''}`}>
-          <input type="checkbox" className="hub-pick" checked={picked.has(k)} aria-label={`Select the thread from ${who}`} onChange={() => undefined}
-            onClick={e => pick(index, (e as React.MouseEvent).shiftKey)} />
+          <label className="hub-pick-area"><input type="checkbox" className="hub-pick" checked={picked.has(k)} aria-label={`Select the thread from ${who}`} onChange={() => undefined}
+            onClick={e => pick(index, (e as React.MouseEvent).shiftKey)} /></label>
           <button type="button" className={`hub-thread${t.unread ? ' unread' : ''}`} aria-current={selected === k ? 'true' : undefined} onClick={e => { if (e.shiftKey) { pick(index, true); return; } void open(t); }}>
             <span className="hub-thread-top"><span className="hub-thread-who">{who}{t.message_count > 1 && <span className="faint"> {t.message_count}</span>}</span>
               <time className="faint small">{listTime(t.last_epoch, zone, now)}</time></span>

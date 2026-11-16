@@ -91,3 +91,10 @@ is registered yet, so turning the switch on today would show two empty pages. Wh
 - **Open pages are live**: they ask `/v1/hub/pulse` every 8 seconds while visible and reload only when its mark changed.
 - **Google is reached over IPv4 first.** The production host has no working IPv6 route and Google lists IPv6 addresses first: each request took about 25 seconds and the first
   sync never finished. Any future provider adapter on this host needs the same care.
+
+## The UI remodel (branch `ui-remodel`, shipped together with #52)
+
+No server step. The web app's layout changed (the workspace frame, one assistant panel, the command bar, Today, Activity as one table, Settings sections). Two routes were
+added: `POST /v1/assistant/ask` (the assistant panel on any page; mail and calendar selections pass only while `mail_calendar_dashboard` is on) and `GET /v1/search` (the
+command bar). Old app addresses redirect (`/app/tasks` to `/app/activity`, `/app/integrations` to `/app/settings/integrations`, `/app/automations` to `/app/activity`).
+The #52 step above still applies: replace `agentai-hub-sync.timer` with `agentai-hub-sync.service`.

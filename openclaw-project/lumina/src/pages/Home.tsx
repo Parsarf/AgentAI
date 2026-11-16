@@ -75,7 +75,7 @@ export default function Home() {
   const money = (micro: number) => `$${(micro / 1e6).toFixed(2)}`;
 
   return (
-    <Workspace title="Home" backdrop className="today-page">
+    <Workspace title={<span className="wsp-title">Home</span>} backdrop className="today-page">
       <div className="today">
         <header className="today-hero">
           <Orb state="breathing" size={48} />

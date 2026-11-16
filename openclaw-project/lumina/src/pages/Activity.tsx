@@ -54,7 +54,7 @@ export function Record({ id }: { id: string }) {
   return (
     <article className="wk-record">
       <header className="wk-record-head">
-        <h1>{task.title}</h1>
+        <h2 className="wk-record-title">{task.title}</h2>
         <div className="wk-record-status"><Status task={task} /><Elapsed task={full ?? task} /><span>Started {new Date(task.created_epoch * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>{task.retry_of && <Link to={`/tasks/${task.retry_of}`}>A retry of an earlier task</Link>}{task.follows && <Link to={`/tasks/${task.follows}`}>Carries on an earlier task</Link>}</div>
         <div className="wk-record-bar">
           {task.conversation_id && <Link className="btn primary small" to={`/chat/${task.conversation_id}`}>{isOpen(task) ? 'Open the chat' : 'Continue in the chat'}</Link>}
