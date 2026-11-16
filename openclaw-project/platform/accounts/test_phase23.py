@@ -306,3 +306,36 @@ class DataLifecycle(Base):
         out = io.StringIO()
         call_command('account_jobs', stdout=out); call_command('connector_refresh', stdout=out)
         self.assertNotIn('synthetic-', out.getvalue())
+
+
+class LiveProofScript(Base):
+    """deploy/phase23_live.py is what proves the exit gates on the server at deploy time. Here it runs against the test database, so the script itself is known to work."""
+    def test_every_gate_passes_and_the_disposable_account_ends_deleted(self):
+        import importlib.util
+        from pathlib import Path
+        spec = importlib.util.spec_from_file_location('phase23_live', Path(__file__).resolve().parents[1] / 'deploy' / 'phase23_live.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+
+        class Enabled:
+            stdout = 'enabled\n'
+        out = io.StringIO()
+        with patch.object(module.subprocess, 'run', lambda *a, **k: Enabled()), patch.object(module.time, 'sleep', lambda s: None), patch('sys.stdout', out), \
+                override_settings(ALLOWED_HOSTS=['testserver']):
+            code = module.main()
+        report = json.loads(out.getvalue().strip().splitlines()[-1])
+        self.assertEqual({c['id']: c['passed'] for c in report['cases']},
+                         {name: True for name in ('P2-ROLES', 'P2-SWEEPER', 'P3-WRITE-CYCLE', 'P3-COMPENSATION', 'P3-WORKFLOW', 'P3-HANDOFF', 'P3-PARTIAL', 'P2-OFFBOARD')}, out.getvalue())
+        self.assertEqual((code, report['passed']), (0, True))
+        self.assertEqual(self.rows('SELECT status FROM accounts WHERE id=%s', [report['account']])[0][0], 'deleted')
+        self.assertEqual(self.rows('SELECT count(*) FROM synthetic_records WHERE account_id=%s', [report['account']])[0][0], 0)
+
+    def test_it_refuses_to_start_without_the_switches(self):
+        import importlib.util
+        from pathlib import Path
+        spec = importlib.util.spec_from_file_location('phase23_live', Path(__file__).resolve().parents[1] / 'deploy' / 'phase23_live.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        out = io.StringIO()
+        with patch.object(wiring, 'switch_on', lambda name: False), patch('sys.stdout', out):
+            self.assertEqual(module.main(), 2)
+        self.assertIn('NOT RUN', out.getvalue())
+        self.assertEqual(self.rows("SELECT count(*) FROM auth_user WHERE username LIKE 'p23-%%'")[0][0], 0)
