@@ -15,7 +15,11 @@
 - WCAG 2.2 AA in the layout: target size (24 px everywhere, 44 px on a phone), focus not obscured (sheets lie above the page and trap focus; sticky toolbars sit above content, never over a focused control inside it), dragging alternatives (zone edges: keyboard and "Narrower / Wider"; files: "Folder of …"; day ranges: Shift with the arrows).
 
 ## Measured
-- On the production host after the deploy: see "Production" below.
+### Production (getlumina.pro, 2026-11-16, Chrome over a ~130 ms link, the owner's account with a mailbox still filling)
+- Deployed `5ac1e18` (pull request #53, with #52); the live acceptance passed. The hub sync timer was replaced by the long-running service (#52's step); its first fill was running (mail 300 items in the first minutes, one calendar filled with 225 events).
+- Search (`/v1/search`, five queries): 6-11 ms on the server; about 140 ms round trip from the browser. Target under 200 ms: met.
+- Inbox: the first rows came 484 ms after the click, because the list waited for the accounts overview before asking for threads (two round trips in a row). Fixed in a follow-up (the list asks for every account's mail at once until the customer narrows them; one round trip fewer) and measured again below.
+- Opening a thread: headers 29 ms, body 303 ms; the next thread, fetched ahead, 40 ms.
 
 ## Decisions taken
 - The contrast setting has three states (device, normal, more) so the system preference is honoured by default and can still be overridden either way.
