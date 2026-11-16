@@ -145,6 +145,7 @@ class StripeHttp:
         return self.call('POST', '/v1/billing_portal/sessions', {'customer': customer, 'return_url': return_url}, idem=idem)
 
     def retrieve_subscription(self, sub_id): return self.call('GET', f'/v1/subscriptions/{sub_id}')
+    def cancel_subscription(self, sub_id): return self.call('DELETE', f'/v1/subscriptions/{sub_id}')      # ends it now; Stripe answers the same for one already cancelled
     def retrieve_checkout_session(self, session_id): return self.call('GET', f'/v1/checkout/sessions/{session_id}')
     def retrieve_invoice(self, invoice_id): return self.call('GET', f'/v1/invoices/{invoice_id}')
     def retrieve_charge(self, charge_id): return self.call('GET', f'/v1/charges/{charge_id}')
@@ -286,6 +287,24 @@ class BillingService:
     def _audit(self, con, account, actor, obj, action, outcome):
         con.execute('''INSERT INTO audit_events(account_id,id,actor_id,object_id,action,outcome,request_id)
             VALUES (?,?,?,?,?,?,?)''', (account, uuid.uuid4().hex, str(actor), str(obj)[:120], 'billing.' + action, outcome, uuid.uuid4().hex))
+
+    def cancel_for_account(self, account_id: str) -> dict:
+        """Offboarding (roadmap #21): end every subscription of an account at the provider, so a leaving customer is never charged again. Safe to repeat. The local rows are
+        brought up to date by the provider's own webhook, as always. -> {'cancelled': n, 'already_ended': n}. Raises ProviderUnavailable when the provider cannot be reached
+        (the caller tries again later)."""
+        with self.store.connect() as con:
+            rows = [r[0] for r in con.execute("SELECT provider_subscription_id FROM billing_subscriptions WHERE account_id=? AND provider_status NOT IN ('canceled','incomplete_expired')", (account_id,))]
+        report = {'cancelled': 0, 'already_ended': 0}
+        for sub_id in rows:
+            try:
+                self.api.cancel_subscription(sub_id)
+                report['cancelled'] += 1
+            except ProviderRejected:
+                report['already_ended'] += 1           # it no longer exists there: nothing left to charge
+        if rows:
+            with self.store.connect() as con:
+                self._audit(con, account_id, 'system', account_id, 'subscription_cancel', 'completed')
+        return report
 
     # ------------------------------------------------------------ customer actions
 
