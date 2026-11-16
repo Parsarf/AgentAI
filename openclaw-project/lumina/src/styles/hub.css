@@ -1,5 +1,5 @@
 /* The mail and calendar dashboard (Inbox and Calendar pages). Three zones: accounts and filters, the list or the grid, what is open. Colours only from tokens.css. */
-.hub { display: grid; gap: var(--gap); height: calc(100dvh - 2 * var(--gap) - 16px); min-height: 420px; }
+.hub { display: grid; gap: var(--gap); height: calc(100dvh - 2 * var(--gap) - 84px); min-height: 420px; }      /* the window, less the app's top bar and its margins */
 .hub-inbox { grid-template-columns: 232px minmax(280px, 400px) minmax(0, 1fr); }
 .hub-calendar { grid-template-columns: 232px minmax(0, 1fr); }
 .hub-calendar.has-open { grid-template-columns: 232px minmax(0, 1fr) 320px; }

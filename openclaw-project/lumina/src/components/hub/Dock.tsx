@@ -21,11 +21,12 @@ const failed = (e: unknown) => (e instanceof ApiError && e.status === 402 ? 'You
  *  Chat); what is different is that a message sent from here says what the customer has open, so "summarize this" means the open thread. The page works fully while the
  *  assistant is busy, asleep or closed. */
 export default function Dock({ looking, lookingWords, suggestions }: { looking: Looking | null; lookingWords: string; suggestions: Suggestion[] }) {
-  const [open, setOpen] = useState(() => read(OPEN_KEY) !== 'closed'); const [chat, setChat] = useState<string | null>(() => read(CHAT_KEY));
+  // Open by default where it has its own column. On a narrower screen it would lie over the page, so there it starts as a small tab until the customer opens it (their choice is remembered).
+  const [open, setOpen] = useState(() => { const kept = read(OPEN_KEY); return kept ? kept === 'open' : !(typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1500px)').matches); }); const [chat, setChat] = useState<string | null>(() => read(CHAT_KEY));
   const [msgs, setMsgs] = useState<Message[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]); const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const last = useRef(0); const alive = useRef(true); const end = useRef<HTMLDivElement>(null); const current = useRef(chat); current.current = chat;
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => { write(OPEN_KEY, open ? null : 'closed'); }, [open]);
+  const choose = (next: boolean) => { setOpen(next); write(OPEN_KEY, next ? 'open' : 'closed'); };
 
   const load = useCallback(async (id: string) => {
     try {
@@ -58,14 +59,14 @@ export default function Dock({ looking, lookingWords, suggestions }: { looking: 
   };
   const fresh = () => { write(CHAT_KEY, null); setChat(null); setErr(''); };
 
-  if (!open) return <button type="button" className="hub-dock-tab" aria-label="Open the assistant" onClick={() => setOpen(true)}><I.Spark width={18} height={18} /><span>Assistant</span></button>;
+  if (!open) return <button type="button" className="hub-dock-tab" aria-label="Open the assistant" onClick={() => choose(true)}><I.Spark width={18} height={18} /><span>Assistant</span></button>;
   const shown = msgs.filter(m => !m.ui_answer);
   return (
     <aside className="hub-dock panel" aria-label="Assistant">
       <header className="hub-dock-head"><I.Spark width={18} height={18} /><h2>Assistant</h2>
         {chat && <Link className="btn small tertiary" to={`/chat/${chat}`}>Open in Chat</Link>}
         {chat && <button type="button" className="btn small tertiary" onClick={fresh}>New</button>}
-        <button type="button" className="iconbtn small ghost" aria-label="Close the assistant" onClick={() => setOpen(false)}><I.Plus width={16} height={16} style={{ transform: 'rotate(45deg)' }} /></button></header>
+        <button type="button" className="iconbtn small ghost" aria-label="Close the assistant" onClick={() => choose(false)}><I.Plus width={16} height={16} style={{ transform: 'rotate(45deg)' }} /></button></header>
       <div className="hub-dock-thread" aria-live="polite">
         {!shown.length && !working && <p className="muted small hub-dock-hello">Ask about your mail and calendar. Your assistant can read what you chose to show here; it cannot send or change anything.</p>}
         {shown.map(m => <div key={m.id} className={`hub-dock-msg ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : m.content}</div>)}
