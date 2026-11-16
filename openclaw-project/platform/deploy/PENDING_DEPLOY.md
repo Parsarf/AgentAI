@@ -66,6 +66,11 @@ is registered yet, so turning the switch on today would show two empty pages. Wh
    - On the server, add `AGENTAI_GOOGLE_CLIENT_ID` and `AGENTAI_GOOGLE_CLIENT_SECRET` to `/etc/agentai-platform/accounts.env` (root-only) and restart the app, the tool relay
      and nothing else. Without both, Google is simply not offered.
    - The connector refresh timer (already installed) renews Google access tokens; it now also runs while only the dashboard switch is on.
-   - Not yet proven against the real Google APIs: the tests use a fake that answers in the shapes of Google's documentation. Prove it with one test account before any
-     customer connects (the one-off read-only check used during the build needs `http://127.0.0.1:8765/callback` as a second redirect address).
+   - Proven against the real Google APIs on 2026-11-16 with the owner's own account, read only, from a one-off local check: sign-in and code exchange, the picker's list
+     (labels and calendars), the first fill of mail, opening a message, Gmail history, mail limited to one label, older-mail search, the calendar list, a calendar's window with
+     its sync token, changes since that token, and token renewal. **Not exercised by real data:** the conversion of real calendar events (the account's primary calendar had none
+     in the window) and a message with attachments or markup. Check those with an account that has them before customers connect.
+   - The Google project must have the **Google Calendar API** enabled (`calendar-json.googleapis.com`; not the Calendar MCP service) and the **Gmail API**.
+   - The consent screen shows the Google project's app name. These credentials belong to the owner's ManagerAI project, so customers would see "ManagerAI": use a client of a
+     Lumina project, or rename the app on the consent screen, before launch.
 5. **Other providers** need their own sign-in app and that service's review before any customer can connect one.
