@@ -335,8 +335,12 @@ class AccountBoundaryTests(TestCase):
         OperatorGrant.objects.update(expires_at=timezone.now()-timedelta(seconds=1))
         self.assertEqual(self.post(op,'/internal/accounts/a/suspend').status_code,404)
         a=self.signed()
-        for _ in range(240): self.assertEqual(a.get('/v1/me',secure=True).status_code,200)
-        self.assertEqual(a.get('/v1/me',secure=True).status_code,429)
+        # The limit counts per clock window. The clock is held still here so the 241 requests are in one window however slow the machine is (it failed in CI when they straddled two).
+        from unittest.mock import patch
+        still=timezone.now()
+        with patch('django.utils.timezone.now',return_value=still):
+            for _ in range(240): self.assertEqual(a.get('/v1/me',secure=True).status_code,200)
+            self.assertEqual(a.get('/v1/me',secure=True).status_code,429)
 
     def test_host_role_change_revokes_access_and_grants(self):
         a=self.signed()
