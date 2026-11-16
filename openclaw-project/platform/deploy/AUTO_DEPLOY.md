@@ -69,3 +69,17 @@ Update the program itself by installing it again; it is not replaced by its own 
 ## Not covered
 
 The browse runner in `/opt/agentai-browse` (`openclaw-project/browse`), Caddy, systemd unit files, environment files and the cell images. Those still need a manual step.
+
+## Faster and safer (2026-11-16)
+
+Four changes after a deploy that took three cycles of about twenty minutes each:
+
+1. **A release proves itself before it goes live.** After the canary probes, `release.py` runs the release's own proof script (`deploy/phase23_live.py --copy`) against the
+   migrated COPY of the production database. A failure stops the deploy with nothing live touched. Both faults found after going live on 2026-11-16 (a sign-in address that
+   must be unique, a check that met a deleted account) depended on production-shaped data and would have stopped here.
+2. **One command equals CI.** `openclaw-project/ci/run.sh all` runs every blocking part on a developer's machine, in parallel (about four minutes). CI runs the same script,
+   one part per job, and a test keeps the workflow and the script equal. Run it before opening a pull request.
+3. **No second run for the same files.** A pull request runs the checks once. The push to main that merges it skips them when the merged files are identical to what the
+   pull request tested and that run was green (`ci/already-tested.sh`); the deploy then starts at once. A branch that was behind main gets the full checks. A branch push
+   alone runs nothing.
+4. **Parallel parts.** The account API tests run as three jobs and the platform tests as two, beside the acceptance cases, the small checks and the web app.

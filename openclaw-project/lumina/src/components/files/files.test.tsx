@@ -15,6 +15,12 @@ vi.mock('../../lib/api', async original => ({
   api: vi.fn(async (method: string, path: string, body?: unknown) => {
     calls.push({ method, path, body });
     if (path === '/v1/files') return { files, used_bytes: 1500, quota_bytes: 2 * 1073741824 };
+    if (path === '/v1/catalogue') {                       // the catalogue: one entry per made file, its newest version (bundles are left out by the server)
+      const newest = new Map<string, any>(); for (const f of files) if (!/-bundle\.zip$/.test(f.display_name) && (!newest.has(f.id) || f.version > newest.get(f.id).version)) newest.set(f.id, f);
+      return { files: [...newest.values()].map(f => ({ kind: 'made', id: f.id, name: f.display_name, original_name: f.display_name, media_type: f.media_type, size_bytes: f.size_bytes, project_id: 'p1', folder_id: null,
+        source: 'made', created_at: f.created_at, family: 'other', copy_of: null, version: f.version, versions: files.filter(x => x.id === f.id).length, conversation_id: f.conversation_id })),
+        folders: [], projects: [{ id: 'p1', name: 'General' }], total: newest.size, uploads: false };
+    }
     if (path.endsWith('/ticket')) return { download: { path: '/v1/artifacts/x/versions/1/download?ticket=t' } };
     if (path.endsWith('/delete')) { files = files.filter(f => !path.includes(f.id)); return { deleted: {} }; }
     if (path === '/v1/files/bundle') return { bundle: { artifact_id: 'zip', version: 1 } };
@@ -88,7 +94,7 @@ describe('files page', () => {
     files = [row('a', 1, 'reports/Q3 sales.xlsx'), row('b', 1, 'notes.md'), row('b', 2, 'notes.md'), row('z', 1, 'project-all-bundle.zip')];
     page();
     await screen.findByText('Q3 sales.xlsx');
-    expect(calls.map(c => c.path)).toEqual(['/v1/files']);
+    expect(calls.map(c => c.path).sort()).toEqual(['/v1/catalogue', '/v1/files']);                 // the made files with their versions, and the one catalogue
     expect(screen.getByText('reports')).toBeTruthy();
     expect(screen.getByText(/Text · 2.0 KB · .* · version 2/)).toBeTruthy();
     expect(screen.queryByText(/bundle/)).toBeNull();

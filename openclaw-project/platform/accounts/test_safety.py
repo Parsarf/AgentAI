@@ -313,6 +313,10 @@ class SnapshotAndRouteGates(TestCase):
         import re
         root = tempfile.mkdtemp(prefix='agentai-files-test-'); os.chmod(root, 0o700); self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
         storage = override_settings(STORAGE_DIR=root, ARTIFACT_SIGNING_KEY=b'k' * 32, STORAGE_READY=True, UPLOADS_ENABLED=True); storage.enable(); self.addCleanup(storage.disable)
+        from unittest.mock import patch
+        from . import wiring
+        real = wiring.switch_on
+        switch = patch.object(wiring, 'switch_on', lambda name: name == 'customer_uploads' or real(name)); switch.start(); self.addCleanup(switch.stop)
         a = self.owner_setup()
         def upload(client, size):
             page = client.get('/account/login/', secure=True)

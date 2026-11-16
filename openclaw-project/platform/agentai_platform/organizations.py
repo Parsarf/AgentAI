@@ -28,7 +28,8 @@ POLICIES = {
 }
 # What a tool the assistant can be given belongs to, for `tools_allowed` (a name no row covers belongs to no group and is not affected).
 TOOL_GROUP_OF = {'lumina_browser': 'browser', 'lumina_browser_step': 'browser', 'lumina_file_deliver': 'files', 'lumina_memory_*': 'memory', 'lumina_show': 'display',
-                 'lumina_request_location': 'location', 'lumina_mcp_*': 'remote_tools', 'mcp__*': 'remote_tools', 'lumina_connector_*': 'connectors'}
+                 'lumina_request_location': 'location', 'lumina_mcp_*': 'remote_tools', 'mcp__*': 'remote_tools', 'lumina_connector_*': 'connectors',
+                 'lumina_mail_*': 'connectors', 'lumina_calendar_*': 'connectors'}       # the mail and calendar tools read through connected accounts too
 
 
 def tool_group(name):

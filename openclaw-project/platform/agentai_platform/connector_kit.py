@@ -56,6 +56,10 @@ class ProviderError(Exception):
         self.status, self.code, self.retry_after = int(status or 0), str(code or '')[:60], retry_after
 
 
+class Signal(Exception):
+    """Not a failure: something an adapter tells its caller (for example "this cursor is no longer valid, start again"). It passes through the client untouched."""
+
+
 class Unanswered(Exception):
     """A write was sent and no answer came back (timeout, dropped connection). Its outcome is unknown: it must be read back, never sent again blindly."""
 
@@ -104,6 +108,8 @@ class Declaration:
     freshness_seconds: dict = field(default_factory=dict)   # resource kind -> how old its data may be before an answer flags it; '*' is the default
     caps: Caps = Caps()
     disclosure: str = ''
+    hub: object = None                 # hub_model.HubCaps when this provider has mail or calendars for the dashboard (#D1); None otherwise
+    several_accounts: bool = False     # a person may connect more than one account of this provider (each its own connection, told apart by its identity)
 
     def write_kind(self, name):
         return next((w for w in self.write_kinds if w.name == name), None)
@@ -321,19 +327,36 @@ class ConnectorClient:
     # -- the gate every call passes ---------------------------------------------------------------------------------------------------------
     def _open(self, principal, connection_id, action):
         """-> (connection row, declaration, adapter, credential). Read from the database NOW: a connection removed a second ago is refused here."""
+        return self._gate(principal.account_id, connection_id, principal.actor_id, action)
+
+    def open(self, principal, connection_id, action):
+        """The gate, for a caller in this package that makes its own provider call through `call` (the dashboard fetching a message's body)."""
+        return self._open(principal, connection_id, action)
+
+    def open_for_sync(self, account_id, connection_id):
+        """The background sync's gate (#D2). No person is asking, so there is no role to check; everything else applies as for any call: the connection's state right now,
+        the organization's policy, the registry and custody. -> (connection row, declaration, adapter, credential)."""
+        return self._gate(str(account_id), connection_id, None, None)
+
+    def call(self, account_id, declaration, fn, *, where=None):
+        """One provider call for a caller that already passed a gate: the same rate limit and the same six fault kinds as every other call."""
+        return self._call(account_id, declaration, fn, where=where)
+
+    def _gate(self, account_id, connection_id, actor_id, action):
         with self.store.connect() as con:
-            if permissions.member_role(con, principal.account_id, principal.actor_id) is None:
-                raise ConnectorFault('not_found')
-            if not permissions.may(con, principal.account_id, principal.actor_id, action):
-                raise ConnectorFault('refused')
-            row = con.execute('SELECT * FROM connector_connections WHERE account_id=? AND id=?', (principal.account_id, str(connection_id))).fetchone()
+            if actor_id is not None:
+                if permissions.member_role(con, account_id, actor_id) is None:
+                    raise ConnectorFault('not_found')
+                if not permissions.may(con, account_id, actor_id, action):
+                    raise ConnectorFault('refused')
+            row = con.execute('SELECT * FROM connector_connections WHERE account_id=? AND id=?', (account_id, str(connection_id))).fetchone()
             if row is None:
                 raise ConnectorFault('not_found')
             if row['state'] == 'revoked':
                 raise ConnectorFault('refused')
             if row['state'] != 'connected':
                 raise ConnectorFault('needs_customer')
-            if not organizations.connector_allowed(con, principal.account_id, row['service']):
+            if not organizations.connector_allowed(con, account_id, row['service']):
                 raise ConnectorFault('refused')
         declaration = self.registry.declaration(row['service'])
         adapter = self.registry.adapter(row['service'])
@@ -342,11 +365,11 @@ class ConnectorClient:
         credential = None
         if row['secret_ref']:
             try:
-                credential = json.loads(self.connectors.custody.get(principal.account_id, row['secret_ref']))
+                credential = json.loads(self.connectors.custody.get(account_id, row['secret_ref']))
             except Exception:
                 raise ConnectorFault('needs_customer') from None
         elif row['mcp_connection_id']:
-            credential = {'mcp_connection_id': row['mcp_connection_id'], 'account_id': principal.account_id}
+            credential = {'mcp_connection_id': row['mcp_connection_id'], 'account_id': account_id}
         return row, declaration, adapter, credential
 
     def _granted(self, account, connection_id, container, access='read') -> bool:
@@ -366,7 +389,7 @@ class ConnectorClient:
             self.sleep(wait)
         try:
             return fn()
-        except Unanswered:
+        except (Unanswered, Signal):
             raise
         except ConnectorFault as fault:
             self._note_error(account, where, fault)

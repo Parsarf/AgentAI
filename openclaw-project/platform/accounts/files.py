@@ -65,7 +65,7 @@ def upload(request, project_id):
         return denial
     if request.method != 'POST':
         return JsonResponse({'error': 'method_not_allowed'}, status=405)
-    if not settings.UPLOADS_ENABLED:
+    if not wiring.uploads_on():
         return JsonResponse({'error': 'uploads_not_enabled'}, status=503)
     if not request.FILES:
         return JsonResponse({'error': 'invalid_request'}, status=400)
@@ -88,7 +88,7 @@ def upload(request, project_id):
 
     def run():
         store, files, artifacts = _services()
-        return JsonResponse({'result': files.upload(_principal(request), project_id, entries)}, status=201)
+        return JsonResponse({'result': files.upload(_principal(request), project_id, entries, folder_id=request.POST.get('folder') or None)}, status=201)
     return _mapped(run)
 
 
@@ -455,3 +455,72 @@ def gen_asset(request, artifact_id):
             response['Content-Disposition'] = content_disposition_header(True, name)
         return response
     return _mapped(run)
+
+
+# ---- one catalogue of uploads and made files, with folders (roadmap #30) ---------------------------------------------------------------------------------
+
+@endpoint(['GET'])
+def catalogue(request):
+    """Every file of the account in one list: ?project=&folder=<id or "none">&source=uploaded|made&kind=document|spreadsheet|slides|picture|text|data|other&q="""
+    denial = _guard(request)
+    if denial:
+        return denial
+    q = request.GET
+    folder = q.get('folder')
+    return _mapped(lambda: JsonResponse({**wiring.catalogue().entries(_principal(request), project_id=q.get('project') or None, source=q.get('source') or None, kind=q.get('kind') or None,
+                                                                    query=q.get('q') or None, **({} if not folder else {'folder_id': None if folder == 'none' else folder})),
+                                         'uploads': wiring.uploads_on()}))
+
+
+def _conflict(fn):
+    """A folder rule that was broken is said in its own words (they are fixed sentences); everything else maps as usual."""
+    def run():
+        try:
+            return fn()
+        except Conflict as conflict:
+            return JsonResponse({'error': 'not_possible', 'message': str(conflict)[:120]}, status=409)
+    return _mapped(run)
+
+
+@endpoint(['POST'], ['project_id', 'name', 'parent_id'], structured=True)
+def folders(request):
+    denial = _guard(request)
+    if denial:
+        return denial
+    given = request.input
+    return _conflict(lambda: JsonResponse({'folder': wiring.catalogue().create_folder(_principal(request), str(given.get('project_id') or ''), given.get('name'), given.get('parent_id') or None)}, status=201))
+
+
+@endpoint(['POST'], ['name', 'parent_id', 'delete'], structured=True)
+def folder(request, folder_id):
+    """Rename ({"name"}), move ({"parent_id": id or null}) or remove ({"delete": true}; what is inside moves up, nothing is deleted)."""
+    denial = _guard(request)
+    if denial:
+        return denial
+    given = request.input
+
+    def run():
+        if given.get('delete') is True:
+            return JsonResponse(wiring.catalogue().delete_folder(_principal(request), folder_id))
+        return JsonResponse({'folder': wiring.catalogue().change_folder(_principal(request), folder_id, name=given.get('name'), **({'parent_id': given['parent_id']} if 'parent_id' in given else {}))})
+    return _conflict(run)
+
+
+@endpoint(['POST'], ['kind', 'id', 'folder_id', 'name'], structured=True)
+def place(request):
+    """Put a file in a folder and/or give it a name: {"kind": "upload"|"made", "id", "folder_id"?: id or null, "name"?: text or null}. The file itself is not changed."""
+    denial = _guard(request)
+    if denial:
+        return denial
+    given = request.input
+    return _conflict(lambda: JsonResponse({'file': wiring.catalogue().place(_principal(request), given.get('kind'), str(given.get('id') or ''),
+                                                                           **({'folder_id': given['folder_id']} if 'folder_id' in given else {}), **({'name': given['name']} if 'name' in given else {}))}))
+
+
+@endpoint(['POST'], form='json')
+def delete_upload(request, file_id):
+    """Permanently delete an uploaded file. There is no trash."""
+    denial = _guard(request)
+    if denial:
+        return denial
+    return _mapped(lambda: JsonResponse(wiring.file_service().delete_upload(_principal(request), file_id)))

@@ -338,6 +338,8 @@ class FleetCliDriver:
                 os.killpg(process.pid,0)
             except ProcessLookupError:
                 return
+            except PermissionError:
+                pass   # the group is still there but cannot be signalled (on macOS: only already-dead members not yet collected). Not proven gone: keep waiting, then say "uncertain".
             time.sleep(0.05)
         raise OutcomeUncertain('native executor group survived the drain kill')
 

@@ -50,6 +50,7 @@ EXPORT = (
     ('tasks/plan_proposals.json', 'Suggested changes to plans', 'plan_proposals'), ('tasks/long_jobs.json', 'Long jobs', 'objectives'),
     ('tasks/long_job_checkpoints.json', 'What long jobs did', 'objective_checkpoints'), ('tasks/browser_runs.json', 'Browser tasks', 'browse_runs'),
     ('files/files.json', 'Files your assistant made (the files themselves are in files/made/)', 'artifacts'), ('files/uploads.json', 'Files you uploaded (in files/uploaded/)', 'project_files'),
+    ('files/folders.json', 'The folders you made', 'file_folders'), ('files/places.json', 'Which folder each file is in, and the names you gave them', 'file_places'),
     ('memory/project_memory.json', 'Project memory', 'memory_entries'), ('memory/long_term_memory.json', 'Long-term memory notes', 'longterm_memories'),
     ('memory/saved_choices.json', 'Saved choices', 'saved_choices'), ('memory/skills.json', 'Skills', 'skills'), ('memory/skill_versions.json', 'Versions of skills', 'skill_versions'),
     ('automation/schedules.json', 'Schedules', 'schedules'), ('automation/schedule_runs.json', 'What each schedule did', 'schedule_runs'), ('automation/watchers.json', 'Watchers', 'watchers'),
@@ -58,12 +59,16 @@ EXPORT = (
     ('connections/automatic_approvals.json', 'Changes you allowed without asking', 'action_auto_approvals'), ('connections/removed.json', 'Connections that were removed, with what was stopped', 'connector_revocations'),
     ('connections/saved_logins.json', 'Saved logins and cards (names only, never the secrets)', 'vault_items'),
     ('actions/actions.json', 'Changes prepared or made in connected services', 'actions'), ('actions/workflows.json', 'Workflows', 'workflows'), ('actions/questions.json', 'Questions and approvals asked of you', 'handoffs'),
+    ('mail/messages.json', 'The copy of your connected mail that Lumina holds: who, subject, preview, and the text of messages that were opened', 'hub_messages'),
+    ('calendar/calendars.json', 'Your connected calendars and how you set them up', 'hub_calendars'), ('calendar/events.json', 'The copy of your calendar events that Lumina holds', 'hub_events'),
+    ('settings/mail_and_calendar.json', 'Your mail and calendar settings', 'hub_settings'),
     ('settings/spending_limits.json', 'Your spending limits', 'spend_limits'), ('settings/plan_settings.json', 'Per-plan settings', 'plan_settings'),
     ('usage/receipts.json', 'What each task cost', 'provider_receipts'), ('usage/usage.json', 'Usage entries', 'usage_entries'),
 )
 NEVER_EXPORTED = {
     'connector_secrets': 'sealed tokens', 'connector_link_states': 'unfinished sign-in attempts', 'download_tickets': 'one-time links', 'telegram_link_codes': 'one-time codes',
     'event_streams': 'stream positions', 'events': 'the step-by-step timeline (kept 30 days; the results are in the chats)', 'chat_deliveries': 'delivery bookkeeping',
+    'hub_threads': 'the list of threads (made from the messages in mail/messages.json)', 'hub_sync': 'sync bookkeeping',
     'tasks': 'bookkeeping (the tasks are in tasks/tasks.json)', 'task_reservations': 'budget bookkeeping', 'entitlements': 'plan bookkeeping',
 }
 # Deletion: rows of these tables stay. Everything else that has an `account_id` column goes.

@@ -9,7 +9,7 @@ import { displayName } from '../lib/format';
 
 export const NAV = [
   { to: '/home', label: 'Home', icon: I.Home, end: true }, { to: '/chat', label: 'Chat', icon: I.Chat, end: false }, { to: '/history', label: 'Chat history', icon: I.Search }, { to: '/tasks', label: 'Activity', icon: I.Tasks },
-  { to: '/files', label: 'Files', icon: I.Files }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
+  { to: '/files', label: 'Files', icon: I.Files }, { to: '/inbox', label: 'Inbox', icon: I.Mail, feature: 'dashboard' as const }, { to: '/calendar', label: 'Calendar', icon: I.Calendar },
   { to: '/automations', label: 'Automations', icon: I.Bolt }, { to: '/integrations', label: 'Integrations', icon: I.Cube }, { to: '/settings', label: 'Settings', icon: I.Gear },
 ];
 
@@ -26,7 +26,7 @@ export default function Sidebar() {
       </div>
       <button className="newchat-btn" onClick={() => nav('/chat')} title="New chat" aria-label="New chat"><I.Edit width={18} height={18} /><span className="lbl">New chat</span></button>
       <nav className="nav" aria-label="Primary">
-        {NAV.map(n => { const waiting = n.to === '/tasks' ? attention : 0; return (
+        {NAV.filter(n => !('feature' in n) || !n.feature || app?.features[n.feature]).map(n => { const waiting = n.to === '/tasks' ? attention : 0; return (       /* a feature that is off has no entry */
           <NavLink key={n.to} to={n.to} end={n.end} title={waiting ? `${n.label}: ${waiting} waiting for you` : n.label}><n.icon width={20} height={20} /><span className="lbl">{n.label}</span>
             {waiting > 0 && <span className="nav-count" aria-label={`${waiting} waiting for you`}>{waiting}</span>}</NavLink>); })}
         <SafetyButton />

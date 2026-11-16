@@ -3,6 +3,29 @@ import { ApiError, csrfToken } from './api';
 export interface ArtifactRow { id: string; version: number; display_name: string; media_type: string; size_bytes: number; created_at: string; task_id?: string | null; project_id?: string; conversation_id?: string | null }
 export interface FileGroup { id: string; name: string; latest: ArtifactRow; versions: number; all: ArtifactRow[] }
 export interface FileList { files: ArtifactRow[]; used_bytes: number; quota_bytes: number }
+/** One entry of the catalogue: an upload or a file the assistant made, where the customer put it and what they named it. */
+export interface CatalogueFile { kind: 'upload' | 'made'; id: string; name: string; original_name: string; media_type: string; size_bytes: number; project_id: string; folder_id: string | null;
+  source: 'uploaded' | 'made'; created_at: string; family: string; copy_of: { kind: string; id: string; name: string } | null; version?: number; versions?: number; conversation_id?: string | null }
+export interface Folder { id: string; project_id: string; parent_id: string | null; name: string; files: number }
+export interface Catalogue { files: CatalogueFile[]; folders: Folder[]; projects: { id: string; name: string }[]; total: number; uploads: boolean }
+export interface UploadResult { accepted: { id: string; name: string; same_as?: string; already_here?: boolean }[]; rejected: { name: string; reason: string }[] }
+export const FAMILY_WORDS: Record<string, string> = { document: 'Documents', spreadsheet: 'Spreadsheets', slides: 'Slides', picture: 'Pictures', text: 'Text', data: 'Data', other: 'Other' };
+/** What may be uploaded, for the file chooser. The server decides by content, not by this list. */
+export const UPLOAD_ACCEPT = '.pdf,.docx,.xlsx,.pptx,.csv,.tsv,.txt,.md,.html,.htm,.json,.xml,.eml,.png,.jpg,.jpeg,.gif,.webp';
+
+/** Upload files into a project (and a folder). Each file is checked on its own: the answer says which were kept and why any was refused. */
+export async function uploadFiles(projectId: string, files: File[], folderId?: string | null): Promise<UploadResult> {
+  const form = new FormData();
+  form.append('filenames', JSON.stringify(files.map(f => f.name)));
+  if (folderId) form.append('folder', folderId);
+  for (const file of files) form.append('file', file, file.name);
+  const res = await fetch(`/v1/projects/${projectId}/files`, { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json', 'X-CSRFToken': await csrfToken() }, body: form });
+  let data: any = {};
+  try { data = await res.json(); } catch { /* an empty answer is handled as a failure below */ }
+  if (res.status === 422) return { accepted: [], rejected: files.map(f => ({ name: f.name, reason: String(data.reason ?? 'not accepted') })) };
+  if (!res.ok) throw new ApiError(data.error || `http_${res.status}`, res.status);
+  return data.result as UploadResult;
+}
 
 /** One entry per file: its newest version, plus the older ones. Bundles made for "Download all" are hidden. Newest file first. */
 export function groupFiles(rows: ArtifactRow[]): FileGroup[] {

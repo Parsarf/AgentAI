@@ -18,19 +18,18 @@ BOUNDARY = '----agentai-test-boundary-7381'
 
 
 def multipart_body(token, files):
-    """Deterministic multipart body: text files only (byte-exact for tests)."""
+    """Deterministic multipart body, byte-exact for tests. Latin-1 carries every byte through unchanged, so binary files (an Office package) work too."""
     parts = ['--' + BOUNDARY, 'Content-Disposition: form-data; name="csrfmiddlewaretoken"', '', token]
     import json as _json
     parts += ['--' + BOUNDARY, 'Content-Disposition: form-data; name="filenames"', '',
               _json.dumps([name for name, _ in files])]
     for name, data in files:
-        payload = data.decode('utf-8')
         parts += ['--' + BOUNDARY,
                   f'Content-Disposition: form-data; name="file"; filename="{name}"',
                   'Content-Type: application/octet-stream',
-                  f'Content-Length: {len(data)}', '', payload]
+                  f'Content-Length: {len(data)}', '', data.decode('latin-1')]
     parts += ['--' + BOUNDARY + '--', '']
-    return '\r\n'.join(parts)
+    return '\r\n'.join(parts).encode('latin-1')
 
 
 class FileHTTPChecks(TestCase):
@@ -47,6 +46,12 @@ class FileHTTPChecks(TestCase):
         enabled.enable()
         self.addCleanup(enabled.disable)
         self.addCleanup(lambda: __import__('shutil').rmtree(root, ignore_errors=True))
+        if uploads:                                             # uploads also need the owner's switch (roadmap #30)
+            from unittest.mock import patch
+            from . import wiring
+            real = wiring.switch_on
+            switch = patch.object(wiring, 'switch_on', lambda name: name == 'customer_uploads' or real(name))
+            switch.start(); self.addCleanup(switch.stop)
 
     def multipart(self, client, path, files):
         page = client.get('/account/login/', secure=True)
@@ -90,6 +95,44 @@ class FileHTTPChecks(TestCase):
         self.assertEqual(len(listing['files']), 1)
         # The account fixture seeds one placeholder artifact; it lists like any other.
         self.assertEqual(len(listing['artifacts']), 1)
+
+    def test_uploads_need_the_owner_switch_as_well_as_the_host(self):
+        self.enable_storage(uploads=False)
+        on = override_settings(UPLOADS_ENABLED=True); on.enable(); self.addCleanup(on.disable)          # the host allows it, the owner has not switched it on
+        a = self.signed()
+        self.assertEqual(self.multipart(a, '/v1/projects/project-a/files', [('notes.txt', b'hello')]).status_code, 503)
+        self.assertFalse(a.get('/v1/app', secure=True).json()['features']['uploads'])
+
+    def test_one_catalogue_with_folders_over_http_and_another_account_reaches_none_of_it(self):
+        self.enable_storage(uploads=True)
+        a, b = self.signed('a'), self.signed('b')
+        import io, zipfile
+        from agentai_platform.content_scan import OFFICE_MAIN
+        package = io.BytesIO()
+        with zipfile.ZipFile(package, 'w') as z:
+            z.writestr('[Content_Types].xml', f'<Types><Override PartName="/word/document.xml" ContentType="{OFFICE_MAIN["docx"]}"/></Types>')
+            z.writestr('word/document.xml', '<document/>'); z.writestr('word/vbaProject.bin', b'x')
+        refused = self.multipart(a, '/v1/projects/project-a/files', [('macro.docx', package.getvalue())])
+        self.assertEqual((refused.status_code, 'macros' in refused.json()['reason']), (422, True))
+        made = self.multipart(a, '/v1/projects/project-a/files', [('notes.txt', b'hello world')]).json()['result']['accepted'][0]
+        folder = self.post(a, '/v1/folders', {'project_id': 'project-a', 'name': 'Reports'})
+        self.assertEqual(folder.status_code, 201, folder.content)
+        fid = folder.json()['folder']['id']
+        self.assertEqual(self.post(a, '/v1/folders', {'project_id': 'project-a', 'name': 'reports'}).status_code, 409)
+        placed = self.post(a, '/v1/catalogue/place', {'kind': 'upload', 'id': made['id'], 'folder_id': fid, 'name': 'Meeting notes.txt'})
+        self.assertEqual(placed.status_code, 200, placed.content)
+        listed = a.get('/v1/catalogue', {'folder': fid}, secure=True).json()
+        self.assertEqual(([f['name'] for f in listed['files']], listed['uploads'], [f['files'] for f in listed['folders']]), (['Meeting notes.txt'], True, [1]))
+        self.assertEqual([f['source'] for f in a.get('/v1/catalogue', {'source': 'made'}, secure=True).json()['files']], ['made'])       # the fixture's placeholder file
+        self.assertEqual(a.get('/v1/catalogue', {'folder': 'none', 'source': 'uploaded'}, secure=True).json()['files'], [])
+        self.assertEqual(b.get('/v1/catalogue', secure=True).json()['folders'], [])
+        self.assertNotIn(made['id'], [f['id'] for f in b.get('/v1/catalogue', secure=True).json()['files']])
+        for path, body in (('/v1/catalogue/place', {'kind': 'upload', 'id': made['id'], 'name': 'x.txt'}), (f'/v1/folders/{fid}', {'name': 'Theirs'}), (f'/v1/folders/{fid}', {'delete': True}),
+                           (f'/v1/uploads/{made["id"]}/delete', {}), ('/v1/folders', {'project_id': 'project-a', 'name': 'x'})):
+            self.assertEqual(self.post(b, path, body).status_code, 404, path)
+        self.assertEqual(self.post(a, f'/v1/folders/{fid}', {'delete': True}).json(), {'deleted': fid, 'files_moved_up': 1})
+        self.assertEqual(self.post(a, f'/v1/uploads/{made["id"]}/delete', {}).json(), {'file_id': made['id'], 'bytes_removed': True})
+        self.assertEqual(a.get('/v1/catalogue', {'source': 'uploaded'}, secure=True).json()['files'], [])
 
     def test_upload_disabled_without_scan_capability(self):
         self.enable_storage(uploads=False)

@@ -4,6 +4,7 @@ from . import chat as ch
 from . import telegram as tg
 from . import streams as st
 from . import api as api
+from . import hub as hubv
 from . import uishell as shell
 from . import genui as gen
 from . import app_views
@@ -38,6 +39,7 @@ urlpatterns += [
  path('v1/files',fl.account_files),path('v1/files/bundle',fl.account_bundle),path('v1/export/table',fl.export_table),
  path('v1/conversations/<str:conversation_id>/export',fl.export_conversation),
  path('v1/artifacts/<str:artifact_id>/delete',fl.delete_artifact),
+ path('v1/catalogue',fl.catalogue),path('v1/catalogue/place',fl.place),path('v1/folders',fl.folders),path('v1/folders/<str:folder_id>',fl.folder),path('v1/uploads/<str:file_id>/delete',fl.delete_upload),
  path('v1/artifacts/<str:artifact_id>/versions/<str:version>/preview',fl.artifact_preview),
  path('v1/apps/player', app_views.player),
  path('v1/artifacts/<str:artifact_id>/versions/<str:version>/app', app_views.source),
@@ -119,6 +121,10 @@ from . import actions as act
 from . import organization as org
 from . import lifecycle_data as ld
 urlpatterns += [
+ path('v1/hub', hubv.overview), path('v1/hub/ask', hubv.ask), path('v1/hub/link', hubv.link), path('v1/hub/link/callback', hubv.link_callback), path('v1/hub/refresh', hubv.refresh), path('v1/hub/settings', hubv.settings),
+ path('v1/hub/mail/threads', hubv.threads), path('v1/hub/mail/labels', hubv.labels), path('v1/hub/mail/thread', hubv.thread), path('v1/hub/mail/message', hubv.message),
+ path('v1/hub/mail/search-older', hubv.search_older), path('v1/hub/calendars', hubv.calendars), path('v1/hub/events', hubv.events), path('v1/hub/event', hubv.event),
+ path('v1/hub/events/search', hubv.search_events),
  path('v1/controls', acc.controls),
  path('v1/integrations', acc.integrations), path('v1/integrations/synthetic/connect', acc.synthetic_connect),
  path('v1/integrations/<str:connection_id>', acc.integrations), path('v1/integrations/<str:connection_id>/resources', acc.resources),

@@ -46,3 +46,31 @@ No server step. The request worker, the app, the tool relay and the lifecycle wo
 
 Switch the release back with `release.py` (or let the live acceptance do it). The new tables and columns stay and are ignored by the previous release. Before rolling
 back, turn `connector_writes`, `synthetic_connector` and `account_self_service` off and disable the three timers, so nothing of the new code is half in use.
+
+## The mail and calendar dashboard (branch `mail-calendar-dashboard`, not merged)
+
+Built so far: the provider-neutral model, the background sync, the reading routes (`/v1/hub/...`) and the owner switch `mail_calendar_dashboard` (off). No real provider
+is registered yet, so turning the switch on today would show two empty pages. When this is deployed:
+
+1. **Migration 0048** only adds tables (`hub_*`). The previous release ignores them.
+2. **Install and enable the sync timer**: `agentai-hub-sync.service` and `agentai-hub-sync.timer` from `platform/deploy/` (it runs `manage.py hub_sync` every minute and is
+   idle while the switch is off). Then record the fact `hub_sync_timer` in the switch facts file.
+3. **Privacy policy before the switch**: the policy must describe the copy Lumina keeps (mail headers and previews for 90 days, opened messages for 90 days after they were
+   last opened, events from one month back to twelve months ahead) and where it comes from. The retention table already holds these rows (`mail_headers`, `mail_bodies`,
+   `calendar_events`) and the sweeper enforces them. The public page and `privacy/facts.json` are **not** changed yet.
+4. **Google, the first provider** (built: `agentai_platform/google_hub.py`, read only):
+   - In the Google Cloud console, on the sign-in client whose id is in the local `.env`: add the authorized redirect address **`https://getlumina.pro/v1/hub/link/callback`**
+     (exactly; it is `AGENTAI_PUBLIC_ORIGIN` plus `/v1/hub/link/callback`), enable the **Gmail API** and the **Google Calendar API**, and while the app is in testing add each
+     address that will connect as a test user. The scopes asked for are `gmail.readonly` and `calendar.readonly` (plus `openid email`); Gmail read access is a restricted
+     scope, so a public launch needs Google's verification.
+   - On the server, add `AGENTAI_GOOGLE_CLIENT_ID` and `AGENTAI_GOOGLE_CLIENT_SECRET` to `/etc/agentai-platform/accounts.env` (root-only) and restart the app, the tool relay
+     and nothing else. Without both, Google is simply not offered.
+   - The connector refresh timer (already installed) renews Google access tokens; it now also runs while only the dashboard switch is on.
+   - Proven against the real Google APIs on 2026-11-16 with the owner's own account, read only, from a one-off local check: sign-in and code exchange, the picker's list
+     (labels and calendars), the first fill of mail, opening a message, Gmail history, mail limited to one label, older-mail search, the calendar list, a calendar's window with
+     its sync token, changes since that token, and token renewal. **Not exercised by real data:** the conversion of real calendar events (the account's primary calendar had none
+     in the window) and a message with attachments or markup. Check those with an account that has them before customers connect.
+   - The Google project must have the **Google Calendar API** enabled (`calendar-json.googleapis.com`; not the Calendar MCP service) and the **Gmail API**.
+   - The consent screen shows the Google project's app name. These credentials belong to the owner's ManagerAI project, so customers would see "ManagerAI": use a client of a
+     Lumina project, or rename the app on the consent screen, before launch.
+5. **Other providers** need their own sign-in app and that service's review before any customer can connect one.

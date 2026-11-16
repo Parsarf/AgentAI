@@ -85,7 +85,24 @@ def connector_registry(db=None):
     `synthetic_connector` switch, asked per call. Real connectors register here as they are written (platform/CONNECTORS.md)."""
     from agentai_platform import synthetic_connector
     from agentai_platform.connector_kit import Registry
-    return synthetic_connector.register(Registry(), db or store())
+    registry = synthetic_connector.register(Registry(), db or store())
+    for provider in sign_in_providers().values():           # mail and calendar providers whose sign-in app is configured on this host
+        provider['register'](registry)
+    return registry
+
+
+def sign_in_providers():
+    """The providers a customer can sign in to from the dashboard, by name: how to register each, where to send the customer, how to finish, how to renew its token.
+    A provider is here only when its sign-in app is configured. This is the one place in the web layer that names a provider."""
+    out = {}
+    if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
+        from agentai_platform import google_hub
+        cid, secret = settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET
+        out[google_hub.PROVIDER] = {'label': google_hub.DECLARATION.label, 'register': google_hub.register,
+                                    'address': lambda redirect, state, challenge: google_hub.authorize_url(cid, redirect, state, challenge),
+                                    'exchange': google_hub.exchanger(cid, secret), 'refresh': google_hub.refresher(cid, secret),
+                                    'needs_any': (google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE)}
+    return out
 
 
 def connector_custody(db=None):
@@ -130,11 +147,38 @@ def _connector_limiter():
 
 def connectors_on(account_id):
     """May this account use connected services built on the contract? The owner's linking switch, or the test-only switch for the synthetic service."""
-    return switch_on('connectors_linking') or switch_on('synthetic_connector')
+    return switch_on('connectors_linking') or switch_on('synthetic_connector') or switch_on('mail_calendar_dashboard')      # the dashboard's accounts are connections too: their picker and their grants
 
 
 def writes_on(account_id):
     return switch_on('connector_writes')
+
+
+def hub_on(account_id):
+    """Is the mail and calendar dashboard shown? The owner's switch."""
+    return switch_on('mail_calendar_dashboard')
+
+
+def hub_services(db=None):
+    """-> (connectors, client, sync, hub): the dashboard's sync engine and its reading side, sharing one view of the connections."""
+    from agentai_platform.hub import HubService
+    from agentai_platform.hub_sync import HubSync
+    db = db or store()
+    connectors = connector_service(db)
+    client = connector_client(db, connectors)
+    sync = HubSync(db, connectors, client)
+    return connectors, client, sync, HubService(db, connectors, client, sync)
+
+
+def hub_service(db=None):
+    return hub_services(db)[3]
+
+
+def hub_tools(db=None):
+    """The assistant's mail and calendar tools: the same copy the dashboard shows, read only."""
+    from agentai_platform.hub_tools import HubTools
+    db = db or store()
+    return HubTools(db, hub_service(db), enabled=hub_on)
 
 
 def action_services(db=None):
@@ -172,7 +216,7 @@ def connector_refresher(db=None):
         mcp = mcp_service(db)
     except Exception:
         mcp = None                                         # remote MCP is not configured on this host: there is nothing of it to refresh
-    return ConnectorRefresher(db, connector_service(db), {'synthetic': SyntheticBench.refresher}, mcp=mcp)
+    return ConnectorRefresher(db, connector_service(db), {'synthetic': SyntheticBench.refresher, **{name: p['refresh'] for name, p in sign_in_providers().items()}}, mcp=mcp)
 
 
 def organization_service(db=None):
@@ -205,6 +249,9 @@ def access_overview(db=None):
         if connectors_on(account):
             from agentai_platform.connector_tools import ConnectorTools
             names += sorted(ConnectorTools.names)
+        if hub_on(account):
+            from agentai_platform.hub_tools import HubTools
+            names += sorted(HubTools.names)
         return names
 
     def model_key(account):
@@ -427,7 +474,13 @@ def storage_ready():
 
 
 def uploads_on():
-    return storage_ready() and settings.UPLOADS_ENABLED
+    """May customers upload? The host has storage and uploads enabled in its configuration, and the owner's switch is on."""
+    return storage_ready() and settings.UPLOADS_ENABLED and switch_on('customer_uploads')
+
+
+def catalogue(db=None):
+    from agentai_platform.catalogue import Catalogue
+    return Catalogue(db or store())
 
 
 def file_service(db=None):

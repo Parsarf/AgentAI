@@ -323,6 +323,65 @@ class ConnectorService:
                                     'connector.link.complete', 'completed')
             return connection_id
 
+    # ---------- linking a connector built on the contract (its provider module builds the sign-in address and does the exchange) ----------
+
+    def start_link(self, principal: Principal, service: str, redirect_uri: str) -> dict:
+        """Begin signing in to a declared provider. -> {'state', 'challenge', 'expires_in'}: the provider's module puts these in its sign-in address. The state is single
+        use, bound to this person, and expires; the PKCE verifier waits in custody, never in a row a view reads."""
+        from .security import require
+        if self.declared(service) is None:
+            raise ConnectorNotConfigured('connector not configured')
+        verifier, state = secrets.token_urlsafe(64), secrets.token_urlsafe(32)
+        now = int(self.clock())
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            require(principal, 'connection.create', con=con)
+            from . import organizations
+            if not organizations.connector_allowed(con, principal.account_id, service):
+                raise ConnectorError('your organization does not allow this service')
+            verifier_ref = custody_put(self.custody, con, principal.account_id, 'pkce', verifier.encode())
+            con.execute('DELETE FROM connector_link_states WHERE expires_epoch<?', (now,))
+            con.execute("""INSERT INTO connector_link_states(account_id,state_hash,actor_id,service,redirect_uri,verifier_ref,selected_resources,expires_epoch)
+                VALUES (?,?,?,?,?,?,'[]',?)""", (principal.account_id, hashlib.sha256(state.encode()).hexdigest(), principal.actor_id, service, redirect_uri, verifier_ref,
+                                                 now + LINK_TTL_SECONDS))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, service, 'connector.link.begin', 'completed')
+        return {'state': state, 'challenge': _b64(hashlib.sha256(verifier.encode()).digest()), 'expires_in': LINK_TTL_SECONDS}
+
+    def link_service(self, principal: Principal, state: str) -> str | None:
+        """Which provider a sign-in that is still open belongs to (None when there is none for this person): the callback asks before it finishes, so the right exchange is used."""
+        with self.store.connect() as con:
+            self.store._authorize(con, principal)
+            row = con.execute('SELECT service FROM connector_link_states WHERE state_hash=? AND account_id=? AND actor_id=? AND used_epoch IS NULL AND expires_epoch>=?',
+                              (hashlib.sha256(str(state).encode()).hexdigest(), principal.account_id, principal.actor_id, int(self.clock()))).fetchone()
+        return row['service'] if row else None
+
+    def finish_link(self, principal: Principal, state: str, code: str, redirect_uri: str, exchange: Callable[[str, str, str], Exchange], *, needs_any=()) -> str:
+        """Finish signing in: the state is burnt before the provider is called (a failed or replayed callback can never be used again), the code is exchanged, and the
+        connection is recorded with NO grants. Refused when the identity is unverified, when a scope outside the declaration came back, or when none of `needs_any` (the
+        scopes that make the connection useful) was granted. -> the connection id."""
+        digest, now = hashlib.sha256(str(state).encode()).hexdigest(), int(self.clock())
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            if con.execute("""UPDATE connector_link_states SET used_epoch=? WHERE state_hash=? AND account_id=? AND actor_id=? AND used_epoch IS NULL AND expires_epoch>=?""",
+                           (now, digest, principal.account_id, principal.actor_id, now)).rowcount != 1:
+                raise ConnectorError('link failed')
+            row = dict(con.execute('SELECT service,redirect_uri,verifier_ref FROM connector_link_states WHERE state_hash=?', (digest,)).fetchone())
+        verifier = self.custody.get(principal.account_id, row['verifier_ref']).decode()
+        self.custody.delete(principal.account_id, row['verifier_ref'])
+        declared = self.declared(row['service'])
+        if redirect_uri != row['redirect_uri'] or declared is None:
+            raise ConnectorError('link failed')
+        try:
+            result = exchange(code, verifier, redirect_uri)
+        except Exception:
+            raise ConnectorError('link failed') from None
+        granted = set(result.granted_scopes)
+        if not result.identity or len(result.identity) > 320 or not granted <= set(declared.scopes) or (needs_any and not granted & set(needs_any)):
+            raise ConnectorError('the account could not be verified, or it gave none of the access that was asked for')
+        expires = result.tokens.get('expires_in') if isinstance(result.tokens, dict) else None
+        return self.connect_declared(principal, row['service'], result.identity, tokens=result.tokens, scopes=sorted(granted),
+                                     expires_in=int(expires) if isinstance(expires, (int, float)) and expires > 0 else None)
+
     # ---------- read gating ----------
 
     def authorize_read(self, principal: Principal, service: str, resource: str | None = None, *, resource_kind: str | None = None) -> ReadGrant:
@@ -444,8 +503,12 @@ class ConnectorService:
             if not organizations.connector_allowed(con, principal.account_id, service):
                 raise ConnectorError('your organization does not allow this service')
             secret_ref = custody_put(self.custody, con, principal.account_id, service, json.dumps(tokens).encode()) if tokens else None
-            for old in con.execute("SELECT id,secret_ref FROM connector_connections WHERE account_id=? AND service=? AND state!='revoked'", (principal.account_id, service)).fetchall():
-                self._revoke(con, principal, old['id'], old['secret_ref'])
+            # A provider with several accounts per person (declared `several_accounts`, the dashboard's mail and calendar providers: #D2) keeps its other accounts:
+            # connecting again replaces only the connection to the same identity. Every other connector has one connection, replaced by a new one.
+            several = bool(getattr(declared, 'several_accounts', False))
+            for old in con.execute("SELECT id,secret_ref,identity_label FROM connector_connections WHERE account_id=? AND service=? AND state!='revoked'", (principal.account_id, service)).fetchall():
+                if not several or old['identity_label'].lower() == identity.lower():
+                    self._revoke(con, principal, old['id'], old['secret_ref'])
             connection_id = uuid.uuid4().hex
             con.execute('''INSERT INTO connector_connections(account_id,id,service,state,identity_label,granted_scopes,selected_resources,secret_ref,created_epoch,updated_epoch,
                 expires_epoch,refresh_after_epoch,mcp_connection_id) VALUES (?,?,?,'connected',?,?,'[]',?,?,?,?,?,?)''',
@@ -560,6 +623,10 @@ class ConnectorService:
         also('handoffs_ended', "UPDATE handoffs SET state='expired',answered_epoch=? WHERE account_id=? AND state='waiting' AND action_id IN (SELECT id FROM actions WHERE account_id=? AND connection_id=?)",
              (now, account, account, connection_id))
         also('schedules_paused', "UPDATE schedules SET state='paused',pause_reason='Its connection was removed.' WHERE account_id=? AND needs_connection_id=? AND state='active'", (account, connection_id))
+        # The dashboard's copy of this connection's mail and calendars goes with it (#D2): headers, opened bodies, events, calendars and the sync state.
+        for name, table in (('mail_messages_removed', 'hub_messages'), ('mail_threads_removed', 'hub_threads'), ('events_removed', 'hub_events'),
+                            ('calendars_removed', 'hub_calendars'), ('sync_removed', 'hub_sync')):
+            also(name, f'DELETE FROM {table} WHERE account_id=? AND connection_id=?', (account, connection_id))
         try:
             con.execute('INSERT INTO connector_revocations(account_id,id,connection_id,source,stopped_json,created_epoch) VALUES (?,?,?,?,?,?)',
                         (account, uuid.uuid4().hex, connection_id, source, json.dumps(stopped, sort_keys=True), now))

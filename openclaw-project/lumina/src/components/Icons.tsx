@@ -9,6 +9,7 @@ export const Tasks = make(<><path d="M9 6h12M9 12h12M9 18h12" /><circle cx="4.5"
 export const OwnBrowser = make(<><rect x="3" y="4.5" width="18" height="14" rx="3" /><path d="M3 9h18" /><path d="M13 12.2l5.6 2.2-2.4 1-1 2.4z" fill="currentColor" /></>);
 export const Browser = make(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" /></>);
 export const Files = make(<><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" /></>);
+export const Mail = make(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3.5 7l8.5 6.5L20.5 7" /></>);
 export const Calendar = make(<><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>);
 export const Bolt = make(<path d="M13 2L5 14h6l-1 8 8-12h-6z" />);
 export const Cube = make(<><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></>);
