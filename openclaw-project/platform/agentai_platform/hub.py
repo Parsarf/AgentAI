@@ -105,6 +105,30 @@ class HubService:
         self.sync.reconcile(principal.account_id)
         return {'requested': self.sync.request(principal.account_id, connection_id)}
 
+    # -- what the customer has open, for a message sent from the dashboard ---------------------------------------------------------------------------
+    def looking_at(self, principal, raw) -> dict | None:
+        """Check what the page says the customer has open, and reduce it to ids this account really has. Anything else is dropped: the page is not trusted to name a thread or
+        an event, and nothing but ids, a mailbox word, two days and a short search text passes. -> the cleaned selection, or None."""
+        if not isinstance(raw, dict):
+            return None
+        kind, text = raw.get('kind'), lambda key, most: raw[key] if isinstance(raw.get(key), str) and 0 < len(raw[key]) <= most else None
+        with self.store.connect() as con:
+            self._enter(con, principal)
+            ids = self._connections(con, principal)
+            if kind == 'thread' and text('connection', 64) in ids and text('thread', 300) and con.execute(
+                    'SELECT 1 FROM hub_threads WHERE account_id=? AND connection_id=? AND id=?', (principal.account_id, raw['connection'], raw['thread'])).fetchone():
+                return {'kind': 'thread', 'connection': raw['connection'], 'thread': raw['thread']}
+            if kind == 'event' and text('connection', 64) in ids and text('calendar', 300) and text('event', 400) and con.execute(
+                    'SELECT 1 FROM hub_events WHERE account_id=? AND connection_id=? AND calendar_id=? AND id=?',
+                    (principal.account_id, raw['connection'], raw['calendar'], raw['event'])).fetchone():
+                return {'kind': 'event', 'connection': raw['connection'], 'calendar': raw['calendar'], 'event': raw['event']}
+        day = lambda key: text(key, 10) if text(key, 10) and len(raw[key]) == 10 and raw[key][4] == raw[key][7] == '-' and raw[key].replace('-', '').isdigit() else None
+        if kind == 'days' and day('start') and day('end') and raw['start'] <= raw['end']:
+            return {'kind': 'days', 'start': raw['start'], 'end': raw['end']}
+        if kind == 'mail':
+            return {'kind': 'mail', **({'label': raw['label']} if raw.get('label') in LIST_LABELS else {}), **({'query': raw['query']} if text('query', 200) else {})}
+        return None
+
     # -- settings ---------------------------------------------------------------------------------------------------------------------------------------
     def settings(self, principal) -> dict:
         with self.store.connect() as con:

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import * as I from '../components/Icons';
 import Accounts from '../components/hub/Accounts';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
+import Dock, { type Looking, type Suggestion } from '../components/hub/Dock';
 import MessageBody from '../components/hub/MessageBody';
 import { browserZone, failed, fileSize, fullTime, hub, LABEL_WORDS, LIST_ORDER, listTime, people, personName, problemWords, threadKey, validZone,
   type HubAccount, type Message, type Overview, type Thread } from '../lib/hub';
@@ -137,8 +138,13 @@ export default function Inbox() {
   const filling = accounts.filter(a => a.mail && !a.mail.filled && a.state === 'working');
   const searchable = query ? accounts.filter(a => shownAccounts.includes(a.id) && a.capabilities.mail_search) : [];
   const title = providerLabel ? providerLabel.name : LABEL_WORDS[label] ?? label;
+  const looking: Looking = opened ? { kind: 'thread', connection: opened.thread.connection_id, thread: opened.thread.id } : { kind: 'mail', label, ...(query ? { query } : {}) };
+  const lookingWords = opened ? `the thread “${opened.thread.subject || '(no subject)'}”` : `${title}${query ? `, searching “${query}”` : ''}`;
+  const suggestions: Suggestion[] = opened ? [{ label: 'Summarize', message: 'Summarize this thread.' }, { label: 'What do they need from me?', message: 'What do they need from me in this thread, and by when?' },
+    { label: 'Draft a reply', message: 'Draft a reply to this thread for me to review. Do not send anything.' }]
+    : [{ label: 'What needs my attention?', message: 'Which threads in my mail need my attention most? List them with why.' }, { label: 'Unread, in short', message: 'Summarize my unread mail in a few lines.' }];
   return (
-    <div className={`hub hub-inbox${selected ? ' has-open' : ''}`}>
+    <div className={`hub hub-inbox has-dock${selected ? ' has-open' : ''}`}>
       <aside className="hub-side panel" aria-label="Mail filters">
         <Accounts accounts={accounts} part="mail" chosen={new Set(shownAccounts)} onToggle={toggle} counts={view?.counts.by_account} now={now} providers={view?.providers} onChoose={a => setChoosing(a.id)} />
         <nav className="hub-labels" aria-label="Mailboxes">
@@ -221,5 +227,6 @@ export default function Inbox() {
                 initiallyOpen={i === opened.messages.length - 1} onSender={allowSender} />)}</div>
             </>)}
       </section>
+      <Dock looking={looking} lookingWords={lookingWords} suggestions={suggestions} />
     </div>);
 }

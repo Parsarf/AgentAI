@@ -70,7 +70,7 @@ ROUTES = {
     'v1/account/connections/disconnect': 'connection.remove', 'v1/account/drafts': 'connection.read',
     'v1/account/mcp': {R: 'connection.read', W: 'connection.create'}, 'v1/account/mcp/callback': 'connection.create',
     'v1/account/mcp/<str:connection_id>/<str:action>': 'connection.create', 'v1/account/mcp-approvals/<str:call_id>': 'action.approve',
-    'v1/hub': 'connection.read', 'v1/hub/link': 'connection.create', 'v1/hub/link/callback': 'connection.create', 'v1/hub/mail/threads': 'connection.read', 'v1/hub/mail/labels': 'connection.read', 'v1/hub/mail/thread': 'connection.read',
+    'v1/hub': 'connection.read', 'v1/hub/ask': 'task.run', 'v1/hub/link': 'connection.create', 'v1/hub/link/callback': 'connection.create', 'v1/hub/mail/threads': 'connection.read', 'v1/hub/mail/labels': 'connection.read', 'v1/hub/mail/thread': 'connection.read',
     'v1/hub/mail/message': 'connection.read', 'v1/hub/mail/search-older': 'connection.read', 'v1/hub/events': 'connection.read', 'v1/hub/event': 'connection.read',
     'v1/hub/events/search': 'connection.read', 'v1/hub/refresh': 'connection.use', 'v1/hub/settings': 'connection.use', 'v1/hub/calendars': 'connection.use',
     'v1/controls': 'access.read',

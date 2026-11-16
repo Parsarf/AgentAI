@@ -7803,6 +7803,37 @@
     },
     "parameters": []
    }
+  },
+  "/v1/hub/ask": {
+   "post": {
+    "summary": "A message to the assistant from the Inbox or the Calendar: {\"conversation_id\",\"message\",\"key\",\"looking_at\"?}. An ordinary chat message; what is open goes with it as ids the server checked",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
   }
  },
  "components": {

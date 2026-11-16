@@ -58,4 +58,14 @@ is registered yet, so turning the switch on today would show two empty pages. Wh
 3. **Privacy policy before the switch**: the policy must describe the copy Lumina keeps (mail headers and previews for 90 days, opened messages for 90 days after they were
    last opened, events from one month back to twelve months ahead) and where it comes from. The retention table already holds these rows (`mail_headers`, `mail_bodies`,
    `calendar_events`) and the sweeper enforces them. The public page and `privacy/facts.json` are **not** changed yet.
-4. **A provider**: the sign-in app for each mail and calendar service (an owner item) and that service's review, before any customer can connect one.
+4. **Google, the first provider** (built: `agentai_platform/google_hub.py`, read only):
+   - In the Google Cloud console, on the sign-in client whose id is in the local `.env`: add the authorized redirect address **`https://getlumina.pro/v1/hub/link/callback`**
+     (exactly; it is `AGENTAI_PUBLIC_ORIGIN` plus `/v1/hub/link/callback`), enable the **Gmail API** and the **Google Calendar API**, and while the app is in testing add each
+     address that will connect as a test user. The scopes asked for are `gmail.readonly` and `calendar.readonly` (plus `openid email`); Gmail read access is a restricted
+     scope, so a public launch needs Google's verification.
+   - On the server, add `AGENTAI_GOOGLE_CLIENT_ID` and `AGENTAI_GOOGLE_CLIENT_SECRET` to `/etc/agentai-platform/accounts.env` (root-only) and restart the app, the tool relay
+     and nothing else. Without both, Google is simply not offered.
+   - The connector refresh timer (already installed) renews Google access tokens; it now also runs while only the dashboard switch is on.
+   - Not yet proven against the real Google APIs: the tests use a fake that answers in the shapes of Google's documentation. Prove it with one test account before any
+     customer connects (the one-off read-only check used during the build needs `http://127.0.0.1:8765/callback` as a second redirect address).
+5. **Other providers** need their own sign-in app and that service's review before any customer can connect one.

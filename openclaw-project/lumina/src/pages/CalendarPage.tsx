@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import * as I from '../components/Icons';
 import Accounts from '../components/hub/Accounts';
+import Dock, { type Looking, type Suggestion } from '../components/hub/Dock';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
   validZone, zonedEpoch, type HubAccount, type HubCalendar, type HubEvent, type Overview } from '../lib/hub';
@@ -159,6 +160,12 @@ export default function CalendarPage() {
   const heading = view === 'day' ? dayTitle(day) : view === 'month' ? dayTitle(day, 'month')
     : rangeTitle(span.from, span.to);
   const needing = accounts.filter(a => a.state === 'needs_you');
+  const looking: Looking = detail ? { kind: 'event', connection: detail.connection_id, calendar: detail.calendar_id, event: detail.id } : { kind: 'days', start: span.from, end: span.to };
+  const lookingWords = detail ? `the event “${titleOf(detail)}”` : view === 'day' ? dayTitle(day) : rangeTitle(span.from, span.to);
+  const suggestions: Suggestion[] = detail ? [{ label: 'Prepare me for this', message: 'Prepare me for this meeting: who is in it, what we last discussed, and what I should have ready.' },
+    { label: 'Who are these people?', message: 'Who are the people in this event, from my mail and calendar?' }]
+    : [{ label: 'What matters here?', message: 'What matters most in my calendar for these days? Point out conflicts and anything I should prepare for.' },
+      { label: 'When am I free?', message: 'When am I free in these days? List the open stretches of an hour or more during the working day.' }];
   const choosingAccount = (info?.accounts ?? []).find(a => a.id === choosing);
   const filling = calendars.filter(c => !c.filled && shownAccounts.includes(c.connection_id));
   const list = (items: HubEvent[], days: string[]) => days.map(d => ({ day: d, items: items.filter(e => eventDays(e, zone, d, d).length).sort((a, b) => Number(b.all_day) - Number(a.all_day) || a.start_epoch - b.start_epoch) })).filter(g => g.items.length);
@@ -170,7 +177,7 @@ export default function CalendarPage() {
     </section>));
 
   return (
-    <div className={`hub hub-calendar${detail ? ' has-open' : ''}`}>
+    <div className={`hub hub-calendar has-dock${detail ? ' has-open' : ''}`}>
       <aside className="hub-side panel" aria-label="Calendars">
         <Accounts accounts={accounts} part="calendar" chosen={new Set(shownAccounts)} onToggle={toggleAccount} now={now} providers={info?.providers} onChoose={a => setChoosing(a.id)} />
         {accounts.filter(a => shownAccounts.includes(a.id)).map(a => { const mine = calendars.filter(c => c.connection_id === a.id); return !mine.length ? null : (
@@ -249,5 +256,6 @@ export default function CalendarPage() {
       </section>
 
       {detail && <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} onClose={close} />}
+      <Dock looking={looking} lookingWords={lookingWords} suggestions={suggestions} />
     </div>);
 }

@@ -4,6 +4,7 @@
     POST /v1/hub/refresh                  {"connection_id"?}  make the sync of all accounts, or one, due now
     POST /v1/hub/settings                 {"timezone"?, "allow_images_from"?, "block_images_from"?}
     POST /v1/hub/link                     {"provider"}  begin signing in to a mail and calendar provider; answers with the address to send the customer to
+    POST /v1/hub/ask                      {"conversation_id","message","key","looking_at"?}  a message to the assistant from the dashboard, with what is open (ids only)
     GET  /v1/hub/link/callback            where the provider sends the customer back; finishes the sign-in and returns them to the Inbox to choose what may be read
     GET  /v1/hub/mail/threads             ?label=inbox&accounts=a,b&provider_label=&unread=1&starred=1&attachments=1&person=&after=&before=&q=&cursor=&limit=
     GET  /v1/hub/mail/labels              the providers' own labels or folders, per account
@@ -128,6 +129,33 @@ def link_callback(request):
     from urllib.parse import quote
     audit(request.user.pk, request.account_id, connection, 'hub.link', 'completed', request.request_id)
     return HttpResponseRedirect('/app/inbox?connected=' + quote(connection, safe=''))
+
+
+@endpoint(['POST'], ['conversation_id', 'message', 'key', 'looking_at'], structured=True)
+def ask(request):
+    """A message to the assistant, sent from the Inbox or the Calendar. It is an ordinary message in an ordinary chat (same queue, admission and limits as Chat); what the
+    customer has open goes with it as ids the server checked. The assistant reads the content itself with its mail and calendar tools."""
+    principal, stop = _enter(request, 'hub.ask', 120)
+    if stop:
+        return stop
+    from agentai_platform.budget import BudgetDenied
+    from agentai_platform.chat import denial_category
+    from agentai_platform.lifecycle.types import Conflict
+    from .chat import service as chat_service
+    given = request.input
+    message, conversation, key = given.get('message'), given.get('conversation_id'), given.get('key')
+    if not all(isinstance(v, str) and v for v in (message, conversation, key)) or len(message) > 16000:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    try:
+        looking = wiring.hub_service().looking_at(principal, given.get('looking_at'))
+        result = chat_service().send(principal, conversation_id=conversation, message=message, key=key, mode='text', ui='basic', dashboard_context=looking)
+        return JsonResponse({'request': result, 'looking_at': looking}, status=202)
+    except Conflict:
+        return JsonResponse({'error': 'request_conflict'}, status=409)
+    except BudgetDenied as error:
+        return JsonResponse({'error': 'budget_denied', 'category': denial_category(error)}, status=402)
+    except ValueError:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
 
 
 @endpoint(['POST'], ['connection_id'], structured=True)
