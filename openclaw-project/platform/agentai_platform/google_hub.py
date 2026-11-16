@@ -20,6 +20,7 @@ import http.client
 import json
 import socket
 import ssl
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 import urllib.error
@@ -42,7 +43,10 @@ CALENDAR = 'https://www.googleapis.com/calendar/v3'
 HOSTS = ('gmail.googleapis.com', 'www.googleapis.com', 'oauth2.googleapis.com')
 MAX_ANSWER = 12_000_000
 MAIL_PAGE = 100                        # messages listed per page; their headers are then read several at a time
-PARALLEL = 8                           # header reads at once: well inside Google's per-user rate (a read costs 5 units of 250 a second)
+PARALLEL = 8                           # header reads in flight at once (latency hides behind them); how many a second is set by READS_PER_SECOND
+READS_PER_SECOND = 40                  # Gmail allows 250 quota units a second per user and a header read costs 5: 50 a second. Eight in flight at this host's latency made
+                                       # well over 100 a second; Google answered "rate limit", and the first fill stopped after 300 messages and backed off for up to an hour
+                                       # (production, 2026-11-16).
 EVENT_PAGE = 250
 
 DECLARATION = Declaration(
@@ -250,10 +254,28 @@ def _rfc3339(epoch) -> str:
     return datetime.fromtimestamp(int(epoch), timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
+class Pace:
+    """At most `rate` starts a second, shared by every thread (and every adapter) that uses it."""
+    def __init__(self, rate, *, clock=time.monotonic, sleep=time.sleep):
+        self.gap, self.clock, self.sleep, self.next, self.lock = 1.0 / rate, clock, sleep, 0.0, threading.Lock()
+
+    def wait(self):
+        with self.lock:
+            now = self.clock()
+            at = max(now, self.next)
+            self.next = at + self.gap
+        if at > now:
+            self.sleep(at - now)
+
+
+_READS = Pace(READS_PER_SECOND)
+
+
 # -- the adapter -------------------------------------------------------------------------------------------------------------------------------------------
 class GoogleAdapter:
-    def __init__(self, http=default_http):
+    def __init__(self, http=default_http, pace=None):
         self.http = http
+        self.pace = pace if pace is not None else (_READS if http is default_http else None)      # the real network is paced; a test's fake is not
 
     def _get(self, credential, url, query=None):
         token = (credential or {}).get('access_token')
@@ -332,6 +354,8 @@ class GoogleAdapter:
     def _headers_of_all(self, credential, ids, names):
         """The headers of several messages, read a few at a time. -> (messages, the ids that are no longer there). The first real failure is raised."""
         def one(mid):
+            if self.pace is not None:
+                self.pace.wait()
             try:
                 return mid, self._headers_of(credential, mid, names), None
             except ProviderError as error:

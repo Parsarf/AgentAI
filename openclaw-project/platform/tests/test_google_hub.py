@@ -405,3 +405,22 @@ class Connected(HubBase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ReadsArePaced(unittest.TestCase):
+    """Gmail allows about 50 header reads a second per user. Unpaced, eight in flight made over 100 a second and Google refused the first fill (production, 2026-11-16)."""
+    def test_reads_start_no_faster_than_the_rate(self):
+        from agentai_platform.google_hub import Pace
+        waits = []
+        pace = Pace(40, clock=lambda: 0.0, sleep=waits.append)          # time stands still: each wait says how far after the first read this one may start
+        for _ in range(41):
+            pace.wait()
+        self.assertEqual(len(waits), 40)                                  # the first read starts at once
+        self.assertAlmostEqual(waits[-1], 1.0, places=6)                  # the 41st a full second after the first: 40 a second
+
+    def test_the_real_network_is_paced_and_a_test_fake_is_not(self):
+        from agentai_platform import google_hub
+        self.assertIs(google_hub.GoogleAdapter().pace, google_hub._READS)
+        self.assertIsNone(google_hub.GoogleAdapter(lambda *a, **k: (200, {}, b'{}')).pace)
+        self.assertLessEqual(google_hub.READS_PER_SECOND * 5, 250)      # a header read costs 5 of Gmail's 250 units a second per user
+
