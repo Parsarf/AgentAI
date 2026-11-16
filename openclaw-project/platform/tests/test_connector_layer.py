@@ -349,3 +349,24 @@ class FreshnessChecks(ConnectorBase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FaultsAreLogged(unittest.TestCase):
+    """A provider call that fails says why in the server's log: the provider's status and short code, or the type of an adapter's own error. Never its text (it could carry
+    what was read). Added after a first mail fill on production stopped again and again with nothing to say why (2026-11-16)."""
+    def test_a_failed_call_says_why_without_its_text(self):
+        declaration = Declaration(provider='boards', label='Boards', auth='mcp', resource_kinds=('board',), record_kinds=('card',), read_operations=('list',), write_kinds=(),
+                                  implementation='mcp', reason='The provider runs an official remote MCP server that offers what the contract needs.')
+        client = connector_kit.ConnectorClient(None, None, None, sleep=lambda s: None)
+        def refused():
+            raise connector_kit.ProviderError(429, 'rateLimitExceeded')
+        def broken():
+            return {}['Re: private subject line']
+        with self.assertLogs('agentai_platform.connector_kit', 'WARNING') as seen:
+            with self.assertRaises(connector_kit.ConnectorFault):
+                client.call('a', declaration, refused)
+            with self.assertRaises(connector_kit.ConnectorFault):
+                client.call('b', declaration, broken)
+        self.assertIn('kind=retry_later status=429 code=rateLimitExceeded', seen.output[0])
+        self.assertIn('type=KeyError', seen.output[1])
+        self.assertNotIn('private', ' '.join(seen.output))

@@ -17,6 +17,7 @@ Stdlib only. Provider text never leaves this module in an error: a fault carries
 from __future__ import annotations
 import hashlib
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 
@@ -47,6 +48,9 @@ class ConnectorFault(Exception):
     @property
     def words(self):
         return FAULT_WORDS[self.kind]
+
+
+log = logging.getLogger(__name__)
 
 
 class ProviderError(Exception):
@@ -396,13 +400,17 @@ class ConnectorClient:
             raise
         except ProviderError as error:
             fault = declaration.fault(error)
+            # Why a call failed, for whoever runs the server: the provider's status and its own short error code (never its text, never what was asked).
+            log.warning('connector_fault provider=%s kind=%s status=%s code=%s', declaration.provider, fault.kind, error.status, error.code)
             if fault.kind == 'retry_later':
                 self.limiter.note(account, route, 429, {'Retry-After': error.retry_after} if error.retry_after is not None else None)
             if fault.kind == 'needs_customer' and where:
                 self.connectors.needs_customer(account, where[0], 'reconnect')
             self._note_error(account, where, fault)
             raise fault from None
-        except Exception:
+        except Exception as error:
+            # An adapter that broke (not the provider saying no): its type, so it can be found; its text could carry what was read.
+            log.warning('connector_error provider=%s type=%s', declaration.provider, type(error).__name__)
             fault = ConnectorFault('retry_later')
             self._note_error(account, where, fault)
             raise fault from None
