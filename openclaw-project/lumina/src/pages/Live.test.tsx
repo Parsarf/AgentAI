@@ -28,7 +28,7 @@ describe('where /live goes', () => {
     expect(await screen.findByText('Compare two laptops')).toBeTruthy();                     // the open task's workspace
     cleanup(); work.tasks = [summary({ id: 'done', phase: 'ended', outcome: 'completed' })];
     mount('/live');
-    expect((await screen.findByTestId('where')).textContent).toBe('/tasks');
+    expect((await screen.findByTestId('where')).textContent).toBe('/activity');      // Activity's address since the UI remodel (/tasks redirects there)
   });
   it('says so when the task does not exist', async () => { mount('/live/nope'); expect(await screen.findByRole('alert')).toBeTruthy(); });
 });

@@ -127,7 +127,7 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
            needs=(('uploads_host_ready', 'File storage is set up on the server and uploads are enabled in its configuration (AGENTAI_UPLOADS_ENABLED=1).'),)),
     Switch('mail_calendar_dashboard', 'Show the Mail and Calendar pages: one inbox and one calendar for every account a customer connects',
            'Customers get an Inbox page and a Calendar page showing the mail and calendars of the accounts they connected, with the assistant beside them. Read-only: nothing is sent, changed or marked as read in their mail or calendar.',
-           'Lumina keeps a copy on this server of what the customer chose: who, subject and a short preview of mail from the last 90 days, the full text of messages that were opened, and calendar events from one month back to twelve months ahead. Removing an account deletes its copy.',
+           'Lumina keeps a copy on this server of what the customer chose: who, subject and a short preview of ALL the mail in what they chose, the full text of messages that were opened, and every past calendar event and up to two years ahead. Removing an account deletes its copy.',
            'No model cost by itself. Disk space for the copy, and calls to the mail and calendar services in the background.', 'high',
            confirmations=(('copy_understood', 'I understand Lumina will keep a copy of customers\' mail headers, opened messages and calendar events on this server.'),
                           ('policy_published', 'The privacy policy that describes this copy, where it comes from and how long it is kept is published.')),

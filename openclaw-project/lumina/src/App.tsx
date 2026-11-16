@@ -4,19 +4,23 @@ import Shell from './components/Shell';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
 import History from './pages/History';
-import Tasks from './pages/Tasks';
+import Activity from './pages/Activity';
 import Login from './pages/Login';
 import Live from './pages/Live';
 import Inbox from './pages/Inbox';
 import CalendarPage from './pages/CalendarPage';
-import { Automations, Integrations, Settings } from './pages/Info';
+import { Settings } from './pages/Settings';
 import Files from './pages/Files';
 import { useData } from './state/data';
 
+
 /** Old /browser/<task> links (saved or sent earlier) land on the same task in Live view. */
+/** Old /tasks/<id> links (saved or sent earlier) open the same item in Activity. */
+function OldTaskLink() { const { id } = useParams(); return <Navigate to={`/activity/${id ?? ''}`} replace />; }
 function OldBrowserLink() { const { id } = useParams(); return <Navigate to={`/live/${id ?? ''}`} replace />; }
 
 const Gallery = lazy(() => import('./gen/Gallery'));
+const FrameStress = lazy(() => import('./gen/FrameStress'));
 export default function App() {
   const { status } = useData();
   if (status === 'loading') return <div className="login"><p className="muted" role="status">Loading…</p></div>;
@@ -27,9 +31,9 @@ export default function App() {
       <Routes>
         <Route element={<Shell />}>
           <Route index element={<Chat />} /><Route path="home" element={<Home />} /><Route path="history" element={<History />} /><Route path="chat" element={<Chat />} /><Route path="chat/:id" element={<Chat />} />
-          <Route path="gen-gallery" element={<Suspense fallback={null}><Gallery /></Suspense>} /><Route path="tasks" element={<Tasks />} /><Route path="tasks/:id" element={<Tasks />} />
+          <Route path="gen-gallery" element={<Suspense fallback={null}><Gallery /></Suspense>} /><Route path="frame-stress/:kind" element={<Suspense fallback={null}><FrameStress /></Suspense>} /><Route path="activity" element={<Activity />} /><Route path="activity/:id" element={<Activity />} /><Route path="tasks" element={<Navigate to="/activity" replace />} /><Route path="tasks/:id" element={<OldTaskLink />} />
           <Route path="live" element={<Live />} /><Route path="live/:id" element={<Live />} /><Route path="browser" element={<Navigate to="/live" replace />} /><Route path="browser/:id" element={<OldBrowserLink />} /><Route path="files" element={<Files />} /><Route path="inbox" element={<Inbox />} /><Route path="calendar" element={<CalendarPage />} />
-          <Route path="automations" element={<Automations />} /><Route path="integrations" element={<Integrations />} /><Route path="settings" element={<Settings />} />
+          <Route path="automations" element={<Navigate to="/activity" replace />} /><Route path="integrations" element={<Navigate to="/settings/integrations" replace />} /><Route path="settings" element={<Settings />} /><Route path="settings/:section" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

@@ -28,7 +28,7 @@ spacing: { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "24px", 6: "32px" }
 
 # Lumina design system
 
-Source of truth for how Lumina looks. **Tokens are in `src/styles/tokens.css`, shared components in `src/styles/ui.css` and `src/components/ui/`.** Read this file before any UI work; `AGENTS.md` points here. Run `npm run check:design` (it also runs in `npm run build`).
+Source of truth for how Lumina looks. **Theme colours are generated into `src/styles/theme.css`; every other token is in `src/styles/tokens.css`; shared components are in `src/styles/ui.css`, `src/components/ui/` and the workspace frame in `src/components/frame/` (`src/styles/frame.css`).** Read this file before any UI work; `AGENTS.md` points here. Run `npm run check:design` (it also runs in `npm run build`).
 
 Visual reference: the owner-approved Home dashboard image of 25 Oct 2026. It is direction (mood, proportions, control shapes), not a behaviour or accessibility spec. Anything in it that Lumina does not do (for example "Customize", an editable To-do widget, "Sample data") is deliberately not built.
 
@@ -40,9 +40,11 @@ Where this follows Apple's guidance: layered materials with clear separation bet
 ## Token architecture
 Components use semantic roles, never raw values.
 
+**Colours are generated, not hand-set.** `scripts/tokens/generate.mjs` makes every theme colour (surfaces, fills, text, borders, accent, status) from three inputs: a base colour (`#060608`), an accent (`#7455ff`) and a contrast value, in OKLCH, and writes `src/styles/theme.css` (committed; `npm run build` fails when it is out of date). Normal contrast reproduces the hand-set values this theme had before (tested to an OKLab distance of zero); contrast 1.7 gives the high-contrast theme, chosen in Settings or followed from the system's "more contrast". `src/styles/theme.test.ts` checks text against every surface (4.5:1, and 7:1 at more contrast). A light theme would be another base with the ladders mirrored. To change a colour, change an input and run the generator; never edit `theme.css`.
+
 | Group | Tokens |
 |---|---|
-| Surfaces | `--surface-base` page · `--surface-sidebar` · `--surface` cards/composer · `--surface-raised` inputs, hovered rows, selected · `--surface-overlay` menus/dialogs (always opaque) · `--surface-inset` terminals |
+| Surfaces | `--surface-base` the page and the chrome (rail, context column) · `--surface-canvas` the canvas, inspector and assistant panels · `--surface-sidebar` (same value, older name) · `--surface` cards/composer · `--surface-raised` inputs, hovered rows, selected · `--surface-overlay` menus/dialogs/sheets (always opaque) · `--surface-inset` terminals |
 | Fills | `--fill-subtle`, `--fill-hover`, `--fill-pressed` (neutral overlays for states) |
 | Text | `--text-primary`, `--text-secondary`, `--text-muted`, `--text-disabled` (the first three pass 4.5:1 on every surface) |
 | Borders | `--border-subtle`, `--border-default`, `--border-strong` |
@@ -54,7 +56,7 @@ Components use semantic roles, never raw values.
 | Motion | `--ease`, `--dur-fast/dur/dur-slow` |
 | Stacking | `--z-sticky/nav/drawer/modal/menu` |
 
-Legacy short names (`--bg`, `--ink`, `--neon`, `--line`…) are aliases; do not use them in new code. Dark is the only theme; `data-compact` and `data-motion` still adjust density and animation.
+Legacy short names (`--bg`, `--ink`, `--neon`, `--line`…) are aliases; do not use them in new code. Dark is the only theme, in normal and high contrast (`data-contrast='more'`, or the system preference). `data-compact` (two densities: comfortable and compact, Shift+D) and `data-motion` adjust density and animation.
 
 ## Accent, glow, elevation, motion
 - **Accent (violet) is for**: the brand mark, the primary action, keyboard focus, and selected/active states (the active nav item gets a small violet dot). Everything else is neutral. One violet thing per region is usually enough.
@@ -78,7 +80,7 @@ Legacy short names (`--bg`, `--ink`, `--neon`, `--line`…) are aliases; do not 
 States every control provides: default, hover, pressed, `:focus-visible` (2px accent ring, 2px offset), selected, disabled (dimmed, no pointer), loading (`aria-busy`), and invalid/error where it applies.
 
 ## Work surfaces (`work.css`, `components/work/`)
-One vocabulary for a task wherever it appears (chat strip, workspace, Activity, Home, rail). Classes are prefixed `wk-` (workspace layout `ws-`).
+One vocabulary for a task wherever it appears (chat strip, the assistant panel, Activity, Home, the live view). Classes are prefixed `wk-` (workspace layout `ws-`).
 
 | Piece | Use |
 |---|---|
@@ -92,17 +94,39 @@ One vocabulary for a task wherever it appears (chat strip, workspace, Activity, 
 
 The live pulse is the only moving thing besides the orb, and stops with Reduce motion. Violet appears on the pulse, the concurrency bracket and the one primary action of an item; nothing else.
 
+## The workspace frame (`src/components/frame/`)
+Every page sits in one frame. **No page writes a grid of its own**: a page renders `<Workspace>` and fills its zones; the frame decides where each is shown.
+
+| Zone | What it holds | Where |
+|---|---|---|
+| Rail (`Nav.tsx`) | Home, Chat; Inbox, Calendar, Files (a group); Activity with the waiting count; Search, Assistant, Safety, Settings and the account at the bottom. A place whose feature is off has no entry. | 60 px, on `--surface-base` (chrome recedes: no coloured icon backgrounds, labels on hover and for screen readers). A bottom bar of five entries under 600 px (Home, Chat, Inbox, Calendar, More). |
+| Context | What belongs to the place: chats, mailboxes, calendars, folders, filters, settings sections. Folds away (Ctrl/Cmd+B), remembered. | Left of the canvas from 600 px, a sheet below. On `--surface-base`. |
+| Canvas | The page itself, with its own toolbar (title left, controls right). | Always shown; never under 440 px while a zone is docked. |
+| Inspector | Details of what is selected (`inspectorKind="selection"`, closes with Esc) or an always-available panel (`"panel"`, folded by the person). | Docked from 1200 px, a sheet below. |
+| Assistant (`Assistant.tsx`) | The one assistant panel, for every page but Chat. | Docked from 1500 px, a sheet below (rail button, Ctrl/Cmd+J). |
+
+Width classes (`layout.ts`): compact < 600, medium 600-1199, expanded 1200-1499, large 1500 and up. When docked zones would push the canvas under its minimum, the assistant, then the inspector, then the context become sheets. Zones resize by dragging their edge, by keyboard (focus the edge: arrows, Home, End) and by "Narrower / Wider" in the zone's menu; widths are remembered per person.
+
+The page scrolls (Chat depends on it); side zones are sticky columns with their own scrolling. A `fill` workspace makes the canvas the height of the window for lists and grids that scroll inside (Inbox, Calendar).
+
+**Primitives**, each with a test: `Workspace`, `Split` (zone edges), `ui/Sheet` (focus trapped, Esc, focus returned, drawn above the page so it never hides the focused element), `Toolbar`, `List` (virtualized, fixed row height per density: 100,000 rows scroll smoothly), `Table` (sortable, keyboard-openable rows), `EmptyState`, `Inspector`.
+
+**The assistant knows the selection.** A page calls `useSelection({ looking, words, actions })`: ids only (a thread, an event, days, a file, a folder, a task, or the page), the words the panel shows ("Looking at: …"), and one-tap actions that fit it. The server checks every id (`POST /v1/assistant/ask`). After an action marked `draft`, the panel offers "Shorter / Longer / More formal / Simpler" as single steps. No generic suggestions.
+
+**Keyboard first, never keyboard only.** Every shortcut is in `src/lib/shortcuts.ts` (a test fails on two with the same key in one place); tooltips, the command bar (Ctrl/Cmd+K or `/`) and the help sheet (`?`) read from it. A page adds its own commands with `useCommands`; each must also exist as a control on the page.
+
 ## Layout, type and icons
-- Shell: sidebar (collapsible with Ctrl+B) · main column with a top bar (page title left, search, notifications, motion right) · optional right rail on Home and Tasks. Below 960px the sidebar becomes a bottom bar.
-- Page pattern: top bar, then a `.hero` (greeting/title, secondary line, optional date), then content in `.panel`/`.card` surfaces on a 16px gap.
-- Type: the platform UI font; body 14px, hero up to 44px, titles 22px. Sizes are rem so browser text settings and zoom work. Weights 400/500/600 only.
+- Page pattern: the canvas toolbar names the page; content uses `.panel`/`.card` surfaces on a 16px gap, `EmptyState` when there is nothing, skeletons (not spinners) while loading.
+- Speed targets (decision 9 of the remodel): a local action shows its result in under 100 ms; the next likely item is fetched before it is opened (the next mail thread); long lists are virtualized.
+- Type: the platform UI font; body 14px, Today's greeting 30px, titles 16-22px. Sizes are rem so browser text settings and zoom work. Weights 400/500/600 only.
 - Icons: stroke 1.6, 18–20px in controls, from `components/Icons.tsx`, in `currentColor`.
 
 ## Accessibility and responsive rules
 - Contrast 4.5:1 for text, 3:1 for control boundaries and focus rings. Never colour alone: statuses also carry text or an icon.
 - All actions reachable by keyboard; menus follow the menu pattern; dialogs trap nothing they cannot release.
 - `data-motion='reduced'` and `prefers-reduced-motion` remove animations.
-- Layouts work from 360px to wide desktop with 200% zoom; long titles ellipsize, prose wraps, code and tables scroll inside their own box.
+- Layouts work from 360px to wide desktop with 200% zoom; long titles ellipsize, prose wraps, code and tables scroll inside their own box. No page scrolls sideways at any width.
+- WCAG 2.2 AA is part of the layout: targets at least 24px everywhere and 44px under 600px (`frame.css`, "Phone"); a focused element is never hidden under a sticky bar or a sheet; every drag (a zone's edge, a file onto a folder, a range of days) has a way without dragging. Calendar events keep the height of their duration (WCAG's "essential" exception).
 
 ## Building a new feature
 1. Read this file. Use `.panel` for the surface, `.hero` or `.page-title` for the heading, `.btn` for actions.
@@ -116,5 +140,5 @@ The live pulse is the only moving thing besides the orb, and stops with Reduce m
 - Thinking orbs are the nine animations of the vendored `src/vendor/thinking-orbs`, one per state of the agent (`orbFor` in `src/lib/work.ts` picks it from the server's task state; `breathing` is plain thinking). They use a shared clock and an interruptible 600ms blend, and are a still frame at reduced motion. Preview all states and sizes with `npm run dev` at `/app/tests/orbs.html`.
 - Pure-black `rgb(0 0 0 / x)` scrims and shadows are allowed.
 - The browser's native `<select>` list (opened from `.input` selects) and date inputs are drawn by the OS and cannot be themed; there is no date picker in the app yet.
-- Dark is the only theme; there is no light theme.
-- Toasts and tooltips are not part of the app; native `title` tooltips are used until a need appears.
+- Dark is the only theme (normal and high contrast); there is no light theme yet, and nothing in the generator prevents one.
+- Toasts are not part of the app, with one exception: the notice when a task sent to the background finishes or needs a decision (`float-notice`). The rail has its own labels on hover; elsewhere native `title` tooltips are used, with the shortcut from the registry.

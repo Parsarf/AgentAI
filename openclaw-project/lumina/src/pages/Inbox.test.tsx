@@ -141,7 +141,7 @@ describe('Inbox', () => {
     expect(screen.getAllByText(/Lumina asks only to read/).length).toBeGreaterThan(0);
     cleanup();
     server(base({ '/v1/hub': overview({ accounts: [account({ mail: { synced_epoch: null, filled: false, items: 40, error: null, paused: false } })] }), '/v1/hub/mail/threads': { threads: [], next: null, complete: true } })); show();
-    expect(await screen.findByText(/Loading mail from me@first.test for the first time/)).toBeTruthy();
+    expect(await screen.findByText(/Loading all mail from me@first.test \(40 so far\)\. Newest first/)).toBeTruthy();
     expect(screen.getByText(/Loading… 40 so far/)).toBeTruthy();
   });
 
@@ -154,7 +154,7 @@ describe('Inbox', () => {
     show();
     await screen.findByText('Nothing here.');
     fireEvent.change(screen.getByLabelText('Search mail'), { target: { value: 'invoice' } }); fireEvent.submit(screen.getByRole('search'));
-    expect(await screen.findByText(/Nothing in the last 90 days matches “invoice”/)).toBeTruthy();
+    expect(await screen.findByText(/Nothing matches “invoice”/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Search older mail in me@first.test' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Search older mail in ich@second.test' })).toBeNull();          // that account's capability says it cannot
     fireEvent.click(screen.getByRole('button', { name: 'Search older mail in me@first.test' }));
@@ -164,12 +164,12 @@ describe('Inbox', () => {
     expect(screen.getByText('Old three')).toBeTruthy();
   });
 
-  it('pages with the cursor the server gave', async () => {
+  // UI remodel (phase 3): the list is virtualized and loads the next page by itself as the reader nears its end; the "Show more" button is gone.
+  it('pages with the cursor the server gave, by itself near the end of the list', async () => {
     server(base({ '/v1/hub/mail/threads': (url: URL) => (url.searchParams.get('cursor') === 'c-2' ? { threads: [other], next: null, complete: true } : { threads: [thread()], next: 'c-2', complete: false }) }));
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Termin morgen')).toBeTruthy(); expect(screen.getByText('Quarterly numbers')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(asked('/v1/hub/mail/threads').map(u => u.get('cursor'))).toEqual([null, 'c-2']);
   });
 
   it('moves through the list with the keyboard', async () => {
@@ -181,7 +181,7 @@ describe('Inbox', () => {
     fireEvent.keyDown(window, { key: 'j' });
     await waitFor(() => expect(asked('/v1/hub/mail/thread').at(-1)?.get('id')).toBe('conv:9@x/1'));
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(await screen.findByText('Select a thread to read it.')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Open thread' })).toBeNull());     // the open thread's zone appears only while a thread is open (UI remodel)
     fireEvent.keyDown(window, { key: '/' });
     expect(document.activeElement).toBe(screen.getByLabelText('Search mail'));
   });
@@ -243,6 +243,38 @@ describe('Inbox', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: 'Choose what Lumina may read' }));
     expect(await screen.findByText(/This account gave Lumina nothing it can read/)).toBeTruthy();
+  });
+
+  it('is live: when the server says something changed, the list is loaded again without being asked', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let mark = 'm1'; let list = [thread()];
+    server(base({ '/v1/hub/pulse': () => ({ mark, loading: false, items: 1 }), '/v1/hub/mail/threads': () => ({ threads: list, next: null, complete: true }) }));
+    show();
+    await screen.findByText('Quarterly numbers');
+    await waitFor(() => expect(asked('/v1/hub/pulse').length).toBe(1));
+    const loads = asked('/v1/hub/mail/threads').length;
+    await vi.advanceTimersByTimeAsync(8000);
+    await waitFor(() => expect(asked('/v1/hub/pulse').length).toBe(2));
+    expect(asked('/v1/hub/mail/threads').length).toBe(loads);                                      // the same mark: nothing is loaded again
+    mark = 'm2'; list = [other, thread()];
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(await screen.findByText('Termin morgen')).toBeTruthy();                                // new mail appeared by itself
+    vi.useRealTimers();
+  });
+
+  it('does not throw the customer back to the top when they have paged further: it offers the new mail instead', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let mark = 'm1';
+    server(base({ '/v1/hub/pulse': () => ({ mark, loading: false, items: 2 }),
+      '/v1/hub/mail/threads': (url: URL) => (url.searchParams.get('cursor') ? { threads: [other], next: null, complete: true } : { threads: [thread()], next: 'c-2', complete: false }) }));
+    show();
+    await screen.findByText('Termin morgen');                                                     // the second page came by itself (the list reached its end)
+    await waitFor(() => expect(asked('/v1/hub/pulse').length).toBeGreaterThan(0));
+    mark = 'm2';
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(await screen.findByText('There is new mail.')).toBeTruthy();
+    expect(screen.getByText('Termin morgen')).toBeTruthy();                                       // what they were reading is still there
+    vi.useRealTimers();
   });
 
   it('is a plain "not available" page while the feature is off, and asks the server nothing', async () => {

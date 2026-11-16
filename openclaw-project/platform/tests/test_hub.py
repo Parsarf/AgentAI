@@ -1,6 +1,7 @@
 """The mail and calendar dashboard's model, sync and reading side (roadmap #D1 to #D4), always with two different providers connected together."""
 import re
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from agentai_platform import retention
@@ -59,11 +60,21 @@ class Sync(Both):
         self.assertEqual(self.ids(label='archive'), [(self.cp, 'conv:3')])
         self.assertNotIn((self.cp, 'conv:3'), self.ids(label='inbox'))
 
-    def test_only_the_window_is_copied_and_starred_mail_stays(self):
+    def test_all_the_mail_is_copied_however_old(self):
+        self.alpha_mail(self.wa, 20, age_days=2000)
+        self.postbox_mail(self.wp, 20, age_days=4000)
+        self.run_sync()
+        ids = self.ids(label='all')
+        self.assertIn((self.ca, 't-0020'), ids); self.assertIn((self.cp, 'conv:20'), ids)
+        self.assertEqual(retention.sweep(self.store, now=self.now + 5000 * DAY).get('mail_headers'), None)      # and the sweeper never removes it by age
+        self.assertEqual(len(self.ids(label='all', limit=100)), 12)
+
+    def test_a_limit_set_in_the_retention_table_is_honoured_and_starred_mail_stays(self):
         self.alpha_mail(self.wa, 20, age_days=200)
         self.alpha_mail(self.wa, 21, age_days=200, labels=('L_IN', 'L_STAR'))
         self.postbox_mail(self.wp, 20, age_days=91)
-        self.run_sync()
+        with patch('agentai_platform.hub_sync.mail_window_days', lambda: 90):
+            self.run_sync()
         ids = self.ids(label='all')
         self.assertIn((self.ca, 't-0021'), ids)
         self.assertNotIn((self.ca, 't-0020'), ids)
@@ -95,6 +106,38 @@ class Sync(Both):
         self.assertIsNone(self.sync.run(row))
         self.now += self.sync.lease + 1                      # a worker that died gives its row back after the lease
         self.assertIsNotNone(self.sync.run(row))
+
+
+class Live(Both):
+    def test_a_mailbox_that_is_up_to_date_is_asked_again_within_seconds_and_a_page_can_tell_when_something_changed(self):
+        self.sync.interval, self.sync.calendar_interval = 20, 60
+        self.run_sync()
+        due = {(r['domain'], r['resource_id'] == '*'): r['next_epoch'] - self.now for r in self.rows('SELECT domain,resource_id,next_epoch FROM hub_sync WHERE connection_id=?', (self.cp,))}
+        self.assertEqual((due[('mail', True)], due[('calendar', False)]), (20, 60))
+        before = self.hub.pulse(self.a)
+        self.assertEqual((before['loading'], before['items']), (False, 10))
+        self.assertEqual(self.hub.pulse(self.a), before)                              # nothing changed: the same mark, so an open page reloads nothing
+        self.now += 21
+        self.alpha_mail(self.wa, 9, age_days=0)
+        self.assertEqual(self.sync.tick(limit=50)['changed'], 1)                      # 21 seconds later the mailboxes are asked again, with no nudge
+        after = self.hub.pulse(self.a)
+        self.assertNotEqual(after['mark'], before['mark'])
+        self.assertEqual(after['items'], 11)
+        self.assertEqual(self.hub.pulse(self.b)['items'], 0)                          # another account's pulse says nothing about this one
+        mark = after['mark']
+        self.wa.fail = [ProviderError(401, 'bad_token')]
+        self.now += 21; self.sync.tick(limit=50)
+        self.assertNotEqual(self.hub.pulse(self.a)['mark'], mark)                     # an account that now needs its customer changes the mark too
+
+    def test_a_first_fill_is_reported_as_loading_until_it_is_done(self):
+        self.sync.pages_per_run = 1
+        self.sync.reconcile()
+        row = next(r for r in self.sync.due(50) if r['domain'] == 'mail' and r['connection_id'] == self.ca)
+        self.sync.run(row)
+        self.assertTrue(self.hub.pulse(self.a)['loading'])
+        self.sync.pages_per_run = 20
+        self.run_sync()
+        self.assertFalse(self.hub.pulse(self.a)['loading'])
 
 
 class Grants(Both):
@@ -314,8 +357,12 @@ class Calendars(HubBase):
         days = {e['title']: (e['all_day'], e['start_date'], e['end_date']) for e in self.hub.events(self.a, self.now - 2 * DAY, self.now + 30 * DAY)['events'] if e['all_day']}
         self.assertEqual(days, {'Offsite': (True, '2033-05-20', '2033-05-22'), 'Urlaub': (True, '2033-05-18', '2033-05-20')})
 
-    def test_an_event_outside_the_window_is_not_copied(self):
-        self.assertEqual(self.rows("SELECT 1 FROM hub_events WHERE id='old'"), [])
+    def test_every_past_event_is_copied_and_events_beyond_two_years_ahead_are_not(self):
+        self.assertEqual(len(self.rows("SELECT 1 FROM hub_events WHERE id='old'")), 1)
+        self.wa.events['work']['far'] = {'id': 'far', 'summary': 'Far ahead', 'start': {'epoch': self.now + 900 * DAY}, 'end': {'epoch': self.now + 900 * DAY + 60}}
+        self.wa.event_log.setdefault('work', []).append((self.wa.bump(), 'far'))
+        self.run_sync()
+        self.assertEqual(self.rows("SELECT 1 FROM hub_events WHERE id='far'"), [])
 
     def test_the_inspector_shows_everything_except_for_a_busy_only_event(self):
         e = self.hub.event(self.a, self.ca, 'work', 'e1')
@@ -369,7 +416,9 @@ class Calendars(HubBase):
 
 
 class Keeping(Both):
-    def test_the_sweeper_enforces_the_window_the_bodies_and_past_events(self):
+    @patch('agentai_platform.hub_sync.events_back_days', lambda: 31)
+    @patch('agentai_platform.hub_sync.mail_window_days', lambda: 90)
+    def test_with_limits_set_the_sweeper_enforces_the_window_the_bodies_and_past_events(self):
         self.alpha_mail(self.wa, 11, thread='t-0001', age_days=0)
         self.postbox_mail(self.wp, 12, flagged=True, age_days=30)
         self.run_sync()
@@ -400,6 +449,7 @@ class Keeping(Both):
             self.assertEqual(retention.unassigned(con), [])
         from agentai_platform import hub_sync
         self.assertEqual((hub_sync.mail_window_days(), hub_sync.events_back_days()), (retention.BY_KEY['mail_headers'].days, retention.BY_KEY['calendar_events'].days))
+        self.assertEqual((hub_sync.mail_window_days(), hub_sync.events_back_days()), (None, None))      # the owner's decision of 2026-11-16: everything is kept
 
 
 class Tools(Both):

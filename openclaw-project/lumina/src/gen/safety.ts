@@ -24,7 +24,7 @@ export function safeHttpUrl(value: unknown): string | null {
 export const httpUrl = z.string().max(500).refine(v => safeHttpUrl(v) !== null, 'must be an http(s) link without credentials');
 
 /** Internal app routes a navigate.internal action may open. Anything else is refused. */
-export const INTERNAL_ROUTES = ['/chat', '/tasks', '/files', '/live', '/history', '/calendar', '/settings'] as const;
+export const INTERNAL_ROUTES = ['/chat', '/home', '/activity', '/inbox', '/tasks', '/files', '/live', '/history', '/calendar', '/settings'] as const;
 export function safeInternalPath(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 200 || CONTROL.test(value) || value.includes('\\') || value.startsWith('//')) return null;
   const [path] = value.split(/[?#]/);

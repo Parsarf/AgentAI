@@ -1,9 +1,9 @@
 """The assistant's mail and calendar tools (roadmap #D3, #D4, #52 to #56): it reads the same provider-neutral copy the dashboard shows, across every account at once.
 
     lumina_mail_accounts       the connected mail and calendar accounts: which work, what each can do, how fresh each is
-    lumina_mail_search         threads in the synced window (the last 90 days) by words, mailbox, person, dates; every result names its account
+    lumina_mail_search         threads by words, mailbox, person, dates; every result names its account
     lumina_mail_thread         one thread with the text of its messages (a message's text is fetched from the provider when it is read, and kept like one the customer opened)
-    lumina_mail_older          mail older than the window, searched live in one account; says when the result is partial
+    lumina_mail_older          a live search in the customer's mail service itself, for an account that is still loading or to use the service's own search
     lumina_calendar_events     events in a range of days, in the customer's timezone
     lumina_calendar_event      one event: people and their answers, place, notes
     lumina_calendar_search     events by words in title, people, place or notes
@@ -42,20 +42,20 @@ _DAY = 'A day as YYYY-MM-DD, in the customer\'s timezone.'
 TOOLS = [
     {'name': ACCOUNTS, 'description': 'The customer\'s connected mail and calendar accounts: which work, which need the customer, what each can do and when each was last updated. '
      'Call this first when you do not know which accounts exist.', 'inputSchema': _S()},
-    {'name': SEARCH, 'description': 'Search the customer\'s mail across all connected accounts (or one), within the last 90 days. Give any of: words to find, a mailbox, a person, dates. '
-     'Returns threads, newest first, each with its account and thread id. Use lumina_mail_thread to read one. For mail older than 90 days use lumina_mail_older.',
+    {'name': SEARCH, 'description': 'Search the customer\'s mail across all connected accounts (or one): all of it, once an account has finished loading. Give any of: words to find, a mailbox, a person, dates. '
+     'Returns threads, newest first, each with its account and thread id. Use lumina_mail_thread to read one. While an account is still loading (the result says so), older mail may be missing: use lumina_mail_older for that account.',
      'inputSchema': _S(query=_STR(200, 'Words that must all appear in the subject, people, preview or the text of opened messages.'), account=_STR(64, 'An account id, to search only that account.'),
                        mailbox={'type': 'string', 'enum': list(LIST_LABELS), 'description': 'Default "all" (everything but spam and trash).'}, person=_STR(320, 'A name or address of someone in the thread.'),
                        unread={'type': 'boolean'}, has_attachment={'type': 'boolean'}, after=_STR(10, _DAY), before=_STR(10, _DAY), continuation=_STR(400))},
     {'name': THREAD, 'description': 'Read one mail thread: its messages, oldest first, with their text. Long threads show the most recent messages.',
      'inputSchema': {**_S(account=_STR(64), thread=_STR(300)), 'required': ['account', 'thread']}},
-    {'name': OLDER, 'description': 'Search one account for mail older than 90 days, live in the customer\'s mail service. The result says whether it is complete.',
+    {'name': OLDER, 'description': 'Search one account live in the customer\'s mail service (useful while that account is still loading). The result says whether it is complete.',
      'inputSchema': {**_S(account=_STR(64), query=_STR(300), continuation=_STR(2000)), 'required': ['account', 'query']}},
     {'name': EVENTS, 'description': 'The customer\'s calendar events from one day to another (both included, at most 62 days), across all connected calendars they have selected, in their timezone.',
      'inputSchema': {**_S(start=_STR(10, _DAY), end=_STR(10, _DAY), account=_STR(64)), 'required': ['start', 'end']}},
     {'name': EVENT, 'description': 'One calendar event with its people and their answers, place, call link and notes.',
      'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400)), 'required': ['account', 'calendar', 'event']}},
-    {'name': EVENT_SEARCH, 'description': 'Find calendar events (from one month back to twelve months ahead) whose title, people, place or notes contain every word given.',
+    {'name': EVENT_SEARCH, 'description': 'Find calendar events (every past one, and up to two years ahead) whose title, people, place or notes contain every word given.',
      'inputSchema': {**_S(query=_STR(200), account=_STR(64)), 'required': ['query']}},
 ]
 
@@ -182,7 +182,7 @@ class HubTools:
                         'chosen_to_read': {'mail': acc['granted']['mail'], 'calendar': acc['granted']['calendar']}})
         zone, _ = self._zone(principal)
         return {'accounts': out, 'timezone': zone, 'calendars': [{'account': c['connection_id'], 'calendar': c['id'], 'name': _safe(c['name'], 200), 'shown': c['selected']} for c in self.hub.calendars(principal)],
-                'note': 'Read only. Mail covers the last 90 days plus starred mail; calendars cover one month back to twelve months ahead. Only what the customer chose can be read.'
+                'note': 'Read only. Mail covers everything in what the customer chose; calendars cover every past event and two years ahead. Only what the customer chose can be read.'
                         if out else 'No mail or calendar account is connected. The customer can connect one in Settings, Access.'}
 
     # -- mail -----------------------------------------------------------------------------------------------------------------------------------
@@ -196,7 +196,7 @@ class HubTools:
                     'in': t['labels']} for t in page['threads']]
         return {'result': f'All {len(threads)} matching threads are shown: this is complete.' if page['complete'] else
                 f'PARTIAL RESULT: the first {len(threads)} matching threads are shown, and there are more. Do not present this as everything. Pass "continuation" to get the rest.',
-                'complete': page['complete'], 'continuation': page['next'], 'timezone': zone_name, 'covers': 'the last 90 days and starred mail', 'accounts': self._freshness(principal, 'mail'),
+                'complete': page['complete'], 'continuation': page['next'], 'timezone': zone_name, 'covers': 'all the mail the customer chose (an account that is still loading says so)', 'accounts': self._freshness(principal, 'mail'),
                 'untrusted_mail': threads, 'note': NOTE}
 
     def _thread(self, principal, a):
@@ -273,5 +273,5 @@ class HubTools:
         found = self.hub.search_events(principal, a['query'], connections=[a['account']] if a.get('account') else None, limit=40)
         names = self._names(principal)
         return {'result': f'All {len(found["events"])} matching events are shown.' if found['complete'] else f'PARTIAL RESULT: the {len(found["events"])} closest matches are shown, and there are more.',
-                'complete': found['complete'], 'timezone': zone_name, 'covers': 'one month back to twelve months ahead', 'calendars': self._freshness(principal, 'calendar'),
+                'complete': found['complete'], 'timezone': zone_name, 'covers': 'every past event and two years ahead', 'calendars': self._freshness(principal, 'calendar'),
                 'untrusted_events': [self._one(e, zone, names) for e in found['events']], 'note': NOTE}

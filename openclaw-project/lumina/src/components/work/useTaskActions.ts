@@ -21,7 +21,7 @@ export function useTaskActions(task: Pick<TaskSummary, 'id' | 'conversation_id'>
     try {
       if (action === 'stop') await api('POST', `/v1/requests/${task.id}/cancel`, {});
       else if (action === 'pause' || action === 'resume') await api('POST', `/v1/requests/${task.id}/${action}`, {});
-      else if (action === 'retry') { const r = await api<{ request: { id: string; conversation_id?: string | null } }>('POST', `/v1/requests/${task.id}/retry`, {}); await client.refresh(); void nav(r.request.conversation_id ? `/chat/${r.request.conversation_id}` : `/tasks/${r.request.id}`); }
+      else if (action === 'retry') { const r = await api<{ request: { id: string; conversation_id?: string | null } }>('POST', `/v1/requests/${task.id}/retry`, {}); await client.refresh(); void nav(r.request.conversation_id ? `/chat/${r.request.conversation_id}` : `/activity/${r.request.id}`); }
       else if (task.conversation_id) await api('POST', `/v1/conversations/${task.conversation_id}/goal`, { action: action === 'goal_resume' ? 'resume' : 'clear', key: key() });
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 402 ? 'Your plan allowance or task budget cannot fund another run right now.' : FAILED[action]);

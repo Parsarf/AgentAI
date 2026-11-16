@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Message } from '../../lib/conversations';
 import { isMoving, isPrompt, needLine, orbFor, receipt, verdict, type Approval, type TaskView } from '../../lib/work';
@@ -22,7 +22,8 @@ import { Elapsed, Status } from './parts';
 export default function TaskStrip({ id, eager = true, notes = [], stopping = false }: { id: string; eager?: boolean; notes?: Message[]; stopping?: boolean }) {
   const [open, setOpen] = useState(false); const panel = useId();
   const { task, full, rows } = useTask(id, eager || open);
-  useEffect(() => { setOpen(false); }, [id]);
+  // Another task in the same place folds its details again. Done while rendering (not in an effect), so a click that comes before effects have run is never undone.
+  const [shownId, setShownId] = useState(id); if (shownId !== id) { setShownId(id); setOpen(false); }
   if (!task) return null;
   const view = stopping && task.phase !== 'ended' ? { ...task, phase: 'stopping' as const, label: 'Stopping', tone: 'pending' as const, activity: null, now: [] } : task;
   const ended = view.phase === 'ended'; const orb = orbFor(view);

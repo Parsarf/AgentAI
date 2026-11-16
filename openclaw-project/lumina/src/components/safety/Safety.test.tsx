@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import SafetyButton from './SafetyButton';
-import Sidebar from '../Sidebar';
+import { NavRail } from '../frame/Nav';
 import { DataProvider } from '../../state/data';
 import { SettingsProvider } from '../../state/settings';
 import { resetCsrf } from '../../lib/api';
@@ -394,9 +394,10 @@ describe('Safety console: who can open it', () => {
   });
 });
 
-describe('Safety console in the sidebar', () => {
-  it('lives inside the sidebar menu and folds to its icon with the rest', async () => {
-    render(<SettingsProvider><DataProvider><MemoryRouter><Sidebar /></MemoryRouter></DataProvider></SettingsProvider>);
+// UI remodel: the sidebar became the rail; the Safety console's button lives in it, as an icon with its label on hover and for screen readers.
+describe('Safety console in the rail', () => {
+  it('lives inside the primary navigation as an icon with its label', async () => {
+    render(<SettingsProvider><DataProvider><MemoryRouter><NavRail onSearch={() => undefined} /></MemoryRouter></DataProvider></SettingsProvider>);
     const button = await screen.findByRole('button', { name: /Safety/ });
     expect(button.closest('nav')?.getAttribute('aria-label')).toBe('Primary');
     expect(button.querySelector('.lbl')).toBeTruthy();

@@ -23,7 +23,7 @@ export default function TaskDetail({ task, rows, notes = [], links = true }: { t
       {links && (task.browser || true) && (
         <p className="wk-links">
           {task.browser && <Link className="btn small" to={`/live/${task.id}`}>{task.browser.live ? 'Open the browser' : 'Open the workspace'}</Link>}
-          <Link className="btn tertiary small" to={`/tasks/${task.id}`}>Full record</Link>
+          <Link className="btn tertiary small" to={`/activity/${task.id}`}>Full record</Link>
         </p>)}
       <p className="wk-fine">Shows searches, pages, commands and file names. File contents and secrets are never shown.</p>
     </div>);

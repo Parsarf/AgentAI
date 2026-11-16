@@ -8020,6 +8020,86 @@
     },
     "parameters": []
    }
+  },
+  "/v1/hub/pulse": {
+   "get": {
+    "summary": "A mark that changes whenever any connected account changed, finished loading or needs its customer; an open page asks every few seconds and reloads only when it differs",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/assistant/ask": {
+   "post": {
+    "summary": "A message to the assistant from the panel beside any page: {\"conversation_id\",\"message\",\"key\",\"looking_at\"?}. An ordinary chat message; what is selected (a thread, an event, days, a file, a folder, a task, or the page) goes with it as ids the server checked",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/search": {
+   "get": {
+    "summary": "One search for the command bar: ?q=&limit=. Chats, tasks, files and (while mail and calendars are on) mail threads and events of the signed-in account, each saying what it is; a store that fails or runs out of time is named in \"dropped\"",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     }
+    }
+   }
   }
  },
  "components": {

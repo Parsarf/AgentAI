@@ -44,6 +44,7 @@ MAX_BYTES = 400 * 1024 * 1024
 COMMAND = re.compile(r'^(deploy|deploy-dry|accept) ([0-9a-f]{40})$')
 PREVIOUS = BASE / 'previous.json'          # what the last deploy replaced: where `accept` goes back to when the live acceptance fails
 TIERB = BASE / 'tierb.json'                # the last live acceptance result: {sha, passed, at, cases}
+OPTIONAL_UNITS = ['agentai-hub-sync']       # long-running services that exist only where their feature was set up: restarted when they are running, so they run the new code
 APP_UNITS = ['agentai-platform-app', 'agentai-push']       # the services that run the app tree (restarted by a rollback)
 REQUIRED = ('accounts', 'agentai_platform', 'deploy', 'manage.py', 'migrations', 'requirements.lock')
 
@@ -327,6 +328,7 @@ def main(argv=None, stdin=None):
 
         # 4. restart what runs this code, and check it came back.
         sh(['systemctl', 'restart', *UNITS])
+        sh(['systemctl', 'try-restart', *OPTIONAL_UNITS])      # only those that are running; one that is not installed is left alone and never fails a deploy
         time.sleep(3)
         down = [u for u in UNITS if sh(['systemctl', 'is-active', u]).stdout.strip() != 'active']
         if down:

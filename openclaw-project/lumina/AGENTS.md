@@ -43,7 +43,7 @@ rendering; malformed data and code examples remain literal, locally scrollable c
 Verify charts plus very long code lines, prose, URLs, and tables at mobile/desktop
 widths, including the visible scrollbar and ability to reach the end of a code line.
 
-A task's workspace (`pages/Live.tsx`, `/live/:id`) is the same view while it runs and afterwards as its record; `/live` alone is not a destination (it goes to the open task, or to Activity). Activity (`pages/Tasks.tsx`) lists what needs the customer, what is in progress and finished work, and `/tasks/:id` is a task's record. Show observable tool activity and reported output, never invented
+A task's workspace (`pages/Live.tsx`, `/live/:id`) is the same view while it runs and afterwards as its record; `/live` alone is not a destination (it goes to the open task, or to Activity). Activity (`pages/Activity.tsx`) is one table of what needs the customer, what is in progress and finished work, and `/activity/:id` opens a task's record in its inspector (old `/tasks` links redirect). Show observable tool activity and reported output, never invented
 reasoning or simulated shell output. Browser takeover is enabled only after the
 backend confirms pause/handoff and takeover. Sensitive text is masked by default,
 cleared after submission, and never stored in local/session storage. Browser input

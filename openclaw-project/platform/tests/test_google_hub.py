@@ -266,7 +266,7 @@ class Connected(HubBase):
         self.postbox_mail(world, 1, age_days=0.2)
         self.run_sync()
         listed = self.hub.threads(self.a, label='all')['threads']
-        self.assertEqual([t['id'] for t in listed], ['conv:1', '18c00001', '18c00002', '18c00003', '18c00004', '18c00005', '18c00007'])       # one list, newest first; the old starred one stays
+        self.assertEqual([t['id'] for t in listed], ['conv:1', '18c00001', '18c00002', '18c00003', '18c00004', '18c00005', '18c00006', '18c00007'])       # one list, newest first, however old
         first = listed[1]
         self.assertEqual((first['message_count'], first['labels'], first['people'][0]), (2, ['inbox', 'sent', 'unread'], {'name': 'Ann Lee', 'address': 'ann@x.test'}))
         self.assertEqual([c['name'] for c in self.hub.calendars(self.a) if c['connection_id'] == connection], ['dana@gmail.test', 'Team'])
@@ -281,7 +281,7 @@ class Connected(HubBase):
         calls = len(self.g.calls)
         self.run_sync()
         ids = [t['id'] for t in self.hub.threads(self.a, label='inbox', connections=[connection])['threads']]
-        self.assertEqual(ids, [new, '18c00001', '18c00004', '18c00005', '18c00007'])
+        self.assertEqual(ids, [new, '18c00001', '18c00004', '18c00005', '18c00006', '18c00007'])
         self.assertEqual([t['id'] for t in self.hub.threads(self.a, label='archive', connections=[connection])['threads']], ['18c00003'])
         self.assertEqual([e['title'] for e in self.hub.events(self.a, self.now, self.now + DAY, connections=[connection])['events']], ['Standup (moved)', '', 'Lunch'])
         used = [c[1].rsplit('/', 1)[-1] for c in self.g.calls[calls:]]
@@ -368,6 +368,27 @@ class Connected(HubBase):
         self.assertEqual(self.hub.calendars(self.a), [])
         self.run_sync()                                                                            # and the calendars arrive on the next pass
         self.assertEqual(len(self.hub.calendars(self.a)), 2)
+
+    def test_a_large_mailbox_fills_newest_first_in_pages_read_several_at_a_time(self):
+        for n in range(1, 131):
+            self.g.mail(n, age_days=n * 20)                                                        # ten years of mail
+        connection, _ = self.sign_in(grants=(('mailbox', '*'),))
+        self.run_sync(8)
+        self.assertEqual(self.rows('SELECT count(*) AS n FROM hub_messages')[0]['n'], 130)         # all of it, however old
+        self.assertEqual(self.rows("SELECT filled FROM hub_sync WHERE domain='mail'")[0]['filled'], 1)
+        self.assertEqual(self.hub.threads(self.a, label='all', limit=1)['threads'][0]['id'], '18c00001')      # the newest is first
+
+    def test_google_is_reached_over_ipv4_first(self):
+        import socket
+        from unittest.mock import patch
+        asked = []
+
+        def lookup(host, port, family=0, *rest, **more):
+            asked.append(family)
+            raise OSError('stop here')
+        with patch('socket.getaddrinfo', lookup), self.assertRaises(ProviderError):
+            google_hub.default_http('GET', 'https://gmail.googleapis.com/gmail/v1/users/me/profile', {})
+        self.assertEqual(asked[0], socket.AF_INET)                                                 # the first thing tried is an IPv4 address
 
     def test_nothing_but_reading_is_ever_asked_of_google(self):
         self.g.mail(1, files=['a.pdf']); self.g.event('e1', summary='S', start={'dateTime': '2033-05-18T13:00:00Z'}, end={'dateTime': '2033-05-18T13:30:00Z'})

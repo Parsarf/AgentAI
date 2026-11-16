@@ -2,7 +2,8 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
-const DIST = new URL('./dist/', import.meta.url).pathname;
+import { hubMock } from './dev-mock-hub.mjs';
+const DIST = process.env.MOCK_DIST || new URL('./dist/', import.meta.url).pathname;   // MOCK_DIST serves another build (a copy of the one before a change)
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain' };
 const now = () => Math.floor(Date.now() / 1000);
 let signedIn = process.env.MOCK_ANON !== '1';
@@ -44,6 +45,7 @@ const body = req => new Promise(r => { let d = ''; req.on('data', c => d += c); 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x'); const p = url.pathname;
   if (p === '/_m') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<body style="margin:0;background:#222"><iframe src="/app/" style="width:390px;height:844px;border:0;background:#000"></iframe></body>'); }
+  if (p === '/_w') { const w = Number(url.searchParams.get('w') || 390), h = Number(url.searchParams.get('h') || 760), page = (url.searchParams.get('p') || '/app/').replace(/["<>]/g, ''); res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(`<body style="margin:0;background:#333"><iframe id="f" src="${page}" style="width:${w}px;height:${h}px;border:0;background:#000"></iframe></body>`); }   // a page at an exact width, for visual checks
   if (p === '/') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(await readFile(join(DIST, 'index.html'))); }   // mimics the edge showing the app at the site root
   if (p === '/v1/csrf') return json(res, 200, { csrf_token: 'mock', api_version: 'mock' });
   if (p === '/readyz') return json(res, 200, { foundation_ready: true });
@@ -55,7 +57,8 @@ http.createServer(async (req, res) => {
   if (p.startsWith('/v1/')) {
     if (!signedIn) return json(res, 401, { error: 'authentication_required' });
     if (p === '/v1/app') return json(res, 200, { api_version: 'mock', user: { email: 'parsa@example.com', role: 'customer' }, assistant: { state: 'ready' },
-      features: { chat: true, execution: true, files: false, uploads: false, telegram: false, connectors: false, billing_mode: 'open', requests: true, usage: true }, limits: { max_message_chars: 16000 } });
+      features: { chat: true, execution: true, files: true, uploads: true, telegram: false, connectors: true, dashboard: true, billing_mode: 'open', requests: true, usage: true }, limits: { max_message_chars: 16000 } });
+    if (await hubMock(p, url, req, res, json, body)) return;
     if (p === '/v1/requests') return json(res, 200, { requests });
     // Task state as the app reads it (the real one is computed by platform/agentai_platform/work.py; this is the same shape from the mock's rows).
     if (p === '/v1/work' || p.startsWith('/v1/work/')) {
@@ -103,4 +106,4 @@ http.createServer(async (req, res) => {
     catch { try { const data = await readFile(join(DIST, 'index.html')); res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(data); } catch { res.writeHead(404); return res.end(); } }
   }
   res.writeHead(404); res.end();
-}).listen(5199, '127.0.0.1', () => console.log('mock on http://127.0.0.1:5199/app/'));
+}).listen(Number(process.env.MOCK_PORT || 5199), '127.0.0.1', () => console.log(`mock on http://127.0.0.1:${process.env.MOCK_PORT || 5199}/app/`));
