@@ -45,11 +45,11 @@ def read_env(path=ENV_FILE):
     return env
 
 
-def as_app_user(argv, env, cwd):
+def as_app_user(argv, env, cwd, stdout=subprocess.DEVNULL):
     import pwd
     user = pwd.getpwnam('agentai-platform')
     return subprocess.Popen(['setpriv', '--reuid', str(user.pw_uid), '--regid', str(user.pw_gid), '--clear-groups', *argv], env=env, cwd=cwd,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+                            stdout=stdout, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
 
 
 def sqlite_copy(src, dst):
@@ -104,6 +104,15 @@ class SandboxControl:
 CONTROL = SystemdControl()
 
 
+def proof_result(code, out, err):
+    """-> (passed, a short line): the gates that did not pass, by their own fixed titles (never anything from the database), or how many passed."""
+    lines = [line for line in (out or b'').decode('utf-8', 'replace').splitlines() if line.startswith(('PASS', 'FAIL', 'NOT RUN'))]
+    failed = [line.split('  --')[0][:160] for line in lines if not line.startswith('PASS')]
+    if code == 0 and lines and not failed:
+        return True, f'{len(lines)} gates passed'
+    return False, '; '.join(failed) if failed else 'the proof script ended with an error: ' + (err or b'').decode('utf-8', 'replace').strip().splitlines()[-1][:200] if (err or b'').strip() else 'the proof script printed no result'
+
+
 class Canary:
     """One release served on a loopback port against a database copy as the unprivileged app user."""
 
@@ -121,6 +130,19 @@ class Canary:
         self.proc = as_app_user([str(self.release / '.venv/bin/gunicorn'), '-c', 'deploy/gunicorn.conf.py', '--bind', f'127.0.0.1:{self.port}', 'accounts.wsgi:application'],
                                 self.env, self.release)
         return probe(self.port)
+
+    def prove(self):
+        """The release's own proofs, run against the migrated COPY before anything live changes: what used to be found only after a release was live (a sign-in address that
+        must be unique, a deleted account met by a check) is found here instead. -> (passed, what failed). A release without the script has nothing to prove."""
+        script = self.release / 'deploy' / 'phase23_live.py'
+        if not script.exists():
+            return True, 'no proof script in this release'
+        p = as_app_user([str(self.release / '.venv/bin/python'), 'deploy/phase23_live.py', '--copy'], self.env, self.release, stdout=subprocess.PIPE)
+        try:
+            out, err = p.communicate(timeout=420)
+        except subprocess.TimeoutExpired:
+            p.kill(); return False, 'the proofs did not finish in 7 minutes'
+        return proof_result(p.returncode, out, err)
 
     def stop(self):
         if self.proc and self.proc.poll() is None:
@@ -169,6 +191,8 @@ def main(argv=None):
             step('new release passes its canary probes on the copy', good, json.dumps(results))
             canary.stop()
             if not (ok and good): shutil.rmtree(new, ignore_errors=True); return finish(report, 1)
+            proven, detail = canary.prove(); step('new release passes its proofs on the copy (nothing live was touched)', proven, detail)
+            if not proven: shutil.rmtree(new, ignore_errors=True); return finish(report, 1)
             # Would the previous release still run on the migrated schema?
             shutil.copy2(new_state / 'platform.sqlite3', old_state / 'platform.sqlite3'); shutil.chown(old_state / 'platform.sqlite3', 'agentai-platform', 'agentai-platform')
             old_canary = Canary(previous, old_state, 18898, env)

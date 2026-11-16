@@ -57,3 +57,4 @@ test_data_lifecycle
 test_hub
 test_google_hub
 test_file_organization
+test_ci_pipeline

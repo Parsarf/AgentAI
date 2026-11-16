@@ -27,7 +27,7 @@ import sys
 import time
 import uuid
 
-sys.path.insert(0, '/opt/agentai-platform/current')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))      # the release this script is part of: the live one, or the one about to go live
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'accounts.settings')
 import django  # noqa: E402
 django.setup()
@@ -44,6 +44,12 @@ from agentai_platform.synthetic_connector import SyntheticBench  # noqa: E402
 RESULTS = []
 C = uuid.uuid4().hex                      # the disposable account
 HOUR = '--hour' in sys.argv
+# `--copy`: this is the deploy program proving a release against a COPY of the database before anything goes live (deploy/release.py). Nobody can turn a switch on for a
+# copy, so the two test switches count as on inside this process only. Nothing here reaches the live database or the live switch file.
+COPY = '--copy' in sys.argv
+if COPY:
+    _real_switch = wiring.switch_on
+    wiring.switch_on = lambda name: name in ('synthetic_connector', 'connector_writes') or _real_switch(name)
 
 
 def record(case, title, ok, detail=''):

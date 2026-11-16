@@ -133,6 +133,35 @@ class Layout(unittest.TestCase):
             self.assertTrue((platform / 'deploy' / f'{unit}.service').is_file(), unit)
 
 
+
+class ProofsBeforeGoingLive(unittest.TestCase):
+    """A release proves itself on a COPY of the database before anything live changes (deploy/release.py). What it found after going live on 2026-11-16 (twice) it now finds first."""
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location('release_procedure', PATH.parent / 'release.py')
+        cls.release = importlib.util.module_from_spec(spec); spec.loader.exec_module(cls.release)
+        cls.source = (PATH.parent / 'release.py').read_text()
+
+    def test_a_result_is_read_from_the_gates_and_never_from_what_they_printed_about_data(self):
+        good = b'PASS  P2-ROLES  An account is an organization of one  -- role=owner\nPASS  P3-PARTIAL  A partial result is stated  -- count=50\n{"passed": true}\n'
+        self.assertEqual(self.release.proof_result(0, good, b''), (True, '2 gates passed'))
+        bad = b'PASS  P2-ROLES  ok\nFAIL  P2-OFFBOARD  The disposable account is offboarded  -- {"found": {"auth_user": 1}, "who": "someone@example.test"}\n'
+        passed, why = self.release.proof_result(1, bad, b'')
+        self.assertEqual((passed, why), (False, 'FAIL  P2-OFFBOARD  The disposable account is offboarded'))
+        self.assertEqual(self.release.proof_result(2, b'NOT RUN: turn on the owner switch(es) synthetic_connector.\n', b'')[0], False)
+        self.assertEqual(self.release.proof_result(1, b'', b'Traceback\nValueError: boom\n'), (False, 'the proof script ended with an error: ValueError: boom'))
+        self.assertEqual(self.release.proof_result(0, b'', b''), (False, 'the proof script printed no result'))          # silence is never a pass
+        self.assertEqual(self.release.proof_result(0, b'FAIL  P3-HANDOFF  x\n', b'')[0], False)                          # nor is a clean exit with a failed gate
+
+    def test_the_proofs_run_on_the_copy_after_the_canary_and_before_any_live_change(self):
+        canary, proofs, live = (self.source.index(text) for text in ("step('new release passes its canary probes on the copy'", 'proven, detail = canary.prove()', 'return apply_live('))
+        self.assertTrue(canary < proofs < live)
+        self.assertIn("if not proven: shutil.rmtree(new, ignore_errors=True); return finish(report, 1)", self.source)
+        self.assertIn("'deploy/phase23_live.py', '--copy'", self.source)
+        proof = (PATH.parent / 'phase23_live.py').read_text()
+        self.assertIn("COPY = '--copy' in sys.argv", proof)
+        self.assertNotIn("/opt/agentai-platform/current')", proof.split('import django')[0])      # it proves the release it is part of, not whichever one is live
+
 if __name__ == '__main__':
     unittest.main()
 
