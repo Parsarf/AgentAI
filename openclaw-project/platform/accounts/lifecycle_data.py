@@ -138,7 +138,7 @@ def offboarding(request, action=None):
 def send_deletion_report(account_id, report) -> str:
     """The confirmation email of a finished deletion: fixed words and the counts of the verification, never content. Sent before the address itself is erased."""
     from django.contrib.auth.models import User
-    users = list(User.objects.filter(identity__account_id=account_id, identity__role='customer').exclude(email=''))
+    users = list(User.objects.filter(identity__account_id=account_id, identity__role='customer').exclude(email='').exclude(email__endswith='@deleted.invalid'))
     if not users:
         return 'no_address'
     scan = report.get('verification') or {}

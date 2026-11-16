@@ -49,11 +49,16 @@ class Lanes(unittest.TestCase):
             if run['id'] in seen:
                 return
             seen.add(run['id']); meeting.wait()                  # both phases must be inside wait() together
+            looked.wait(10)                                      # and stay there until the slots have been read: on a fast runner both could finish first
+        looked = threading.Event()
         self.gw.on_wait = at_wait
         worker = self.worker()
         report = worker.tick()
         self.assertEqual(report.get('started'), 2)
-        self.assertEqual(sorted(r['kind'] for r in self.rows('SELECT kind FROM request_slots')), ['background', 'interactive'])
+        try:
+            self.assertEqual(sorted(r['kind'] for r in self.rows('SELECT kind FROM request_slots')), ['background', 'interactive'])
+        finally:
+            looked.set()
         self.assertTrue(worker.wait_idle(20))
         self.gw.on_wait = None
         self.settle(worker)

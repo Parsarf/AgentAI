@@ -284,13 +284,26 @@ class DataLifecycle(Base):
         self.assertEqual(self.rows('SELECT status FROM accounts WHERE id=%s', [account])[0][0], 'deleted')
         self.assertEqual(self.rows('SELECT count(*) FROM chat_messages WHERE account_id=%s', [account])[0][0], 0)
         self.assertEqual(self.rows('SELECT count(*) FROM connector_secrets WHERE account_id=%s', [account])[0][0], 0)
-        self.assertEqual(self.rows("SELECT email FROM auth_user WHERE username LIKE 'deleted-%%'")[0][0], '')            # the address is erased
+        erased = self.rows("SELECT email FROM auth_user WHERE username LIKE 'deleted-%%'")[0][0]
+        self.assertTrue(erased.endswith('@deleted.invalid') and 'chatter' not in erased)                                  # the address is erased
         self.assertEqual(self.rows("SELECT count(*) FROM accounts_tombstone WHERE account_id=%s AND kind='account'", [account])[0][0], 1)
         self.assertEqual(self.a.get('/v1/conversations', secure=True).status_code, 401)                                   # nobody can sign in to it
         self.assertEqual(self.b.get('/v1/conversations', secure=True).status_code, 200)                                   # the other customer is untouched
         from django.core import mail
         self.assertEqual([m.subject for m in mail.outbox], ['Your Lumina account has been deleted'])
         self.assertIn('Nothing of yours is left', mail.outbox[0].body)
+
+    def test_a_second_customer_can_be_deleted_after_the_first(self):
+        """Found by the live proof: sign-in addresses are unique, so two deleted customers cannot both be left with an empty one."""
+        jobs = wiring.account_jobs()
+        for account in self.account_ids:
+            jobs.start_offboarding_by_operator(account, 'test', cooling_off=0)
+        for _ in range(12):
+            jobs.tick()
+        states = self.rows("SELECT state FROM account_jobs WHERE kind='deletion' ORDER BY created_epoch")
+        self.assertEqual([s[0] for s in states], ['completed', 'completed'])
+        self.assertEqual(self.rows("SELECT count(*) FROM auth_user WHERE email LIKE '%%@deleted.invalid'")[0][0], 2)
+        self.assertEqual(self.rows("SELECT count(*) FROM auth_user WHERE email LIKE '%%example.invalid'")[0][0], 0)
 
     def test_self_service_is_off_until_the_owner_switch_is_on(self):
         with patch.object(wiring, 'switch_on', lambda name: False):

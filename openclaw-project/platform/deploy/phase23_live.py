@@ -78,6 +78,12 @@ def make_account():
     Identity.objects.create(user=user, account_id=C, role='customer', verified=True)
     sql("INSERT INTO memberships VALUES (%s,%s,'customer','active')", [C, str(user.pk)])
     sql("INSERT INTO deployments(account_id,id,generation,state) VALUES (%s,%s,1,'stopped')", [C, 'dep' + C[:20]])
+    # A plan allowance, as every real customer has: without one the follow-up turn that resumes a chat is refused at admission (rightly), and the handoff gate cannot be seen.
+    from datetime import timedelta
+    from django.utils import timezone
+    now = int(time.time())
+    limits = {'period_start_epoch': now, 'period_microusd': 10 ** 12, 'daily_microusd': 10 ** 12, 'task_microusd': 10 ** 12, 'max_queued_tasks': 20}
+    sql("INSERT INTO entitlements VALUES (%s,'p23-v1','p23','trial',%s,%s)", [C, json.dumps(limits), timezone.now() + timedelta(days=1)])
     sql("INSERT INTO projects(account_id,id,name) VALUES (%s,%s,'Phase 2-3 proof')", [C, 'p' + C[:30]])
     sql("INSERT INTO conversations(account_id,project_id,id,deployment_id) VALUES (%s,%s,%s,%s)", [C, 'p' + C[:30], 'c' + C[:30], 'dep' + C[:20]])
     sql('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)

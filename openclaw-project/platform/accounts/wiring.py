@@ -291,7 +291,8 @@ def account_jobs(db=None):
             for session in Session.objects.filter(expire_date__gt=timezone.now()):
                 if str(session.get_decoded().get('_auth_user_id')) == str(user.pk):
                     session.delete()
-            user.email, user.username, user.first_name, user.last_name, user.is_active = '', f'deleted-{user.pk}', '', '', False
+            # Not an empty address: sign-in addresses are unique, so the second deleted customer could not be given an empty one too. A placeholder that names nobody.
+            user.email, user.username, user.first_name, user.last_name, user.is_active = f'deleted-{user.pk}@deleted.invalid', f'deleted-{user.pk}', '', '', False
             user.set_unusable_password()
             user.save()
             Identity.objects.filter(user=user).update(verified=False, epoch=models_f_epoch())
@@ -324,7 +325,7 @@ def account_jobs(db=None):
 
     def scan_identity(account):
         from django.contrib.auth.models import User
-        return User.objects.filter(identity__account_id=account, identity__role='customer').exclude(email='').count()
+        return User.objects.filter(identity__account_id=account, identity__role='customer').exclude(email__endswith='@deleted.invalid').count()
 
     files = file_store()
     adapters = {'connections': end_connections, 'custody': (lambda account: custody.delete_all(account)) if hasattr(custody, 'delete_all') else None, 'memory': forget_memory,
