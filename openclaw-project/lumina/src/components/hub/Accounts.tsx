@@ -5,7 +5,7 @@ export const REASON_WORDS: Record<string, string> = { reconnect: 'It needs to be
 
 /** One line about how current an account's mail or calendar is. An account that needs its customer says so; what was synced before stays on screen with its age. */
 export function freshness(account: HubAccount, part: SyncPart | null, now: number): string {
-  if (account.state === 'needs_you') return `Needs you. Last updated ${ago(part?.synced_epoch, now)}.`;
+  if (account.state === 'needs_you') return part?.synced_epoch ? `Needs you. Last updated ${ago(part.synced_epoch, now)}.` : 'Needs you.';
   if (!part) return 'Nothing chosen to show yet.';
   if (!part.filled) return part.items ? `Loading… ${part.items} so far.` : 'Loading for the first time…';
   if (part.error) return `Could not update. Last updated ${ago(part.synced_epoch, now)}.`;

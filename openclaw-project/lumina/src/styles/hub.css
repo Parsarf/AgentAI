@@ -87,6 +87,7 @@ button.hub-thread:hover { background: var(--fill-hover); }
 .hub-cal-zone { padding: 6px var(--space-3); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .hub-cal-zone .input { max-width: 240px; min-height: var(--control-sm); }
 .hub-calendars { display: flex; flex-direction: column; gap: 2px; }
+.hub-calendars .hub-side-title { text-transform: none; letter-spacing: 0; font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-calendar-row { display: flex; align-items: center; gap: var(--space-2); padding: 5px 4px; border-radius: var(--radius-xs); font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; }
 .hub-calendar-row:hover { background: var(--fill-hover); }
 .hub-calendar-row input { accent-color: var(--cal); }
