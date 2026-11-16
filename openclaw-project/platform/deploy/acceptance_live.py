@@ -115,13 +115,15 @@ def main():
     stamp = json.loads(row[0][2]) if row and row[0][2] else {}
     record('LIVE-STAMP', 'The request carries a version stamp for the commit that was deployed', bool(stamp) and (not sha or str(stamp.get('release', '')).startswith(sha[:7]) or sha[:7] in str(stamp.get('release', ''))),
            f"release={str(stamp.get('release'))[:20]} expected={sha[:7]}")
-    other = sql("SELECT i.user_id FROM accounts_identity i WHERE i.role='customer' AND i.account_id<>%s ORDER BY i.user_id LIMIT 1", [A])
+    # A second account that can sign in: a deleted customer keeps an identity row but is refused at the door (401/403), which says nothing about this request.
+    other = sql("SELECT i.user_id FROM accounts_identity i JOIN accounts a ON a.id=i.account_id JOIN auth_user u ON u.id=i.user_id "
+                "WHERE i.role='customer' AND i.account_id<>%s AND a.status='active' AND u.is_active ORDER BY i.user_id LIMIT 1", [A])
     if other and request:
         from django.contrib.auth.models import User
-        stranger = client(User.objects.get(pk=other[0][0]))
-        record('LIVE-ISOLATION', 'A second account cannot read that request', stranger.get(f'/v1/requests/{request}', secure=True).status_code == 404)
+        status = client(User.objects.get(pk=other[0][0])).get(f'/v1/requests/{request}', secure=True).status_code
+        record('LIVE-ISOLATION', 'A second account cannot read that request', status == 404, f'status={status}')
     else:
-        record('LIVE-ISOLATION', 'A second account cannot read that request', True, 'no second account on this server')
+        record('LIVE-ISOLATION', 'A second account cannot read that request', True, 'no second active account on this server')
     if conversation:
         post(c, f'/v1/conversations/{conversation}/archive', {})               # the test chat never stays in the account's list
     failed = [r for r in RESULTS if not r['passed']]
