@@ -104,13 +104,13 @@ export default function Inbox() {
       .catch(() => setLinkNote(CONNECT_NOTE.failed));
   }, [on, loadOverview]);
 
-  const filters = useMemo(() => ({ label, accounts: providerLabel ? [providerLabel.account] : shownAccounts, provider_label: providerLabel?.id, unread: unread || undefined,
-    attachments: attachments || undefined, q: query || undefined, limit: 50 }), [label, providerLabel, shownAccounts, unread, attachments, query]);
+  // Until the customer narrows the accounts, the list asks for every account's mail: it then does not wait for the accounts overview (one round trip fewer).
+  const filters = useMemo(() => ({ label, accounts: providerLabel ? [providerLabel.account] : chosen ? shownAccounts : undefined, provider_label: providerLabel?.id, unread: unread || undefined,
+    attachments: attachments || undefined, q: query || undefined, limit: 50 }), [label, providerLabel, chosen, shownAccounts, unread, attachments, query]);
   const filterKey = JSON.stringify(filters);
   const further = useRef(false); const [fresh, setFresh] = useState(false);
   const load = useCallback(async (cursor?: string) => {
-    if (!view) return;
-    if (!filters.accounts.length) { setThreads([]); setNext(null); return; }
+    if (filters.accounts && !filters.accounts.length) { setThreads([]); setNext(null); return; }
     const mine = ++request.current; setLoading(true);
     try {
       const r = await hub.threads({ ...filters, cursor });
@@ -119,8 +119,8 @@ export default function Inbox() {
     } catch (e) { if (mine === request.current) { setErr(failed(e)); setThreads(prev => prev ?? []); } }
     finally { if (mine === request.current) setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, !!view]);
-  useEffect(() => { setOlder(null); setPicked(new Set()); void load(); }, [load]);
+  }, [filterKey]);
+  useEffect(() => { if (on) { setOlder(null); setPicked(new Set()); void load(); } }, [load, on]);
   // Live: when anything changed at the server, the accounts and the first page of the list are loaded again, quietly. New mail joins at the top while the rows the reader
   // is looking at stay where they are. If the customer has paged further down, the list is left as it is and a line offers the new mail instead.
   usePulse(on, () => { void loadOverview(); if (further.current) setFresh(true); else void load(); });

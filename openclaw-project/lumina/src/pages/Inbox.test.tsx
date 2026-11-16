@@ -64,7 +64,9 @@ describe('Inbox', () => {
   it('asks the server for what the filters say', async () => {
     server(base()); show();
     await screen.findByText('Quarterly numbers');
-    expect(asked('/v1/hub/mail/threads')[0].get('label')).toBe('inbox'); expect(asked('/v1/hub/mail/threads')[0].get('accounts')).toBe('c1,c2');
+    expect(asked('/v1/hub/mail/threads')[0].get('label')).toBe('inbox');
+    // Every account until the customer narrows them: no accounts named, so the first page does not wait for the accounts overview (UI remodel, measured on production).
+    expect(asked('/v1/hub/mail/threads')[0].get('accounts')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Sent' }));
     await waitFor(() => expect(asked('/v1/hub/mail/threads').at(-1)!.get('label')).toBe('sent'));
     fireEvent.click(screen.getByLabelText('Unread only'));
