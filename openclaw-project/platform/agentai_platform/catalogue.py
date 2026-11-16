@@ -73,11 +73,13 @@ class Catalogue:
                 name = (place['name'] if place and place['name'] else r['display_name'])
                 files.append({'kind': what, 'id': r['id'], 'name': name, 'original_name': r['display_name'], 'media_type': r['media_type'], 'size_bytes': r['size_bytes'],
                               'sha256': r['sha256'], 'project_id': r['project_id'], 'folder_id': place['folder_id'] if place else None, 'source': 'uploaded' if what == 'upload' else 'made',
-                              'created_at': r['created_at'], 'family': family(r['media_type'], name),
+                              'created_at': r['created_at'], 'family': family(r['media_type'], name), '_linked': what == 'upload' and r['shares_with'] is not None,
                               **({'version': r['version'], 'versions': r['versions'], 'conversation_id': r['conversation_id']} if what == 'made' else {})})
         seen = {}
-        for f in sorted(files, key=lambda f: f['created_at']):
-            f['copy_of'] = seen.get(f['sha256'])                 # the oldest file with this content is the original; later ones say whose copy they are
+        # The oldest file with this content is the original; later ones say whose copy they are. Two uploads can carry the same second: the one that was linked to the
+        # other's bytes is the later one, whatever the clock says.
+        for f in sorted(files, key=lambda f: (f['created_at'], f.pop('_linked'), f['id'])):
+            f['copy_of'] = seen.get(f['sha256'])
             seen.setdefault(f['sha256'], {'kind': f['kind'], 'id': f['id'], 'name': f['name']})
         words = [w for w in (query or '').lower().split() if w]
         shown = [f for f in files if (project_id is None or f['project_id'] == project_id) and (folder_id is ... or f['folder_id'] == folder_id)
