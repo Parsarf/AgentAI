@@ -424,3 +424,23 @@ class ReadsArePaced(unittest.TestCase):
         self.assertIsNone(google_hub.GoogleAdapter(lambda *a, **k: (200, {}, b'{}')).pace)
         self.assertLessEqual(google_hub.READS_PER_SECOND * 5, 250)      # a header read costs 5 of Gmail's 250 units a second per user
 
+    def test_a_read_refused_as_too_fast_is_tried_again_after_a_wait_instead_of_ending_the_fill(self):
+        from agentai_platform import google_hub
+        answers = {'m1': [429, 200], 'm2': [200], 'm3': [429, 429, 429, 429]}
+        def http(method, url, headers, data=None):
+            mid = url.split('/messages/')[1].split('?')[0]
+            status = answers[mid].pop(0)
+            if status == 429:
+                return 429, {}, b'{"error": {"errors": [{"reason": "rateLimitExceeded"}]}}'
+            return 200, {}, json.dumps({'id': mid, 'threadId': 't' + mid, 'labelIds': ['INBOX'], 'snippet': '', 'internalDate': '2000000000000',
+                                        'payload': {'headers': [{'name': 'Subject', 'value': 's'}, {'name': 'From', 'value': 'a@x.test'}]}}).encode()
+        waits = []
+        adapter = google_hub.GoogleAdapter(http, sleep=waits.append)
+        with self.assertRaises(google_hub.ProviderError) as refused:                # one that stays refused after every retry still ends the run (and backs off as before)
+            adapter._headers_of_all({'access_token': 't'}, ['m1', 'm2', 'm3'], {})
+        self.assertEqual(refused.exception.status, 429)
+        self.assertEqual(sorted(waits), [2, 2, 4, 6])                              # m1 once, m3 three times
+        answers.update({'m1': [429, 200], 'm2': [200]}); waits.clear()
+        found, gone = adapter._headers_of_all({'access_token': 't'}, ['m1', 'm2'], {})
+        self.assertEqual((sorted(m['id'] for m in found), gone, waits), (['m1', 'm2'], [], [2]))
+
