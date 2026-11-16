@@ -34,6 +34,7 @@ def features(request):
         'mcp': wiring.mcp_on(getattr(request, 'account_id', None)),           # remote MCP connections (the owner's mcp-connections.json); off until turned on
         'connected_services': wiring.connectors_on(getattr(request, 'account_id', None)),      # services built on the connector contract can be connected and read (roadmap Phase 3)
         'connector_writes': wiring.writes_on(getattr(request, 'account_id', None)),            # the assistant may prepare changes in them, each for the customer's approval
+        'dashboard': wiring.hub_on(getattr(request, 'account_id', None)),                        # the Mail and Calendar pages (roadmap #D3, #D4)
         'self_service': wiring.switch_on('account_self_service'),                              # export my data, delete a chat, close my account
         'role': getattr(request, 'org_role', None),                                             # the person's role in their organization (owner | admin | member | viewer)
         'billing_mode': wiring.access_mode(),             # invite_only | open | paid_required

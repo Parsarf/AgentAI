@@ -276,7 +276,8 @@ class UiContractChecks(ChatHTTPChecks):
         app = self.clients[0].get('/v1/app', secure=True).json()
         self.assertEqual(app['user']['email'], 'chatter@example.invalid')
         self.assertEqual(set(app['features']), {'chat', 'execution', 'browse', 'files', 'uploads', 'convert', 'telegram', 'connectors', 'mcp', 'billing_mode', 'requests', 'usage',
-                                                'connected_services', 'connector_writes', 'self_service', 'role'})      # roadmap Phase 2-3: three switches (all off) and the person's role
+                                                'connected_services', 'connector_writes', 'self_service', 'role',      # roadmap Phase 2-3: three switches (all off) and the person's role
+                                            'dashboard'})                                                       # the Mail and Calendar pages (off)
         self.assertEqual((app['features']['role'], app['features']['connector_writes'], app['features']['self_service']), ('owner', False, False))
         self.assertNotIn('account_id', json.dumps(app))                     # the shell never needs, and is never handed, internal ids
         d = tempfile.mkdtemp()

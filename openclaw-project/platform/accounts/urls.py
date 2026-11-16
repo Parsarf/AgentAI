@@ -4,6 +4,7 @@ from . import chat as ch
 from . import telegram as tg
 from . import streams as st
 from . import api as api
+from . import hub as hubv
 from . import uishell as shell
 from . import genui as gen
 from . import app_views
@@ -119,6 +120,10 @@ from . import actions as act
 from . import organization as org
 from . import lifecycle_data as ld
 urlpatterns += [
+ path('v1/hub', hubv.overview), path('v1/hub/refresh', hubv.refresh), path('v1/hub/settings', hubv.settings),
+ path('v1/hub/mail/threads', hubv.threads), path('v1/hub/mail/labels', hubv.labels), path('v1/hub/mail/thread', hubv.thread), path('v1/hub/mail/message', hubv.message),
+ path('v1/hub/mail/search-older', hubv.search_older), path('v1/hub/calendars', hubv.calendars), path('v1/hub/events', hubv.events), path('v1/hub/event', hubv.event),
+ path('v1/hub/events/search', hubv.search_events),
  path('v1/controls', acc.controls),
  path('v1/integrations', acc.integrations), path('v1/integrations/synthetic/connect', acc.synthetic_connect),
  path('v1/integrations/<str:connection_id>', acc.integrations), path('v1/integrations/<str:connection_id>/resources', acc.resources),

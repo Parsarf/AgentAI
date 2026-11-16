@@ -7369,6 +7369,378 @@
     },
     "parameters": []
    }
+  },
+  "/v1/hub": {
+   "get": {
+    "summary": "The mail and calendar dashboard: connected accounts with their state, capabilities and freshness, settings, unread counts and calendars",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/refresh": {
+   "post": {
+    "summary": "Make the background sync of all connected mail and calendar accounts, or one ({\"connection_id\"}), due now",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/settings": {
+   "post": {
+    "summary": "Dashboard settings: {\"timezone\"?, \"allow_images_from\"?, \"block_images_from\"?}",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/mail/threads": {
+   "get": {
+    "summary": "One page of mail threads across the chosen accounts, newest first (label, accounts, provider_label, unread, starred, attachments, person, after, before, q, cursor, limit)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/mail/labels": {
+   "get": {
+    "summary": "The providers' own labels or folders that appear in the synced mail, per account",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/mail/thread": {
+   "get": {
+    "summary": "A thread with its messages (connection, id); the last message is opened: its body is fetched now if it was not yet. Remote pictures only with images=1 or an allowed sender",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/mail/message": {
+   "get": {
+    "summary": "One message with its body (connection, id), fetched now if it was not yet",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/mail/search-older": {
+   "get": {
+    "summary": "Mail older than the synced window, searched live at the provider (connection, q, continuation); says when the result is partial; stores nothing",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/calendars": {
+   "post": {
+    "summary": "The customer's own choices for one calendar: {\"connection_id\",\"calendar_id\",\"selected\"?,\"colour\"?}",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/events": {
+   "get": {
+    "summary": "Every event that touches [start, end) (epoch seconds) on the selected calendars of the chosen accounts",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/event": {
+   "get": {
+    "summary": "One event (connection, calendar, id) with people, place, notes and freshness; an event visible only as busy shows nothing else",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/events/search": {
+   "get": {
+    "summary": "Events in the synced window matching every word of q in title, people, place or notes",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
   }
  },
  "components": {

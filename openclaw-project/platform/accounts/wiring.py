@@ -137,6 +137,26 @@ def writes_on(account_id):
     return switch_on('connector_writes')
 
 
+def hub_on(account_id):
+    """Is the mail and calendar dashboard shown? The owner's switch."""
+    return switch_on('mail_calendar_dashboard')
+
+
+def hub_services(db=None):
+    """-> (connectors, client, sync, hub): the dashboard's sync engine and its reading side, sharing one view of the connections."""
+    from agentai_platform.hub import HubService
+    from agentai_platform.hub_sync import HubSync
+    db = db or store()
+    connectors = connector_service(db)
+    client = connector_client(db, connectors)
+    sync = HubSync(db, connectors, client)
+    return connectors, client, sync, HubService(db, connectors, client, sync)
+
+
+def hub_service(db=None):
+    return hub_services(db)[3]
+
+
 def action_services(db=None):
     """-> (connectors, client, actions, workflows): the action pipeline, built together so they share one view of the connections."""
     from agentai_platform.actions import ActionService

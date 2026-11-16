@@ -46,3 +46,16 @@ No server step. The request worker, the app, the tool relay and the lifecycle wo
 
 Switch the release back with `release.py` (or let the live acceptance do it). The new tables and columns stay and are ignored by the previous release. Before rolling
 back, turn `connector_writes`, `synthetic_connector` and `account_self_service` off and disable the three timers, so nothing of the new code is half in use.
+
+## The mail and calendar dashboard (branch `mail-calendar-dashboard`, not merged)
+
+Built so far: the provider-neutral model, the background sync, the reading routes (`/v1/hub/...`) and the owner switch `mail_calendar_dashboard` (off). No real provider
+is registered yet, so turning the switch on today would show two empty pages. When this is deployed:
+
+1. **Migration 0048** only adds tables (`hub_*`). The previous release ignores them.
+2. **Install and enable the sync timer**: `agentai-hub-sync.service` and `agentai-hub-sync.timer` from `platform/deploy/` (it runs `manage.py hub_sync` every minute and is
+   idle while the switch is off). Then record the fact `hub_sync_timer` in the switch facts file.
+3. **Privacy policy before the switch**: the policy must describe the copy Lumina keeps (mail headers and previews for 90 days, opened messages for 90 days after they were
+   last opened, events from one month back to twelve months ahead) and where it comes from. The retention table already holds these rows (`mail_headers`, `mail_bodies`,
+   `calendar_events`) and the sweeper enforces them. The public page and `privacy/facts.json` are **not** changed yet.
+4. **A provider**: the sign-in app for each mail and calendar service (an owner item) and that service's review, before any customer can connect one.
