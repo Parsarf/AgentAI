@@ -175,8 +175,9 @@ describe('Inbox', () => {
   it('moves through the list with the keyboard', async () => {
     server(base()); show();
     await screen.findByText('Quarterly numbers');
-    fireEvent.keyDown(window, { key: 'j' });
-    await waitFor(() => expect(asked('/v1/hub/mail/thread').at(-1)?.get('id')).toBe('t-1'));
+    // The list being on screen does not yet mean the page is listening for keys (that is attached just after it is drawn): press until the first thread opens.
+    await waitFor(() => { if (!asked('/v1/hub/mail/thread').length) fireEvent.keyDown(window, { key: 'j' }); expect(asked('/v1/hub/mail/thread').at(-1)?.get('id')).toBe('t-1'); });
+    await screen.findByRole('heading', { name: 'Quarterly numbers' });
     fireEvent.keyDown(window, { key: 'j' });
     await waitFor(() => expect(asked('/v1/hub/mail/thread').at(-1)?.get('id')).toBe('conv:9@x/1'));
     fireEvent.keyDown(window, { key: 'Escape' });
