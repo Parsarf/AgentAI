@@ -98,3 +98,10 @@ No server step. The web app's layout changed (the workspace frame, one assistant
 added: `POST /v1/assistant/ask` (the assistant panel on any page; mail and calendar selections pass only while `mail_calendar_dashboard` is on) and `GET /v1/search` (the
 command bar). Old app addresses redirect (`/app/tasks` to `/app/activity`, `/app/integrations` to `/app/settings/integrations`, `/app/automations` to `/app/activity`).
 The #52 step above still applies: replace `agentai-hub-sync.timer` with `agentai-hub-sync.service`.
+
+### Sync service memory (2026-11-16, after the deploy)
+
+In its first minutes on production the service was killed by its own 384 MB cap while filling the owner's mailbox (three pages of 100 messages took it from 79 MB to
+374 MB), and restarted in a loop with back-off. The unit now allows 1 GB and sets `MALLOC_ARENA_MAX=2`. When this release is live, copy the unit again and restart:
+`cp /opt/agentai-platform/current/deploy/agentai-hub-sync.service /etc/systemd/system/ && systemctl daemon-reload && systemctl restart agentai-hub-sync.service`.
+The cause of the growth during a fill is not found yet: the request path alone levels off at about 110 MB with eight requests in flight.
