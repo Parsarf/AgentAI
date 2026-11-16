@@ -66,7 +66,7 @@ def build(store):
     if wiring.storage_ready():
         files = FileTools(store, wiring.artifact_service(store), gateway_for=wiring.cell_gateway, renderer=wiring.renderer(), events=wiring.event_service(store))
     return (Relay(tool, location=LocationTool(store), progress=TaskProgressTool(store), origin=origin, memory=MemoryTools(memory) if memory is not None else None,
-                  remote=RemoteTools(wiring.mcp_service(store), enabled=wiring.mcp_on), files=files, show=ShowTools(store), connectors=wiring.connector_tools(store), permit=ToolPermit(store)), Identity(identify), own_models)
+                  remote=RemoteTools(wiring.mcp_service(store), enabled=wiring.mcp_on), files=files, show=ShowTools(store), connectors=wiring.connector_tools(store), hub=wiring.hub_tools(store), permit=ToolPermit(store)), Identity(identify), own_models)
 
 
 class Command(BaseCommand):

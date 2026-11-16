@@ -157,6 +157,13 @@ def hub_service(db=None):
     return hub_services(db)[3]
 
 
+def hub_tools(db=None):
+    """The assistant's mail and calendar tools: the same copy the dashboard shows, read only."""
+    from agentai_platform.hub_tools import HubTools
+    db = db or store()
+    return HubTools(db, hub_service(db), enabled=hub_on)
+
+
 def action_services(db=None):
     """-> (connectors, client, actions, workflows): the action pipeline, built together so they share one view of the connections."""
     from agentai_platform.actions import ActionService
@@ -225,6 +232,9 @@ def access_overview(db=None):
         if connectors_on(account):
             from agentai_platform.connector_tools import ConnectorTools
             names += sorted(ConnectorTools.names)
+        if hub_on(account):
+            from agentai_platform.hub_tools import HubTools
+            names += sorted(HubTools.names)
         return names
 
     def model_key(account):
