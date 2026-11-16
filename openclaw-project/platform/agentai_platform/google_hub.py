@@ -43,10 +43,12 @@ CALENDAR = 'https://www.googleapis.com/calendar/v3'
 HOSTS = ('gmail.googleapis.com', 'www.googleapis.com', 'oauth2.googleapis.com')
 MAX_ANSWER = 12_000_000
 MAIL_PAGE = 100                        # messages listed per page; their headers are then read several at a time
-PARALLEL = 8                           # header reads in flight at once (latency hides behind them); how many a second is set by READS_PER_SECOND
-READS_PER_SECOND = 40                  # Gmail allows 250 quota units a second per user and a header read costs 5: 50 a second. Eight in flight at this host's latency made
+PARALLEL = 4                           # header reads in flight at once (latency hides behind them); how many a second is set by READS_PER_SECOND
+READS_PER_SECOND = 20                  # Gmail allows 250 quota units a second per user and a header read costs 5: 50 a second. Eight in flight at this host's latency made
                                        # well over 100 a second; Google answered "rate limit", and the first fill stopped after 300 messages and backed off for up to an hour
-                                       # (production, 2026-11-16).
+                                       # (production, 2026-11-16). At 40 a second with 8 in flight Google still answered 429 rateLimitExceeded (it also limits concurrent
+                                       # requests per user), so: 20 a second, 4 in flight, and a refused read is tried again after a short wait (READ_RETRIES).
+READ_RETRIES = (2, 4, 6)               # seconds to wait before trying a refused (429) header read again; Google's own Retry-After wins when it is longer
 EVENT_PAGE = 250
 
 DECLARATION = Declaration(
@@ -273,8 +275,8 @@ _READS = Pace(READS_PER_SECOND)
 
 # -- the adapter -------------------------------------------------------------------------------------------------------------------------------------------
 class GoogleAdapter:
-    def __init__(self, http=default_http, pace=None):
-        self.http = http
+    def __init__(self, http=default_http, pace=None, sleep=time.sleep):
+        self.http, self.sleep = http, sleep
         self.pace = pace if pace is not None else (_READS if http is default_http else None)      # the real network is paced; a test's fake is not
 
     def _get(self, credential, url, query=None):
@@ -354,12 +356,15 @@ class GoogleAdapter:
     def _headers_of_all(self, credential, ids, names):
         """The headers of several messages, read a few at a time. -> (messages, the ids that are no longer there). The first real failure is raised."""
         def one(mid):
-            if self.pace is not None:
-                self.pace.wait()
-            try:
-                return mid, self._headers_of(credential, mid, names), None
-            except ProviderError as error:
-                return mid, None, error
+            for attempt in range(len(READ_RETRIES) + 1):
+                if self.pace is not None:
+                    self.pace.wait()
+                try:
+                    return mid, self._headers_of(credential, mid, names), None
+                except ProviderError as error:
+                    if error.status != 429 or attempt == len(READ_RETRIES):
+                        return mid, None, error
+                    self.sleep(max(READ_RETRIES[attempt], float(error.retry_after or 0)))      # Google said "too fast": wait a little and read this one again
         if not ids:
             return [], []
         with ThreadPoolExecutor(max_workers=min(PARALLEL, len(ids))) as pool:
