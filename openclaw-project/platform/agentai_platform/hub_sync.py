@@ -38,6 +38,7 @@ def events_back_days() -> int:
 
 EVENTS_AHEAD_DAYS = 366
 WINDOW_SLIP_DAYS = 30                  # a calendar's window is moved forward (a clean refill) once it has slipped this far
+LIST_INTERVAL = 1800                   # how often an account's list of calendars is read again
 
 
 def _grant_key(parts) -> str:
@@ -63,7 +64,9 @@ class HubSync:
             wanted = {}
             for c in connections:
                 scope = self.connectors.scope(con, c['account_id'], c['id'])
-                wanted[(c['account_id'], c['id'])] = (_grant_key([s for s in scope if s[0] in MAIL_RESOURCES]), _grant_key([s for s in scope if s[0] == CALENDAR_RESOURCE]))
+                mail, calendars = [s for s in scope if s[0] in MAIL_RESOURCES], [s for s in scope if s[0] == CALENDAR_RESOURCE]
+                caps = hub_caps(self.connectors.declared(c['service']))
+                wanted[(c['account_id'], c['id'])] = (_grant_key(mail) if mail and caps.mail else None, _grant_key(calendars) if calendars and caps.calendar else None)
             have = {}
             for r in con.execute('SELECT account_id,connection_id,domain,grant_key,state FROM hub_sync' + (' WHERE account_id=?' if account_id else ''), (account_id,) if account_id else ()):
                 have.setdefault((r['account_id'], r['connection_id']), {}).setdefault(r['domain'], set()).add(r['grant_key'])
@@ -72,7 +75,8 @@ class HubSync:
                 WHERE c.account_id=hub_sync.account_id AND c.id=hub_sync.connection_id AND c.state='connected')""")
         for key, (mail_key, calendar_key) in wanted.items():
             seen = have.get(key, {})
-            if seen.get('mail', {mail_key}) != {mail_key} or seen.get('calendar', {calendar_key}) != {calendar_key} or key not in have:
+            # A part that should be synced and is not set up, one set up for other grants, or one that should no longer be there.
+            if seen.get('mail') != ({mail_key} if mail_key else None) or seen.get('calendar') != ({calendar_key} if calendar_key else None):
                 try:
                     self.ensure(*key)
                     changed += 1
@@ -90,9 +94,12 @@ class HubSync:
             scope = self.connectors.scope(con, account_id, connection_id)
         mail = [s for s in scope if s[0] in MAIL_RESOURCES]
         calendars = [s for s in scope if s[0] == CALENDAR_RESOURCE]
-        found = []
+        found, trouble = [], None
         if caps.calendar and calendars:
-            found = self.client.call(account_id, declaration, lambda: adapter.calendars(credential), where=(connection_id, CALENDAR_RESOURCE, '*'))
+            try:
+                found = self.client.call(account_id, declaration, lambda: adapter.calendars(credential), where=(connection_id, CALENDAR_RESOURCE, '*'))
+            except ConnectorFault as fault:
+                trouble = fault                               # the calendars could not be listed now: mail is still set up, and the calendars are tried again later
         now = int(self.clock())
         every = any(s[1] == '*' for s in calendars)
         chosen = {s[1] for s in calendars}
@@ -110,21 +117,31 @@ class HubSync:
             else:
                 self._clear_mail(con, account_id, connection_id)
                 con.execute("DELETE FROM hub_sync WHERE account_id=? AND connection_id=? AND domain='mail'", (account_id, connection_id))
-            key = _grant_key(calendars)
-            keep = [c for c in found if every or c['id'] in chosen] if caps.calendar and calendars else []
-            ids = {c['id'] for c in keep}
-            for old in con.execute('SELECT id FROM hub_calendars WHERE account_id=? AND connection_id=?', (account_id, connection_id)).fetchall():
-                if old['id'] not in ids:
-                    con.execute('DELETE FROM hub_events WHERE account_id=? AND connection_id=? AND calendar_id=?', (account_id, connection_id, old['id']))
-                    con.execute('DELETE FROM hub_calendars WHERE account_id=? AND connection_id=? AND id=?', (account_id, connection_id, old['id']))
-                    con.execute("DELETE FROM hub_sync WHERE account_id=? AND connection_id=? AND domain='calendar' AND resource_id=?", (account_id, connection_id, old['id']))
-            for c in keep:
-                con.execute('''INSERT INTO hub_calendars(account_id,connection_id,id,name,provider_colour,timezone,access,is_primary,updated_epoch) VALUES (?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(account_id,connection_id,id) DO UPDATE SET name=excluded.name,provider_colour=excluded.provider_colour,timezone=excluded.timezone,
-                    access=excluded.access,is_primary=excluded.is_primary,updated_epoch=excluded.updated_epoch''',
-                            (account_id, connection_id, c['id'], c['name'], c['colour'], c['timezone'], c['access'], int(c['primary']), now))
-                con.execute("""INSERT INTO hub_sync(account_id,connection_id,domain,resource_id,grant_key) VALUES (?,?,'calendar',?,?)
-                    ON CONFLICT(account_id,connection_id,domain,resource_id) DO UPDATE SET grant_key=excluded.grant_key""", (account_id, connection_id, c['id'], key))
+            if trouble is None:                               # (an exception inside this block would undo the mail set-up above, so the fault is raised after it)
+                key = _grant_key(calendars)
+                keep = [c for c in found if every or c['id'] in chosen] if caps.calendar and calendars else []
+                ids = {c['id'] for c in keep}
+                for old in con.execute('SELECT id FROM hub_calendars WHERE account_id=? AND connection_id=?', (account_id, connection_id)).fetchall():
+                    if old['id'] not in ids:
+                        con.execute('DELETE FROM hub_events WHERE account_id=? AND connection_id=? AND calendar_id=?', (account_id, connection_id, old['id']))
+                        con.execute('DELETE FROM hub_calendars WHERE account_id=? AND connection_id=? AND id=?', (account_id, connection_id, old['id']))
+                        con.execute("DELETE FROM hub_sync WHERE account_id=? AND connection_id=? AND domain='calendar' AND resource_id=?", (account_id, connection_id, old['id']))
+                for c in keep:
+                    con.execute('''INSERT INTO hub_calendars(account_id,connection_id,id,name,provider_colour,timezone,access,is_primary,updated_epoch) VALUES (?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(account_id,connection_id,id) DO UPDATE SET name=excluded.name,provider_colour=excluded.provider_colour,timezone=excluded.timezone,
+                        access=excluded.access,is_primary=excluded.is_primary,updated_epoch=excluded.updated_epoch''',
+                                (account_id, connection_id, c['id'], c['name'], c['colour'], c['timezone'], c['access'], int(c['primary']), now))
+                    con.execute("""INSERT INTO hub_sync(account_id,connection_id,domain,resource_id,grant_key) VALUES (?,?,'calendar',?,?)
+                        ON CONFLICT(account_id,connection_id,domain,resource_id) DO UPDATE SET grant_key=excluded.grant_key""", (account_id, connection_id, c['id'], key))
+                # The list of calendars is itself something that is kept current ('*'): a calendar the customer adds at the provider shows up, one they remove goes.
+                if caps.calendar and calendars:
+                    con.execute("""INSERT INTO hub_sync(account_id,connection_id,domain,resource_id,grant_key,filled,last_sync_epoch,next_epoch) VALUES (?,?,'calendar','*',?,1,?,?)
+                        ON CONFLICT(account_id,connection_id,domain,resource_id) DO UPDATE SET grant_key=excluded.grant_key,last_sync_epoch=excluded.last_sync_epoch,
+                        next_epoch=excluded.next_epoch,failures=0,last_error=NULL,last_error_epoch=NULL""", (account_id, connection_id, key, now, now + LIST_INTERVAL))
+                else:
+                    con.execute("DELETE FROM hub_sync WHERE account_id=? AND connection_id=? AND domain='calendar' AND resource_id='*'", (account_id, connection_id))
+        if trouble is not None:
+            raise trouble
 
     @staticmethod
     def _clear_mail(con, account_id, connection_id):
@@ -174,6 +191,11 @@ class HubSync:
         where = (connection, 'mailbox' if domain == 'mail' else CALENDAR_RESOURCE, resource)
         now = int(self.clock())
         try:
+            if domain == 'calendar' and resource == '*':      # the list of calendars: `ensure` reads it and records that it did
+                self.ensure(account, connection)
+                with self.store.connect() as con:
+                    con.execute("UPDATE hub_sync SET state='waiting',lease_epoch=NULL WHERE account_id=? AND connection_id=? AND domain='calendar' AND resource_id='*'", (account, connection))
+                return 'same'
             _row, declaration, adapter, credential = self.client.open_for_sync(account, connection)
             changed, more = (self._mail if domain == 'mail' else self._calendar)(account, connection, resource, declaration, adapter, credential, where)
         except ConnectorFault as fault:

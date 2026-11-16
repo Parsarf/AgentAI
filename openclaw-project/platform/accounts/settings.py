@@ -159,5 +159,9 @@ HINDSIGHT_URL = os.environ.get('AGENTAI_HINDSIGHT_URL', '')
 HINDSIGHT_KEY_FILE = os.environ.get('AGENTAI_HINDSIGHT_KEY_FILE', '')
 HINDSIGHT_BANK_SECRET_FILE = os.environ.get('AGENTAI_HINDSIGHT_BANK_SECRET_FILE', '')
 MCP_OAUTH_CLIENTS_FILE = os.environ.get('AGENTAI_MCP_OAUTH_CLIENTS_FILE', '')
+# The sign-in app for Google mail and calendars (the dashboard's first provider). Both must be set for Google to be offered; the redirect address registered at Google must be
+# PUBLIC_ORIGIN + '/v1/hub/link/callback'. The secret is read from the environment file (root-only on the server) and is never sent to a browser or a cell.
+GOOGLE_CLIENT_ID = os.environ.get('AGENTAI_GOOGLE_CLIENT_ID') or os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('AGENTAI_GOOGLE_CLIENT_SECRET') or os.environ.get('GOOGLE_CLIENT_SECRET', '')
 ASANA_MCP_CLIENT_ID = os.environ.get('ASANA_MCP_CLIENT_ID', '')
 ASANA_MCP_CLIENT_SECRET = os.environ.get('ASANA_MCP_CLIENT_SECRET', '')

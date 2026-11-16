@@ -21,7 +21,7 @@ export interface HubEvent { connection_id: string; calendar_id: string; id: stri
   all_day: boolean; start_date: string | null; end_date: string | null; timezone: string | null; place: string; conference_url: string | null; my_response: string | null;
   exception: boolean; cancelled: boolean; visibility: string; colour: string;
   description?: string; organizer?: Person | null; attendees?: (Person & { response: string; self: boolean; optional: boolean })[]; provider_url?: string | null; synced_epoch?: number | null }
-export interface Overview { accounts: HubAccount[]; settings: { timezone: string | null; image_senders: string[] }; counts: { unread: number; by_account: Record<string, number> };
+export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[] }; counts: { unread: number; by_account: Record<string, number> };
   calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean }
 export interface ThreadFilters { label: string; accounts?: string[]; provider_label?: string; unread?: boolean; attachments?: boolean; q?: string; cursor?: string; limit?: number }
 export interface Page { count: number; complete: boolean; total_estimate: number | null; continuation: string | null; stopped_by: string | null }

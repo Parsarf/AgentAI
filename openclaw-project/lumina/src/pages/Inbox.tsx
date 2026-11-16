@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import * as I from '../components/Icons';
 import Accounts from '../components/hub/Accounts';
+import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import MessageBody from '../components/hub/MessageBody';
 import { browserZone, failed, fileSize, fullTime, hub, LABEL_WORDS, LIST_ORDER, listTime, people, personName, problemWords, threadKey, validZone,
   type HubAccount, type Message, type Overview, type Thread } from '../lib/hub';
@@ -59,6 +60,9 @@ export default function Inbox() {
   const [selected, setSelected] = useState<string | null>(null); const [opened, setOpened] = useState<Opened | null>(null); const [openErr, setOpenErr] = useState('');
   const [older, setOlder] = useState<Older | null>(null);
   const search = useRef<HTMLInputElement>(null); const request = useRef(0);
+  const [params, setParams] = useSearchParams(); const [choosing, setChoosing] = useState<string | null>(params.get('connected'));
+  const connectNote = CONNECT_NOTE[params.get('connect') ?? ''];
+  const doneChoosing = () => { setChoosing(null); setParams({}, { replace: true }); window.setTimeout(() => { void loadOverview(); void load(); }, 1200); };
 
   const zone = useMemo(() => (view?.settings.timezone && validZone(view.settings.timezone) ? view.settings.timezone : browserZone()), [view?.settings.timezone]);
   const accounts = useMemo(() => (view?.accounts ?? []).filter(a => a.capabilities.mail), [view]);
@@ -129,13 +133,14 @@ export default function Inbox() {
       <p style={{ marginTop: 16 }}><Link className="btn" to="/">Back to Home</Link></p></section></div>);
 
   const needing = accounts.filter(a => a.state === 'needs_you');
+  const choosingAccount = (view?.accounts ?? []).find(a => a.id === choosing);
   const filling = accounts.filter(a => a.mail && !a.mail.filled && a.state === 'working');
   const searchable = query ? accounts.filter(a => shownAccounts.includes(a.id) && a.capabilities.mail_search) : [];
   const title = providerLabel ? providerLabel.name : LABEL_WORDS[label] ?? label;
   return (
     <div className={`hub hub-inbox${selected ? ' has-open' : ''}`}>
       <aside className="hub-side panel" aria-label="Mail filters">
-        <Accounts accounts={accounts} part="mail" chosen={new Set(shownAccounts)} onToggle={toggle} counts={view?.counts.by_account} now={now} />
+        <Accounts accounts={accounts} part="mail" chosen={new Set(shownAccounts)} onToggle={toggle} counts={view?.counts.by_account} now={now} providers={view?.providers} onChoose={a => setChoosing(a.id)} />
         <nav className="hub-labels" aria-label="Mailboxes">
           {LIST_ORDER.map(l => <button key={l} type="button" className="hub-label" aria-current={!providerLabel && label === l ? 'page' : undefined} onClick={() => { setProviderLabel(null); setLabel(l); }}>
             <span>{LABEL_WORDS[l]}</span>{l === 'inbox' && !!view?.counts.unread && <span className="badge accent" aria-label={`${view.counts.unread} unread`}>{view.counts.unread}</span>}</button>)}
@@ -163,14 +168,16 @@ export default function Inbox() {
         </header>
         <p className="hub-readonly faint small">Read only for now: nothing here changes your mailbox, and opening a message does not mark it as read there.</p>
         {err && <p className="notice warning" role="alert">{err}</p>}
+        {connectNote && <p className="notice warning" role="status">{connectNote}</p>}
+        {choosingAccount && <ChooseAccess account={choosingAccount} onDone={doneChoosing} onCancel={() => { setChoosing(null); setParams({}, { replace: true }); }} />}
         {needing.map(a => <p key={a.id} className="notice warning" role="status">{a.identity} needs you. What was loaded before is still shown. <Link to="/settings?tab=access">Open Access</Link></p>)}
         {filling.length > 0 && <p className="notice" role="status">Loading mail from {filling.map(a => a.identity).join(', ')} for the first time. This list fills in as it arrives.</p>}
         {view && !accounts.length ? (
           <div className="empty"><b>No mail account is connected</b><p className="muted">Connect an account and choose what Lumina may read. It shows up here.</p>
-            <p><Link className="btn primary" to="/settings?tab=access">Connect an account</Link></p></div>
+            <AddAccount providers={view.providers ?? []} primary /></div>
         ) : threads === null ? <p className="muted hub-pad" role="status">Loading…</p> : !threads.length && !loading ? (
           <div className="empty">{query ? <>Nothing in the last 90 days matches “{query}”.</> : accounts.some(a => !a.granted.mail) && !accounts.some(a => a.granted.mail)
-            ? <>Nothing has been chosen to show yet. <Link to="/settings?tab=access">Choose what Lumina may read</Link></> : <>Nothing here.</>}</div>
+            ? <>Nothing has been chosen to show yet. Use “Choose what Lumina may read” beside the account.</> : <>Nothing here.</>}</div>
         ) : (
           <ul className="hub-threads" aria-label="Threads">
             {threads.map(t => { const k = threadKey(t); const account = byId[t.connection_id]; return (

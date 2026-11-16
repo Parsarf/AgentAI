@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import * as I from '../components/Icons';
 import Accounts from '../components/hub/Accounts';
+import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
   validZone, zonedEpoch, type HubAccount, type HubCalendar, type HubEvent, type Overview } from '../lib/hub';
 import { useData } from '../state/data';
@@ -70,6 +71,9 @@ export default function CalendarPage() {
   const [typed, setTyped] = useState(''); const [found, setFound] = useState<{ query: string; events: HubEvent[]; complete: boolean } | null>(null);
   const [zoneEdit, setZoneEdit] = useState<string | null>(null); const [colouring, setColouring] = useState<string | null>(null);
   const request = useRef(0); const grid = useRef<HTMLDivElement>(null);
+  const [params, setParams] = useSearchParams(); const [choosing, setChoosing] = useState<string | null>(params.get('connected'));
+  const connectNote = CONNECT_NOTE[params.get('connect') ?? ''];
+  const doneChoosing = () => { setChoosing(null); setParams({}, { replace: true }); window.setTimeout(() => { void loadInfo(); void load(); }, 1200); };
 
   const zone = useMemo(() => (info?.settings.timezone && validZone(info.settings.timezone) ? info.settings.timezone : browserZone()), [info?.settings.timezone]);
   const today = dayKey(now, zone); const day = anchor ?? today;
@@ -155,6 +159,7 @@ export default function CalendarPage() {
   const heading = view === 'day' ? dayTitle(day) : view === 'month' ? dayTitle(day, 'month')
     : rangeTitle(span.from, span.to);
   const needing = accounts.filter(a => a.state === 'needs_you');
+  const choosingAccount = (info?.accounts ?? []).find(a => a.id === choosing);
   const filling = calendars.filter(c => !c.filled && shownAccounts.includes(c.connection_id));
   const list = (items: HubEvent[], days: string[]) => days.map(d => ({ day: d, items: items.filter(e => eventDays(e, zone, d, d).length).sort((a, b) => Number(b.all_day) - Number(a.all_day) || a.start_epoch - b.start_epoch) })).filter(g => g.items.length);
   const agendaRows = (groups: { day: string; items: HubEvent[] }[]) => groups.map(g => (
@@ -167,7 +172,7 @@ export default function CalendarPage() {
   return (
     <div className={`hub hub-calendar${detail ? ' has-open' : ''}`}>
       <aside className="hub-side panel" aria-label="Calendars">
-        <Accounts accounts={accounts} part="calendar" chosen={new Set(shownAccounts)} onToggle={toggleAccount} now={now} />
+        <Accounts accounts={accounts} part="calendar" chosen={new Set(shownAccounts)} onToggle={toggleAccount} now={now} providers={info?.providers} onChoose={a => setChoosing(a.id)} />
         {accounts.filter(a => shownAccounts.includes(a.id)).map(a => { const mine = calendars.filter(c => c.connection_id === a.id); return !mine.length ? null : (
           <section key={a.id} className="hub-calendars" aria-label={`Calendars of ${a.identity}`}>
             <h2 className="hub-side-title" title={a.identity}>{a.identity}</h2>
@@ -203,13 +208,15 @@ export default function CalendarPage() {
               <button type="button" className="btn small tertiary" onClick={() => setZoneEdit(null)}>Cancel</button></>}
         </div>
         {err && <p className="notice warning" role="alert">{err}</p>}
+        {connectNote && <p className="notice warning" role="status">{connectNote}</p>}
+        {choosingAccount && <ChooseAccess account={choosingAccount} onDone={doneChoosing} onCancel={() => { setChoosing(null); setParams({}, { replace: true }); }} />}
         {needing.map(a => <p key={a.id} className="notice warning" role="status">{a.identity} needs you. What was loaded before is still shown. <Link to="/settings?tab=access">Open Access</Link></p>)}
         {filling.length > 0 && <p className="notice" role="status">Loading {filling.map(c => c.name).join(', ')} for the first time.</p>}
         {partial && <p className="notice" role="status">There are more events in this range than can be shown at once. Choose a shorter range.</p>}
 
         {info && !accounts.length ? (
           <div className="empty"><b>No calendar is connected</b><p className="muted">Connect an account and choose which calendars Lumina may read. They show up here.</p>
-            <p><Link className="btn primary" to="/settings?tab=access">Connect an account</Link></p></div>
+            <AddAccount providers={info.providers ?? []} primary /></div>
         ) : events === null ? <p className="muted hub-pad" role="status">Loading…</p>
         : found ? <div className="hub-agenda">{found.events.length ? agendaRows(list(found.events, [...new Set(found.events.flatMap(e => eventDays(e, zone, '0000-01-01', '9999-12-31').slice(0, 1)))].sort()))
             : <div className="empty">No event from last month to a year ahead matches “{found.query}”.</div>}

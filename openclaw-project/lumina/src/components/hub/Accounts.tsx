@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ago, type HubAccount, type SyncPart } from '../../lib/hub';
+import { AddAccount, type Provider } from './Connect';
 
 export const REASON_WORDS: Record<string, string> = { reconnect: 'It needs to be connected again.', consent: 'It needs a permission it does not have.' };
 
@@ -13,8 +14,8 @@ export function freshness(account: HubAccount, part: SyncPart | null, now: numbe
 }
 
 /** The accounts on the left of the Inbox and the Calendar: which are shown, which work, how fresh each is. The provider is shown as its name only; nothing here decides by it. */
-export default function Accounts({ accounts, part, chosen, onToggle, counts, now }: { accounts: HubAccount[]; part: 'mail' | 'calendar'; chosen: Set<string>; onToggle(id: string): void;
-  counts?: Record<string, number>; now: number }) {
+export default function Accounts({ accounts, part, chosen, onToggle, counts, now, providers, onChoose }: { accounts: HubAccount[]; part: 'mail' | 'calendar'; chosen: Set<string>; onToggle(id: string): void;
+  counts?: Record<string, number>; now: number; providers?: Provider[]; onChoose?(account: HubAccount): void }) {
   const mine = accounts.filter(a => a.capabilities[part]);
   return (
     <section className="hub-accounts" aria-label="Accounts">
@@ -24,9 +25,10 @@ export default function Accounts({ accounts, part, chosen, onToggle, counts, now
           <input type="checkbox" checked={chosen.has(a.id)} onChange={() => onToggle(a.id)} />
           <span className="hub-account-text"><b title={a.identity}>{a.identity}</b>
             <span className="faint small">{a.provider_label} · {freshness(a, a[part], now)}</span>
-            {a.state === 'needs_you' && <Link className="small" to="/settings?tab=access">{REASON_WORDS[a.needs_reason ?? ''] ?? 'It needs your attention.'} Open Access</Link>}</span>
+            {a.state === 'needs_you' && <Link className="small" to="/settings?tab=access">{REASON_WORDS[a.needs_reason ?? ''] ?? 'It needs your attention.'} Open Access</Link>}
+            {a.state === 'working' && !a.granted[part] && onChoose && <button type="button" className="btn small tertiary hub-inline" onClick={e => { e.preventDefault(); onChoose(a); }}>Choose what Lumina may read</button>}</span>
           {!!counts?.[a.id] && <span className="badge accent" aria-label={`${counts[a.id]} unread`}>{counts[a.id]}</span>}
         </label>))}
-      <Link className="btn small tertiary hub-add" to="/settings?tab=access">Add an account</Link>
+      <AddAccount providers={providers ?? []} />
     </section>);
 }

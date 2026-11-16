@@ -1,5 +1,6 @@
 """The mail and calendar dashboard over HTTP (roadmap #D2 to #D4): off until the owner's switch is on, scoped to the signed-in account, read-only, and one list from two
 different providers."""
+import json
 import os
 import tempfile
 from unittest.mock import patch
@@ -131,7 +132,7 @@ class Dashboard(Base):
         changed = self.post(self.a, '/v1/hub/calendars', {'connection_id': self.cp, 'calendar_id': 'main', 'selected': False, 'colour': 'teal'})
         self.assertEqual([(c['selected'], c['colour']) for c in changed.json()['calendars'] if c['id'] == 'main'], [(False, 'teal')])
         self.assertEqual(self.post(self.a, '/v1/hub/calendars', {'connection_id': self.cp, 'calendar_id': 'main', 'colour': 'url(x)'}).status_code, 400)
-        self.assertEqual(self.post(self.a, '/v1/hub/refresh', {}).json(), {'requested': 4})
+        self.assertEqual(self.post(self.a, '/v1/hub/refresh', {}).json(), {'requested': 6})      # two mailboxes, two calendars, two lists of calendars
         self.assertEqual(self.a.get('/v1/hub/events', {'start': 5, 'end': 1}, secure=True).status_code, 400)
         self.assertEqual(self.a.get('/v1/hub/mail/threads?label=nonsense', secure=True).status_code, 400)
 
@@ -148,6 +149,63 @@ class Dashboard(Base):
         del calls
 
 
+class SignIn(Base):
+    """Signing in to a real provider's shape (a fake Google answers), through the routes."""
+    def setUp(self):
+        super().setUp()
+        from agentai_platform import google_hub
+        from tests.test_google_hub import FakeGoogle
+        self.g = FakeGoogle()
+        http = self.g
+        providers = {'google': {'label': 'Google', 'register': lambda registry: google_hub.register(registry, http),
+                                'address': lambda redirect, state, challenge: google_hub.authorize_url('client-1', redirect, state, challenge),
+                                'exchange': google_hub.exchanger('client-1', 'secret-1', http), 'refresh': google_hub.refresher('client-1', 'secret-1', http),
+                                'needs_any': (google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE)}}
+        offered = patch.object(wiring, 'sign_in_providers', lambda: providers); offered.start(); self.addCleanup(offered.stop)
+
+        def registry(db=None):
+            made = Registry()
+            made.register(ALPHA, lambda: Alpha(self.alpha_worlds)); made.register(POSTBOX, lambda: Postbox(self.postbox_worlds))
+            return google_hub.register(made, http)
+        fake = patch.object(wiring, 'connector_registry', registry); fake.start(); self.addCleanup(fake.stop)
+        origin = override_settings(PUBLIC_ORIGIN='https://app.test'); origin.enable(); self.addCleanup(origin.disable)
+
+    def test_sign_in_connects_the_account_with_nothing_chosen_then_the_customer_chooses(self):
+        from urllib.parse import parse_qs, urlsplit
+        self.assertEqual(self.a.get('/v1/hub', secure=True).json()['providers'], [{'provider': 'google', 'label': 'Google'}])
+        begun = self.post(self.a, '/v1/hub/link', {'provider': 'google'})
+        self.assertEqual(begun.status_code, 200, begun.content)
+        asked = parse_qs(urlsplit(begun.json()['authorize_url']).query)
+        self.assertEqual(asked['redirect_uri'], ['https://app.test/v1/hub/link/callback'])
+        self.assertNotIn('secret-1', begun.content.decode())
+        back = self.a.get('/v1/hub/link/callback', {'state': asked['state'][0], 'code': 'good-code'}, secure=True)
+        self.assertEqual(back.status_code, 302)
+        self.assertTrue(back['Location'].startswith('/app/inbox?connected='))
+        connection = back['Location'].split('=')[1]
+        seen = self.a.get('/v1/hub', secure=True).json()['accounts']
+        self.assertEqual([(x['identity'], x['provider_label'], x['granted']) for x in seen], [('dana@gmail.test', 'Google', {'mail': False, 'calendar': False})])
+        offered = self.a.get(f'/v1/integrations/{connection}/resources', secure=True).json()['resources']
+        self.assertEqual([(r['kind'], r['name']) for r in offered][:2], [('mailbox', 'All mail'), ('label', 'Inbox')])
+        chosen = self.post(self.a, f'/v1/integrations/{connection}/grants', {'grants': [{'kind': 'mailbox', 'id': '*'}, {'kind': 'calendar', 'id': 'dana@gmail.test'}]})
+        self.assertEqual(chosen.status_code, 200, chosen.content)
+        self.g.mail(1)
+        sync = wiring.hub_services()[2]
+        for _ in range(3):
+            sync.tick(limit=50)
+        self.assertEqual([t['subject'] for t in self.a.get('/v1/hub/mail/threads?label=all', secure=True).json()['threads']], ['Subject 1'])
+        self.assertNotIn('at-1', json.dumps(self.a.get('/v1/hub', secure=True).json()) + json.dumps(self.a.get('/v1/controls', secure=True).json()))      # a token never reaches a browser
+
+    def test_a_callback_that_is_declined_replayed_or_from_another_person_connects_nothing(self):
+        from urllib.parse import parse_qs, urlsplit
+        state = parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google'}).json()['authorize_url']).query)['state'][0]
+        self.assertEqual(self.a.get('/v1/hub/link/callback', {'error': 'access_denied', 'state': state}, secure=True)['Location'], '/app/inbox?connect=declined')
+        self.assertEqual(self.b.get('/v1/hub/link/callback', {'state': state, 'code': 'good-code'}, secure=True)['Location'], '/app/inbox?connect=failed')       # another person's browser
+        self.assertEqual(self.a.get('/v1/hub/link/callback', {'state': state, 'code': 'wrong'}, secure=True)['Location'], '/app/inbox?connect=failed')
+        self.assertEqual(self.a.get('/v1/hub/link/callback', {'state': state, 'code': 'good-code'}, secure=True)['Location'], '/app/inbox?connect=failed')       # burnt by the failed attempt
+        self.assertEqual(self.rows('SELECT count(*) FROM connector_connections')[0][0], 0)
+        self.assertEqual(self.post(self.a, '/v1/hub/link', {'provider': 'nobody'}).status_code, 503)
+
+
 class Off(Base):
     ON = set()
 
@@ -155,6 +213,6 @@ class Off(Base):
         for path in ('/v1/hub', '/v1/hub/mail/threads', '/v1/hub/mail/labels', '/v1/hub/mail/thread', '/v1/hub/mail/message', '/v1/hub/mail/search-older', '/v1/hub/events',
                      '/v1/hub/event', '/v1/hub/events/search'):
             self.assertEqual(self.a.get(path, secure=True).status_code, 503, path)
-        for path in ('/v1/hub/refresh', '/v1/hub/settings', '/v1/hub/calendars'):
+        for path in ('/v1/hub/refresh', '/v1/hub/settings', '/v1/hub/calendars', '/v1/hub/link'):
             self.assertEqual(self.post(self.a, path, {}).status_code, 503, path)
         self.assertFalse(self.a.get('/v1/app', secure=True).json()['features']['dashboard'])

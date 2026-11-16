@@ -3,6 +3,8 @@
     GET  /v1/hub                          accounts (state, capabilities, freshness), settings, unread counts, calendars
     POST /v1/hub/refresh                  {"connection_id"?}  make the sync of all accounts, or one, due now
     POST /v1/hub/settings                 {"timezone"?, "allow_images_from"?, "block_images_from"?}
+    POST /v1/hub/link                     {"provider"}  begin signing in to a mail and calendar provider; answers with the address to send the customer to
+    GET  /v1/hub/link/callback            where the provider sends the customer back; finishes the sign-in and returns them to the Inbox to choose what may be read
     GET  /v1/hub/mail/threads             ?label=inbox&accounts=a,b&provider_label=&unread=1&starred=1&attachments=1&person=&after=&before=&q=&cursor=&limit=
     GET  /v1/hub/mail/labels              the providers' own labels or folders, per account
     GET  /v1/hub/mail/thread              ?connection=&id=&images=1     opens the last message (its body is fetched now if it was not yet)
@@ -16,12 +18,13 @@
 Ids of threads, messages, calendars and events are the providers' own and can hold any character, so they travel as query values, never in a path.
 Nothing here changes anything at a provider. Every answer is scoped to the signed-in person's account; an id of another account's is "not found".
 """
-from django.http import JsonResponse
+from django.conf import settings as django_settings
+from django.http import HttpResponseRedirect, JsonResponse
 
 from agentai_platform.hub import COLOURS, LIST_LABELS
 from . import wiring
 from .access import guarded
-from .services import rate
+from .services import audit, rate
 from .views import customer, endpoint
 
 
@@ -77,9 +80,54 @@ def overview(request):
 
     def run():
         hub = wiring.hub_service()
-        return {'accounts': hub.accounts(principal), 'settings': hub.settings(principal), 'counts': hub.counts(principal), 'calendars': hub.calendars(principal),
+        return {'accounts': hub.accounts(principal), 'providers': [{'provider': name, 'label': p['label']} for name, p in wiring.sign_in_providers().items()], 'settings': hub.settings(principal), 'counts': hub.counts(principal), 'calendars': hub.calendars(principal),
                 'labels': list(LIST_LABELS), 'colours': list(COLOURS), 'read_only': True}
     return _run(run)
+
+
+def _redirect_address():
+    return django_settings.PUBLIC_ORIGIN + '/v1/hub/link/callback'
+
+
+@endpoint(['POST'], ['provider'], structured=True)
+def link(request):
+    """Begin signing in. Nothing is connected by this: the customer is sent to the provider, which shows what is asked for (reading only) and sends them back."""
+    principal, stop = _enter(request, 'hub.link', 20)
+    if stop:
+        return stop
+    provider = wiring.sign_in_providers().get(request.input.get('provider') if isinstance(request.input.get('provider'), str) else '')
+    if provider is None:
+        return JsonResponse({'error': 'connector_not_configured'}, status=503)
+
+    def run():
+        started = wiring.connector_service().start_link(principal, request.input['provider'], _redirect_address())
+        return {'authorize_url': provider['address'](_redirect_address(), started['state'], started['challenge']), 'expires_in': started['expires_in']}
+    return _run(run)
+
+
+@endpoint(['GET'])
+def link_callback(request):
+    """Where the provider sends the customer back. Whatever happened, they land on the Inbox: with the new account to choose what it may read, or with a plain note that
+    it did not work. Nothing from the provider is shown, and a refused or replayed callback connects nothing."""
+    principal, stop = _enter(request, 'hub.link', 20)
+    if stop:
+        return HttpResponseRedirect('/app/inbox?connect=failed')
+    state, code = request.GET.get('state', ''), request.GET.get('code', '')
+    if not state or not code or len(state) > 200 or len(code) > 2000:
+        return HttpResponseRedirect('/app/inbox?connect=' + ('declined' if request.GET.get('error') == 'access_denied' else 'failed'))
+    from agentai_platform.connectors import ConnectorError
+    from agentai_platform.permissions import NotPermitted
+    connectors = wiring.connector_service()
+    provider = wiring.sign_in_providers().get(connectors.link_service(principal, state) or '')
+    if provider is None:
+        return HttpResponseRedirect('/app/inbox?connect=failed')
+    try:
+        connection = connectors.finish_link(principal, state, code, _redirect_address(), provider['exchange'], needs_any=provider['needs_any'])
+    except (ConnectorError, NotPermitted):
+        return HttpResponseRedirect('/app/inbox?connect=failed')
+    from urllib.parse import quote
+    audit(request.user.pk, request.account_id, connection, 'hub.link', 'completed', request.request_id)
+    return HttpResponseRedirect('/app/inbox?connected=' + quote(connection, safe=''))
 
 
 @endpoint(['POST'], ['connection_id'], structured=True)

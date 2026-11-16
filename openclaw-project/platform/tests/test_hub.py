@@ -25,12 +25,12 @@ class Both(HubBase):
 
 class Sync(Both):
     def test_one_list_from_two_providers_newest_first_and_a_second_run_changes_nothing(self):
-        self.assertEqual(self.run_sync(), {'ran': 3, 'changed': 2, 'failed': 0})          # two mailboxes, and the one (empty) calendar
+        self.assertEqual(self.run_sync(), {'ran': 3, 'changed': 2, 'failed': 0})          # two mailboxes and the one (empty) calendar; the lists of calendars were just read
         found = self.hub.threads(self.a, label='all')
         self.assertEqual([t['id'] for t in found['threads']], ['t-0001', 'conv:1', 't-0002', 'conv:2', 't-0003', 'conv:3', 't-0004', 'conv:4', 't-0005', 'conv:5'])
         self.assertTrue(found['complete'])
         before = self.rows('SELECT * FROM hub_messages ORDER BY connection_id,id') + self.rows('SELECT * FROM hub_threads ORDER BY connection_id,id')
-        self.assertEqual(self.run_sync(), {'ran': 3, 'changed': 0, 'failed': 0})
+        self.assertEqual(self.run_sync(), {'ran': 5, 'changed': 0, 'failed': 0})          # the same three, and each account's list of calendars
         self.assertEqual(before, self.rows('SELECT * FROM hub_messages ORDER BY connection_id,id') + self.rows('SELECT * FROM hub_threads ORDER BY connection_id,id'))
 
     def test_every_provider_arrives_in_the_same_shape(self):

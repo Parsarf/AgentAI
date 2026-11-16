@@ -23,7 +23,7 @@ const other = thread({ connection_id: 'c2', id: 'conv:9@x/1', subject: 'Termin m
 const message = (over: Partial<Message> = {}): Message => ({ id: 'm-2', thread_id: 't-1', subject: 'Quarterly numbers', snippet: 'Here are the numbers', sender: { name: 'Ann', address: 'ann@x.test' },
   to: [{ name: 'Me', address: 'me@first.test' }], cc: [], sent_epoch: NOW - 600, labels: ['inbox'], provider_labels: [], unread: true, starred: false, has_attachments: true,
   body: { html: '<p>Here are the numbers</p>', text: 'Here are the numbers', blocked_images: 2, images_shown: false, attachments: [{ id: 'f1', name: 'q3.pdf', type: 'application/pdf', size: 20480 }], fetched_epoch: NOW }, ...over });
-const overview = (over: Partial<Overview> = {}): Overview => ({ accounts: [account(), second], settings: { timezone: 'UTC', image_senders: [] }, counts: { unread: 4, by_account: { c1: 3, c2: 1 } }, calendars: [],
+const overview = (over: Partial<Overview> = {}): Overview => ({ accounts: [account(), second], providers: [{ provider: 'p1', label: 'First Mail' }], settings: { timezone: 'UTC', image_senders: [] }, counts: { unread: 4, by_account: { c1: 3, c2: 1 } }, calendars: [],
   labels: [], colours: [], read_only: true, ...over });
 
 const reply = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }));
@@ -44,7 +44,7 @@ function server(routes: Routes) {
 const base = (over: Routes = {}): Routes => ({ '/v1/hub': overview(), '/v1/hub/mail/labels': { labels: [{ connection_id: 'c1', labels: [{ id: 'L1', name: 'Finance', threads: 1 }] }, { connection_id: 'c2', labels: [{ id: 'folder/Posteingang', name: 'Posteingang', threads: 1 }] }] },
   '/v1/hub/mail/threads': { threads: [thread(), other], next: null, complete: true },
   '/v1/hub/mail/thread': { thread: thread(), messages: [message({ id: 'm-1', body: null, snippet: 'Earlier note', sent_epoch: NOW - 9000 }), message()], problem: null }, ...over });
-const show = () => render(<MemoryRouter><Inbox /></MemoryRouter>);
+const show = (at = '/inbox') => render(<MemoryRouter initialEntries={[at]}><Inbox /></MemoryRouter>);
 const asked = (path: string) => calls.map(c => new URL(c.url, 'https://app.test')).filter(u => u.pathname === path).map(u => u.searchParams);
 
 describe('Inbox', () => {
@@ -137,7 +137,8 @@ describe('Inbox', () => {
   it('says so when no account is connected, when an account is still loading, and when nothing matches', async () => {
     server(base({ '/v1/hub': overview({ accounts: [] }) })); show();
     expect(await screen.findByText('No mail account is connected')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Connect an account' }).getAttribute('href')).toBe('/settings?tab=access');
+    expect(screen.getAllByRole('button', { name: 'Connect First Mail' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Lumina asks only to read/).length).toBeGreaterThan(0);
     cleanup();
     server(base({ '/v1/hub': overview({ accounts: [account({ mail: { synced_epoch: null, filled: false, items: 40, error: null, paused: false } })] }), '/v1/hub/mail/threads': { threads: [], next: null, complete: true } })); show();
     expect(await screen.findByText(/Loading mail from me@first.test for the first time/)).toBeTruthy();
@@ -182,6 +183,43 @@ describe('Inbox', () => {
     expect(await screen.findByText('Select a thread to read it.')).toBeTruthy();
     fireEvent.keyDown(window, { key: '/' });
     expect(document.activeElement).toBe(screen.getByLabelText('Search mail'));
+  });
+
+  it('starts a sign-in by sending the customer to the address the server gave', async () => {
+    const assign = vi.fn(); vi.stubGlobal('location', { ...window.location, assign });
+    server(base({ 'POST /v1/hub/link': { authorize_url: 'https://signin.first.test/auth?state=s', expires_in: 600 } })); show();
+    await screen.findByText('Quarterly numbers');
+    fireEvent.click(screen.getByRole('button', { name: 'Connect First Mail' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://signin.first.test/auth?state=s'));
+    expect(calls.find(c => c.url === '/v1/hub/link')?.body).toEqual({ provider: 'p1' });
+  });
+
+  it('after signing in, asks what may be read, with nothing chosen for the customer', async () => {
+    const fresh = account({ id: 'c9', identity: 'new@first.test', granted: { mail: false, calendar: false }, mail: null });
+    server(base({ '/v1/hub': overview({ accounts: [account(), fresh] }),
+      '/v1/integrations/c9/resources': { resources: [{ kind: 'mailbox', id: '*', name: 'All mail' }, { kind: 'label', id: 'L1', name: 'Finance' }, { kind: 'label', id: 'L2', name: 'Team' },
+        { kind: 'calendar', id: 'k1', name: 'Work' }, { kind: 'calendar', id: 'k2', name: 'Family' }] },
+      'POST /v1/integrations/c9/grants': { connection: {} }, 'POST /v1/hub/refresh': { requested: 1 } }));
+    show('/inbox?connected=c9');
+    const dialog = within(await screen.findByRole('dialog', { name: 'Choose what Lumina may read in new@first.test' }));
+    await dialog.findByLabelText('All mail');
+    expect((dialog.getByLabelText('No mail') as HTMLInputElement).checked).toBe(true);                    // nothing is chosen for them
+    expect(dialog.getAllByRole('checkbox').every(c => !(c as HTMLInputElement).checked)).toBe(true);
+    expect((dialog.getByRole('button', { name: 'Let Lumina read these' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(dialog.getByLabelText('Only these labels')); fireEvent.click(dialog.getByLabelText('Finance')); fireEvent.click(dialog.getByLabelText('Family'));
+    fireEvent.click(dialog.getByRole('button', { name: 'Let Lumina read these' }));
+    await waitFor(() => expect(calls.find(c => c.url === '/v1/integrations/c9/grants')?.body).toEqual({ grants: [{ kind: 'label', id: 'L1', name: 'Finance' }, { kind: 'calendar', id: 'k2', name: 'Family' }] }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(calls.find(c => c.url === '/v1/hub/refresh')?.body).toEqual({ connection_id: 'c9' });
+  });
+
+  it('says plainly when a sign-in did not connect anything, and offers the choice again for an account with nothing chosen', async () => {
+    const fresh = account({ id: 'c9', identity: 'new@first.test', granted: { mail: false, calendar: false }, mail: null });
+    server(base({ '/v1/hub': overview({ accounts: [account(), fresh] }), '/v1/integrations/c9/resources': { resources: [] } })); show('/inbox?connect=declined');
+    expect(await screen.findByText('You did not give access, so nothing was connected.')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose what Lumina may read' }));
+    expect(await screen.findByText(/This account gave Lumina nothing it can read/)).toBeTruthy();
   });
 
   it('is a plain "not available" page while the feature is off, and asks the server nothing', async () => {

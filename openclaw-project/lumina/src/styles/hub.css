@@ -30,6 +30,16 @@
 .hub-toggles input { accent-color: var(--accent); margin-right: 6px; }
 .hub-own summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-muted); padding: 4px 2px; }
 
+.hub-connect { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: var(--space-2); }
+.hub-inline { min-height: 24px; padding: 0 6px; align-self: flex-start; }
+.hub-choose { margin: var(--space-3); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); border: 1px solid var(--accent-line); border-radius: var(--radius-md); background: var(--surface-raised); }
+.hub-choose h2 { font-size: var(--text-md); font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.hub-choose fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-size: var(--text-sm); }
+.hub-choose legend { padding: 0; margin-bottom: 4px; font-size: var(--text-xs); letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.hub-choose input { accent-color: var(--accent); margin-right: 6px; }
+.hub-choose-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; padding-left: 22px; align-self: stretch; }
+.hub-choose-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
 /* Middle: the thread list */
 .hub-list { display: flex; flex-direction: column; }
 .hub-list-head { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-3) var(--space-2); background: var(--surface); }

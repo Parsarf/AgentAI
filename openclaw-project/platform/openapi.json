@@ -7741,6 +7741,68 @@
     },
     "parameters": []
    }
+  },
+  "/v1/hub/link": {
+   "post": {
+    "summary": "Begin signing in to a mail and calendar provider: {\"provider\"}; answers with the address to send the customer to. Nothing is connected until they come back",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/link/callback": {
+   "get": {
+    "summary": "Where the provider sends the customer back (state, code). Finishes the sign-in with no grants and redirects to the Inbox; a refused or replayed callback connects nothing",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
   }
  },
  "components": {
