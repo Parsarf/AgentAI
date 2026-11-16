@@ -1,6 +1,8 @@
 # Steps to do by hand when this branch is deployed
 
-Nothing here has been done on the server. Everything in the release is behind owner switches that are **off**, so deploying the code changes nothing a customer sees
+**Done on 2026-11-16 (release `8327634`):** the privacy wording is published, the connector key file is installed (`/var/lib/agentai-platform/connector.key`, path in `accounts.env`), the three timers are enabled, the two switch facts are recorded, and the live proof passed all eight gates. The retention sweeper's first run removed 1,011 activity records older than 30 days. Still open: back up the connector key file with the other keys; the `--hour` form of the handoff gate; one offboarding of a throwaway account that has a real assistant before `account_self_service` is turned on. The steps below are kept as the record of what was done.
+
+Before 2026-11-16: nothing here had been done on the server. Everything in the release is behind owner switches that are **off**, so deploying the code changes nothing a customer sees
 until a switch is turned on. The migrations (0044 to 0047) only add; the previous release runs against them.
 
 ## With the deploy (roadmap Phase 2 and 3)

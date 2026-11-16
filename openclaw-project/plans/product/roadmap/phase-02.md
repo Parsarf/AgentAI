@@ -1,5 +1,7 @@
 # Roadmap Phase 2 - permissions and account lifecycle
 
+**Status (2026-11-16): DEPLOYED AND PROVEN LIVE.** Merged to `main` (pull requests #46, #47, #48); the server runs `8327634`. The live exit gates were run on the server with `platform/deploy/phase23_live.py`: all eight pass (the handoff gate in its few-seconds form; the `--hour` form has not been run). The three owner switches (`connector_writes`, `synthetic_connector`, `account_self_service`) are off. What follows is the record from before the deploy.
+
 **Status (2026-11-15): BUILT AND TESTED, NOT DEPLOYED.** All ten features and the organization model are built, with tests, behind owner switches that are off. By the
 owner's instruction of 2026-11-15 nothing was merged to `main` or deployed: the phases are collected on branch `phase-0-1-review-fixes` and deployed together. The live
 exit gate has therefore **not been run**; `platform/deploy/phase23_live.py` runs it on the server on deploy day, and the same script already passes against the test
