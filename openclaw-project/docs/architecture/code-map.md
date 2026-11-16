@@ -188,3 +188,21 @@ These were found or re-confirmed while reading the code for this work. None was 
    see [current findings](findings.md).
 5. **`tests/test_privacy_policy.py` has a known-gap deadline of 2026-11-11 that has passed**: deploy the fix it names, run `platform/privacy/check_server.py`,
    then delete `server.known_gap` from `platform/privacy/facts.json`.
+
+## Added by roadmap Phase 2 and 3 (15 November 2026)
+
+| Responsibility | Owner | Do not |
+|---|---|---|
+| May this person do this? | `agentai_platform/permissions.py` (the table) and `security.allowed` / `security.require` | compare a role anywhere else, or add a route without a row in `accounts/route_actions.py` |
+| Organizations, members, policy | `agentai_platform/organizations.py` | read `organization_policies` directly: use `policy()`, `tool_allowed()`, `write_rule()` |
+| Any call to an outside system | `agentai_platform/connector_kit.py` `ConnectorClient` | call a provider from anywhere else: grants, policy, rate limits and error mapping live there |
+| A connector | a declaration and an adapter registered in `accounts/wiring.py` `connector_registry()` (`platform/CONNECTORS.md`) | add a tool per provider endpoint: the assistant has one tool per kind of operation |
+| Tokens of connected services | `agentai_platform/connector_custody.py` behind opaque references | store a token in a row a view reads, an event, a log line or an export |
+| Any change in an outside system | `agentai_platform/actions.py` (and `workflows.py` for several) | write to a provider without an action row and an approval of its payload hash |
+| Waiting for a person for longer than a tool call | `agentai_platform/handoff.py` | keep a run parked for hours: end the turn and let the handoff resume it |
+| How long data is kept | `agentai_platform/retention.py` (one table, one sweeper) | delete old rows anywhere else, or add a table without a rule |
+| Export, deletion, closing an account | `agentai_platform/data_lifecycle.py` `AccountJobs`, with the adapters in `accounts/wiring.py` `account_jobs()` | delete account data from a view |
+
+Two things about the database handle that bit this work and will bite the next: inside the web app a service runs on Django's connection (`accounts/store.py`), so (1) never
+write `BEGIN`/`COMMIT` by hand, use `Coordinator(store).transaction()`; (2) never put a literal `%` in SQL (pass it as a parameter) and read a result set completely
+(`.fetchall()`) before the next statement, because that connection has one cursor.
