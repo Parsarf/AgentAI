@@ -1,0 +1,12 @@
+[Unit]
+Description=Run: Lumina retention sweeper: delete what is older than the retention table allows
+
+[Timer]
+OnBootSec=20min
+OnCalendar=*-*-* 03:40:00
+RandomizedDelaySec=30s
+Persistent=true
+Unit=agentai-retention.service
+
+[Install]
+WantedBy=timers.target

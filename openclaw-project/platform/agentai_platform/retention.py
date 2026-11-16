@@ -93,7 +93,7 @@ def rule_of(table: str):
 
 def unassigned(con) -> list[str]:
     """Tables in this database that belong to no rule (the test and the privacy check fail on any)."""
-    names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE ? ORDER BY name", ('sqlite_%',))]
     return [n for n in names if n not in TABLE_RULE]
 
 
@@ -132,9 +132,9 @@ def sweep(store, *, now=None, storage=None) -> dict:
     iso = lambda days: time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now - int(days * DAY)))
     epoch = lambda days: now - int(days * DAY)
     done = {}
-    with store.connect() as con:
-        con.execute('BEGIN IMMEDIATE')
-        try:
+    from .lifecycle.coordinator import Coordinator
+    with Coordinator(store).transaction() as con:      # one transaction, on whichever connection this process uses (the web app's own, or a worker's)
+        if True:
             days = BY_KEY['events'].days
             done['events'] = con.execute('DELETE FROM events WHERE created_at<?', (iso(days),)).rowcount
             done['download_tickets'] = con.execute('DELETE FROM download_tickets WHERE expires_epoch<?', (epoch(BY_KEY['download_tickets'].days),)).rowcount
@@ -156,10 +156,6 @@ def sweep(store, *, now=None, storage=None) -> dict:
             for job in expired:
                 con.execute("UPDATE account_jobs SET archive_ref=NULL,archive_bytes=NULL,state='expired' WHERE id=?", (job['id'],))
             done['exports'] = len(expired)
-            con.execute('COMMIT')
-        except Exception:
-            con.execute('ROLLBACK')
-            raise
     if storage is not None:
         for job in expired:
             try:

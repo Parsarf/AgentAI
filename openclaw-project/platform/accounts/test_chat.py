@@ -360,7 +360,7 @@ class GoalHttpChecks(ChatHTTPChecks):
 
 class OpenApiDriftChecks(ChatHTTPChecks):
     """Every public route must be documented, and nothing undocumented may be advertised: a new UI is built from this file."""
-    DISABLED = {'streams', 'exports', 'memory', 'schedules', 'integrations', 'controls'}   # routes that answer 404 by design
+    DISABLED = {'streams', 'memory', 'schedules'}   # routes that answer 404 by design
 
     def test_routes_and_spec_agree(self):
         import re

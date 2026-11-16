@@ -85,7 +85,7 @@ class ActionRunner:
             text, shown = outcome
             try:
                 result = self.chat._spawn(Principal(handoff['account_id'], handoff['actor_id'], 'customer'), handoff['conversation_id'], message=text[:8000],
-                                          key='handoff-' + handoff['id'], intent='chat', context={'handoff': handoff['id']}, shown=shown[:300], provenance='system')
+                                          key='handoff-' + handoff['id'], intent='chat', context={'handoff': handoff['id'], **({'follows': handoff['request_id']} if handoff['request_id'] else {})}, shown=shown[:300], provenance='system')
                 self.handoffs.resumed(handoff['account_id'], handoff['id'], result.get('id', ''))
                 resumed += 1
             except Exception as error:

@@ -19,7 +19,9 @@ FIELDS = ('task', 'daily', 'period')
 def _view(con, account_id):
     own = spend_limits.own(con, account_id)
     effective = spend_limits.get(con, account_id)
-    return {'limits': {name + '_microusd': effective[name] for name in FIELDS}, 'chosen': own is not None, 'max_microusd': spend_limits.MAX_LIMIT}
+    org = spend_limits.organization_limits(con, account_id)
+    return {'limits': {name + '_microusd': effective[name] for name in FIELDS}, 'chosen': own is not None, 'max_microusd': spend_limits.MAX_LIMIT,
+            'set_by_organization': bool(org and org.get('locked'))}          # a limit the organization locked: shown, and not the member's to change
 
 
 def _amount(text):
@@ -53,6 +55,9 @@ def limits(request):
         return JsonResponse({'error': 'invalid_request'}, status=400)
     chosen = {name: _amount(data[name]) for name in FIELDS}          # ValueError -> 400 by the endpoint wrapper
     with store.transaction() as con:
+        locked = spend_limits.organization_limits(con, request.account_id)
+        if locked and locked.get('locked'):
+            return JsonResponse({'error': 'set_by_organization'}, status=409)
         spend_limits.put(con, request.account_id, chosen)
         view = _view(con, request.account_id)
     audit(request.user.pk, request.account_id, 'spending', 'spending.limits_change', 'completed', request.request_id)

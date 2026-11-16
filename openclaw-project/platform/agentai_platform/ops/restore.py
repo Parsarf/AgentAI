@@ -29,6 +29,10 @@ LEDGER = ['usage_entries', 'provider_receipts', 'task_reservations', 'audit_even
 # tickets, streams, connector grants and every global (non-account) table.
 LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships', 'entitlements', 'deployments', 'operations',
         'lifecycle_cells', 'lifecycle_details', 'lifecycle_backups', 'lifecycle_slot', 'request_slot', 'request_slots', 'cell_slots', 'spend_marks',
+        'connector_secrets', 'connector_revocations', 'connector_freshness', 'account_jobs', 'financial_records', 'synthetic_records', 'synthetic_faults',
+        # Who belongs to an organization with which role, what it decides, what a connection may reach and what may go ahead without asking: what stands NOW stands. An old backup must
+        # never bring back a removed member, a wider grant or an automatic approval the customer took away. Changes that were waiting for approval are not brought back either.
+        'organizations', 'organization_members', 'organization_policies', 'connector_grants', 'action_auto_approvals', 'actions', 'handoffs', 'workflows',
         'billing_customers', 'billing_checkout_sessions', 'billing_subscriptions', 'billing_invoices', 'billing_flags', 'billing_inbox',
         'billing_operations', 'connector_connections', 'connector_link_states', 'connector_operations', 'telegram_links',
         'telegram_link_codes', 'telegram_outbox', 'telegram_updates', 'download_tickets', 'event_streams',

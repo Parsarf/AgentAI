@@ -77,10 +77,16 @@ REMAINS_BY_DESIGN = (
 )
 
 
+# Tables the sign-in layer owns (the web framework's own, in the same database file). They are handled by the `identity` adapter, which knows what must stay (the security
+# record, the tombstone) and erases the address LAST, after the confirmation email has gone out. This module never touches them.
+IDENTITY_PREFIXES = ('accounts_', 'auth_', 'django_', 'otp_')
+
+
 def _tables_with_account(con):
     out = []
-    for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"):
-        if any(c[1] == 'account_id' for c in con.execute(f'PRAGMA table_info("{name}")')):
+    # Read completely before the next statement: the web app's connection has one cursor, and a second statement would end this one's rows.
+    for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE ? ORDER BY name", ('sqlite_%',)).fetchall():
+        if not name.startswith(IDENTITY_PREFIXES) and any(c[1] == 'account_id' for c in con.execute(f'PRAGMA table_info("{name}")').fetchall()):
             out.append(name)
     return out
 
@@ -260,9 +266,8 @@ class AccountJobs:
         """Partial deletion: one chat. Its messages, plans, shown results and timeline are removed. Where files it made are still kept, an empty record of the chat stays so
         they still belong somewhere; otherwise every row of it goes. -> what was removed (counts)."""
         account = principal.account_id
-        with self.store.connect() as con:
-            con.execute('BEGIN IMMEDIATE')
-            try:
+        with self.coordinator.transaction() as con:
+            if True:
                 require(principal, 'data.delete', con=con)
                 row = con.execute('SELECT id,parent_id FROM conversations WHERE account_id=? AND id=? AND deleted_epoch IS NULL', (account, str(conversation_id))).fetchone()
                 if not row or row['parent_id']:
@@ -312,10 +317,6 @@ class AccountJobs:
                     run('tasks', f'DELETE FROM tasks WHERE account_id=? AND conversation_id IN ({marks})', (account, *ids))
                     run('chat', f'DELETE FROM conversations WHERE account_id=? AND id IN ({marks})', (account, *ids))
                 self.coordinator._audit(con, account, principal.actor_id, row['id'], 'data.delete.conversation', 'completed')
-                con.execute('COMMIT')
-            except Exception:
-                con.execute('ROLLBACK')
-                raise
         return {'conversation_id': row['id'], 'removed': removed, 'files_kept': files, 'kept_empty_record': bool(files or costs)}
 
     def request_deletion(self, account_id: str, actor_id: str, *, not_before=None) -> str:
@@ -372,15 +373,24 @@ class AccountJobs:
             self._step(job_id, 'files', self._delete_files(account))
         if not self._done(job_id, 'database'):
             self._step(job_id, 'database', self._delete_rows(account, actor, job_id))
+        scan = self.verify(account)
+        self._step(job_id, 'verification', {'clean': scan['clean']})
+        report = {'deleted_epoch': int(self.clock()), 'verification': scan, 'remains_by_design': list(REMAINS_BY_DESIGN)}
+        if not self._done(job_id, 'confirmation'):
+            # The confirmation, with the deletion report, goes out BEFORE the sign-in identity is erased: the address is the last thing to go, and it is needed to send this.
+            detail, _ok = self._adapter('mail', account, actor, report)
+            self._step(job_id, 'confirmation', detail)
         if not self._done(job_id, 'identity'):
             detail, ok = self._adapter('identity', account)
             if not ok:
                 self._step(job_id, 'identity', detail, state='waiting')
                 return self._wait(job_id, 'identity')
             self._step(job_id, 'identity', detail)
-        scan = self.verify(account)
-        self._step(job_id, 'verification', {'clean': scan['clean']})
-        self._finish(job_id, 'completed' if scan['clean'] else 'failed', {'deleted_epoch': int(self.clock()), 'verification': scan, 'remains_by_design': list(REMAINS_BY_DESIGN)})
+        left, ok = self._adapter('scan_identity', account)      # the last check: is the address really gone?
+        report['verification']['identity'] = left
+        if not ok or (isinstance(left, int) and left > 0):
+            report['verification']['clean'] = False
+        self._finish(job_id, 'completed' if report['verification']['clean'] else 'failed', report)
 
     def _wait(self, job_id, what):
         with self.coordinator.transaction() as con:
@@ -410,12 +420,11 @@ class AccountJobs:
         """Every row of the account, in one transaction: what accounting needs is copied out first (amounts and dates only), then every table that has an account id is emptied
         of it except the ones that stay by design. Foreign keys are checked when it commits, so the order does not matter and nothing is left dangling."""
         removed = {}
-        with self.store.connect() as con:
-            con.execute('BEGIN IMMEDIATE')
-            try:
+        with self.coordinator.transaction() as con:
+            if True:
                 con.execute('PRAGMA defer_foreign_keys=ON')
                 con.execute('''INSERT OR IGNORE INTO financial_records(account_id,kind,reference,provider,price_version,amount_microusd,occurred)
-                    SELECT account_id,'provider_receipt',provider_request_id,provider,price_version,amount_microusd,strftime('%Y-%m-%dT%H:%M:%SZ',observed_epoch,'unixepoch') FROM provider_receipts WHERE account_id=?''', (account,))
+                    SELECT account_id,'provider_receipt',provider_request_id,provider,price_version,amount_microusd,datetime(observed_epoch,'unixepoch') FROM provider_receipts WHERE account_id=?''', (account,))
                 con.execute('''INSERT OR IGNORE INTO financial_records(account_id,kind,reference,provider,price_version,amount_microusd,occurred)
                     SELECT account_id,'usage_entry',id,provider,price_version,amount_microusd,created_at FROM usage_entries WHERE account_id=?''', (account,))
                 org = con.execute('SELECT organization_id FROM accounts WHERE id=?', (account,)).fetchone()
@@ -424,12 +433,12 @@ class AccountJobs:
                         continue
                     # Some records are append-only by a trigger (receipts, usage). Deleting the whole account is the one thing allowed to remove them: the guard is lifted
                     # inside this transaction only and put back exactly as it was before it ends (if anything fails, SQLite rolls the guard back with everything else).
-                    guards = con.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name=? AND upper(sql) LIKE '%BEFORE DELETE%'", (table,)).fetchall()
+                    guards = [g for g in con.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?", (table,)).fetchall() if 'BEFORE DELETE' in g[1].upper()]
                     for guard in guards:
                         con.execute(f'DROP TRIGGER "{guard[0]}"')
                     count = con.execute(f'DELETE FROM "{table}" WHERE account_id=?', (account,)).rowcount
                     for guard in guards:
-                        con.execute(guard[1])
+                        con.execute(guard[1].replace('%', '%%') if type(con).__name__ == 'Queries' else guard[1])      # the web app's connection formats its SQL: a literal % must be doubled there
                     if count:
                         removed[table] = count
                 for scope in (account, 'org:' + account):          # settings stored under the account id in tables that have no foreign key to it
@@ -451,10 +460,6 @@ class AccountJobs:
                 con.execute("UPDATE accounts SET status='deleted' WHERE id=?", (account,))
                 con.execute('''INSERT INTO audit_events(account_id,id,actor_id,object_id,action,outcome,request_id) VALUES (?,?,?,?,?,?,?)''',
                             (account, uuid.uuid4().hex, 'system', account, 'account.deleted', 'completed', job_id))                 # the tombstone line
-                con.execute('COMMIT')
-            except Exception:
-                con.execute('ROLLBACK')
-                raise
         return {'rows_removed': sum(removed.values()), 'tables': len(removed)}
 
     def verify(self, account: str) -> dict:
@@ -564,7 +569,8 @@ class AccountJobs:
         with self.store.connect() as con:
             job = con.execute('SELECT * FROM account_jobs WHERE id=?', (job_id,)).fetchone()
         account, scope = job['account_id'], json.loads(job['scope_json'])
-        if job['child_job_id'] and not self._done(job_id, 'export'):
+        chose_export = any(s['step'] == 'export_choice' and (s.get('detail') or {}).get('export') for s in json.loads(job['steps_json']))
+        if chose_export and job['child_job_id'] and not self._done(job_id, 'export'):
             with self.store.connect() as con:
                 child = con.execute('SELECT state,archive_bytes FROM account_jobs WHERE id=?', (job['child_job_id'],)).fetchone()
             if child and child['state'] in OPEN:
@@ -592,18 +598,13 @@ class AccountJobs:
             self._step(job_id, 'cooling_off', {'ended_epoch': until})
         if not self._done(job_id, 'deletion_started'):
             deletion = self.request_deletion(account, job['actor_id'])
-            with self.coordinator.transaction() as con:
-                con.execute('UPDATE account_jobs SET child_job_id=? WHERE id=?', (deletion, job_id))
             self._step(job_id, 'deletion_started', {'job': deletion})
         with self.store.connect() as con:
             deletion = con.execute("SELECT id,state,report_json FROM account_jobs WHERE account_id=? AND kind='deletion' ORDER BY created_epoch DESC LIMIT 1", (account,)).fetchone()
         if deletion['state'] in OPEN:
             return self._wait(job_id, 'deletion')
         report = json.loads(deletion['report_json'] or '{}')
-        self._step(job_id, 'deletion', {'state': deletion['state'], 'clean': (report.get('verification') or {}).get('clean')})
-        if not self._done(job_id, 'confirmation'):
-            detail, _ok = self._adapter('mail', account, job['actor_id'], report)
-            self._step(job_id, 'confirmation', detail)
+        self._step(job_id, 'deletion', {'state': deletion['state'], 'clean': (report.get('verification') or {}).get('clean')})      # the confirmation email went out with the deletion itself
         self._finish(job_id, 'completed' if deletion['state'] == 'completed' else 'failed', report)
 
     # -- the loop ------------------------------------------------------------------------------------------------------------------------------

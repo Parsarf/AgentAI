@@ -237,6 +237,8 @@ class ActionService:
             payload = json.loads(row['payload_json'])
             if payload_hash(payload) != row['payload_hash']:
                 return self._end(con, row, 'failed', 'payload_changed')
+            if not self.writes_on(account_id):
+                return self._end(con, row, 'failed', 'refused')          # the owner switched changes off after this was prepared: it does not go out
             if not row['workflow_id'] and (row['approval_expires_epoch'] or 0) < now:
                 return self._end(con, row, 'expired', 'approval_expired')
             if row['retry_after_epoch'] and row['retry_after_epoch'] > now:

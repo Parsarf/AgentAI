@@ -29,7 +29,7 @@ def build_worker(store):
     shadow = ShadowRouter(store, config_path=settings.ROUTING_CONFIG_FILE, key_path=settings.TYPESAFE_KEY_FILE,
                           switch_on=lambda: switches.is_on('jev_routing'))
     # Plan phases and goal turns are sent through the same chat service the web app uses (built fresh each tick, so an owner switch change is seen without a restart).
-    return RequestWorker(queue, driver, host_capacity_for(store), shadow=shadow, max_parallel=int(getattr(settings, 'REQUEST_WORKER_PARALLEL', 8)), runner=lambda: wiring.chat_service().runner,
+    return RequestWorker(queue, driver, host_capacity_for(store), shadow=shadow, max_parallel=int(getattr(settings, 'REQUEST_WORKER_PARALLEL', 8)), runner=lambda: wiring.chat_service().runner, actions=lambda: wiring.action_runner(store),
                          schedules=lambda: ScheduleEngine(store, wiring.chat_service(), enabled=lambda: switches.is_on('customer_schedules')), goals=lambda: GoalChain(wiring.chat_service(), limit=settings.GOAL_CHAIN_LIMIT))
 
 

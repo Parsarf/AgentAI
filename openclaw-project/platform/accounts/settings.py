@@ -149,6 +149,8 @@ BILLING_ALLOW_LIVE = os.environ.get('AGENTAI_BILLING_ALLOW_LIVE') == '1'        
 # Remote MCP custody uses the host-only encryption key; no credentials enter cells.
 MCP_CLIENT_METADATA_URL = os.environ.get('AGENTAI_MCP_CLIENT_METADATA_URL', PUBLIC_ORIGIN + '/oauth/client-metadata.json' if _origin.hostname != 'localhost' else '')
 MCP_KEY_FILE = os.environ.get('AGENTAI_MCP_KEY_FILE', '')
+CONNECTOR_KEY_FILE = os.environ.get('AGENTAI_CONNECTOR_KEY_FILE', '')      # custody of connected services' tokens (agentai_platform/connector_custody.py); without this root-only key file custody is off and linking fails closed
+ACCOUNT_COOLING_OFF_SECONDS = int(os.environ.get('AGENTAI_ACCOUNT_COOLING_OFF_SECONDS', str(7 * 86400)))      # how long a closing account waits before it is deleted (the customer can cancel until then)
 MCP_SWITCH_FILE = os.environ.get('AGENTAI_MCP_SWITCH_FILE', '/var/lib/agentai-platform/mcp-connections.json')      # who may use remote MCP connections; off until turned on (agentai_platform/mcp_connections/switch.py)
 # Long-term memory (agentai_platform/longterm_memory.py): a self-hosted Hindsight server indexes what the assistant is asked to remember, one private bank per account.
 # Off until the owner turns it on AND all three are set; the bank secret must be its own file (never derived from SECRET_KEY: rotating that would orphan every customer's memory).

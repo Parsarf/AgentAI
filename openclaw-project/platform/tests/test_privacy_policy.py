@@ -77,7 +77,14 @@ class PolicyMatchesTheRecord(unittest.TestCase):
                           f'{r["plaintext_snapshots_max_days"]} days', f'{FACTS["server"]["journald_max_retention"].replace("day", " days")}',
                           f'{FACTS["derived"]["extension"]["max_controls_listed"]} controls', f'{FACTS["derived"]["extension"]["page_text_limit_chars"]:,} characters'):
             self.assertIn(statement, TEXT, f'the policy should say "{statement}"')
-        self.assertEqual(FACTS['derived']['retention']['scheduled_retention_jobs'], [], 'a retention job is now scheduled in deploy/: the "kept until you ask us to delete them" row of the policy must change.\n' + HOWTO)
+        if r['scheduled_retention_jobs']:
+            # The retention sweeper is scheduled: the policy states the limits it enforces, and no longer says nothing is deleted automatically.
+            days = r['retention_table']['days']
+            for statement in (f'{int(days["events"])} days', f'{int(days["audit"])} days', '90 days'):
+                self.assertIn(statement, TEXT, f'the retention sweeper is scheduled, so the policy should say "{statement}"\n' + HOWTO)
+            self.assertNotIn('do not currently delete these automatically', TEXT, 'the retention sweeper is scheduled, so the policy must not say nothing is deleted automatically\n' + HOWTO)
+        else:
+            self.assertIn('until you ask us to delete', TEXT)
 
     def test_every_extension_permission_is_explained(self):
         for permission in FACTS['derived']['extension']['permissions']:
@@ -125,7 +132,7 @@ class PolicyMatchesTheRecord(unittest.TestCase):
 class ServerCheck(unittest.TestCase):
     """The pure part of privacy/check_server.py: given what the server reports, which promises hold?"""
     GOOD = {'journald_max_retention': '7day', 'timers': ['agentai-ops-backup.timer'], 'plaintext_snapshots': {'count': 3, 'oldest_days': 4},
-            'encrypted_backups': {'count': 14, 'oldest_days': 13.7}, 'model_providers': ['anthropic'], 'uploads_on': False, 'telegram_configured': False, 'connectors_on': False, 'retention_job_scheduled': False}
+            'encrypted_backups': {'count': 14, 'oldest_days': 13.7}, 'model_providers': ['anthropic'], 'uploads_on': False, 'telegram_configured': False, 'connectors_on': False, 'retention_job_scheduled': bool(FACTS['derived']['retention']['scheduled_retention_jobs'])}      # the record says whether the retention sweeper is scheduled; a healthy server agrees
 
     def levels(self, **change):
         return {m: l for l, m in check_server.evaluate({**self.GOOD, **change}, FACTS, today=date(2026, 11, 1))}
@@ -143,9 +150,9 @@ class ServerCheck(unittest.TestCase):
                              'a second model company': {'model_providers': ['anthropic', 'openai']}, 'models unreadable': {'model_providers': None}, 'uploads on': {'uploads_on': True}, 'telegram on': {'telegram_configured': True}, 'connectors on': {'connectors_on': True}}.items():
             self.assertEqual(self.worst(**change), 'FAIL', what)
 
-    def test_too_many_copies_or_an_unexpected_retention_job_is_a_warning_not_a_failure(self):
+    def test_too_many_copies_or_a_retention_job_that_does_not_match_the_record_is_a_warning_not_a_failure(self):
         self.assertEqual(self.worst(plaintext_snapshots={'count': 38, 'oldest_days': 19}), 'WARN')
-        self.assertEqual(self.worst(retention_job_scheduled=True), 'WARN')
+        self.assertEqual(self.worst(retention_job_scheduled=not self.GOOD['retention_job_scheduled']), 'WARN')      # the server and the record disagree about the sweeper, either way
 
 
 if __name__ == '__main__':

@@ -212,9 +212,9 @@ class SyntheticAdapter:
     def write(self, credential, kind, payload, *, idempotency_key=None, precondition=None):
         account, fault = self._enter(credential, 'write')
         now = int(self.clock())
-        with self.store.connect() as con:
-            con.execute('BEGIN IMMEDIATE')
-            try:
+        from .lifecycle.coordinator import Coordinator
+        with Coordinator(self.store).transaction() as con:
+            if True:
                 repeat = con.execute('SELECT * FROM synthetic_records WHERE account_id=? AND idempotency_key=?', (account, idempotency_key)).fetchone() if idempotency_key else None
                 if repeat is not None:                          # the same request again: nothing changes, the first answer is given
                     row = repeat
@@ -237,10 +237,6 @@ class SyntheticAdapter:
                         con.execute('UPDATE synthetic_records SET deleted=?,version=version+1,idempotency_key=?,updated_epoch=? WHERE account_id=? AND id=?',
                                     (1 if kind == 'note.delete' else 0, idempotency_key, now, account, row['id']))
                     row = con.execute('SELECT * FROM synthetic_records WHERE account_id=? AND id=?', (account, row['id'])).fetchone()
-                con.execute('COMMIT')
-            except Exception:
-                con.execute('ROLLBACK')
-                raise
         if fault == 'silent':
             raise Unanswered()                                  # it happened, and the answer was lost on the way back
         found = (_note if row['kind'] == 'note' else _message)(row)

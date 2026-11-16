@@ -26,7 +26,7 @@ urlpatterns=[
  path('internal/accounts/<str:account>/suspend',v.suspend),path('internal/accounts/<str:account>/audit',v.operator_audit),
  path('internal/accounts/<str:account>/impersonate',v.forbidden_support),path('internal/accounts/<str:account>/export',v.forbidden_support),
 ]
-for kind in ['streams','exports','memory','schedules','integrations','controls']:
+for kind in ['streams','memory','schedules']:      # 'exports', 'integrations' and 'controls' are real routes now (roadmap Phase 2-3, below)
  urlpatterns += [path('v1/'+kind,v.disabled,{'kind':kind}),path('v1/'+kind+'/<str:object_id>',v.disabled,{'kind':kind}),path('v1/'+kind+'/<str:object_id>/<str:action>',v.disabled,{'kind':kind})]
 # Task list/creation stays disabled; single-task reads and cancel are chat-scoped.
 urlpatterns += [path('v1/tasks',v.disabled,{'kind':'tasks'})]
@@ -112,3 +112,27 @@ urlpatterns += [path('v1/location', loc.pending), path('v1/location/<str:locatio
 urlpatterns += [path('v1/model-key/select', mkv.select)]
 from . import work as wk
 urlpatterns += [path('v1/work', wk.listing), path('v1/work/ticket', wk.ticket), path('v1/work/<str:request_id>', wk.detail)]
+
+# ---- roadmap Phase 2 and 3: permissions, connected services, the action pipeline, data lifecycle ----
+from . import access as acc
+from . import actions as act
+from . import organization as org
+from . import lifecycle_data as ld
+urlpatterns += [
+ path('v1/controls', acc.controls),
+ path('v1/integrations', acc.integrations), path('v1/integrations/synthetic/connect', acc.synthetic_connect),
+ path('v1/integrations/<str:connection_id>', acc.integrations), path('v1/integrations/<str:connection_id>/resources', acc.resources),
+ path('v1/integrations/<str:connection_id>/grants', acc.grants), path('v1/integrations/<str:connection_id>/remove', acc.remove),
+ path('v1/integrations/<str:connection_id>/auto-approve', acc.auto_approve),
+ path('v1/actions', act.listing), path('v1/actions/<str:action_id>', act.detail), path('v1/actions/<str:action_id>/approve', act.approve),
+ path('v1/actions/<str:action_id>/decline', act.decline), path('v1/actions/<str:action_id>/undo', act.undo), path('v1/actions/<str:action_id>/compensate', act.compensate),
+ path('v1/workflows/<str:workflow_id>', act.workflow), path('v1/workflows/<str:workflow_id>/approve', act.workflow_approve), path('v1/workflows/<str:workflow_id>/decline', act.workflow_decline),
+ path('v1/handoffs', act.handoffs), path('v1/handoffs/<str:handoff_id>/answer', act.handoff_answer),
+ path('v1/organization', org.organization), path('v1/organization/policy', org.policy),
+ path('v1/organization/members/<str:actor_id>/role', org.member_role), path('v1/organization/members/<str:actor_id>/remove', org.member_remove),
+ path('v1/retention', ld.retention),
+ path('v1/exports', ld.exports), path('v1/exports/<str:export_id>', ld.exports), path('v1/exports/<str:export_id>/ticket', ld.export_ticket),
+ path('v1/exports/<str:export_id>/download', ld.export_download),
+ path('v1/conversations/<str:conversation_id>/delete', ld.delete_conversation),
+ path('v1/account/offboarding', ld.offboarding), path('v1/account/offboarding/<str:action>', ld.offboarding),
+]

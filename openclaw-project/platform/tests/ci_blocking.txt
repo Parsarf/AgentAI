@@ -50,3 +50,7 @@ test_replan
 test_schedule_engine
 test_lanes
 test_spend_share
+test_permissions
+test_connector_layer
+test_actions
+test_data_lifecycle

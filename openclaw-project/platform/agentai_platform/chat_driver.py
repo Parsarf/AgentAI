@@ -809,7 +809,17 @@ class ChatDriver:
     def _parked_too_long(self, claim):
         with self.store.connect() as con:
             row = con.execute('SELECT parked_epoch FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
-        return bool(row and row['parked_epoch']) and self.clock() - row['parked_epoch'] >= self.park_limit
+        return bool(row and row['parked_epoch']) and self.clock() - row['parked_epoch'] >= self._wait_limit(claim)
+
+    def _wait_limit(self, claim):
+        """How long this request may wait parked: the time the wait table gives its KIND of wait (handoff.WAITS, which the customer can see), not one fixed number. A driver
+        built with its own limit (tests, a special deployment) keeps that limit for every kind."""
+        if self.park_limit != PARK_LIMIT:
+            return self.park_limit
+        from .handoff import wait_seconds
+        with self.store.connect() as con:
+            row = con.execute('SELECT parked_reason FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
+        return wait_seconds(row['parked_reason'] if row else None, PARK_LIMIT)
 
     def _unattended_stop(self, claim, gateway, session, reason):
         """A scheduled run has nobody with it: when it needs an answer, a takeover or a permission it stops and says so, instead of waiting for a person who is not there. What it asked
@@ -1135,7 +1145,7 @@ class ChatDriver:
             parked = con.execute('SELECT parked_epoch FROM customer_requests WHERE account_id=? AND id=?', (claim.account_id, claim.request_id)).fetchone()
         since = parked['parked_epoch'] if parked and parked['parked_epoch'] else int(self.clock())
         if self._human_wait(claim):
-            if self.clock() - since >= self.park_limit:
+            if self.clock() - since >= self._wait_limit(claim):
                 return 'ended'
             return 'waiting'
         self._extend_deadlines(claim, int(self.clock()) - since)      # the time a person took does not count against the run

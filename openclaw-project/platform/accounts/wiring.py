@@ -78,9 +78,258 @@ def own_model_on(account_id):
         return True
 
 
+# ---- connected services and the action pipeline (roadmap Phase 3) ---------------------------------------------------------------------------------------
+
+def connector_registry(db=None):
+    """The connectors built on the contract that this host knows. The synthetic (test-only) one is always registered; whether an account may use it is the owner's
+    `synthetic_connector` switch, asked per call. Real connectors register here as they are written (platform/CONNECTORS.md)."""
+    from agentai_platform import synthetic_connector
+    from agentai_platform.connector_kit import Registry
+    return synthetic_connector.register(Registry(), db or store())
+
+
+def connector_custody(db=None):
+    """Sealed custody for connected services' tokens, or the fail-closed default when no key file is installed."""
+    from agentai_platform.connector_custody import SealedCustody, keyring_from_file
+    from agentai_platform.connectors import DisabledCustody
+    ring = keyring_from_file(settings.CONNECTOR_KEY_FILE)
+    return SealedCustody(db or store(), ring) if ring is not None else DisabledCustody()
+
+
+def connector_service(db=None):
+    from agentai_platform.connectors import ConnectorService
+    db = db or store()
+    events = event_service(db)
+
+    def notify(account, connection, reason):
+        # Told once, in the timeline of whatever the customer's assistant is doing now (the settings page shows it either way). Ids and fixed words only.
+        with db.connect() as con:
+            row = con.execute("SELECT id FROM customer_requests WHERE account_id=? AND state IN ('starting','running') ORDER BY sequence DESC LIMIT 1", (account,)).fetchone()
+        if row:
+            events.append(account, row['id'], 'progress', {'summary': 'A connected service needs you: reconnect it in Settings.', 'step': 'working'}, 'gateway')
+    return ConnectorService(db, custody=connector_custody(db), registry=connector_registry(db), notify=notify)
+
+
+def connector_client(db=None, connectors=None):
+    from agentai_platform.connector_kit import ConnectorClient
+    db = db or store()
+    connectors = connectors or connector_service(db)
+    return ConnectorClient(db, connectors, connectors.registry, limiter=_connector_limiter())
+
+
+_LIMITER = []
+
+
+def _connector_limiter():
+    """One rate limiter for the process, so every call of an account on a provider shares what the provider said (the Phase 1 limiter)."""
+    if not _LIMITER:
+        from agentai_platform.model_keys import RouteLimiter
+        _LIMITER.append(RouteLimiter(cap=20.0))
+    return _LIMITER[0]
+
+
+def connectors_on(account_id):
+    """May this account use connected services built on the contract? The owner's linking switch, or the test-only switch for the synthetic service."""
+    return switch_on('connectors_linking') or switch_on('synthetic_connector')
+
+
+def writes_on(account_id):
+    return switch_on('connector_writes')
+
+
+def action_services(db=None):
+    """-> (connectors, client, actions, workflows): the action pipeline, built together so they share one view of the connections."""
+    from agentai_platform.actions import ActionService
+    from agentai_platform.workflows import WorkflowService
+    db = db or store()
+    connectors = connector_service(db)
+    client = connector_client(db, connectors)
+    actions = ActionService(db, connectors, client, writes_on=writes_on)
+    return connectors, client, actions, WorkflowService(db, actions)
+
+
+def action_runner(db=None):
+    """What the request worker runs between requests: executes approved changes, advances workflows, ends waits that ran out, resumes the chats that waited."""
+    from agentai_platform.action_runner import ActionRunner
+    db = db or store()
+    _connectors, _client, actions, workflows = action_services(db)
+    return ActionRunner(db, actions, workflows, chat=chat_service(db))
+
+
 def connector_tools(db=None):
-    """The assistant's connector tools (read through a connected service, propose a change for approval), or None until they are built for this host (Phase 3)."""
-    return None
+    """The assistant's connector tools: read through a connected service, prepare a change for approval, ask the customer a question that can wait."""
+    from agentai_platform.connector_tools import ConnectorTools
+    db = db or store()
+    connectors, client, actions, workflows = action_services(db)
+    return ConnectorTools(db, connectors, client, actions, workflows, enabled=connectors_on, writes_on=writes_on)
+
+
+def connector_refresher(db=None):
+    from agentai_platform.connector_refresh import ConnectorRefresher
+    from agentai_platform.synthetic_connector import SyntheticBench
+    db = db or store()
+    try:
+        mcp = mcp_service(db)
+    except Exception:
+        mcp = None                                         # remote MCP is not configured on this host: there is nothing of it to refresh
+    return ConnectorRefresher(db, connector_service(db), {'synthetic': SyntheticBench.refresher}, mcp=mcp)
+
+
+def organization_service(db=None):
+    from agentai_platform.organizations import OrganizationService
+
+    def end_sessions(actor_id):
+        # A role change or a removal takes effect on the next request: the person's sessions end, as "sign out everywhere" does.
+        from accounts.models import Identity
+        from accounts.services import models_f_epoch
+        Identity.objects.filter(user_id=actor_id).update(epoch=models_f_epoch())
+    return OrganizationService(db or store(), on_role_change=end_sessions)
+
+
+def access_overview(db=None):
+    from agentai_platform.access import AccessOverview
+    db = db or store()
+    connectors = connector_service(db)
+
+    def tool_names(account):
+        names = ['lumina_task_update', 'lumina_request_location', 'lumina_show']
+        if switch_on('browse_tasks'):
+            names += ['lumina_browser', 'lumina_browser_step']
+        if storage_ready():
+            names.append('lumina_file_deliver')
+        if memory_on(account):
+            names += ['lumina_memory_recall', 'lumina_memory_remember']
+        if mcp_on(account):
+            from agentai_platform.mcp_connections.relay import GENERIC
+            names += [g['name'] for g in GENERIC]
+        if connectors_on(account):
+            from agentai_platform.connector_tools import ConnectorTools
+            names += sorted(ConnectorTools.names)
+        return names
+
+    def model_key(account):
+        if not own_model_on(account):
+            return None
+        return model_key_store(sealed=False).public(account)
+
+    def memory_count(account):
+        if not memory_on(account):
+            return None
+        with db.connect() as con:
+            return con.execute("SELECT count(*) FROM longterm_memories WHERE account_id=? AND status='active'", (account,)).fetchone()[0]
+    return AccessOverview(db, connectors, connector_client(db, connectors), tool_names=tool_names, model_key=model_key, memory_count=memory_count)
+
+
+def account_jobs(db=None):
+    """Export, deletion and offboarding, with the adapter of every store outside the database. An adapter this host does not have is None (recorded as such by the job)."""
+    from agentai_platform.data_lifecycle import AccountJobs
+    from agentai_platform.lifecycle.coordinator import Coordinator
+    db = db or store()
+    connectors = connector_service(db)
+    custody = connectors.custody
+
+    def end_connections(account):
+        ended = 0
+        with db.connect() as con:
+            ids = [r[0] for r in con.execute("SELECT id FROM connector_connections WHERE account_id=? AND state!='revoked'", (account,))]
+            remote = [(r[0], r[1]) for r in con.execute('SELECT id,name FROM mcp_connections WHERE account_id=?', (account,))]
+            actor = con.execute("SELECT actor_id FROM memberships WHERE account_id=? AND role='customer' ORDER BY actor_id LIMIT 1", (account,)).fetchone()
+        for connection in ids:
+            ended += 1 if connectors.revoke_by_system(account, connection, 'offboarding') else 0
+        if remote and actor:
+            from agentai_platform.security import Principal
+            service = mcp_service(db)
+            for connection, _name in remote:
+                try:
+                    service.disconnect(Principal(account, actor[0], 'customer'), connection)
+                    ended += 1
+                except Exception:
+                    pass                                   # an account that is already closed cannot disconnect; the rows and sealed credentials go with the database step
+        connectors.purge_revoked()
+        return {'ended': ended}
+
+    def forget_memory(account):
+        service = memory_service(db)
+        if service is None:
+            return 'not_on_this_host'
+        service.forget_all(account)
+        return 'bank removed'
+
+    def remove_model_key(account):
+        return 'removed' if model_key_store().delete(account) else 'none'
+
+    def remove_cell(account):
+        with db.connect() as con:
+            cell = con.execute('''SELECT c.observed_state,d.generation,d.state FROM lifecycle_cells c JOIN deployments d ON d.account_id=c.account_id AND d.id=c.deployment_id
+                WHERE c.account_id=?''', (account,)).fetchone()
+            busy = con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')", (account,)).fetchone()
+        if cell is None or cell['observed_state'] == 'absent' or cell['state'] == 'deleted':
+            return 'done'
+        if busy:
+            return 'waiting'
+        coordinator = Coordinator(db)
+        try:
+            if cell['observed_state'] == 'running':
+                coordinator.request_system(account, key=f'offboard-stop-{cell["generation"]}', generation=cell['generation'], kind='stop')
+            elif cell['observed_state'] == 'stopped':
+                coordinator.request_account_deletion(account, key=f'offboard-delete-{cell["generation"]}', generation=cell['generation'])
+        except Exception:
+            pass                                           # the state moved under us: looked at again on the next pass
+        return 'waiting'
+
+    def anonymise_identity(account):
+        # The sign-in identity: sessions and tokens are removed, the address and the password are erased, and one tombstone remains that says the account was deleted.
+        from django.contrib.auth.models import User
+        from django.contrib.sessions.models import Session
+        from django.utils import timezone
+        from accounts.models import ActionToken, EmailJob, Identity, Tombstone
+        from accounts.services import models_f_epoch
+        users = list(User.objects.filter(identity__account_id=account, identity__role='customer'))
+        for user in users:
+            ActionToken.objects.filter(user=user).delete()
+            EmailJob.objects.filter(user=user, state__in=['pending', 'failed', 'uncertain']).exclude(purpose='offboarding').delete()
+            for session in Session.objects.filter(expire_date__gt=timezone.now()):
+                if str(session.get_decoded().get('_auth_user_id')) == str(user.pk):
+                    session.delete()
+            user.email, user.username, user.first_name, user.last_name, user.is_active = '', f'deleted-{user.pk}', '', '', False
+            user.set_unusable_password()
+            user.save()
+            Identity.objects.filter(user=user).update(verified=False, epoch=models_f_epoch())
+        Tombstone.objects.get_or_create(account_id=account, object_id=account, kind='account')
+        return {'identities': len(users)}
+
+    def cancel_billing(account):
+        service = billing_service(db)
+        if service.api is None:
+            return 'not_on_this_host'
+        return service.cancel_for_account(account)
+
+    def confirm(account, actor, report):
+        # The confirmation is written before the identity is erased (the address is needed to send it): see offboarding_mail in accounts/lifecycle_data.py.
+        from accounts.lifecycle_data import send_deletion_report
+        return send_deletion_report(account, report)
+
+    def scan_outside(account):
+        found = {}
+        if hasattr(custody, 'count'):
+            found['connector_tokens'] = custody.count(account)
+        try:
+            found['model_key'] = 1 if model_key_store(sealed=False).public(account) else 0
+        except Exception:
+            found['model_key'] = 0
+        with db.connect() as con:
+            cell = con.execute("SELECT 1 FROM lifecycle_cells WHERE account_id=?", (account,)).fetchone()
+        found['cell'] = 1 if cell else 0
+        return found
+
+    def scan_identity(account):
+        from django.contrib.auth.models import User
+        return User.objects.filter(identity__account_id=account, identity__role='customer').exclude(email='').count()
+
+    files = file_store()
+    adapters = {'connections': end_connections, 'custody': (lambda account: custody.delete_all(account)) if hasattr(custody, 'delete_all') else None, 'memory': forget_memory,
+                'model_key': remove_model_key, 'cell': remove_cell, 'identity': anonymise_identity, 'billing': cancel_billing, 'mail': confirm, 'scan': scan_outside, 'scan_identity': scan_identity}
+    return AccountJobs(db, storage=files, adapters=adapters, signing_key=settings.ARTIFACT_SIGNING_KEY.encode() if storage_ready() else b'', cooling_off=settings.ACCOUNT_COOLING_OFF_SECONDS)
 
 
 def mcp_on(account_id):
@@ -163,6 +412,14 @@ def cell_gateway(account_id):
 
 
 # ---- files and artifacts ------------------------------------------------------------------------------------------------------------------------------
+
+def file_store():
+    """The file store itself (uploads, files the assistant made, export archives), or None where this host has none."""
+    if not storage_ready():
+        return None
+    from agentai_platform.storage import RootStore
+    return RootStore(settings.STORAGE_DIR)
+
 
 def storage_ready():
     return bool(settings.STORAGE_DIR) and settings.STORAGE_READY

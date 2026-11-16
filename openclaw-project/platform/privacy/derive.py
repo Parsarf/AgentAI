@@ -56,14 +56,16 @@ def retention():
         'encrypted_backups_daily_kept': backup.KEEP_DAILY, 'encrypted_backups_weekly_kept': backup.KEEP_WEEKLY,
         'plaintext_snapshots_keep_newest': sig['keep'].default, 'plaintext_snapshots_max_days': sig['max_age_days'].default,
         'plaintext_snapshot_cleanup_matches_real_names': bool(housekeeping.PATTERN.fullmatch(real_name)),
-        # defined in code, enforced by nothing that is scheduled (see scheduled_retention_jobs): the policy must not promise them
+        # the one retention table (agentai_platform/retention.py): every limit by kind of data, and which of them the sweeper enforces
+        'retention_table': __import__('agentai_platform.retention', fromlist=['as_facts']).as_facts(),
+        # the limits the account app's own job applies (it is run by the sweeper: see scheduled_retention_jobs). The policy may promise them only while that list is not empty
         'defined_but_unscheduled': {
             'event_timeline_days': events.RETENTION_DAYS,
             'retention_command_days': _days(_read(PLATFORM / 'accounts' / 'management' / 'commands' / 'retention_accounts.py')),
         },
         # anything in deploy/ that schedules a deletion of customer data: a new one means the policy can say more (or must say something different)
         'scheduled_retention_jobs': sorted(str(p.relative_to(PLATFORM)) for p in (PLATFORM / 'deploy').rglob('*')
-                                           if p.is_file() and p.suffix in ('.service', '.timer', '.cron', '.sh', '.py') and re.search(r'retention_accounts|prune_expired', p.read_text(errors='ignore'))),
+                                           if p.is_file() and p.suffix in ('.service', '.timer', '.cron', '.sh', '.py') and re.search(r'retention_accounts|retention_sweep|prune_expired', p.read_text(errors='ignore'))),
     }
 
 

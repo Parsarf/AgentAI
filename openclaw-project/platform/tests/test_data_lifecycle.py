@@ -33,6 +33,7 @@ class Base(ConnectorBase):
             'billing': lambda account: {'cancelled': 1},
             'mail': lambda account, actor, report: self.outside['mail'].append((account, report)) or 'sent',
             'scan': lambda account: {'memory': len(self.outside['memory']), 'model_key': len(self.outside['model_key']), 'custody': self.custody.count(account)},
+            'scan_identity': lambda account: 0,
         }
         self.jobs = AccountJobs(self.store, storage=self.files, adapters=self.adapters, signing_key=KEY, clock=lambda: self.now)
         self.fill('a'); self.fill('b')
@@ -197,7 +198,7 @@ class Deletion(Base):
             row = con.execute('SELECT * FROM account_jobs WHERE id=?', (job,)).fetchone()
         report = json.loads(row['report_json'])
         self.assertEqual((row['state'], report['verification']['clean'], report['verification']['found']), ('completed', True, {}))
-        self.assertEqual([s['step'] for s in json.loads(row['steps_json'])], ['stop_work', 'connections', 'custody', 'memory', 'model_key', 'cell', 'files', 'database', 'identity', 'verification'])
+        self.assertEqual([s['step'] for s in json.loads(row['steps_json'])], ['stop_work', 'connections', 'custody', 'memory', 'model_key', 'cell', 'files', 'database', 'verification', 'confirmation', 'identity'])
         left = {}
         with self.store.connect() as con:
             from agentai_platform.data_lifecycle import _tables_with_account

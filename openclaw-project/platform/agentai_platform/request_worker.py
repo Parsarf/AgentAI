@@ -29,7 +29,7 @@ SCHEDULE_EVERY = 20      # seconds between looks at the customers' schedules
 
 
 class RequestWorker:
-    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time, abandon_after=1800, shadow=None, runner=None, goals=None, max_parallel=1, schedules=None):
+    def __init__(self, queue, driver, capacity, *, owner='request-worker', lease_seconds=120, clock=time.time, abandon_after=1800, shadow=None, runner=None, goals=None, max_parallel=1, schedules=None, actions=None):
         self.queue, self.driver, self.capacity, self.owner = queue, driver, capacity, owner
         self.max_parallel = max(1, int(max_parallel))
         self._pool = ThreadPoolExecutor(max_workers=self.max_parallel, thread_name_prefix='request') if self.max_parallel > 1 else None
@@ -39,6 +39,7 @@ class RequestWorker:
         self.lease_seconds, self.clock, self.abandon_after = lease_seconds, clock, abandon_after
         self.runner = runner   # callable -> PlanRunner (or a PlanRunner): advances launched plans after every tick
         self.goals = goals     # goals.GoalChain: admits the next turn of a goal that is still active after a turn
+        self.actions = actions   # callable -> action_runner.ActionRunner (or one): executes approved changes in connected services, advances workflows, resumes the chats that waited for a person
         self.shadow = shadow   # optional observer; can never alter or block execution
         self.schedules = schedules   # callable -> schedule_engine.ScheduleEngine (or one): starts due schedules. It does nothing while the owner switch `customer_schedules` is off
         self._schedules_next = 0.0   # looked at every SCHEDULE_EVERY seconds, not every tick: a schedule's time is a minute, not a second
@@ -60,7 +61,7 @@ class RequestWorker:
 
     def tick(self):
         report = self._tick()
-        for follow in (self.runner, self.goals):
+        for follow in (self.runner, self.goals, self.actions):
             if follow is None:
                 continue
             try:
