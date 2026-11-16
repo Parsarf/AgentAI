@@ -24,9 +24,26 @@ def _row(con, account_id):
         return None                    # no table on this host yet (an older database): no limit, which is the default anyway
 
 
+def organization_limits(con, account_id):
+    """What the account's organization decided for its members (policy `member_spend_limits`): {'task','daily','period','locked'} or None. Locked means a member's own choice
+    cannot replace it; unlocked it is only the organization's default."""
+    try:
+        from .organizations import policy
+        found = policy(con, account_id).get('member_spend_limits')
+        return found if isinstance(found, dict) else None
+    except Exception:
+        return None
+
+
 def get(con, account_id) -> dict:
-    """-> {'task','daily','period'}: micro-dollars or None (no limit). The account's own row, else the all-accounts default, else nothing."""
+    """-> {'task','daily','period'}: micro-dollars or None (no limit). A limit the organization locked, else the account's own row, else the organization's default, else the
+    all-accounts default, else nothing."""
+    org = organization_limits(con, account_id) if account_id != ALL else None
+    if org and org.get('locked'):
+        return {name: (int(org[name]) if org.get(name) else None) for name in FIELDS}
     row = _row(con, account_id) if account_id != ALL else None
+    if row is None and org:
+        return {name: (int(org[name]) if org.get(name) else None) for name in FIELDS}
     if row is None:
         row = _row(con, ALL)
     if row is None:

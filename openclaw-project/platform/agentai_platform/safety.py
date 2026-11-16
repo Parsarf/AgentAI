@@ -35,6 +35,7 @@ class Feature:
 
 
 ALL = '*'                        # the all-users scope: not an account id (those are 32 hex characters)
+ORG = 'org:'                     # an organization's scope is stored under 'org:<organization id>': what it sets overrides its members' own settings (roadmap #15)
 
 
 class Locked(Exception):
@@ -114,9 +115,9 @@ def _state(row, now: float) -> bool | None:
     return None if expires and now >= expires else False
 
 
-def effective(own, inherited, now: float) -> bool:
-    """The more specific setting wins: the account's own row, else the all-users row, else on."""
-    for row in (own, inherited):
+def effective(own, inherited, now: float, organization=None) -> bool:
+    """What the organization set wins over its member's own setting; then the more specific setting wins: the account's own row, else the all-users row, else on."""
+    for row in (organization, own, inherited):
         state = _state(row, now)
         if state is not None:
             return state
@@ -131,9 +132,45 @@ def is_on(con, account_id: str, feature: str, now: float | None = None) -> bool:
         now = now if now is not None else time.time()
         sql = 'SELECT enabled, expires_epoch FROM safety_overrides WHERE account_id=? AND feature=?'
         own = con.execute(sql, (account_id, feature)).fetchone() if account_id != ALL else None
-        return effective(own, con.execute(sql, (ALL, feature)).fetchone(), now)
+        return effective(own, con.execute(sql, (ALL, feature)).fetchone(), now, _organization_row(con, account_id, feature))
     except Exception:
         return True
+
+
+def _organization_scope(con, account_id):
+    """'org:<id>' of the account's organization, or None (no organization tables, or the all-users scope)."""
+    if account_id == ALL or str(account_id).startswith(ORG):
+        return None
+    try:
+        row = con.execute('SELECT organization_id FROM accounts WHERE id=?', (account_id,)).fetchone()
+        return ORG + row[0] if row and row[0] else None
+    except Exception:
+        return None
+
+
+def _organization_row(con, account_id, feature):
+    scope = _organization_scope(con, account_id)
+    if scope is None:
+        return None
+    try:
+        return con.execute('SELECT enabled, expires_epoch FROM safety_overrides WHERE account_id=? AND feature=?', (scope, feature)).fetchone()
+    except Exception:
+        return None
+
+
+def set_for_organization(con, organization_id: str, feature: str, on, actor: str, *, expires_epoch: int | None = None, now: float | None = None):
+    """An organization's own setting for all its members: True/False, or None to leave it to each member again. A protection of customer data can never be switched off for a
+    whole organization, exactly as it cannot for everyone. Raises KeyError (unknown) or Locked."""
+    if on is not None:
+        check_changeable(feature, bool(on), True)
+    else:
+        FEATURES[feature]
+    now = int(now if now is not None else time.time())
+    if on is None:
+        con.execute('DELETE FROM safety_overrides WHERE account_id=? AND feature=?', (ORG + organization_id, feature))
+    else:
+        con.execute('INSERT OR REPLACE INTO safety_overrides(account_id,feature,enabled,changed_by,changed_epoch,expires_epoch) VALUES (?,?,?,?,?,?)',
+                    (ORG + organization_id, feature, 1 if on else 0, actor, now, None if on else expires_epoch))
 
 
 def listing(con, account_id: str, now: float | None = None) -> list[dict]:
@@ -145,12 +182,13 @@ def listing(con, account_id: str, now: float | None = None) -> list[dict]:
     out = []
     for f in FEATURES.values():
         own, inherited = rows.get((account_id, f.key)), rows.get((ALL, f.key))
-        mine, everyone = _state(own, now), _state(inherited, now)
-        on = effective(own, inherited, now)
-        source = 'account' if mine is not None else 'all' if everyone is not None else 'default'
-        expires = None if on else (own if mine is not None else inherited)[1]
+        org_row = _organization_row(con, account_id, f.key)
+        mine, everyone, theirs = _state(own, now), _state(inherited, now), _state(org_row, now)
+        on = effective(own, inherited, now, org_row)
+        source = 'organization' if theirs is not None else 'account' if mine is not None else 'all' if everyone is not None else 'default'
+        expires = None if on else (org_row if theirs is not None else own if mine is not None else inherited)[1]
         out.append({'key': f.key, 'group': f.group, 'title': f.title, 'plain': f.plain, 'wired': f.wired, 'on': on,
-                    'expires_epoch': expires, 'source': source, 'lock': lock_of(f, 'mine')})
+                    'expires_epoch': expires, 'source': source, 'lock': 'organization' if theirs is not None else lock_of(f, 'mine')})      # set by your organization: shown, not changeable by the member
     return out
 
 
@@ -223,11 +261,16 @@ def export_snapshot(con, path) -> None:
     Written whole and swapped in atomically, readable by the app's group. Expiry is judged by the reader from the stored time, so nothing has to be rewritten when an "off" lapses."""
     rows = [{'account': r[0], 'feature': r[1], 'enabled': int(bool(r[2])), 'expires': r[3]}
             for r in con.execute('SELECT account_id, feature, enabled, expires_epoch FROM safety_overrides')]
+    try:      # which organization each account belongs to, only for organizations that set something: the reader applies their rows over the member's own
+        scopes = {r['account'] for r in rows if r['account'].startswith(ORG)}
+        orgs = {r[0]: r[1] for r in con.execute('SELECT id, organization_id FROM accounts WHERE organization_id IS NOT NULL') if ORG + r[1] in scopes}
+    except Exception:
+        orgs = {}
     path = Path(path)
     tmp = path.with_name(path.name + '.tmp')
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o640)
     with os.fdopen(fd, 'w') as handle:
-        handle.write(json.dumps({'version': SNAPSHOT_VERSION, 'written': int(time.time()), 'rows': rows}, separators=(',', ':')))
+        handle.write(json.dumps({'version': SNAPSHOT_VERSION, 'written': int(time.time()), 'rows': rows, 'organizations': orgs}, separators=(',', ':')))
     os.replace(tmp, path)
 
 
@@ -236,7 +279,7 @@ class Reader:
     in the menu is seen at the next decision. Fails closed: a missing or unreadable file means every switch is on."""
     def __init__(self, path):
         self.path = str(path)
-        self._stamp, self._rows = None, {}
+        self._stamp, self._rows, self._orgs = None, {}, {}
 
     def _load(self):
         try:
@@ -248,9 +291,10 @@ class Reader:
                 if isinstance(data, dict) and data.get('version') == SNAPSHOT_VERSION:
                     for r in data.get('rows') or []:
                         rows[(r['account'], r['feature'])] = (r['enabled'], r['expires'])
+                self._orgs = data.get('organizations') if isinstance(data, dict) and isinstance(data.get('organizations'), dict) else {}
                 self._rows, self._stamp = rows, stamp
         except Exception:
-            self._rows, self._stamp = {}, None
+            self._rows, self._stamp, self._orgs = {}, None, {}
         return self._rows
 
     def on(self, account_id: str, feature: str, now: float | None = None) -> bool:
@@ -260,7 +304,8 @@ class Reader:
             rows = self._load()
             now = now if now is not None else time.time()
             own = rows.get((account_id, feature)) if account_id != ALL else None
-            return effective(own, rows.get((ALL, feature)), now)
+            org = self._orgs.get(account_id)
+            return effective(own, rows.get((ALL, feature)), now, rows.get((ORG + org, feature)) if org else None)
         except Exception:
             return True
 

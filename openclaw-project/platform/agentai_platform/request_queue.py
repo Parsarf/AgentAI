@@ -7,6 +7,7 @@ import uuid
 from . import request_states, safety
 from .adapters import CapabilityUnavailable
 from .security import NotFound
+from . import permissions
 from .lifecycle.coordinator import Coordinator,identifier
 from .lifecycle.types import Conflict
 
@@ -259,7 +260,7 @@ class RequestQueue:
                 # starting beside them and getting every model call of both refused.
                 if self._other_route_live(c,row):
                     held.add(row['id']);continue
-                authorized=c.execute("SELECT 1 FROM accounts a JOIN memberships m ON m.account_id=a.id WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.status='active' AND m.role='customer'",(row['account_id'],row['actor_id'])).fetchone()
+                authorized=permissions.may(c,row['account_id'],row['actor_id'],'task.run')      # the author may still run tasks in this account NOW (membership, account, role)
                 if authorized:break
                 # Skip requests whose author/account was revoked while they waited.
                 c.execute("UPDATE customer_requests SET state='cancelled' WHERE account_id=? AND id=?",(row['account_id'],row['id']))
@@ -292,7 +293,7 @@ class RequestQueue:
         with self.coordinator.transaction() as c:
             row=self._fenced(c,claim)
             if row['state']=='uncertain' or row['lease_until']<=self.clock():raise Conflict('lease expired; reconcile before resume')
-            if not c.execute("SELECT 1 FROM accounts a JOIN memberships m ON a.id=m.account_id WHERE a.id=? AND a.status='active' AND m.actor_id=? AND m.role='customer' AND m.status='active'",(claim.account_id,claim.actor_id)).fetchone():
+            if not permissions.may(c,claim.account_id,claim.actor_id,'task.run'):
                 c.execute('UPDATE customer_requests SET cancel_requested=1 WHERE account_id=? AND id=?',(claim.account_id,claim.request_id))
                 cancel=True
             else:cancel=bool(row['cancel_requested'])

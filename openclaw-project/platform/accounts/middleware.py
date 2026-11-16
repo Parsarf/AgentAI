@@ -77,6 +77,33 @@ class AccountMiddleware:
             except Limited: return JsonResponse({'error':'rate_limited'},status=429,headers={'Retry-After':'60'})
         return self.get_response(request)
 
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        """The permission check of every route (roadmap #12): the route names an action (route_actions.py) and the signed-in customer's role must include it.
+        Routes that need no customer, operator routes and routes that prove their caller themselves are left to their own checks, as before."""
+        from .route_actions import action_for, PUBLIC, OPERATOR, OWN_PROOF
+        from agentai_platform.permissions import role_allows
+        request.org_role = None
+        if not request.account_id:
+            return None
+        from .services import role_of
+        request.org_role = role_of(request.account_id, request.user.pk)
+        match = getattr(request, 'resolver_match', None)
+        action = action_for(match.route if match else '', request.method)
+        if action in (PUBLIC, OPERATOR, OWN_PROOF):
+            return None
+        if request.org_role is None:
+            return JsonResponse({'error': 'unavailable'}, status=404)
+        if action is None:
+            action = 'account.delete'                 # a route nobody gave an action: only an owner (who may do everything) passes. The test keeps this from happening.
+        if not role_allows(request.org_role, action):
+            try:
+                from .services import audit
+                audit(request.user.pk, request.account_id, 'route', 'access.not_permitted', 'denied', request.request_id)
+            except Exception:
+                pass
+            return JsonResponse({'error': 'not_permitted', 'needs': action}, status=403)
+        return None
+
     def process_exception(self, request, exception):
         """Views outside the endpoint() wrapper (SSE stream, downloads) must refuse cross-account access like every other route."""
         if isinstance(exception, (Denied, NotFound)):

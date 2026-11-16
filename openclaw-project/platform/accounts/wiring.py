@@ -34,7 +34,14 @@ def store():
 
 def principal(request):
     """The verified customer of this request. Call only after `views.customer(request)` let it through."""
-    return Principal(request.account_id, str(request.user.pk), 'customer')
+    from agentai_platform.permissions import organization_of
+    role = getattr(request, 'org_role', None)
+    if role is None:
+        from .services import role_of
+        role = role_of(request.account_id, request.user.pk)
+    from django.db import connection
+    connection.ensure_connection()
+    return Principal(request.account_id, str(request.user.pk), 'customer', organization_of(connection.connection, request.account_id), role or '')
 
 
 # ---- the three kinds of switch ------------------------------------------------------------------------------------------------------------------------
@@ -61,8 +68,19 @@ def safety_on(account_id, feature):
 
 def own_model_on(account_id):
     """May this account use its own model key at all (the owner's own-model-keys.json)?"""
-    from agentai_platform import model_keys
-    return model_keys.enabled_for(model_keys.read_engine(settings.ENGINE_FILE), account_id)
+    from agentai_platform import model_keys, organizations
+    if not model_keys.enabled_for(model_keys.read_engine(settings.ENGINE_FILE), account_id):
+        return False
+    try:
+        with store().connect() as con:
+            return organizations.own_model_key_allowed(con, account_id)      # an organization may decide its members use Lumina's model only (roadmap #15)
+    except Exception:
+        return True
+
+
+def connector_tools(db=None):
+    """The assistant's connector tools (read through a connected service, propose a change for approval), or None until they are built for this host (Phase 3)."""
+    return None
 
 
 def mcp_on(account_id):
