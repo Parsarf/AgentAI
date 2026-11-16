@@ -8,7 +8,7 @@ import { EmptyState, Inspector, Table } from '../components/frame/parts';
  *  them at every width without a page-specific exception. Reached at /app/frame-stress/<kind>; not linked from anywhere. */
 const KINDS = ['thread', 'list', 'calendar', 'files', 'settings', 'dashboard', 'table'] as const;
 const words = (n: number) => Array.from({ length: n }, (_, i) => ['alpha', 'quarterly', 'review', 'thread', 'calendar', 'a-very-long-unbroken-token-that-should-wrap-or-ellipsize'][i % 6]).join(' ');
-const rows = Array.from({ length: 5000 }, (_, i) => ({ id: String(i), name: `Item ${i} ${words(4)}`, kind: ['Task', 'Plan', 'Question'][i % 3], when: 1700000000 - i * 3600 }));
+const rows = Array.from({ length: 100000 }, (_, i) => ({ id: String(i), name: `Item ${i} ${words(4)}`, kind: ['Task', 'Plan', 'Question'][i % 3], when: 1700000000 - i * 3600 }));
 
 export default function FrameStress() {
   const { kind = 'thread' } = useParams(); const [open, setOpen] = useState<string | null>('3');

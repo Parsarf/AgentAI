@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Composer from '../components/Composer';
 import AppPlayer, { runnableFile } from '../components/apps/AppPlayer';
 import ChatActions from '../components/ChatActions';
@@ -32,6 +32,7 @@ import { chatTitle } from '../lib/chats';
 const same = <T,>(prev: T, next: T): T => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
 
 export default function Chat() {
+  const [query] = useSearchParams(); const asked = query.get('q'); const seed = useMemo(() => (asked ? { text: asked, n: Date.now() } : null), [asked]);
   const { id } = useParams(); const nav = useNavigate(); const { refresh, chats, refreshChats, app } = useData(); const work = useWork();
   const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]); const [err, setErr] = useState(''); const [loaded, setLoaded] = useState(false);
@@ -164,7 +165,7 @@ export default function Chat() {
           <div ref={bottom} />
         </div>
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); toEnd(true); }}>Jump to latest ↓</button>}
-        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} autoFocus onSent={sent} onStop={stopTarget ? () => { void cancel(stopTarget.id); } : open.some(t => t.phase === 'stopping') ? () => {} : undefined} stopping={!!stopping || (!stopTarget && open.some(t => t.phase === 'stopping'))} />}</div>
+        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<h1>What should we work on?</h1></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} seed={id ? null : seed} autoFocus onSent={sent} onStop={stopTarget ? () => { void cancel(stopTarget.id); } : open.some(t => t.phase === 'stopping') ? () => {} : undefined} stopping={!!stopping || (!stopTarget && open.some(t => t.phase === 'stopping'))} />}</div>
       </section>
     </div>
     </Workspace>);

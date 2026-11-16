@@ -25,4 +25,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }), [reducedMotion, compact, sidebarOpen]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
-export const useSettings = () => useContext(Ctx);
+const NONE: Settings = { reducedMotion: false, compact: false, sidebarOpen: true, setReducedMotion: () => {}, setCompact: () => {}, setSidebarOpen: () => {} };
+/** The person's display settings; defaults where no provider is above (tests, the component gallery). */
+export const useSettings = () => useContext(Ctx) ?? NONE;

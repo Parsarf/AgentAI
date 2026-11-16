@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useSelection } from '../components/frame/Assistant';
 import * as I from '../components/Icons';
 import { ago } from '../lib/format';
 import { isOpen, isPrompt, needLine, verdict, type Approval, type TaskSummary } from '../lib/work';
@@ -117,5 +118,6 @@ function Record({ id }: { id: string }) {
 
 export default function Tasks() {
   const { id } = useParams();
+  useSelection(id ? { looking: { kind: 'task', id }, words: 'this task', actions: [{ label: 'What happened?', message: 'What happened in this task, in short?' }] } : { looking: { kind: 'page', page: 'activity' }, words: 'Activity', actions: [] });
   return id ? <Record key={id} id={id} /> : <Activity />;
 }

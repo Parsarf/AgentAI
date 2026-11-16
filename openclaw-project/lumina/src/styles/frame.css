@@ -158,3 +158,58 @@ a.ci-row:hover { background: var(--fill-hover); }
 .stress-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
 .stress-tile { text-align: left; overflow-wrap: anywhere; min-height: 90px; color: inherit; cursor: pointer; }
 .rail-item:focus-visible, .split:focus-visible { border-radius: var(--radius-md); }
+
+/* The assistant: one panel for every page but Chat. Docked at the right from 1500 px, a sheet below. */
+.zone-assistant { position: sticky; top: var(--frame-gap); flex: 0 0 var(--wsp-assistant, 360px); height: calc(100dvh - 2 * var(--frame-gap)); margin-right: var(--frame-gap); margin-top: var(--frame-gap);
+  display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface-canvas); border: 1px solid var(--border-subtle); }
+.frame > .split { margin-top: var(--frame-gap); }
+.frame:has(> .zone-assistant) .frame-work { padding-right: 0; }
+.assistant { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); }
+.assistant-sheet .sheet-body { display: flex; flex-direction: column; padding: 0; }
+.assistant-sheet .sheet-head { display: none; }
+.assistant-sheet .assistant { height: 100dvh; }
+.assistant-head { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; color: var(--accent-text); }
+.assistant-head h2 { flex: 1; color: var(--text-primary); font-size: var(--text-base); font-weight: var(--weight-semibold); }
+.assistant-thread { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-1) 2px; }
+.assistant-turn { display: grid; gap: var(--space-2); }
+.assistant-msg { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); overflow-wrap: anywhere; font-size: var(--text-sm); }
+.assistant-msg.you { align-self: end; justify-self: end; max-width: 88%; background: var(--accent-soft); border: 1px solid var(--accent-line); white-space: pre-wrap; }
+.assistant-msg.agent { background: var(--surface); border: 1px solid var(--border-subtle); }
+.assistant-hello { margin-top: auto; }
+.assistant-refine, .assistant-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.assistant-long { color: var(--text-secondary); }
+.assistant-looking { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-form { display: flex; align-items: flex-end; gap: var(--space-2); }
+.assistant-form textarea { resize: none; min-height: 44px; max-height: 30dvh; }
+.float-notice { position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: var(--z-drawer); display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-radius: var(--radius-md); background: var(--surface-overlay); box-shadow: var(--shadow-overlay); }
+.w-compact .float-notice { left: var(--space-3); right: var(--space-3); bottom: calc(var(--bottom-bar-h) + var(--space-3)); }
+/* Narrow canvases: the title keeps its own line and the controls wrap beneath it. */
+.w-compact .wsp-toolbar, .w-medium .wsp-fill .wsp-toolbar { flex-wrap: wrap; row-gap: var(--space-1); }
+.w-compact .wsp-title { flex: 1 1 calc(100% - 48px); }
+.w-compact .wsp-tools { flex-wrap: wrap; }
+.seg { flex-wrap: nowrap; white-space: nowrap; }
+.wsp-toolbar { flex-shrink: 0; }   /* in a window-high canvas the toolbar keeps its height when its controls wrap */
+
+/* The command bar and the shortcut help (decisions 7, 8). Things to open and things to do are marked apart; shortcuts are shown beside their command. */
+.cmd-back { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; justify-items: center; align-content: start; padding: 12vh var(--space-3) 0; background: rgb(0 0 0 / .6); animation: scrim-in var(--dur) var(--ease); }
+.cmd { width: min(620px, 100%); display: flex; flex-direction: column; max-height: 72dvh; border-radius: var(--radius-lg); background: var(--surface-overlay); box-shadow: var(--shadow-overlay); overflow: hidden; }
+.cmd-input { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); }
+.cmd-input input { flex: 1; min-width: 0; height: 52px; padding: 0; border: 0; outline: 0; background: none; color: var(--text-primary); font-size: var(--text-md); }
+.cmd > ul { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: var(--space-2); }
+.cmd ul ul { list-style: none; margin: 0; padding: 0; }
+.cmd-group { padding: var(--space-2) var(--space-2) var(--space-1); color: var(--text-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); letter-spacing: .06em; text-transform: uppercase; }
+.cmd-row { display: flex; align-items: center; gap: var(--space-3); min-height: 40px; padding: 0 var(--space-2); border-radius: var(--radius-sm); cursor: pointer; }
+.cmd-row[aria-selected='true'] { background: var(--fill-pressed); }
+.cmd-mark { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-xs); color: var(--text-muted); }
+.cmd-row.do .cmd-mark { color: var(--accent-text); background: var(--accent-soft); }
+.cmd-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-detail { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-none { display: grid; gap: var(--space-2); justify-items: start; padding: var(--space-3) var(--space-4); }
+.cmd-dropped { padding: 0 var(--space-4) var(--space-2); }
+.cmd-foot { padding: var(--space-2) var(--space-4); border-top: 1px solid var(--border-subtle); }
+.rail-tip .kbd, .cmd .kbd { margin-left: var(--space-2); }
+.help-group dl { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; }
+.help-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.help-row dt { color: var(--text-secondary); } .help-row dd { margin: 0; flex: none; }
+@media (max-width: 599px) { .cmd-back { padding-top: var(--space-3); } .cmd { max-height: calc(100dvh - var(--space-5)); } }

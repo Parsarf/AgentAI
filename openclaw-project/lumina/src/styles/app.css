@@ -108,12 +108,6 @@ h1, h2, h3, p { margin: 0; }
 .login input:focus { border-color: var(--neon); }
 
 /* command search */
-.cmd-back { position: fixed; inset: 0; background: rgb(0 0 0 / .6); z-index: 50; display: grid; justify-items: center; align-content: start; padding-top: 14vh; }
-.cmd { width: min(560px, 92vw); padding: 10px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: var(--shadow); }
-.cmd input { width: 100%; padding: 12px; background: none; border: 0; outline: 0; font-size: 16px; border-bottom: 1px solid var(--line); }
-.cmd ul { list-style: none; margin: 6px 0 0; padding: 0; max-height: 50vh; overflow: auto; }
-.cmd li button { width: 100%; text-align: left; background: none; border: 0; padding: 10px 12px; border-radius: 10px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
-.cmd li button[aria-selected='true'], .cmd li button:hover { background: var(--fill-hover); }
 
 /* responsive */
 @media (max-width: 1320px) { .shell { grid-template-columns: 220px minmax(0, 1fr); } .rail { grid-column: 2; position: static; max-height: none; grid-template-columns: repeat(3, minmax(0, 1fr)); } }

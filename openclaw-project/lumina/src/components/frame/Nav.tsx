@@ -10,6 +10,7 @@ import { useData } from '../../state/data';
 import { useSettings } from '../../state/settings';
 import { useWork } from '../../state/work';
 import { useFrame } from './FrameProvider';
+import { keyWords, shortcut } from '../../lib/shortcuts';
 
 type Feature = 'dashboard' | 'files';
 export interface Place { to: string; label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; group: 'main' | 'work' | 'activity' | 'bottom'; feature?: Feature; also?: string[]; key: string }
@@ -32,7 +33,7 @@ function Entry({ place, count, onPick }: { place: Place; count?: number; onPick?
   const { pathname } = useLocation(); const here = belongs(place, pathname);
   const words = count ? `${place.label}, ${count} waiting for you` : place.label;
   return <Link to={place.to} className="rail-item" aria-current={here ? 'page' : undefined} aria-label={words} onClick={onPick}>
-    <place.icon width={20} height={20} aria-hidden="true" /><span className="rail-tip" aria-hidden="true">{place.label}{count ? ` · ${count} waiting` : ''}</span>
+    <place.icon width={20} height={20} aria-hidden="true" /><span className="rail-tip" aria-hidden="true">{place.label}{count ? ` · ${count} waiting` : ''}{shortcut(`go-${place.to.slice(1)}`) && <kbd className="kbd">{keyWords(shortcut(`go-${place.to.slice(1)}`)!.keys)}</kbd>}</span>
     {count ? <span className="rail-count" aria-hidden="true">{count > 99 ? '99+' : count}</span> : null}
   </Link>;
 }
@@ -59,9 +60,9 @@ export function NavRail({ onSearch }: { onSearch(): void }) {
     {places.some(p => p.group === 'work') && <div className="rail-group">{group('work')}</div>}
     <div className="rail-group">{group('activity')}</div>
     <div className="rail-end">
-      <button type="button" className="rail-item" aria-label="Search and commands (Ctrl+K)" onClick={onSearch}><I.Search width={20} height={20} aria-hidden="true" /><span className="rail-tip" aria-hidden="true">Search <kbd className="kbd">Ctrl K</kbd></span></button>
+      <button type="button" className="rail-item" aria-label="Search and commands" onClick={onSearch}><I.Search width={20} height={20} aria-hidden="true" /><span className="rail-tip" aria-hidden="true">Search and commands <kbd className="kbd">{keyWords('mod+k')}</kbd></span></button>
       {frame?.declared.assistant && <button type="button" className="rail-item" aria-label="Assistant" aria-pressed={frame.placement.docked.assistant || frame.sheet === 'assistant'}
-        onClick={() => frame.toggle('assistant')}><I.Spark width={20} height={20} aria-hidden="true" /><span className="rail-tip" aria-hidden="true">Assistant</span></button>}
+        onClick={() => frame.toggle('assistant')}><I.Spark width={20} height={20} aria-hidden="true" /><span className="rail-tip" aria-hidden="true">Assistant <kbd className="kbd">{keyWords('mod+j')}</kbd></span></button>}
       <SafetyButton />
       {group('bottom')}
       <Account />

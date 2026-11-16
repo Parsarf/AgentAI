@@ -6,6 +6,7 @@ import Backdrop from '../Backdrop';
 import { useFrame } from './FrameProvider';
 import Split, { sizeItems } from './Split';
 import { Toolbar } from './parts';
+import { hint } from '../../lib/shortcuts';
 
 export interface WorkspaceProps {
   /** The page's name, shown in the canvas's own toolbar. */
@@ -44,7 +45,10 @@ export default function Workspace({ title, tools, context, contextLabel = 'Side 
   if (!frame) return <div className={`wsp wsp-plain${fill ? ' wsp-fill' : ''} ${className}`}>
     {hasContext && <aside className="zone zone-context" aria-label={contextLabel}>{context}</aside>}
     <main className="zone zone-canvas"><Toolbar title={title} tools={tools} />{children}</main>
-    {hasInspector && <aside className="zone zone-inspector" aria-label={inspectorLabel}>{inspector}</aside>}
+    {hasInspector && <aside className="zone zone-inspector" aria-label={inspectorLabel}>
+      {inspectorKind === 'selection' && onInspectorClose && <div className="zone-head"><span className="zone-label">{inspectorLabel}</span>
+        <button type="button" className="iconbtn small ghost" aria-label="Close" title={`Close ${inspectorLabel.toLowerCase()}`} onClick={onInspectorClose}><I.Plus width={16} height={16} className="rot45" /></button></div>}
+      {inspector}</aside>}
   </div>;
 
   const { placement, widths } = frame;
@@ -54,7 +58,7 @@ export default function Workspace({ title, tools, context, contextLabel = 'Side 
   const inspectorShowing = inspectorDocked || (hasInspector && (inspectorKind === 'selection' || frame.sheet === 'inspector'));
   const zoneTools = <>
     {hasContext && <button type="button" className="iconbtn small ghost wsp-zone-toggle" aria-label={contextShowing ? `Hide ${contextLabel.toLowerCase()}` : `Show ${contextLabel.toLowerCase()}`}
-      aria-expanded={contextShowing} title={`${contextShowing ? 'Hide' : 'Show'} ${contextLabel.toLowerCase()} (Ctrl+B)`} onClick={() => frame.toggle('context')}><I.Panel width={18} height={18} /></button>}
+      aria-expanded={contextShowing} title={hint(`${contextShowing ? 'Hide' : 'Show'} ${contextLabel.toLowerCase()}`, 'context')} onClick={() => frame.toggle('context')}><I.Panel width={18} height={18} /></button>}
   </>;
   const inspectorTool = hasInspector && inspectorKind === 'panel' && <button type="button" className="iconbtn small ghost wsp-zone-toggle" aria-label={inspectorShowing ? `Hide ${inspectorLabel.toLowerCase()}` : `Show ${inspectorLabel.toLowerCase()}`}
     aria-expanded={inspectorShowing} title={`${inspectorShowing ? 'Hide' : 'Show'} ${inspectorLabel.toLowerCase()}`} onClick={() => frame.toggle('inspector')}><I.Panel width={18} height={18} style={{ transform: 'scaleX(-1)' }} /></button>;
@@ -82,7 +86,7 @@ export default function Workspace({ title, tools, context, contextLabel = 'Side 
         <div className="zone-head"><span className="zone-label">{inspectorLabel}</span>
           <Menu label={`${inspectorLabel} options`} align="end" items={sizeItems(frame, 'inspector')}
             trigger={({ open, props }) => <button type="button" className="iconbtn small ghost" aria-label={`${inspectorLabel} options`} aria-expanded={open} {...props}><I.More width={16} height={16} /></button>} />
-          <button type="button" className="iconbtn small ghost" aria-label={`Close ${inspectorLabel.toLowerCase()}`} onClick={closeInspector}><I.Plus width={16} height={16} className="rot45" /></button></div>
+          <button type="button" className="iconbtn small ghost" aria-label="Close" title={`Close ${inspectorLabel.toLowerCase()}`} onClick={closeInspector}><I.Plus width={16} height={16} className="rot45" /></button></div>
         <div className="zone-body">{inspector}</div>
       </aside>
     </>}

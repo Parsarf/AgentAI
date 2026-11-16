@@ -48,7 +48,7 @@ export async function hubMock(p, url, req, res, json, body) {
     const i = Number((q('id') || 't0').slice(1)); const t = thread(i);
     const messages = Array.from({ length: t.message_count }, (_, n) => ({ id: `m${i}_${n}`, thread_id: t.id, subject: t.subject, snippet: t.snippet, sender: person(i + n), to: [{ name: 'You', address: 'you@example.com' }], cc: [],
       sent_epoch: t.last_epoch - (t.message_count - n) * 3600, labels: ['inbox'], provider_labels: [], unread: false, starred: false, has_attachments: false,
-      body: { html: '', text: `Hello,\n\nThis is message ${n + 1} of the thread "${t.subject}". It is synthetic text for a local check.\n\nBest,\n${person(i + n).name}`, blocked_images: 0, images_shown: false, attachments: [], fetched_epoch: now() } }));
+      body: { html: `<p>Hello, this is message ${n + 1} of the thread.</p><p>Synthetic text for a local check.</p>`, text: `Hello,\n\nThis is message ${n + 1} of the thread "${t.subject}". It is synthetic text for a local check.\n\nBest,\n${person(i + n).name}`, blocked_images: 0, images_shown: false, attachments: [], fetched_epoch: now() } }));
     await new Promise(r => setTimeout(r, 120));          // the body takes a moment, as it does from the server
     return json(res, 200, { thread: t, messages, problem: null }), true;
   }

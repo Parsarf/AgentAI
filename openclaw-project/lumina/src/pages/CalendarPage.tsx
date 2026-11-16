@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import * as I from '../components/Icons';
 import Accounts from '../components/hub/Accounts';
-import Dock, { type Looking, type Suggestion } from '../components/hub/Dock';
+import Workspace from '../components/frame/Workspace';
+import { EmptyState } from '../components/frame/parts';
+import { useSelection, type Action, type Looking } from '../components/frame/Assistant';
+import { useCommands } from '../components/frame/CommandBar';
 import { usePulse } from '../components/hub/usePulse';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
@@ -37,13 +40,10 @@ function EventChip({ event, zone, current, onOpen, block, style }: { event: HubE
 
 /** What the inspector shows for one event: when (in the customer's timezone, and the event's own when that differs), where, who and their answers, the notes, which account
  *  and calendar it is from, and how fresh it is. An event that is only visible as busy shows nothing else. Nothing here changes the event. */
-function Inspector({ event, zone, account, calendar, now, onClose }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number; onClose(): void }) {
+function Inspector({ event, zone, account, calendar, now }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number }) {
   return (
-    <aside className={`hub-open hub-inspector panel cal-${event.colour}`} aria-label="Event">
-      <header style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <h2 style={{ flex: 1 }}>{titleOf(event)}</h2>
-        <button type="button" className="iconbtn small ghost" aria-label="Close" onClick={onClose}><I.Plus width={16} height={16} style={{ transform: 'rotate(45deg)' }} /></button>
-      </header>
+    <section className={`hub-inspector cal-${event.colour}`} aria-label="Event details">
+      <header><h2>{titleOf(event)}</h2></header>
       {event.cancelled && <p className="notice warning">This occurrence was cancelled.</p>}
       <dl>
         <dt>When</dt><dd>{eventTime(event, zone)}{event.series_id && <span className="faint"> · {event.exception ? 'A changed occurrence of a repeating event' : 'Repeats'}</span>}</dd>
@@ -59,7 +59,22 @@ function Inspector({ event, zone, account, calendar, now, onClose }: { event: Hu
       {event.description && <section aria-label="Notes"><h3 className="hub-side-title">Notes</h3><p className="hub-notes">{event.description}</p></section>}
       <p className="faint small">{calendar ? ACCESS[calendar.access] : 'Read only'} · Updated {ago(event.synced_epoch, now)}.
         {event.provider_url && account && <> <a href={event.provider_url} target="_blank" rel="noopener noreferrer">Open in {account.provider_label}</a></>}</p>
-    </aside>);
+    </section>);
+}
+
+/** A small month for jumping to a day. The days of the current view are marked. */
+function MiniMonth({ day, today, from, to, onPick }: { day: string; today: string; from: string; to: string; onPick(d: string): void }) {
+  const [month, setMonth] = useState(day.slice(0, 7) + '-01');
+  useEffect(() => { setMonth(day.slice(0, 7) + '-01'); }, [day]);
+  const first = startOfWeek(month); const days = Array.from({ length: 42 }, (_, i) => addDays(first, i));
+  return <section className="mini-month" aria-label="Jump to a day">
+    <header><b>{dayTitle(month, 'month')}</b>
+      <button type="button" className="iconbtn small ghost" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}><I.Chevron width={14} height={14} style={{ transform: 'rotate(180deg)' }} /></button>
+      <button type="button" className="iconbtn small ghost" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}><I.Chevron width={14} height={14} /></button></header>
+    <div className="mini-grid">{days.slice(0, 7).map(d => <span key={'h' + d} className="mini-head" aria-hidden="true">{dayTitle(d, 'weekday').slice(0, 2)}</span>)}
+      {days.map(d => <button key={d} type="button" className={`mini-day${d.slice(0, 7) !== month.slice(0, 7) ? ' other' : ''}${d === today ? ' today' : ''}${d >= from && d <= to ? ' shown' : ''}`}
+        aria-label={`Go to ${dayTitle(d)}`} aria-current={d === day ? 'date' : undefined} onClick={() => onPick(d)}>{Number(d.slice(8))}</button>)}</div>
+  </section>;
 }
 
 /** The Calendar: every selected calendar of every connected account together, in the customer's timezone. Left: accounts and calendars. Middle: day, week, month or agenda.
@@ -67,12 +82,16 @@ function Inspector({ event, zone, account, calendar, now, onClose }: { event: Hu
 export default function CalendarPage() {
   const { app } = useData(); const on = !!app?.features.dashboard;
   const [info, setInfo] = useState<Overview | null>(null); const [err, setErr] = useState(''); const [now, setNow] = useState(nowSeconds);
-  const [view, setView] = useState<View>('week'); const [anchor, setAnchor] = useState<string | null>(null);
+  const [view, setView] = useState<View>(() => (typeof window !== 'undefined' && window.innerWidth < 600 ? 'day' : 'week')); const [anchor, setAnchor] = useState<string | null>(null);   // a phone opens on one day
   const [chosen, setChosen] = useState<Set<string> | null>(null); const [events, setEvents] = useState<HubEvent[] | null>(null); const [partial, setPartial] = useState(false);
   const [selected, setSelected] = useState<string | null>(null); const [detail, setDetail] = useState<HubEvent | null>(null);
   const [typed, setTyped] = useState(''); const [found, setFound] = useState<{ query: string; events: HubEvent[]; complete: boolean } | null>(null);
   const [zoneEdit, setZoneEdit] = useState<string | null>(null); const [colouring, setColouring] = useState<string | null>(null);
   const request = useRef(0); const grid = useRef<HTMLDivElement>(null);
+  // A range of days chosen by dragging across the day headings, or from the keyboard (Shift with the arrows). It only tells the assistant "these days" in this phase.
+  const [days, setDays] = useState<{ start: string; end: string } | null>(null); const drag = useRef<{ from: string; moved: boolean } | null>(null);
+  useEffect(() => { const up = () => { drag.current = drag.current && { ...drag.current, from: '' }; }; window.addEventListener('pointerup', up); return () => window.removeEventListener('pointerup', up); }, []);
+  useEffect(() => { const t = window.setInterval(() => { if (document.visibilityState === 'visible') setNow(nowSeconds()); }, 60000); return () => window.clearInterval(t); }, []);   // the current time line moves
   const [params, setParams] = useSearchParams(); const [choosing, setChoosing] = useState<string | null>(params.get('connected'));
   const connectNote = CONNECT_NOTE[params.get('connect') ?? ''];
   const doneChoosing = () => { setChoosing(null); setParams({}, { replace: true }); window.setTimeout(() => { void loadInfo(); void load(); }, 1200); };
@@ -107,7 +126,13 @@ export default function CalendarPage() {
   }, [!!info, span.from, span.to, zone, shownAccounts.join(','), selection]);
   useEffect(() => { void load(); }, [load]);
   usePulse(on, () => { void loadInfo(); void load(); });      // live: when anything changed at the server, the calendars and the events on screen are loaded again, quietly
-  useEffect(() => { if ((view === 'week' || view === 'day') && grid.current && typeof grid.current.scrollTo === 'function') grid.current.scrollTo({ top: 7 * 44 }); }, [view, events === null]);
+  // The grid opens at the current hour when today is on screen (an hour above it, for context), at 7 in the morning otherwise.
+  useEffect(() => {
+    if ((view !== 'week' && view !== 'day') || !grid.current || typeof grid.current.scrollTo !== 'function') return;
+    const hour = span.days.includes(today) ? Math.max(0, Math.floor(minuteOfDay(nowSeconds(), zone) / 60) - 1) : 7;
+    grid.current.scrollTo({ top: hour * 44 });
+  }, [view, events === null, span.from]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setDays(null); }, [view, span.from]);
 
   const open = useCallback(async (e: HubEvent) => {
     setSelected(eventKey(e)); setDetail(e);
@@ -137,8 +162,9 @@ export default function CalendarPage() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || target?.closest?.('[data-day]') || document.querySelector('[role="dialog"][aria-modal="true"]:not(.zone-sheet)')) return;   // a focused day heading handles its own arrows
       if (e.key === 'Escape' && selected) close();
+      else if (e.key === 'Escape' && days) setDays(null);
       else if (e.key === 't') setAnchor(null);
       else if (e.key === 'ArrowLeft') step(-1);
       else if (e.key === 'ArrowRight') step(1);
@@ -146,7 +172,47 @@ export default function CalendarPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, view, day]);
+  }, [selected, view, day, days]);
+
+  const ordered = (a: string, b: string) => (a <= b ? { start: a, end: b } : { start: b, end: a });
+  const rangeWords = (r: { start: string; end: string }) => (r.start === r.end ? dayTitle(r.start) : rangeTitle(r.start, r.end));
+  const looking: Looking = detail ? { kind: 'event', connection: detail.connection_id, calendar: detail.calendar_id, event: detail.id } : days ? { kind: 'days', ...days } : { kind: 'days', start: span.from, end: span.to };
+  const lookingWords = detail ? `the event “${titleOf(detail)}”` : days ? `these days: ${rangeWords(days)}` : view === 'day' ? dayTitle(day) : rangeTitle(span.from, span.to);
+  const actions: Action[] = detail ? [{ label: 'Prepare me for this', message: 'Prepare me for this meeting: who is in it, what we last discussed, and what I should have ready.' },
+    { label: 'Who are these people?', message: 'Who are the people in this event, from my mail and calendar?' }]
+    : [{ label: 'What matters here?', message: 'What matters most in my calendar for these days? Point out conflicts and anything I should prepare for.' },
+      { label: 'When am I free?', message: 'When am I free in these days? List the open stretches of an hour or more during the working day.' }];
+  useSelection(on ? { looking, words: lookingWords, actions } : null);
+  const unit = view === 'month' ? 'month' : view === 'week' ? 'week' : view === 'agenda' ? '30 days' : 'day';
+  useCommands(on ? [{ id: 'cal-later', label: `Go to the next ${unit}`, shortcut: 'cal-later', run: () => step(1) }, { id: 'cal-earlier', label: `Go to the previous ${unit}`, shortcut: 'cal-earlier', run: () => step(-1) },
+    { id: 'cal-today', label: 'Go to today', shortcut: 'cal-today', run: () => { setFound(null); setAnchor(null); } },
+    ...VIEWS.filter(v => v.id !== view).map(v => ({ id: `cal-${v.id}`, label: `Show the ${v.label.toLowerCase()} view`, run: () => { setFound(null); setView(v.id); } }))] : []);
+  // Opened from the command bar: ?connection=&calendar=&event= opens that event and shows its day.
+  const linked = useRef(false);
+  useEffect(() => {
+    const id = params.get('event'), connection = params.get('connection'), cal = params.get('calendar');
+    if (!on || linked.current || !id || !connection || !cal || !info) return;
+    linked.current = true;
+    hub.event(connection, cal, id).then(r => { setAnchor(dayKey(r.event.start_epoch, zone)); setSelected(eventKey(r.event)); setDetail(r.event); }).catch(e => setErr(failed(e)));
+  }, [on, params, info, zone]);
+  /** A day heading: click to open the day; drag across headings, or Shift with the arrow keys, to choose a range; the arrows alone move between headings. */
+  const dayProps = (d: string, goes: () => void) => ({
+    'data-day': d, 'aria-pressed': days ? d >= days.start && d <= days.end : undefined,
+    onPointerDown: (e: React.PointerEvent) => { if (e.button === 0) drag.current = { from: d, moved: false }; },
+    onPointerEnter: () => { const g = drag.current; if (g?.from && g.from !== d) { g.moved = true; setDays(ordered(g.from, d)); } },
+    onClick: () => { if (drag.current?.moved) { drag.current = null; return; } drag.current = null; goes(); },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' && view === 'month' ? 7 : e.key === 'ArrowUp' && view === 'month' ? -7 : 0;
+      if (e.key === 'Escape' && days) { e.preventDefault(); e.stopPropagation(); setDays(null); return; }
+      if (!step) return;
+      e.preventDefault();
+      const to = addDays(d, step);
+      const target = (e.currentTarget.closest('.wsp-body') ?? document).querySelector<HTMLElement>(`[data-day="${to}"]`);
+      if (!target) return;
+      target.focus();
+      if (e.shiftKey) setDays(prev => { const pivot = prev ? (prev.start === d ? prev.end : prev.start) : d; return ordered(pivot, to); });
+    },
+  });
 
   const byDay = useMemo(() => {
     const out: Record<string, { allDay: HubEvent[]; timed: HubEvent[] }> = Object.fromEntries(span.days.map(d => [d, { allDay: [], timed: [] }]));
@@ -154,20 +220,9 @@ export default function CalendarPage() {
     return out;
   }, [events, span, zone]);
 
-  if (!on) return (
-    <div className="center"><h1 className="page-title">Calendar</h1><section className="panel card"><h2>Not available yet</h2>
-      <p className="muted" style={{ marginTop: 8 }}>The calendars of your connected accounts in one place, with your assistant beside them.</p>
-      <p style={{ marginTop: 16 }}><Link className="btn" to="/">Back to Home</Link></p></section></div>);
-
   const heading = view === 'day' ? dayTitle(day) : view === 'month' ? dayTitle(day, 'month')
     : rangeTitle(span.from, span.to);
   const needing = accounts.filter(a => a.state === 'needs_you');
-  const looking: Looking = detail ? { kind: 'event', connection: detail.connection_id, calendar: detail.calendar_id, event: detail.id } : { kind: 'days', start: span.from, end: span.to };
-  const lookingWords = detail ? `the event “${titleOf(detail)}”` : view === 'day' ? dayTitle(day) : rangeTitle(span.from, span.to);
-  const suggestions: Suggestion[] = detail ? [{ label: 'Prepare me for this', message: 'Prepare me for this meeting: who is in it, what we last discussed, and what I should have ready.' },
-    { label: 'Who are these people?', message: 'Who are the people in this event, from my mail and calendar?' }]
-    : [{ label: 'What matters here?', message: 'What matters most in my calendar for these days? Point out conflicts and anything I should prepare for.' },
-      { label: 'When am I free?', message: 'When am I free in these days? List the open stretches of an hour or more during the working day.' }];
   const choosingAccount = (info?.accounts ?? []).find(a => a.id === choosing);
   const filling = calendars.filter(c => !c.filled && shownAccounts.includes(c.connection_id));
   const list = (items: HubEvent[], days: string[]) => days.map(d => ({ day: d, items: items.filter(e => eventDays(e, zone, d, d).length).sort((a, b) => Number(b.all_day) - Number(a.all_day) || a.start_epoch - b.start_epoch) })).filter(g => g.items.length);
@@ -178,35 +233,40 @@ export default function CalendarPage() {
         <span><b>{titleOf(e)}</b>{e.place && <span className="faint"> · {e.place}</span>}{accounts.length > 1 && <span className="faint"> · {byAccount[e.connection_id]?.identity}</span>}</span></button></li>)}</ul>
     </section>));
 
-  return (
-    <div className={`hub hub-calendar has-dock${detail ? ' has-open' : ''}`}>
-      <aside className="hub-side panel" aria-label="Calendars">
-        <Accounts accounts={accounts} part="calendar" chosen={new Set(shownAccounts)} onToggle={toggleAccount} now={now} providers={info?.providers} onChoose={a => setChoosing(a.id)} />
-        {accounts.filter(a => shownAccounts.includes(a.id)).map(a => { const mine = calendars.filter(c => c.connection_id === a.id); return !mine.length ? null : (
-          <section key={a.id} className="hub-calendars" aria-label={`Calendars of ${a.identity}`}>
-            <h2 className="hub-side-title" title={a.identity}>{a.identity}</h2>
-            {mine.map(c => { const k = c.connection_id + c.id; return (
-              <div key={k} className={`cal-${c.colour}`}>
-                <label className="hub-calendar-row"><input type="checkbox" checked={c.selected} onChange={e => setCalendar(c, { selected: e.target.checked })} />
-                  <span title={`${c.name} · ${ACCESS[c.access]}`}>{c.name}</span>
-                  <button type="button" className="hub-swatch" aria-label={`Colour of ${c.name}`} aria-expanded={colouring === k} onClick={e => { e.preventDefault(); setColouring(colouring === k ? null : k); }} /></label>
-                {colouring === k && <div className="hub-swatches" role="group" aria-label={`Choose a colour for ${c.name}`}>{(info?.colours ?? []).map(colour => (
-                  <button key={colour} type="button" className={`hub-swatch cal-${colour}`} aria-label={colour} aria-pressed={c.colour === colour} onClick={() => { setColouring(null); void setCalendar(c, { colour }); }} />))}</div>}
-              </div>); })}
-          </section>); })}
-      </aside>
+  if (!on) return (
+    <Workspace title="Calendar"><EmptyState title="Not available yet" action={<Link className="btn" to="/home">Back to Home</Link>}>The calendars of your connected accounts in one place, with your assistant beside them.</EmptyState></Workspace>);
 
-      <section className="hub-cal panel" aria-label="Calendar">
-        <header className="hub-cal-bar">
-          <button type="button" className="btn small" onClick={() => setAnchor(null)}>Today</button>
-          <button type="button" className="iconbtn small ghost" aria-label="Earlier" onClick={() => step(-1)}><I.Chevron width={16} height={16} style={{ transform: 'rotate(180deg)' }} /></button>
-          <button type="button" className="iconbtn small ghost" aria-label="Later" onClick={() => step(1)}><I.Chevron width={16} height={16} /></button>
-          <h1 aria-live="polite">{found ? `Events matching “${found.query}”` : heading}</h1>
-          <div className="seg" role="group" aria-label="View">{VIEWS.map(v => <button key={v.id} type="button" className="seg-item" aria-pressed={view === v.id && !found} onClick={() => { setFound(null); setView(v.id); }}>{v.label}</button>)}</div>
-          <form className="hub-search" role="search" onSubmit={e => { e.preventDefault(); void search(); }}>
-            <I.Search width={16} height={16} /><input className="input" type="search" placeholder="Search events" aria-label="Search events" value={typed} onChange={e => { setTyped(e.target.value); if (!e.target.value) setFound(null); }} /></form>
-          <button type="button" className="iconbtn small ghost" aria-label="Refresh" title="Refresh" onClick={refresh}><I.Retry width={16} height={16} /></button>
-        </header>
+  const context = <div className="hub-side" aria-label="Calendars">
+    <MiniMonth day={day} today={today} from={span.from} to={span.to} onPick={d => { setFound(null); setAnchor(d); }} />
+    <Accounts accounts={accounts} part="calendar" chosen={new Set(shownAccounts)} onToggle={toggleAccount} now={now} providers={info?.providers} onChoose={a => setChoosing(a.id)} />
+    {accounts.filter(a => shownAccounts.includes(a.id)).map(a => { const mine = calendars.filter(c => c.connection_id === a.id); return !mine.length ? null : (
+      <section key={a.id} className="hub-calendars" aria-label={`Calendars of ${a.identity}`}>
+        <h2 className="hub-side-title" title={a.identity}>{a.identity}</h2>
+        {mine.map(c => { const k = c.connection_id + c.id; return (
+          <div key={k} className={`cal-${c.colour}`}>
+            <label className="hub-calendar-row"><input type="checkbox" checked={c.selected} onChange={e => setCalendar(c, { selected: e.target.checked })} />
+              <span title={`${c.name} · ${ACCESS[c.access]}`}>{c.name}</span>
+              <button type="button" className="hub-swatch" aria-label={`Colour of ${c.name}`} aria-expanded={colouring === k} onClick={e => { e.preventDefault(); setColouring(colouring === k ? null : k); }} /></label>
+            {colouring === k && <div className="hub-swatches" role="group" aria-label={`Choose a colour for ${c.name}`}>{(info?.colours ?? []).map(colour => (
+              <button key={colour} type="button" className={`hub-swatch cal-${colour}`} aria-label={colour} aria-pressed={c.colour === colour} onClick={() => { setColouring(null); void setCalendar(c, { colour }); }} />))}</div>}
+          </div>); })}
+      </section>); })}
+  </div>;
+
+  const tools = <>
+    <button type="button" className="btn small" onClick={() => { setFound(null); setAnchor(null); }}>Today</button>
+    <button type="button" className="iconbtn small ghost" aria-label="Earlier" onClick={() => step(-1)}><I.Chevron width={16} height={16} style={{ transform: 'rotate(180deg)' }} /></button>
+    <button type="button" className="iconbtn small ghost" aria-label="Later" onClick={() => step(1)}><I.Chevron width={16} height={16} /></button>
+    <div className="seg hub-views" role="group" aria-label="View">{VIEWS.map(v => <button key={v.id} type="button" className="seg-item" aria-pressed={view === v.id && !found} onClick={() => { setFound(null); setView(v.id); }}>{v.label}</button>)}</div>
+    <form className="hub-search" role="search" onSubmit={e => { e.preventDefault(); void search(); }}>
+      <I.Search width={16} height={16} /><input className="input" type="search" placeholder="Search events" aria-label="Search events" value={typed} onChange={e => { setTyped(e.target.value); if (!e.target.value) setFound(null); }} /></form>
+    <button type="button" className="iconbtn small ghost" aria-label="Refresh" title="Refresh" onClick={refresh}><I.Retry width={16} height={16} /></button>
+  </>;
+
+  return (
+    <Workspace title={<h1 className="wsp-title" aria-live="polite">{found ? `Events matching “${found.query}”` : heading}</h1>} tools={tools} fill context={context} contextLabel="Calendars"
+      inspector={detail ? <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} /> : null} inspectorLabel="Event" onInspectorClose={close} className="hub-calendar">
+      <div className="wsp-body">
         <div className="hub-cal-zone faint small">
           {zoneEdit === null ? <><span>Times are shown in {zone.replace(/_/g, ' ')}{info?.settings.timezone ? '' : " (this device's timezone)"}. Read only for now.</span>
             <button type="button" className="btn small tertiary" onClick={() => setZoneEdit(zone)}>Change timezone</button></>
@@ -215,6 +275,7 @@ export default function CalendarPage() {
               <button type="button" className="btn small primary" onClick={() => saveZone(zoneEdit.trim())}>Save</button>
               <button type="button" className="btn small" onClick={() => saveZone(null)}>Use this device's</button>
               <button type="button" className="btn small tertiary" onClick={() => setZoneEdit(null)}>Cancel</button></>}
+          {days && <span className="hub-range" role="status">Chosen: {rangeWords(days)} <button type="button" className="btn small tertiary" onClick={() => setDays(null)}>Clear</button></span>}
         </div>
         {err && <p className="notice warning" role="alert">{err}</p>}
         {connectNote && <p className="notice warning" role="status">{connectNote}</p>}
@@ -224,9 +285,8 @@ export default function CalendarPage() {
         {partial && <p className="notice" role="status">There are more events in this range than can be shown at once. Choose a shorter range.</p>}
 
         {info && !accounts.length ? (
-          <div className="empty"><b>No calendar is connected</b><p className="muted">Connect an account and choose which calendars Lumina may read. They show up here.</p>
-            <AddAccount providers={info.providers ?? []} primary /></div>
-        ) : events === null ? <p className="muted hub-pad" role="status">Loading…</p>
+          <EmptyState title="No calendar is connected" action={<AddAccount providers={info.providers ?? []} primary />}>Connect an account and choose which calendars Lumina may read. They show up here.</EmptyState>
+        ) : events === null ? <div className="hub-loading" role="status"><div className="skeleton" style={{ height: 320 }} /><span className="sr">Loading…</span></div>
         : found ? <div className="hub-agenda">{found.events.length ? agendaRows(list(found.events, [...new Set(found.events.flatMap(e => eventDays(e, zone, '0000-01-01', '9999-12-31').slice(0, 1)))].sort()))
             : <div className="empty">No event matches “{found.query}”.</div>}
             {!found.complete && <p className="faint small">These are the closest matches. There are more.</p>}</div>
@@ -235,8 +295,8 @@ export default function CalendarPage() {
           <div className="hub-month" role="grid" aria-label={heading}>
             {span.days.slice(0, 7).map(d => <div key={'h' + d} className="hub-month-head" role="columnheader">{dayTitle(d, 'weekday')}</div>)}
             {span.days.map(d => { const items = [...byDay[d].allDay, ...byDay[d].timed.sort((a, b) => a.start_epoch - b.start_epoch)]; return (
-              <div key={d} role="gridcell" className={`hub-month-cell${d === today ? ' today' : ''}${d.slice(0, 7) !== day.slice(0, 7) ? ' other' : ''}`}>
-                <button type="button" aria-label={dayTitle(d)} onClick={() => { setAnchor(d); setView('day'); }}>{Number(d.slice(8))}</button>
+              <div key={d} role="gridcell" className={`hub-month-cell${d === today ? ' today' : ''}${d.slice(0, 7) !== day.slice(0, 7) ? ' other' : ''}${days && d >= days.start && d <= days.end ? ' chosen' : ''}`}>
+                <button type="button" aria-label={dayTitle(d)} {...dayProps(d, () => { setAnchor(d); setView('day'); })}>{Number(d.slice(8))}</button>
                 {items.slice(0, 3).map(e => <EventChip key={eventKey(e)} event={e} zone={zone} current={selected === eventKey(e)} onOpen={open} block />)}
                 {items.length > 3 && <button type="button" className="hub-more" onClick={() => { setAnchor(d); setView('day'); }}>{items.length - 3} more</button>}
               </div>); })}
@@ -244,20 +304,17 @@ export default function CalendarPage() {
         ) : (
           <div className="hub-week" ref={grid} style={{ ['--days' as string]: span.days.length, ['--hour' as string]: '44px' }}>
             <div className="hub-week-corner" />
-            {span.days.map(d => <div key={'d' + d} className={`hub-week-day${d === today ? ' today' : ''}`}><button type="button" aria-label={dayTitle(d)} onClick={() => { setAnchor(d); setView('day'); }}>{dayTitle(d, 'short')}</button></div>)}
+            {span.days.map(d => <div key={'d' + d} className={`hub-week-day${d === today ? ' today' : ''}${days && d >= days.start && d <= days.end ? ' chosen' : ''}`}><button type="button" aria-label={dayTitle(d)} {...dayProps(d, () => { setAnchor(d); setView('day'); })}>{dayTitle(d, 'short')}</button></div>)}
             <div className="hub-week-allday gutter">all day</div>
             {span.days.map(d => <div key={'a' + d} className="hub-week-allday" aria-label={`All day, ${dayTitle(d)}`}>
               {byDay[d].allDay.map(e => <EventChip key={eventKey(e)} event={e} zone={zone} current={selected === eventKey(e)} onOpen={open} block />)}</div>)}
             <div className="hub-hours" aria-hidden="true">{HOURS.map(h => <span key={h} style={{ top: `calc(var(--hour) * ${h})` }}>{hourLabel(h)}</span>)}</div>
-            {span.days.map(d => <div key={'c' + d} className="hub-day-col" aria-label={dayTitle(d)}>
+            {span.days.map(d => <div key={'c' + d} className={`hub-day-col${days && d >= days.start && d <= days.end ? ' chosen' : ''}`} aria-label={dayTitle(d)}>
               {d === today && <i className="hub-now" style={{ top: `calc(var(--hour) * ${minuteOfDay(now, zone) / 60})` }} aria-label="Now" role="img" />}
               {layoutDay(byDay[d].timed, d, zone).map(p => <EventChip key={eventKey(p.event)} event={p.event} zone={zone} current={selected === eventKey(p.event)} onOpen={open}
                 style={{ top: `calc(var(--hour) * ${p.top / 60})`, height: `calc(var(--hour) * ${p.height / 60} - 2px)`, left: `calc(${(p.column / p.columns) * 100}% + 2px)`, width: `calc(${100 / p.columns}% - 4px)` }} />)}
             </div>)}
           </div>)}
-      </section>
-
-      {detail && <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} onClose={close} />}
-      <Dock looking={looking} lookingWords={lookingWords} suggestions={suggestions} />
-    </div>);
+      </div>
+    </Workspace>);
 }

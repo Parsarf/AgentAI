@@ -164,12 +164,12 @@ describe('Inbox', () => {
     expect(screen.getByText('Old three')).toBeTruthy();
   });
 
-  it('pages with the cursor the server gave', async () => {
+  // UI remodel (phase 3): the list is virtualized and loads the next page by itself as the reader nears its end; the "Show more" button is gone.
+  it('pages with the cursor the server gave, by itself near the end of the list', async () => {
     server(base({ '/v1/hub/mail/threads': (url: URL) => (url.searchParams.get('cursor') === 'c-2' ? { threads: [other], next: null, complete: true } : { threads: [thread()], next: 'c-2', complete: false }) }));
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Termin morgen')).toBeTruthy(); expect(screen.getByText('Quarterly numbers')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(asked('/v1/hub/mail/threads').map(u => u.get('cursor'))).toEqual([null, 'c-2']);
   });
 
   it('moves through the list with the keyboard', async () => {
@@ -181,7 +181,7 @@ describe('Inbox', () => {
     fireEvent.keyDown(window, { key: 'j' });
     await waitFor(() => expect(asked('/v1/hub/mail/thread').at(-1)?.get('id')).toBe('conv:9@x/1'));
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(await screen.findByText('Select a thread to read it.')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Open thread' })).toBeNull());     // the open thread's zone appears only while a thread is open (UI remodel)
     fireEvent.keyDown(window, { key: '/' });
     expect(document.activeElement).toBe(screen.getByLabelText('Search mail'));
   });
@@ -268,8 +268,7 @@ describe('Inbox', () => {
     server(base({ '/v1/hub/pulse': () => ({ mark, loading: false, items: 2 }),
       '/v1/hub/mail/threads': (url: URL) => (url.searchParams.get('cursor') ? { threads: [other], next: null, complete: true } : { threads: [thread()], next: 'c-2', complete: false }) }));
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
-    await screen.findByText('Termin morgen');
+    await screen.findByText('Termin morgen');                                                     // the second page came by itself (the list reached its end)
     await waitFor(() => expect(asked('/v1/hub/pulse').length).toBeGreaterThan(0));
     mark = 'm2';
     await vi.advanceTimersByTimeAsync(8000);
