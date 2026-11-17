@@ -9,6 +9,7 @@ export default function MemoryNotes() {
   const [state, setState] = useState<State | null>(null);
   const [busy, setBusy] = useState(false); const [confirmAll, setConfirmAll] = useState(false);
   const [problem, setProblem] = useState(''); const [note, setNote] = useState('');
+  const [editing, setEditing] = useState<string | null>(null); const [draft, setDraft] = useState('');
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -29,6 +30,14 @@ export default function MemoryNotes() {
     finally { if (alive.current) setBusy(false); }
   }
 
+  async function correct(id: string) {
+    const content = draft.trim(); if (!content) return;
+    setBusy(true); setProblem(''); setNote('');
+    try { await api('POST', `/v1/longterm-memory/${id}/correct`, { content }); if (!alive.current) return; setEditing(null); setNote('Corrected. What it said before is kept in its history.'); await load(); }
+    catch { if (alive.current) setProblem('Could not correct that. Try again.'); }
+    finally { if (alive.current) setBusy(false); }
+  }
+
   if (!state || !state.available) return null;
   return (
     <section className="panel card" id="memory" style={{ marginBottom: 14 }} aria-labelledby="memory-h"><h2 id="memory-h">Memory</h2>
@@ -37,8 +46,16 @@ export default function MemoryNotes() {
         <ul className="memory-notes" style={{ marginTop: 12, display: 'grid', gap: 8, listStyle: 'none', padding: 0 }}>
           {state.memories.map(m => (
             <li key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'baseline', justifyContent: 'space-between' }}>
-              <span><span className="faint">{m.kind === 'preference' ? 'Preference' : 'Fact'}: </span>{m.content}</span>
-              <button type="button" className="btn small danger" disabled={busy} aria-label={`Delete note: ${m.content}`} onClick={() => run(`/v1/longterm-memory/${m.id}/forget`, 'Deleted.')}>Delete</button>
+              {editing === m.id ? (
+                <form style={{ display: 'flex', gap: 8, flex: 1 }} onSubmit={e => { e.preventDefault(); void correct(m.id); }}>
+                  <input className="input" style={{ flex: 1 }} aria-label={`Corrected note: ${m.content}`} value={draft} maxLength={600} autoFocus onChange={e => setDraft(e.target.value)} />
+                  <button type="submit" className="btn small primary" disabled={busy || !draft.trim()}>Save</button>
+                  <button type="button" className="btn small" disabled={busy} onClick={() => setEditing(null)}>Cancel</button></form>)
+                : (<>
+                  <span><span className="faint">{m.kind === 'preference' ? 'Preference' : 'Fact'}: </span>{m.content}</span>
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" className="btn small" disabled={busy} aria-label={`Edit note: ${m.content}`} onClick={() => { setDraft(m.content); setEditing(m.id); }}>Edit</button>
+                    <button type="button" className="btn small danger" disabled={busy} aria-label={`Delete note: ${m.content}`} onClick={() => run(`/v1/longterm-memory/${m.id}/forget`, 'Deleted.')}>Delete</button></span></>)}
             </li>))}
         </ul>)}
       {state.memories.length > 0 && (

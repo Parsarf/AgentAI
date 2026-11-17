@@ -46,9 +46,18 @@ RULES: tuple[Rule, ...] = (
     Rule('browser_pictures', 'Pictures and traces from browser tasks', 1, 'from when the task ended', 'browser service', (),
          note='Deleted by the browser service every 15 minutes; they are files, not database rows.'),
     Rule('memory', 'Memory, saved choices and skills', None, 'until you forget them or delete your account', 'customer',
-         ('memory_entries', 'memory_terms', 'longterm_memories', 'saved_choices', 'skills', 'skill_versions'), change='Forget one note or all of them in Settings, Memory.'),
-    Rule('document_passages', 'Passages of your documents in the knowledge index', None, 'not stored yet', 'never stored', (),
-         note='The knowledge index does not exist yet. When it does, a removed source takes its passages with it.'),
+         ('memory_entries', 'memory_terms', 'longterm_memories', 'longterm_memory_history', 'saved_choices', 'skills', 'skill_versions'),
+         change='Forget one note or all of them in Settings, Memory.', note='A note you corrected keeps what it said before in its history; forgetting the note removes its history too.'),
+    Rule('document_passages', 'Your documents in the knowledge index: their text as it was read, split into passages, and the search vectors made from them', None,
+         'until you remove the source or delete the file or your account', 'customer', ('knowledge_sources',),
+         change='Remove a source on the Sources page, or delete the file in Files.',
+         note='The passages and the parsed text are in a database of their own on our server. Removing a source deletes them at once; an attachment\'s file itself is not kept.'),
+    Rule('task_checks', 'What your assistant checked during a task: which claims matched their sources, and which searches were complete', 90, 'from when the check was made',
+         'sweeper', ('knowledge_checks',), note='They hold ids and fixed words, never the text of a claim or a document.'),
+    Rule('commitments', 'Decisions and commitments, and the ones suggested to you', None, 'until you delete them or your account', 'customer', ('commitments',),
+         change='Close or drop them in Commitments.'),
+    Rule('mail_drafts', 'Mail drafts you or your assistant wrote in Lumina (never in your mailbox)', None, 'until you discard the draft, remove the account or delete your account',
+         'customer', ('hub_drafts',), change='Discard a draft in Mail.'),
     Rule('connections', 'Connected services: what is connected, what it may reach, and how fresh its data is', None, 'until you remove the connection or delete your account', 'customer',
          ('connector_connections', 'connector_grants', 'connector_freshness', 'connector_secrets', 'connector_drafts', 'browser_profiles', 'mcp_connections', 'mcp_tool_choices',
           'action_auto_approvals', 'telegram_links', 'telegram_link_codes', 'telegram_outbox', 'telegram_updates', 'hub_sync', 'hub_calendars', 'hub_settings'),
@@ -79,7 +88,7 @@ RULES: tuple[Rule, ...] = (
     Rule('exports', 'Archives of your data that you asked for', 7, 'from when the archive was made', 'sweeper', ('account_jobs',),
          note='The archive file is deleted after 7 days. The record that an export or a deletion was done is kept with the security record.', at_deletion='kept'),
     Rule('account', 'Your account, sign-in and organization', None, 'until your account is deleted', 'customer',
-         ('accounts', 'memberships', 'organizations', 'organization_members', 'organization_policies', 'signups'),
+         ('accounts', 'memberships', 'organizations', 'organization_members', 'organization_policies', 'organization_groups', 'organization_group_members', 'signups'),
          change='Delete your account in Settings.', note='After deletion the account id remains as an empty record so it can never be reused.', at_deletion='kept'),
     Rule('cell', 'Your assistant itself: its workspace, its settings and its own model key', None, 'until your account is deleted', 'customer',
          ('deployments', 'operations', 'lifecycle_cells', 'lifecycle_details', 'lifecycle_backups', 'lifecycle_slot', 'cell_slots', 'request_slot', 'request_slots')),
@@ -159,6 +168,7 @@ def sweep(store, *, now=None, storage=None) -> dict:
             day = time.strftime('%Y-%m-%d', time.gmtime(epoch(BY_KEY['schedule_runs'].days)))
             done['schedule_runs'] = con.execute("DELETE FROM schedule_runs WHERE day<? AND state NOT IN ('firing','started')", (day,)).rowcount
             done['spend_marks'] = con.execute('DELETE FROM spend_marks WHERE epoch<?', (epoch(BY_KEY['spend_marks'].days),)).rowcount
+            done['task_checks'] = con.execute('DELETE FROM knowledge_checks WHERE created_epoch<?', (epoch(BY_KEY['task_checks'].days),)).rowcount
             done['audit'] = _audit_delete(con, iso(BY_KEY['audit'].days))
             from . import hub_sync
             done.update(hub_sync.sweep(con, now))

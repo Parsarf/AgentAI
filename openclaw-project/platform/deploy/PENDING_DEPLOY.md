@@ -1,6 +1,8 @@
 # Steps to do by hand when this branch is deployed
 
-Nothing here has been done on the server. Everything in the release is behind owner switches that are **off**, so deploying the code changes nothing a customer sees
+**Done on 2026-11-16 (release `8327634`):** the privacy wording is published, the connector key file is installed (`/var/lib/agentai-platform/connector.key`, path in `accounts.env`), the three timers are enabled, the two switch facts are recorded, and the live proof passed all eight gates. The retention sweeper's first run removed 1,011 activity records older than 30 days. Still open: back up the connector key file with the other keys; the `--hour` form of the handoff gate; one offboarding of a throwaway account that has a real assistant before `account_self_service` is turned on. The steps below are kept as the record of what was done.
+
+Before 2026-11-16: nothing here had been done on the server. Everything in the release is behind owner switches that are **off**, so deploying the code changes nothing a customer sees
 until a switch is turned on. The migrations (0044 to 0047) only add; the previous release runs against them.
 
 ## With the deploy (roadmap Phase 2 and 3)
@@ -105,3 +107,23 @@ In its first minutes on production the service was killed by its own 384 MB cap 
 374 MB), and restarted in a loop with back-off. The unit now allows 1 GB and sets `MALLOC_ARENA_MAX=2`. When this release is live, copy the unit again and restart:
 `cp /opt/agentai-platform/current/deploy/agentai-hub-sync.service /etc/systemd/system/ && systemctl daemon-reload && systemctl restart agentai-hub-sync.service`.
 The cause of the growth during a fill is not found yet: the request path alone levels off at about 110 MB with eight requests in flight.
+
+**Still open (read on the server 2026-11-16, release `9b01cf1`):** the service is still killed at its 1 GB cap during the first fill and restarts in 5 s with its progress kept
+(64 restarts since it was last started, 30 out-of-memory lines in the journal in the last three hours). The fill advances between kills; the growth is not found.
+
+## Roadmap Phase 4: customer knowledge (built on branch `phase-4-5-complete`, NOT merged)
+
+Everything is behind the owner switch `customer_knowledge` (off; it refuses to turn on until the steps below are done and recorded). Status: `plans/product/roadmap/phase-04.md`.
+
+1. **Migration 0050** only adds tables (`knowledge_*`, `commitments`, `organization_groups`, memory history). The previous release ignores them.
+2. **The index and the embedding server**: run `platform/deploy/knowledge/install.sh` as root. It starts `agentai-knowledge-db` (PostgreSQL 17 with the vector extension on
+   127.0.0.1:5433, its own volume and password, not Hindsight's) and `agentai-embeddings` (text-embeddings-inference on CPU with `intfloat/multilingual-e5-small` on
+   127.0.0.1:8890), writes `/var/lib/agentai-platform/knowledge/index.url` and a model key used only to read pages that have no text. It never prints a secret. Then record the
+   fact `knowledge_index_installed`.
+3. **The render service with reader image 2** (`deploy/RENDERER.md`): documents are parsed in its sealed container. `agentai-render.service` is **inactive** on the server today.
+   Record `render_service_running` once it runs.
+4. **The worker**: install `platform/deploy/agentai-knowledge.service`, `systemctl enable --now agentai-knowledge.service`, record `knowledge_worker_running`.
+5. **Privacy before the switch**: the policy must name the knowledge index, the parsed text, the search vectors kept on the server, and the model provider reading pages that
+   have no text and pictures that may be charts. `privacy/facts.json` and the public page are **not** changed yet (`tests/test_privacy_policy.py` fails on that, as it already
+   did on `main` for the mail and calendar copy). Then the two confirmations of the switch: `vision_understood`, `policy_published`.
+6. `customer_uploads` stays off until the owner turns it on; the knowledge index reads uploads only once uploads exist.

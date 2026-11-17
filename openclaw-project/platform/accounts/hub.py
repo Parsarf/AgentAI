@@ -291,3 +291,55 @@ def search_events(request):
     if stop:
         return stop
     return _run(lambda: wiring.hub_service().search_events(principal, request.GET.get('q', ''), connections=_accounts(request)))
+
+
+# ---- drafts (#57): Lumina records only; nothing is created in the mailbox ---------------------------------------------------------------------------
+@endpoint(['GET', 'POST'], ['draft', 'connection_id', 'thread_id', 'to', 'cc', 'subject', 'body'], structured=True)
+def drafts(request):
+    principal, stop = _enter(request, 'hub.draft' if request.method == 'POST' else None, 600)
+    if stop:
+        return stop
+    if request.method == 'GET':
+        return _run(lambda: {'drafts': wiring.hub_service().drafts(principal, connections=_accounts(request), thread_id=request.GET.get('thread') or None)})
+    given = request.input
+    if any(given.get(k) is not None and not isinstance(given[k], str) for k in ('draft', 'connection_id', 'thread_id', 'subject', 'body')) \
+            or any(given.get(k) is not None and not isinstance(given[k], list) for k in ('to', 'cc')):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    return _run(lambda: {'draft': wiring.hub_service().save_draft(principal, draft_id=given.get('draft'), connection_id=given.get('connection_id'), thread_id=given.get('thread_id'),
+                                                                  to=given.get('to'), cc=given.get('cc'), subject=given.get('subject'), body=given.get('body'), origin='customer')})
+
+
+@endpoint(['POST'], [])
+def draft_discard(request, draft_id):
+    principal, stop = _enter(request, 'hub.draft', 600)
+    if stop:
+        return stop
+    return _run(lambda: wiring.hub_service().discard_draft(principal, draft_id))
+
+
+@endpoint(['GET'])
+def draft_compose(request, draft_id):
+    principal, stop = _enter(request, 'hub.read', 600)
+    if stop:
+        return stop
+    return _run(lambda: wiring.hub_service().compose_link(principal, draft_id))
+
+
+# ---- attachments (#55): read through the knowledge pipeline, on demand ------------------------------------------------------------------------------
+@endpoint(['POST'], ['connection_id', 'message_id', 'attachment_id'], field_limits={'connection_id': 64, 'message_id': 300, 'attachment_id': 700})
+def attachment(request):
+    principal, stop = _enter(request, 'hub.attachment', 120)
+    if stop:
+        return stop
+    if not wiring.knowledge_on(request.account_id):
+        return JsonResponse({'error': 'feature_off', 'message': 'Reading attachments needs the document reader, which is not on.'}, status=503)
+    service = wiring.knowledge_service()
+    if service is None:
+        return JsonResponse({'error': 'feature_off'}, status=503)
+    given = request.input
+    ref = f"{given.get('connection_id', '')}:{given.get('message_id', '')}:{given.get('attachment_id', '')}"
+
+    def run():
+        wiring.hub_service().message(principal, given.get('connection_id', ''), given.get('message_id', ''))      # the message must be open for its attachments to be known
+        return {'source': service.add(principal, 'attachment', ref, system=True)}
+    return _run(run)

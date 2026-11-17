@@ -233,6 +233,26 @@ class Dashboard(Base):
         self.assertNotEqual(self.a.get('/v1/hub/pulse', secure=True).json()['mark'], first['mark'])
         self.assertEqual(self.a.get('/v1/hub/mail/threads?label=inbox&limit=1', secure=True).json()['threads'][0]['subject'], 'Just arrived')
 
+    def test_the_service_builds_its_services_once_says_its_size_and_starts_afresh_before_it_grows_too_big(self):
+        self.fill()
+        from accounts.management.commands.hub_sync import Command
+        built, real = [], wiring.hub_services
+        sizes, now = iter([100, 120, 150, 700, 800]), [0.0]
+
+        def clock():
+            now[0] += 301
+            return now[0]
+        with patch.object(wiring, 'hub_services', lambda db=None: built.append(1) or real(db)):
+            command = Command()
+            said = []
+            command.say = said.append
+            ended = command.serve(sleep=lambda s: None, rounds=10, size=lambda: next(sizes), recycle_mb=600, clock=clock)
+        self.assertEqual(ended, 'recycle')                                  # it stopped at the pass that passed the limit, not at the tenth
+        self.assertEqual(len(built), 1)                                     # four passes, one set of services
+        self.assertIn({'recycle': True, 'rss_mb': 700, 'passes': 4}, said)
+        self.assertTrue(any('rss_mb' in line and 'recycle' not in line for line in said))      # its size, every ten minutes
+        self.assertNotIn('Just', json.dumps(said))                          # counts and sizes only
+
     def test_nothing_in_the_dashboard_can_change_a_mailbox_or_a_calendar(self):
         self.fill()
         calls = (list(self.wa.calls), list(self.wp.calls))

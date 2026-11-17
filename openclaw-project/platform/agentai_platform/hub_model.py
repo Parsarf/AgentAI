@@ -50,6 +50,8 @@ class HubCaps:
     push: bool = False                 # can tell Lumina when something changed (used from Phase 7)
     labels: str = 'labels'             # 'labels' (a message can carry several) | 'folders' (a message is in one) | 'none'
     subjects: bool = True              # threads have a subject (a chat does not)
+    attachments: bool = False          # an attachment's bytes can be read (the knowledge pipeline reads it on demand, #55)
+    compose_link: bool = False         # the provider has a compose screen a Lumina draft can open in (#57)
     # Managing (Phase 6). All False until a provider's write kinds exist; the dashboard shows a control only where its capability is True.
     send: bool = False
     organize: bool = False             # archive, label or move, star, trash

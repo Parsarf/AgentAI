@@ -935,12 +935,25 @@ class ChatDriver:
         continuing = bool(goal and goal['status'] == 'active' and self._chain_length(claim) < self.goal_chain_limit)
         verdict = outcome_mod.judge(native=native, goal=goal, jobs=jobs, steps=steps, artifacts=self._artifact_count(claim), reply=bool(reply or last['native_status'] == 'ok'),
                                     goal_continuing=continuing)
+        verdict = outcome_mod.with_uncertainty(verdict, self._knowledge_checks(claim))
         if verdict.line and reply and len(reply) + len(verdict.line) + 2 <= MAX_TRANSCRIPT_CHARS:
             self._append_line(claim, verdict.line)
             reply = self._last_reply(claim)
         public = reply if reply else 'Completed without an agent transcript row; reconcile history before relying on this result.'
-        self._emit(claim, 'result', {'summary': public[:500], 'outcome': verdict.outcome, 'verify_level': verdict.verification})
+        self._emit(claim, 'result', {'summary': public[:500], 'outcome': verdict.outcome, 'verify_level': verdict.verification,
+                                     **({'checked': list(verdict.checked), 'unchecked': list(verdict.unchecked), 'missing': list(verdict.missing)}
+                                        if verdict.checked or verdict.unchecked or verdict.missing else {})})
         return self._close(claim, 'completed', public, gateway, self._before(claim), verdict=verdict, continue_goal=continuing)
+
+    def _knowledge_checks(self, claim):
+        """What the assistant checked during this request with the knowledge tools (#48). Ids and fixed words only."""
+        import json as _json
+        try:
+            with self.store.connect() as con:
+                rows = con.execute('SELECT kind,outcome,detail_json FROM knowledge_checks WHERE account_id=? AND request_id=? ORDER BY created_epoch', (claim.account_id, claim.request_id)).fetchall()
+        except Exception:
+            return []                                        # an older database without the table: nothing was checked with the knowledge tools
+        return [{'kind': r['kind'], 'outcome': r['outcome'], 'detail': _json.loads(r['detail_json'] or '{}')} for r in rows]
 
     def _failed(self, claim, gateway, session, native):
         self._stop_browser_jobs(claim)

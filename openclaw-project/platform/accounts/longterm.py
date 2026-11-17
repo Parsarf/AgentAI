@@ -33,7 +33,8 @@ def state(request):
     memory = build() if wiring.memory_on(request.account_id) else None
     if memory is None:
         return JsonResponse({'available': False, 'memories': []})
-    return JsonResponse({'available': True, 'memories': [{'id': e['id'], 'kind': e['kind'], 'content': e['content'], 'created': e['created']} for e in memory.entries(request.account_id)]})
+    return JsonResponse({'available': True, 'memories': [{'id': e['id'], 'kind': e['kind'], 'content': e['content'], 'created': e['created'], 'updated': e['updated'],
+                                                          'corrected': e['corrected']} for e in memory.entries(request.account_id)]})
 
 
 @endpoint(['POST'], [])

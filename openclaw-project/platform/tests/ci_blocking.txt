@@ -58,3 +58,4 @@ test_hub
 test_google_hub
 test_file_organization
 test_ci_pipeline
+test_knowledge

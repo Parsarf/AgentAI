@@ -17,6 +17,9 @@ whether it can be turned on yet, and why not.
 
 ## The switches today
 
+Read from the server on 2026-11-16: **on** are `customer_execution`, `browse_tasks`, `open_access` and `mail_calendar_dashboard`; every other switch is off. (The state file also
+holds an old `jev_services` entry that is no longer a switch; it is ignored.)
+
 | Switch | Today | What has to happen first |
 |---|---|---|
 | Smarter page reading for research (Jev) | OFF, blocked | confirm the data terms; the component that identifies public pages must be built; a TypeSafe key must exist |
@@ -29,7 +32,8 @@ whether it can be turned on yet, and why not.
 | Test only: a fake connected service (`synthetic_connector`) | OFF | nothing. Turn it on only to run the live proof (`deploy/phase23_live.py`) with a test account, then off again |
 | Customers export their data, delete it and close their account themselves (`account_self_service`) | OFF, blocked | the account-jobs timer and the retention timer installed and running (`data_jobs_timer`); the privacy policy that describes it published; you confirm that a closed account is gone for good after seven days |
 | Customers upload their own files: documents, spreadsheets, slides, PDFs, pictures, text (`customer_uploads`) | OFF, blocked | file storage set up and uploads enabled in the server's configuration (`uploads_host_ready`); two confirmations: that the check is structural and not an antivirus engine, and that the privacy policy covering uploads is published | Every file passes the content scan before it is kept; macros, embedded programs, scripts in PDFs, archives and password-protected files are refused |
-| The Mail and Calendar pages: one inbox and one calendar for every account a customer connects, read-only (`mail_calendar_dashboard`) | OFF, blocked | the connector key file (`connector_custody_ready`); the sync timer installed and running (`hub_sync_timer`); two confirmations: that Lumina keeps a copy of mail headers, opened messages and events, and that the privacy policy describing it is published | Each provider must also be registered and its sign-in app approved. No real provider is registered yet |
+| The Mail and Calendar pages: one inbox and one calendar for every account a customer connects, read-only (`mail_calendar_dashboard`) | **ON** since 2026-11-16, for every account | done: the connector key file, the sync service, both confirmations (recorded on the owner's word). **Still owed:** the privacy policy text for the copy (`roadmap/phase-05.md`, gate 7) | Google is the only provider (read only). Gmail read access is a restricted scope: Google's verification before a public launch |
+| Assistants search, read and cite customers' own documents (`customer_knowledge`) | OFF, blocked (not deployed yet) | the knowledge database and embedding server installed (`knowledge_index_installed`), the render service with reader image 2 running (`render_service_running`), the knowledge worker running (`knowledge_worker_running`); two confirmations: that pages with no text are sent to the model provider at Lumina's cost, and that the privacy policy describing the index is published | Built on branch `phase-4-5-complete` (`roadmap/phase-04.md`) |
 
 "Blocked" cards show a **Before it can be turned on** list. When setup work finishes, the deployment tooling marks the
 matching fact true in `feature-switches/facts.json`; the owner never edits that file by hand.

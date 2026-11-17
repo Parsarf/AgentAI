@@ -144,3 +144,17 @@ urlpatterns += [
  path('v1/conversations/<str:conversation_id>/delete', ld.delete_conversation),
  path('v1/account/offboarding', ld.offboarding), path('v1/account/offboarding/<str:action>', ld.offboarding),
 ]
+
+# ---- roadmap Phase 4: the customer's knowledge, commitments, memory correction; Phase 5: drafts and attachments ----
+from . import knowledge as kn
+urlpatterns += [
+ path('v1/knowledge', kn.overview), path('v1/knowledge/sources', kn.add), path('v1/knowledge/sources/<str:source_id>/remove', kn.remove),
+ path('v1/knowledge/sources/<str:source_id>/reindex', kn.reindex), path('v1/knowledge/sources/<str:source_id>/share', kn.share),
+ path('v1/knowledge/sources/<str:source_id>/document', kn.document), path('v1/knowledge/search', kn.search), path('v1/knowledge/passages/<str:passage_id>', kn.passage),
+ path('v1/knowledge/compare', kn.compare),
+ path('v1/organization/groups', kn.groups), path('v1/organization/groups/<str:group_id>/members', kn.group_member), path('v1/organization/groups/<str:group_id>/delete', kn.group_delete),
+ path('v1/commitments', kn.commitments), path('v1/commitments/<str:item_id>', kn.commitment),
+ path('v1/longterm-memory/<str:entry_id>/correct', kn.memory_correct), path('v1/longterm-memory/<str:entry_id>/history', kn.memory_history),
+ path('v1/hub/drafts', hubv.drafts), path('v1/hub/drafts/<str:draft_id>/discard', hubv.draft_discard), path('v1/hub/drafts/<str:draft_id>/compose', hubv.draft_compose),
+ path('v1/hub/mail/attachment', hubv.attachment),
+]

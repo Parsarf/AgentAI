@@ -10,6 +10,10 @@ Wire format (both directions): one JSON line, then the raw bytes it announces, i
     request   {"op": "convert", "source": "report.md", "target": "pdf" | null, "preview": true, "files": [{"path": "report.md", "size": 1234}, ...]}
     reply     {"ok": true, "size": N, "preview_size": M, "pages": 3}      or      {"ok": false, "error": "short reason"}
 A null target asks only for the preview picture of the source.
+
+A parse job (roadmap #31 to #34) reads one file into a structure (render/parse.py) and returns pictures of the pages the vision model must read:
+    request   {"op": "parse", "source": "contract.pdf", "files": [{"path": "contract.pdf", "size": 1234}]}
+    reply     {"ok": true, "structure_size": N, "images": [{"name": "page-0003.jpg", "size": M}, ...]}   then the structure (JSON) and each picture, in that order
 """
 from __future__ import annotations
 import json
@@ -33,6 +37,11 @@ MAX_OUTPUT_BYTES = 100 * 1024 * 1024
 MAX_PREVIEW_BYTES = 2_000_000
 MAX_FILES = 25
 JOB_SECONDS = 150
+PARSE_SECONDS = 280                   # a long PDF: poppler reads up to 400 pages and draws up to 40 of them
+MAX_STRUCTURE_BYTES = 24 * 1024 * 1024
+MAX_IMAGE_BYTES = 5 * 1024 * 1024     # the vision model's own limit for one picture
+MAX_IMAGES = 40
+IMAGE_NAME = __import__('re').compile(r'^page-\d{4}\.(jpg|jpeg|png|webp|gif)$')
 CONTAINER_UID = 10001
 
 
@@ -81,6 +90,66 @@ class RenderService:
         """Remove job folders left by a crash. Called once at start: no job survives a restart."""
         for entry in self.root.iterdir():
             shutil.rmtree(entry, ignore_errors=True)
+
+    def parse(self, source, data):
+        """One file -> {'structure': dict, 'images': {name: bytes}}. The container writes the structure and the page pictures; this side checks their names,
+        types and sizes and passes nothing else on."""
+        if safe_path(source) is None or not isinstance(data, bytes) or not data or len(data) > MAX_INPUT_BYTES:
+            raise RenderError('invalid request')
+        if not self._slots.acquire(timeout=60):
+            raise RenderError('The reader is busy; try again in a moment')
+        job_id = uuid.uuid4().hex
+        folder = self.root / job_id
+        try:
+            (folder / 'in').mkdir(parents=True, mode=0o755)
+            (folder / 'out').mkdir(mode=0o700)
+            os.chmod(folder, 0o711)
+            where = folder / 'in' / source
+            where.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+            with open(where, 'xb') as handle:
+                handle.write(data)
+            os.chmod(where, 0o644)
+            (folder / 'request.json').write_text(json.dumps({'op': 'parse', 'source': source}))
+            os.chmod(folder / 'request.json', 0o644)
+            self.own(folder / 'out', self.uid, self.uid)
+            argv = job_argv(job_id, folder, self.image, uid=self.uid)
+            try:
+                self.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=PARSE_SECONDS, env=self.env)
+            except subprocess.TimeoutExpired:
+                try:
+                    self.run(['docker', 'kill', f'lumina-render-{job_id[:12]}'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20, env=self.env)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+                raise RenderError('Reading the file took too long')
+            except OSError:
+                raise RenderError('The reader is not available')
+            try:
+                result = json.loads(_read_regular(folder / 'out', 'result.json', 64 * 1024))
+            except (OSError, ValueError, RenderError):
+                raise RenderError('The file could not be read')
+            if not isinstance(result, dict) or result.get('ok') is not True:
+                reason = result.get('error') if isinstance(result, dict) else None
+                raise RenderError(reason[:160] if isinstance(reason, str) and reason.isprintable() else 'The file could not be read')
+            try:
+                structure = json.loads(_read_regular(folder / 'out', 'structure.json', MAX_STRUCTURE_BYTES))
+            except (OSError, ValueError, RenderError):
+                raise RenderError('The file could not be read')
+            if not isinstance(structure, dict) or not isinstance(structure.get('blocks'), list):
+                raise RenderError('The file could not be read')
+            images = {}
+            for name in (result.get('images') or [])[:MAX_IMAGES]:
+                if not isinstance(name, str) or not IMAGE_NAME.match(name):
+                    continue
+                try:
+                    picture = _read_regular(folder / 'out', name, MAX_IMAGE_BYTES)
+                except (OSError, RenderError):
+                    continue                                  # too large or missing: that page is reported as not read
+                if picture.startswith((b'\xff\xd8\xff', b'\x89PNG', b'GIF8')) or picture[8:12] == b'WEBP':
+                    images[name] = picture
+            return {'structure': structure, 'images': images}
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+            self._slots.release()
 
     def convert(self, source, target, files, *, preview=True):
         """files: {relative path: bytes}. -> {'data': bytes | None, 'preview': bytes | None, 'pages': int | None}."""
@@ -159,7 +228,7 @@ def read_exact(stream, size):
 
 def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_uid):
     class Handler(socketserver.StreamRequestHandler):
-        timeout = JOB_SECONDS + 120
+        timeout = PARSE_SECONDS + 120
 
         def handle(self):
             if peer_uid(self.request) not in allowed_uids:
@@ -171,8 +240,20 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
                     raise RenderError('invalid request')
                 request = json.loads(line)
                 listed = request.get('files') if isinstance(request, dict) else None
-                if not isinstance(request, dict) or request.get('op') != 'convert' or not isinstance(listed, list) or not 0 < len(listed) <= MAX_FILES:
+                if not isinstance(request, dict) or request.get('op') not in ('convert', 'parse') or not isinstance(listed, list) or not 0 < len(listed) <= MAX_FILES:
                     raise RenderError('invalid request')
+                if request['op'] == 'parse':
+                    item = listed[0] if len(listed) == 1 and isinstance(listed[0], dict) else {}
+                    size = item.get('size')
+                    if item.get('path') != request.get('source') or type(size) is not int or not 0 < size <= MAX_INPUT_BYTES:
+                        raise RenderError('invalid request')
+                    out = service.parse(item['path'], read_exact(self.rfile, size))
+                    body = json.dumps(out['structure'], ensure_ascii=False).encode()
+                    names = sorted(out['images'])
+                    reply = {'ok': True, 'structure_size': len(body), 'images': [{'name': n, 'size': len(out['images'][n])} for n in names]}
+                    payload = body + b''.join(out['images'][n] for n in names)
+                    self.wfile.write((json.dumps(reply) + '\n').encode() + payload)
+                    return
                 files, total = {}, 0
                 for item in listed:
                     size = item.get('size') if isinstance(item, dict) else None

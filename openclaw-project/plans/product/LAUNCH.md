@@ -36,4 +36,4 @@ Switch the feature off in the owner switches (`browse_tasks`, `customer_executio
 Self-service sign-up with your approval is built and live behind the `open_signups` switch (Feature switches page). To open the door: turn it on, then approve people in the dashboard Customers page. Details: `plans/product/signup.md`. Set the customer limit to what the server can carry.
 
 ## Deferred features
-Everything left out of launch is written down in `phase-prompts/openclaw/final_phase.md` (items F1–F13).
+What was left out of launch was written in the removed `phase-prompts/openclaw/final_phase.md` (items F1–F13); `git show HEAD:phase-prompts/openclaw/final_phase.md` still reads it, and the capability roadmap now covers the remaining work.

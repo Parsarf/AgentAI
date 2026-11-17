@@ -82,7 +82,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setBusy(true); setError('');
     try {
       let id = chat;
-      if (!id) { id = (await api<{ conversation: { id: string } }>('POST', '/v1/conversations', {})).conversation.id; write(CHAT_KEY, id); current.current = id; setChat(id); }
+      if (!id) { id = (await api<{ conversation: { id: string } }>('POST', '/v1/conversations', { place: 'assistant' })).conversation.id; write(CHAT_KEY, id); current.current = id; setChat(id); }
       const r = await api<{ request: { id: string } }>('POST', '/v1/assistant/ask', { conversation_id: id, message: words, key: crypto.randomUUID().replace(/-/g, ''), ...(selection?.looking ? { looking_at: selection.looking } : {}) });
       setDraftFrom(action?.draft || (draftFrom && REFINE.some(x => x.message === words)) ? r.request?.id ?? null : null);
       await load(id);

@@ -1,7 +1,8 @@
-# The Lumina renderer: turns an assistant-written file into PDF, Word, Excel, PowerPoint or an image.
+# The Lumina renderer: turns an assistant-written file into PDF, Word, Excel, PowerPoint or an image, and reads a customer's file into a structure for the
+# knowledge index (parse.py). Image tag 2 carries the reader; agentai-render.service starts lumina-renderer:2.
 # One container per job, started by agentai-render.service with: no network, read-only root, no capabilities, a non-root user.
 # Build from the platform folder, into the CELL engine (it has its own image store):
-#   DOCKER_HOST=<cell engine socket> docker build -f deploy/renderer/Dockerfile -t lumina-renderer:1 .
+#   DOCKER_HOST=<cell engine socket> docker build -f deploy/renderer/Dockerfile -t lumina-renderer:2 .
 # Pin the base by digest before the first production build and record it in runtime.lock.json.
 FROM debian:bookworm-slim
 
@@ -17,6 +18,7 @@ RUN apt-get update \
     && mkdir -p /job/in /job/out /opt/render
 
 COPY agentai_platform/render/engine.py /opt/render/engine.py
+COPY agentai_platform/render/parse.py /opt/render/parse.py
 
 USER 10001:10001
 WORKDIR /tmp

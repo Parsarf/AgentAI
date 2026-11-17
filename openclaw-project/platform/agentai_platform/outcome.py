@@ -10,7 +10,7 @@ Two questions that used to be one:
 Everything is a fixed vocabulary: no model writes the verdict, and no page text reaches it.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 
 OUTCOMES = ('completed', 'partial', 'blocked', 'failed', 'cancelled')
@@ -39,6 +39,58 @@ class Verdict:
     verification: str       # verified | unverified | not_applicable
     note: str               # one plain sentence, from the fixed vocabulary
     line: str               # added after the assistant's last reply when the task did not simply succeed ('' otherwise)
+    checked: tuple = ()     # what was checked against Lumina's own records during the task (#48), in plain words
+    unchecked: tuple = ()   # what could not be checked, and why
+    missing: tuple = ()     # what the answer could not draw on
+
+
+def _n(count, one, many):
+    return f'{count} {one if count == 1 else many}'
+
+
+def uncertainty(checks) -> dict:
+    """What a task's knowledge checks support (#48), as three lists of plain sentences: what was checked, what could not be checked and why, what is missing. `checks`
+    are the task's `knowledge_checks` rows ({'kind','outcome','detail'}). Fixed vocabulary: no claim or document text reaches it, and there is no confidence percentage."""
+    claims = [c for c in checks if c['kind'] == 'claim']
+    supported = sum(1 for c in claims if c['outcome'] == 'supported')
+    partly = sum(1 for c in claims if c['outcome'] == 'partly')
+    absent = sum(1 for c in claims if c['outcome'] == 'not_found')
+    checked, unchecked, missing = [], [], []
+    if supported:
+        checked.append(_n(supported, 'claim was', 'claims were') + ' checked against the passage cited for it and found there.')
+    if partly:
+        unchecked.append(_n(partly, 'claim is', 'claims are') + ' only partly supported by the passage cited for it.')
+    if absent:
+        unchecked.append(_n(absent, 'claim was', 'claims were') + ' not found in the passage cited for it.')
+    searches = [c for c in checks if c['kind'] == 'search']
+    if searches:
+        checked.append(_n(len(searches), 'search', 'searches') + ' of your documents.')
+        if any(c['outcome'] == 'partial' for c in searches):
+            missing.append('Some of your files were still being read and could not be searched yet.')
+        if any((c.get('detail') or {}).get('conflicts') for c in searches):
+            unchecked.append('Your documents disagree with each other on at least one point; the answer should show both.')
+    for c in checks:
+        if c['kind'] == 'federated' and c['outcome'] == 'partial':
+            failed = ', '.join(str(s) for s in (c.get('detail') or {}).get('failed') or [])
+            if failed:
+                missing.append(f'Could not search: {failed}.')
+    if any(c['kind'] == 'read' and c['outcome'] == 'partial' for c in checks):
+        missing.append('Only part of a long document was read.')
+    return {'checked': tuple(dict.fromkeys(checked)), 'unchecked': tuple(dict.fromkeys(unchecked)), 'missing': tuple(dict.fromkeys(missing))}
+
+
+def with_uncertainty(verdict: Verdict, checks) -> Verdict:
+    """The verdict with the three statements, and a line for the reply when something could not be checked or is missing."""
+    if not checks:
+        return verdict
+    found = uncertainty(checks)
+    parts = [verdict.line] if verdict.line else []
+    if found['unchecked']:
+        parts.append('Not checked: ' + ' '.join(found['unchecked']))
+    if found['missing']:
+        parts.append('Missing: ' + ' '.join(found['missing']))
+    line = ' '.join(parts)
+    return replace(verdict, checked=found['checked'], unchecked=found['unchecked'], missing=found['missing'], line=line)
 
 
 def cart_facts(steps) -> bool:

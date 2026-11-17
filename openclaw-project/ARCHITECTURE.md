@@ -128,7 +128,7 @@ correct and delete memory. No old AgentAI data is imported by default.
 
 ## Acceptance
 
-Follow the [current Phase 1–19 plan](../phase-prompts/openclaw/README.md). Each phase
+Follow the [current capability roadmap prompts](../phase-prompts/capability-roadmap/README.md). Each phase
 records real health-check evidence. The final workflow requires sourced
 research, a Codex build, tests, browser verification, independent review,
 budget enforcement and successful restart recovery. A documented gap or

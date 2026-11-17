@@ -8,7 +8,7 @@ Without it everything else still works: files are delivered in the format the as
 | Piece | Runs as | Does |
 |---|---|---|
 | `agentai-render.service` (`agentai_platform/render/service_main.py`) | root, on the host | Takes one job at a time over `/run/agentai-render/render.sock` and starts a container for it |
-| `lumina-renderer:1` (`deploy/renderer/Dockerfile`) | uid 10001, in the cell engine | Converts the file (`render/engine.py`): LibreOffice, pandoc, Chromium, poppler, openpyxl, Pillow |
+| `lumina-renderer:2` (`deploy/renderer/Dockerfile`; tag 2 adds the document reader of the knowledge index, `render/parse.py`) | uid 10001, in the cell engine | Converts the file (`render/engine.py`): LibreOffice, pandoc, Chromium, poppler, openpyxl, Pillow |
 | the app, tool relay and request worker | `agentai-platform` | Ask for conversions through the socket (`render/client.py`); they start no container and parse no document |
 
 Each job's container has no network (`--network none`), a read-only root, no capabilities, 1.5 GB of memory, one CPU, 256 processes and 150 seconds.
@@ -17,7 +17,7 @@ The job folder (`/var/lib/agentai-render/jobs/<id>`) is removed when the job end
 ## Install (once)
 
 1. Build the image into the **cell engine** (it has its own image store), from the platform folder of the release:
-   `DOCKER_HOST=<cell engine socket> docker build -f deploy/renderer/Dockerfile -t lumina-renderer:1 .`
+   `DOCKER_HOST=<cell engine socket> docker build -f deploy/renderer/Dockerfile -t lumina-renderer:2 .`
    Pin the Debian base by digest first and record it in `runtime.lock.json`.
 2. Install the unit: copy `deploy/agentai-render.service` to `/etc/systemd/system/`, then `systemctl daemon-reload && systemctl enable --now agentai-render`.
    It reads the cell engine socket from the same wiring file as the browse service.

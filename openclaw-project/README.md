@@ -1,7 +1,7 @@
 # OpenClaw server deployment
 
 This directory holds the existing owner runtime, configuration and evidence
-used by the replacement [customer-platform Phase 1–19 plan](../phase-prompts/openclaw/README.md).
+used by the [capability roadmap](../phase-prompts/capability-roadmap/README.md) (the old Phase 1–19 prompts were removed; git keeps them).
 The owner OpenClaw deployment runs on the always-on IONOS VPS with LiteLLM
 and PostgreSQL; the Mac is not a runtime dependency. Restricted Brave search
 and browser paths, native worker/coding/integration bases, operator tools and
@@ -12,8 +12,7 @@ and [secure private foundation](platform/README.md), verified by14 targeted
 checks and an actual resource-bounded server smoke (cleaned up). Customer
 accounts/provisioning/chat/billing remain subsequent product phases.
 
-The [coverage ledger](../phase-prompts/openclaw/coverage-ledger.md) maps every
-old prompt and pending test to its new home. Historical plans/evidence keep
+Historical plans/evidence keep
 old numbers. New work uses `plans/product/` and `evidence/product/` to avoid
 collisions. Full/paid testing and owner-deferred account setup remain deferred
 until explicitly resumed. Prompt replacement changes the plan, not the server.

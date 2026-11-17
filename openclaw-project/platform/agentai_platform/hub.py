@@ -438,3 +438,114 @@ class HubService:
             rows = con.execute(f'SELECT * FROM hub_events WHERE {" AND ".join(where)} ORDER BY (end_epoch<?) ,abs(start_epoch-?) LIMIT ?', (*args, now, now, limit + 1)).fetchall()
         found = [self._event(r, colours[(r['connection_id'], r['calendar_id'])]) for r in rows if (r['connection_id'], r['calendar_id']) in colours]
         return {'events': found[:limit], 'complete': len(rows) <= limit}
+
+    # -- attachments (#55) ---------------------------------------------------------------------------------------------------------------------------
+    MAX_ATTACHMENT = 25 * 1024 * 1024
+
+    def attachment(self, principal, connection_id, message_id, attachment_id) -> dict:
+        """One attachment of a message this person may read: {'name', 'type', 'size', 'data'}. Read from the provider on demand and NOT kept here: the knowledge
+        pipeline parses it and keeps the passages under the knowledge rows (the bytes are gone once it has been read)."""
+        with self.store.connect() as con:
+            self._enter(con, principal)
+            if connection_id not in self._connections(con, principal):
+                raise NotFound('unavailable')
+        problem = self._open_body(principal, connection_id, message_id)
+        if problem:
+            from .connector_kit import FAULT_KINDS
+            raise ConnectorFault(problem if problem in FAULT_KINDS else 'retry_later')
+        with self.store.connect() as con:
+            row = con.execute('SELECT attachments_json FROM hub_messages WHERE account_id=? AND connection_id=? AND id=?', (principal.account_id, connection_id, message_id)).fetchone()
+        files = json.loads(row['attachments_json'] or '[]') if row else []
+        found = next((f for f in files if f.get('id') == attachment_id), None)
+        if found is None:
+            raise NotFound('unavailable')
+        _row, declaration, adapter, credential = self.client.open(principal, connection_id, 'connection.read')
+        if not hub_caps(declaration).attachments:
+            raise NotFound('unavailable')
+        data = self.client.call(principal.account_id, declaration, lambda: adapter.mail_attachment(credential, message_id, attachment_id), where=(connection_id, 'mailbox', '*'))
+        if not isinstance(data, bytes) or len(data) > self.MAX_ATTACHMENT:
+            raise ConnectorFault('invalid')
+        return {'name': found.get('name') or 'attachment', 'type': found.get('type') or 'application/octet-stream', 'size': len(data), 'data': data}
+
+    # -- drafts (#57) --------------------------------------------------------------------------------------------------------------------------------
+    MAX_DRAFTS = 500
+
+    @staticmethod
+    def _draft(row) -> dict:
+        return {'id': row['id'], 'account': row['connection_id'], 'thread': row['thread_id'], 'to': json.loads(row['to_json']), 'cc': json.loads(row['cc_json']),
+                'subject': row['subject'], 'body': row['body'], 'origin': row['origin'], 'created_epoch': row['created_epoch'], 'updated_epoch': row['updated_epoch']}
+
+    @staticmethod
+    def _addresses(value, n=50) -> list:
+        if value is None:
+            return []
+        if not isinstance(value, list) or len(value) > n or any(not isinstance(v, str) or not 3 <= len(v.strip()) <= 320 or '@' not in v or any(c in v for c in '\r\n<>') for v in value):
+            raise ValueError('invalid addresses')
+        return [v.strip() for v in value]
+
+    def drafts(self, principal, *, connections=None, thread_id=None) -> list:
+        with self.store.connect() as con:
+            self._enter(con, principal)
+            ids = self._connections(con, principal, connections)
+            if not ids:
+                return []
+            marks = ','.join('?' for _ in ids)
+            extra, args = ('', []) if thread_id is None else (' AND thread_id=?', [str(thread_id)])
+            rows = con.execute(f"SELECT * FROM hub_drafts WHERE account_id=? AND state='draft' AND connection_id IN ({marks}){extra} ORDER BY updated_epoch DESC,id LIMIT 200",
+                               (principal.account_id, *ids, *args)).fetchall()
+        return [self._draft(r) for r in rows]
+
+    def save_draft(self, principal, *, draft_id=None, connection_id=None, thread_id=None, to=None, cc=None, subject=None, body=None, origin='customer', request_id=None) -> dict:
+        """Create a draft, or change one. Nothing is created in the mailbox: the customer copies it or opens it in their mail service's own compose screen."""
+        if origin not in ('customer', 'assistant'):
+            raise ValueError('invalid origin')
+        if subject is not None and (not isinstance(subject, str) or len(subject) > 500):
+            raise ValueError('invalid subject')
+        if body is not None and (not isinstance(body, str) or len(body) > 40000):
+            raise ValueError('invalid body')
+        now = int(self.clock())
+        from .lifecycle.coordinator import Coordinator
+        with Coordinator(self.store, clock=self.clock).transaction() as con:
+            self._enter(con, principal, 'connection.use')
+            if draft_id is not None:
+                row = con.execute("SELECT * FROM hub_drafts WHERE account_id=? AND id=? AND state='draft'", (principal.account_id, str(draft_id))).fetchone()
+                if row is None:
+                    raise NotFound('unavailable')
+                con.execute('UPDATE hub_drafts SET to_json=?,cc_json=?,subject=?,body=?,updated_epoch=? WHERE account_id=? AND id=?',
+                            (json.dumps(self._addresses(to)) if to is not None else row['to_json'], json.dumps(self._addresses(cc)) if cc is not None else row['cc_json'],
+                             subject if subject is not None else row['subject'], body if body is not None else row['body'], now, principal.account_id, row['id']))
+                return self._draft(con.execute('SELECT * FROM hub_drafts WHERE account_id=? AND id=?', (principal.account_id, row['id'])).fetchone())
+            if connection_id not in self._connections(con, principal):
+                raise NotFound('unavailable')
+            if thread_id is not None and not con.execute('SELECT 1 FROM hub_threads WHERE account_id=? AND connection_id=? AND id=?', (principal.account_id, connection_id, str(thread_id))).fetchone():
+                raise NotFound('unavailable')
+            if con.execute("SELECT count(*) FROM hub_drafts WHERE account_id=? AND state='draft'", (principal.account_id,)).fetchone()[0] >= self.MAX_DRAFTS:
+                from .lifecycle.types import Conflict
+                raise Conflict('too many drafts')
+            import uuid
+            draft = uuid.uuid4().hex
+            con.execute('''INSERT INTO hub_drafts(account_id,id,connection_id,thread_id,to_json,cc_json,subject,body,origin,request_id,state,created_epoch,updated_epoch)
+                VALUES (?,?,?,?,?,?,?,?,?,?,'draft',?,?)''', (principal.account_id, draft, connection_id, thread_id, json.dumps(self._addresses(to)), json.dumps(self._addresses(cc)),
+                                                            subject or '', body or '', origin, request_id, now, now))
+            return self._draft(con.execute('SELECT * FROM hub_drafts WHERE account_id=? AND id=?', (principal.account_id, draft)).fetchone())
+
+    def discard_draft(self, principal, draft_id) -> dict:
+        from .lifecycle.coordinator import Coordinator
+        with Coordinator(self.store, clock=self.clock).transaction() as con:
+            self._enter(con, principal, 'connection.use')
+            gone = con.execute("DELETE FROM hub_drafts WHERE account_id=? AND id=?", (principal.account_id, str(draft_id))).rowcount
+        if not gone:
+            raise NotFound('unavailable')
+        return {'discarded': str(draft_id)}
+
+    def compose_link(self, principal, draft_id) -> dict:
+        """Where the customer sends a draft themselves: the provider's compose screen with the draft filled in, or nothing when the provider has none (then: Copy)."""
+        with self.store.connect() as con:
+            self._enter(con, principal)
+            row = con.execute("SELECT * FROM hub_drafts WHERE account_id=? AND id=? AND state='draft'", (principal.account_id, str(draft_id))).fetchone()
+            if row is None or row['connection_id'] not in self._connections(con, principal):
+                raise NotFound('unavailable')
+        draft = self._draft(row)
+        _r, declaration, adapter, _c = self.client.open(principal, row['connection_id'], 'connection.read')
+        link = adapter.compose_link(draft['to'], draft['cc'], draft['subject'], draft['body']) if hub_caps(declaration).compose_link and hasattr(adapter, 'compose_link') else None
+        return {'draft': draft, 'link': link}

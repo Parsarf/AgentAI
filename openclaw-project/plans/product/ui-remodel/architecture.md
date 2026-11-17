@@ -1,6 +1,6 @@
 # UI remodel: how it is built
 
-Working notes for the six phases (`phase-prompts/ui-remodel/`). The per-phase status files sit beside this one.
+Working notes for the six phases (the prompts were removed once all six phases were live). The per-phase status files sit beside this one.
 
 ## Shape
 
