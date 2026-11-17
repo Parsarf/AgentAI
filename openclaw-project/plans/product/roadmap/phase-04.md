@@ -1,9 +1,11 @@
 # Roadmap Phase 4 - customer knowledge
 
-**Status (2026-11-16): PARTLY SHIPPED.** #30 file organization is merged (pull request #50) and live on the server behind the owner switch `customer_uploads`, which is **off**.
-Everything else (the parsing service, the index, #31 to #48 and the Sources and Commitments page) is built and tested on branch `phase-4-5-complete`, **not committed, not merged,
-not deployed**, behind one owner switch, `customer_knowledge` (off). The measurements the roadmap asks for on real pages and real documents have **not** been taken, the host
-install has not been done, and the privacy record is not updated (see "Not proven"). Deploy-day steps: `platform/deploy/PENDING_DEPLOY.md`, "Roadmap Phase 4".
+**Status (2026-11-17): DEPLOYED WITH ITS SWITCHES OFF; NOT INSTALLED ON THE HOST.** All of Phase 4 is merged (pull request #60) and on the server (`7a73420`,
+migration 0050 applied). #30 file organization has been live since #50 behind `customer_uploads` (off). The rest is behind `customer_knowledge` (off), which refuses to
+turn on until its three host facts and two confirmations exist. Not done, and needed before the switch: the host install (`deploy/knowledge/install.sh`, the render
+service, which has never been installed here, and the knowledge worker; the permission system refused the assistant running the install as root on production),
+the live proof (`deploy/phase45_live.py`, which needs the install) and the published policy (`platform/privacy/proposed/`). Deploy-day steps:
+`platform/deploy/PENDING_DEPLOY.md`, "Roadmap Phase 4".
 
 ## Decisions (owner, 2026-11-16)
 
@@ -16,7 +18,7 @@ install has not been done, and the privacy record is not updated (see "Not prove
 
 | Gate | State |
 |---|---|
-| 1. The knowledge evaluation set passes (retrieval, citation, comparison, planted contradictions, unsupported claims, scanned pages) | **Passes on stand-ins** (`tests/test_knowledge.py`, 57 tests, the deterministic embedder and a fake vision model). **Not run on real pages or the real embedding model** |
+| 1. The knowledge evaluation set passes (retrieval, citation, comparison, planted contradictions, unsupported claims, scanned pages) | **Passes in CI** (`tests/test_knowledge_eval.py`, a blocking gate since #60: 22 documents, 42 questions; stand-in embedder: recall@5 0.952, recall@10 0.976, top-1 0.738, citations 1.0, table cells 116 of 116, comparison, the planted conflict and all four planted unsupported claims caught). It found and #60 fixed two defects (PDF tables with empty cells read as text; numbers in words not checked). **Live run with the real reader, vision model and embedding model: waits for the install** |
 | 2. A search never returns a passage the person may not read | **Proven in tests**: the grant filter runs inside every index query (`IndexContract.test_visibility_is_decided_inside_every_query`, on SQLite and on PostgreSQL), cross-account, organization audience, and a grant taken back |
 | 3. Removing a source is proven complete | **Proven in tests**: passages gone at once, a down index finishes within seconds, account deletion empties the index |
 | 4. The privacy record and public policy cover uploads, parsed text and the index | Record: **done** (`retention.py` rules `document_passages`, `task_checks`, `commitments`, `mail_drafts`; `data_lifecycle.py` export and erase). Public policy text and `privacy/facts.json`: **not updated** - `tests/test_privacy_policy.py` fails three checks (it already failed them on `main` for the mail and calendar copy; Phase 4 adds the index and new tables). The switch refuses to turn on until the owner confirms `policy_published` |

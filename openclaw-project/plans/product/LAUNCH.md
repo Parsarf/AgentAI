@@ -23,8 +23,8 @@ Each needs an account, a credential or a decision only the owner has. What the c
 
 | Part | State | Before real customers |
 |---|---|---|
-| Mail and Calendar (#D1-#D5, #49-#58) | Live: one inbox and one calendar across accounts, search, the assistant beside them with citations that select the thread or event, drafts kept in Lumina (Copy, Open in your mail service), the meeting brief | Item 7 above; the sync service recycles itself below its memory cap (PR in `roadmap/phase-05.md`); the Inbox's first page measured 349-419 ms against a 300 ms target |
-| Customer knowledge (#30-#48) | Built and deployed with switch `customer_knowledge` OFF; proven live on the server for disposable accounts (`deploy/phase45_live.py`) | Publish the policy text (`platform/privacy/proposed/`), then turn on `customer_uploads` and `customer_knowledge` with their confirmations |
+| Mail and Calendar (#D1-#D5, #49-#58) | Live: one inbox and one calendar across accounts, search, the assistant beside them with citations that select the thread or event, drafts kept in Lumina (Copy, Open in your mail service), the meeting brief | Item 7 above; the Inbox's first page measured 349-419 ms against a 300 ms target |
+| Customer knowledge (#30-#48) | Deployed (PR #60) with switch `customer_knowledge` OFF; not installed on the host | Run `deploy/knowledge/install.sh`, install the render service and the knowledge worker (`PENDING_DEPLOY.md`), run `deploy/phase45_live.py`, publish the policy text (`platform/privacy/proposed/`), then turn on `customer_uploads` and `customer_knowledge` with their confirmations |
 | Managing mail and events (send, archive, create, answer) | Not built: Phase 6 | Launch read-only and say managing comes next, or wait for Phase 6 |
 | Microsoft (Outlook) | Not built: Phase 6 (#D8) | Microsoft's app registration and publisher verification take calendar time: start them now |
 
