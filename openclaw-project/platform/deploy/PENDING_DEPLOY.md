@@ -120,10 +120,14 @@ Everything is behind the owner switch `customer_knowledge` (off; it refuses to t
    127.0.0.1:5433, its own volume and password, not Hindsight's) and `agentai-embeddings` (text-embeddings-inference on CPU with `intfloat/multilingual-e5-small` on
    127.0.0.1:8890), writes `/var/lib/agentai-platform/knowledge/index.url` and a model key used only to read pages that have no text. It never prints a secret. Then record the
    fact `knowledge_index_installed`.
-3. **The render service with reader image 2** (`deploy/RENDERER.md`): documents are parsed in its sealed container. `agentai-render.service` is **inactive** on the server today.
-   Record `render_service_running` once it runs.
+3. **The render service with reader image 2** (`deploy/RENDERER.md`, "Install (once)"): documents are parsed in its sealed container. It has **never been installed** on
+   this server (read 2026-11-16: no unit, no `AGENTAI_RENDER_SOCKET`), so file conversions are off today too: build `lumina-renderer:2` into the cell engine, install and
+   enable `agentai-render.service`, add `AGENTAI_RENDER_SOCKET=/run/agentai-render/render.sock` to `accounts.env`, reinstall the tool relay unit, restart the four services
+   RENDERER.md names. Record `render_service_running` once it runs.
 4. **The worker**: install `platform/deploy/agentai-knowledge.service`, `systemctl enable --now agentai-knowledge.service`, record `knowledge_worker_running`.
 5. **Privacy before the switch**: the policy must name the knowledge index, the parsed text, the search vectors kept on the server, and the model provider reading pages that
    have no text and pictures that may be charts. `privacy/facts.json` and the public page are **not** changed yet (`tests/test_privacy_policy.py` fails on that, as it already
    did on `main` for the mail and calendar copy). Then the two confirmations of the switch: `vision_understood`, `policy_published`.
 6. `customer_uploads` stays off until the owner turns it on; the knowledge index reads uploads only once uploads exist.
+7. **Prove it** with `deploy/phase45_live.py` (its docstring has the command). It needs steps 2 to 4, not the switches: the features are on inside that process only, for
+   the two disposable accounts it makes and offboards.

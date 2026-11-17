@@ -100,3 +100,53 @@ reversed and what could not be.
 | `synthetic_connector` | the fake service, for the live proof only |
 
 Removing a connection is always possible, whatever the switches say.
+
+## Mail and calendar providers (the dashboard, roadmap #D1)
+
+A mail or calendar provider is a connector (the declaration above, with `hub=HubCaps(...)` and `several_accounts=True`) whose adapter ALSO speaks the "hub interface"
+below. Everything a provider sends is converted to the canonical shapes **in its adapter, by pure functions** (`agentai_platform/hub_model.py`); nothing in the sync
+engine (`hub_sync.py`), the service (`hub.py`), the assistant's tools (`hub_tools.py`) or the web app may name a provider (`tests/test_hub.py`
+`test_no_provider_is_named_...` searches them). Google (`google_hub.py`) is the worked example; `tests/hub_fixture.py` holds two fake providers that differ in everything a
+provider can differ in, and every dashboard test runs with one account of each.
+
+### The canonical shapes (`hub_model.py`)
+
+| Shape | Fields | Notes |
+|---|---|---|
+| `message(...)` | `id`, `thread_id`, `subject`, `sender` and `to`, `cc` (people: `{name, address}`), `sent_epoch`, `snippet`, `labels` (the common set: inbox, sent, drafts, archive, spam, trash, starred, unread), `provider_labels` (`[{id, name}]`, the provider's own), `unread`, `starred`, `has_attachments` | Headers only: what the list shows. Cut to length, control characters removed |
+| `body(...)` | `text`, `html`, `attachments` (`[{id, name, type, size}]`) | Fetched only when the message is opened or read; kept 90 days after it was last opened |
+| `calendar(...)` | `id`, `name`, `colour`, `timezone`, `access` (busy, read, write, owner), `primary` | `access='busy'` means free/busy only: events show as "busy" |
+| `event(...)` | `id`, `calendar_id`, `series_id`, `title`, `start_epoch`, `end_epoch`, `all_day` with `start_date`/`end_date` (dates, no timezone), `timezone`, `place`, `conference_url` (https only), `organizer`, `attendees` (`{name, address, response, self, optional}`), `my_response`, `exception`, `cancelled`, `visibility`, `version`, `description`, `provider_url`, `updated_epoch` | One OCCURRENCE as the provider expanded it (never expand recurrence rules locally, #51) |
+| `Changes` | `items`, `removed` (ids), `cursor` (opaque to all but its adapter), `more` | One page of "what changed since". Raise `ResyncRequired` when the provider rejects a cursor: the engine refills cleanly |
+
+Deduplication is a uniqueness rule on (account, connection, provider id): a sync that runs twice changes nothing.
+
+### The hub interface (what the adapter adds)
+
+    calendars(credential) -> [calendar(...)]
+    mail_changes(credential, cursor, since_epoch, labels, limit) -> Changes           labels: None = all mail, else the label ids the customer chose
+    event_changes(credential, calendar_id, cursor, start_epoch, end_epoch, limit) -> Changes
+    mail_body(credential, message_id) -> body(...)
+    mail_search(credential, query, labels, position, limit) -> connector_kit.Page of message(...)     live search beyond the copy (only if mail_search)
+    mail_attachment(credential, message_id, attachment_id) -> bytes                  only if attachments
+    compose_link(to, cc, subject, body) -> https address of the provider's compose screen   only if compose_link
+    resources(credential) -> [{kind: mailbox|label|calendar, id, name}]               the picker; nothing is chosen by default
+
+### The capability table (`HubCaps`): the only place providers differ
+
+| Capability | Meaning | Google |
+|---|---|---|
+| `mail`, `calendar` | has mail, has calendars | yes, yes |
+| `mail_search` | can search mail beyond the copy, live | yes |
+| `incremental` | has a "what changed since" cursor (else every sync re-reads and compares) | yes (history id, sync token) |
+| `push` | can notify Lumina of a change (Phase 7) | no |
+| `labels` | `labels` (several per message), `folders` (one), or `none` | labels |
+| `subjects` | threads have subjects | yes |
+| `attachments` | an attachment's bytes can be read (#55) | yes |
+| `compose_link` | a Lumina draft can open in the provider's compose screen (#57) | yes |
+| `send`, `organize`, `mark_read`, `event_write`, `respond` | managing from the dashboard (Phase 6); each needs registered write kinds with previews, approval and undo | no (all false) |
+
+The web app and the tools read these values; a control appears only where its capability is true. Adding Microsoft (Phase 6, #D8) is: a declaration, an adapter with the
+hub interface and its pure conversion functions with a fixture per case (a plain message, a long thread, HTML only, inline images, an invitation, all-day, a recurring
+series with a moved and a cancelled occurrence, an event across a daylight-saving change), and its sign-in entry in `accounts/wiring.py` `sign_in_providers()`.
+Nothing else changes.
