@@ -202,15 +202,24 @@ def _table_regions(lines):
         if len(current) >= 3:
             counts = [len(s) for _, s in current]
             common = statistics.mode(counts)
-            if common >= 3 and sum(1 for c in counts if abs(c - common) <= 1) >= 0.8 * len(counts):
-                # Column positions from the rows that have every column; a row with an empty cell puts each piece under the column it starts nearest to.
-                full = [s for _, s in current if len(s) == common]
-                anchors = [statistics.median(s[c]['x0'] for s in full) for c in range(common)]
+            full = [s for _, s in current if len(s) == common]
+            anchors = [statistics.median(s[c]['x0'] for s in full) for c in range(common)] if common >= 3 else []
+            ends = [statistics.median(s[c]['x1'] for s in full) for c in range(common)] if common >= 3 else []
+            # A row with empty cells (an invoice's subtotal, tax and total rows) still belongs to the table when each of its pieces starts or ends under a column of the
+            # rows that fill every column (numbers are often right-aligned). Without this an invoice's table, whose last three rows have two cells, was read as text.
+            tol = max(8.0, 0.4 * min(b - a for a, b in zip(anchors, anchors[1:]))) if len(anchors) >= 2 else 0.0
+
+            def lines_up(segs):
+                return all(min(min(abs(a - seg['x0']), abs(e - seg['x1'])) for a, e in zip(anchors, ends)) <= tol for seg in segs)
+            near = sum(1 for c in counts if abs(c - common) <= 1)
+            aligned = sum(1 for _, segs in current if len(segs) == common or lines_up(segs))
+            if common >= 3 and (near >= 0.8 * len(counts) or (len(full) >= 3 and aligned == len(current))):
+                # Column positions from the rows that have every column; a row with an empty cell puts each piece under the column it starts (or ends) nearest to.
                 rows = []
                 for _, segs in current:
                     row = [''] * common
                     for seg in segs:
-                        col = min(range(common), key=lambda c: abs(anchors[c] - seg['x0']))
+                        col = min(range(common), key=lambda c: min(abs(anchors[c] - seg['x0']), abs(ends[c] - seg['x1'])))
                         row[col] = (row[col] + ' ' + seg['text']).strip()
                     rows.append(row)
                 regions.append(([i for i, _ in current], rows))

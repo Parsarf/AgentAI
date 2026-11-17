@@ -723,10 +723,27 @@ def _norm_date(text):
     return raw.lower()
 
 
+_UNITS = {w: n for n, w in enumerate('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split())}
+_TENS = {w: 10 * n for n, w in enumerate('_ _ twenty thirty forty fifty sixty seventy eighty ninety'.split()) if n >= 2}
+_SPELLED = re.compile(r'\b(' + '|'.join(sorted(_TENS, key=len, reverse=True)) + r')(?:[ -](' + '|'.join(sorted(_UNITS, key=len, reverse=True)) + r'))?\b|\b('
+                      + '|'.join(sorted(_UNITS, key=len, reverse=True)) + r')\b', re.I)
+
+
+def spelled_numbers(text) -> set:
+    """Numbers written as words ("six engineers", "sixty days", "twenty-five"): two and up, since "one" is as often a pronoun as a number. A claim of "ten engineers"
+    against a passage that says "six engineers" must not pass as supported (the evaluation set plants exactly that)."""
+    out = set()
+    for tens, unit, alone in _SPELLED.findall(text):
+        value = _TENS[tens.lower()] + (_UNITS[unit.lower()] if unit else 0) if tens else _UNITS[alone.lower()]
+        if value >= 2:
+            out.add(float(value))
+    return out
+
+
 def key_facts(text) -> dict:
     dates = {_norm_date(d) for d in DATES.findall(text)}
     stripped = DATES.sub(' ', text)
-    numbers = {round(v, 6) for v in kp.numbers_in(stripped)}
+    numbers = {round(v, 6) for v in kp.numbers_in(stripped)} | spelled_numbers(stripped)
     names = {n for n in NAME.findall(stripped) if n.split()[0] not in COMMON}
     return {'numbers': numbers, 'dates': dates, 'names': names}
 
