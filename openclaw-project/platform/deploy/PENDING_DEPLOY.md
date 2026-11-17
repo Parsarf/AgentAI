@@ -108,10 +108,10 @@ In its first minutes on production the service was killed by its own 384 MB cap 
 `cp /opt/agentai-platform/current/deploy/agentai-hub-sync.service /etc/systemd/system/ && systemctl daemon-reload && systemctl restart agentai-hub-sync.service`.
 The cause of the growth during a fill is not found yet: the request path alone levels off at about 110 MB with eight requests in flight.
 
-**Still open (read on the server 2026-11-16, release `9b01cf1`):** the service is still killed at its 1 GB cap during the first fill and restarts in 5 s with its progress kept
+**Fixed by PR #60 (release `7a73420`):** the service builds its services once, reuses one TLS context and kept-alive connections, and starts afresh at `AGENTAI_HUB_SYNC_RECYCLE_MB` (600) before the kernel would kill it; nothing to install (the unit is unchanged). Before it, **(read on the server 2026-11-16, release `9b01cf1`):** the service is still killed at its 1 GB cap during the first fill and restarts in 5 s with its progress kept
 (64 restarts since it was last started, 30 out-of-memory lines in the journal in the last three hours). The fill advances between kills; the growth is not found.
 
-## Roadmap Phase 4: customer knowledge (built on branch `phase-4-5-complete`, NOT merged)
+## Roadmap Phase 4: customer knowledge (merged and deployed in `7a73420`, PR #60; the host steps below are NOT done)
 
 Everything is behind the owner switch `customer_knowledge` (off; it refuses to turn on until the steps below are done and recorded). Status: `plans/product/roadmap/phase-04.md`.
 
