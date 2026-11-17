@@ -242,7 +242,7 @@ def access_overview(db=None):
         if storage_ready():
             names.append('lumina_file_deliver')
         if memory_on(account):
-            names += ['lumina_memory_recall', 'lumina_memory_remember']
+            names += ['lumina_memory_recall', 'lumina_memory_remember', 'lumina_memory_correct']
         if mcp_on(account):
             from agentai_platform.mcp_connections.relay import GENERIC
             names += [g['name'] for g in GENERIC]
@@ -252,6 +252,13 @@ def access_overview(db=None):
         if hub_on(account):
             from agentai_platform.hub_tools import HubTools
             names += sorted(HubTools.names)
+        from agentai_platform import knowledge_tools as kt
+        if knowledge_on(account):
+            names += sorted(kt.KNOWLEDGE_NAMES) + sorted(kt.COMMITMENT_NAMES)
+        elif hub_on(account):
+            names += sorted(kt.COMMITMENT_NAMES)
+        if hub_on(account):
+            names += sorted(kt.DASHBOARD_NAMES - ({kt.ATTACHMENT} if not knowledge_on(account) else set()))
         return names
 
     def model_key(account):
@@ -368,7 +375,17 @@ def account_jobs(db=None):
         with db.connect() as con:
             cell = con.execute("SELECT 1 FROM lifecycle_cells WHERE account_id=?", (account,)).fetchone()
         found['cell'] = 1 if cell else 0
+        index = knowledge_index()
+        if index is not None:
+            sizes = index.account_sizes(account)                         # an unreachable index raises: the scan says so instead of calling it clean
+            found['knowledge_passages'], found['knowledge_documents'] = sizes['passages'], sizes['documents']
         return found
+
+    def forget_knowledge(account):
+        index = knowledge_index()
+        if index is None:
+            return 'not_on_this_host'
+        return {'passages_removed': index.remove_account(account)}
 
     def scan_identity(account):
         from django.contrib.auth.models import User
@@ -376,6 +393,7 @@ def account_jobs(db=None):
 
     files = file_store()
     adapters = {'connections': end_connections, 'custody': (lambda account: custody.delete_all(account)) if hasattr(custody, 'delete_all') else None, 'memory': forget_memory,
+                'knowledge': forget_knowledge,
                 'model_key': remove_model_key, 'cell': remove_cell, 'identity': anonymise_identity, 'billing': cancel_billing, 'mail': confirm, 'scan': scan_outside, 'scan_identity': scan_identity}
     return AccountJobs(db, storage=files, adapters=adapters, signing_key=settings.ARTIFACT_SIGNING_KEY.encode() if storage_ready() else b'', cooling_off=settings.ACCOUNT_COOLING_OFF_SECONDS)
 
@@ -640,6 +658,86 @@ def access_mode():
     """How people get in: paid_required wins over open (turning payments on is what ends free access), else invite_only."""
     if switch_on('billing_checkout'): return 'paid_required'
     return 'open' if switch_on('open_access') else 'invite_only'
+
+
+# ---- the customer's knowledge (roadmap Phase 4) ---------------------------------------------------------------------------------------------------------
+
+def knowledge_index():
+    """The knowledge index, or None where this host has none. Production: its own PostgreSQL database (the address is in a private file). Development: a local SQLite file."""
+    from agentai_platform import knowledge_index as ki
+    url = read_private(settings.KNOWLEDGE_INDEX_FILE) if settings.KNOWLEDGE_INDEX_FILE else None
+    if url:
+        try:
+            return ki.PgIndex.from_url(url)
+        except ValueError:
+            return None
+    if settings.KNOWLEDGE_LOCAL_INDEX and settings.DEBUG:
+        return ki.LocalIndex(settings.KNOWLEDGE_LOCAL_INDEX)
+    return None
+
+
+def embedder():
+    from agentai_platform import embeddings
+    if settings.EMBEDDINGS_URL:
+        try:
+            return embeddings.TeiEmbedder(settings.EMBEDDINGS_URL)
+        except ValueError:
+            return None
+    if settings.KNOWLEDGE_LOCAL_INDEX and settings.DEBUG:
+        return embeddings.HashEmbedder()
+    return None
+
+
+def knowledge_ready():
+    """Is the knowledge feature installed on this host (an index and an embedding server)? The owner's switch decides whether it is on."""
+    return knowledge_index() is not None and embedder() is not None
+
+
+def knowledge_on(account_id):
+    """May this account's assistant search and read its documents? The owner's switch, on a host where the feature is installed."""
+    return switch_on('customer_knowledge') and knowledge_ready()
+
+
+def vision():
+    """The vision model that reads pages with no text, or None (those pages are then reported as not read)."""
+    key = read_private(settings.KNOWLEDGE_MODEL_KEY_FILE, 8) if settings.KNOWLEDGE_MODEL_KEY_FILE else None
+    if not key:
+        return None
+    from agentai_platform.knowledge_parse import Vision
+    host, _, port = settings.KNOWLEDGE_MODEL_PROXY.partition(':')
+    return Vision(host=host, port=int(port or 4000), key=key, model=settings.KNOWLEDGE_VISION_MODEL)
+
+
+def knowledge_service(db=None):
+    """The knowledge service, or None where it is not installed. Reading needs the render service; without it sources wait, saying why."""
+    index, embed = knowledge_index(), embedder()
+    if index is None or embed is None:
+        return None
+    from agentai_platform.knowledge import KnowledgeService
+    from agentai_platform.knowledge_parse import Reader
+    db = db or store()
+    render = renderer()
+    try:
+        hub = hub_service(db) if sign_in_providers() or switch_on('synthetic_connector') else None
+    except Exception:
+        hub = None
+    return KnowledgeService(db, index=index, embedder=embed, reader=Reader(render, vision()) if render is not None else None, storage=file_store(), hub=hub)
+
+
+def commitment_service(db=None):
+    from agentai_platform.commitments import CommitmentService
+    return CommitmentService(db or store())
+
+
+def knowledge_tools(db=None):
+    """The assistant's knowledge, commitment and remaining dashboard tools. Each family exists only where its service does; each is asked its switch per call."""
+    from agentai_platform.knowledge_tools import KnowledgeTools
+    db = db or store()
+    try:
+        hub = hub_service(db)
+    except Exception:
+        hub = None
+    return KnowledgeTools(db, knowledge=knowledge_service(db), commitments=commitment_service(db), hub=hub, enabled=knowledge_on, hub_on=hub_on)
 
 
 def memory_service(db=None):

@@ -94,7 +94,8 @@ def extension():
 
 
 # every host the product's own code names, minus ones that are only examples or documentation links
-IGNORED_HOSTS = {'example.com', 'localhost', 'www.w3.org', 'creativecommons.org', 'openmoji.org', 'github.com', 'docs.openclaw.ai',
+IGNORED_HOSTS = {'example.com', 'localhost', 'www.w3.org', 'schemas.openxmlformats.org', 'creativecommons.org',
+                 'openmoji.org', 'github.com', 'docs.openclaw.ai',   # schemas.openxmlformats.org is an XML namespace name: an identifier, never contacted
                  'service.example.com', 'developers.asana.com',  # input placeholder and documentation link only
                  'models.example.org',                         # test fixtures
                  'api.openai.com', 'api.groq.com'}             # only suggestions shown beside "Your own model": Lumina contacts an endpoint only if the customer enters it, and the policy names "the company that runs the endpoint you enter"

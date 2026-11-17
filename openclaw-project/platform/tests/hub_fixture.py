@@ -35,6 +35,7 @@ class World:
     def __init__(self):
         self.mail, self.bodies, self.calendars, self.events = {}, {}, {}, {}
         self.mail_log, self.event_log = [], {}          # [(number, id)] ; calendar -> [(number, id)]
+        self.attachments = {}                           # (message id, attachment id) -> bytes
         self.number = 0
         self.expire_cursors = False
         self.fail = []                                  # ProviderError (or other exceptions) raised by the next calls, in order
@@ -116,6 +117,17 @@ class Alpha:
             raise ProviderError(404)
         raw = world.bodies.get(message_id, {})
         return body(raw.get('text', 'Body of ' + message_id), raw.get('html', ''), [{'id': f['id'], 'name': f['name'], 'type': f['type'], 'size': f['size']} for f in world.mail[message_id].get('files', [])])
+
+    def mail_attachment(self, credential, message_id, attachment_id):
+        world = self.world(credential); world.enter('mail_attachment')
+        if (message_id, attachment_id) not in world.attachments:
+            raise ProviderError(404)
+        return world.attachments[(message_id, attachment_id)]
+
+    @staticmethod
+    def compose_link(to=(), cc=(), subject='', body=''):
+        from urllib.parse import urlencode
+        return 'https://alpha.test/compose?' + urlencode([('to', ','.join(to)), ('su', subject), ('body', body)])
 
     def mail_search(self, credential, query, labels, position, limit):
         world = self.world(credential); world.enter('mail_search')
@@ -221,7 +233,7 @@ def declaration(provider, label, caps):
                        caps=Caps(pages=5, items=50, bytes=200_000, seconds=10.0), hub=caps, several_accounts=True)
 
 
-ALPHA = declaration('alpha', 'Alpha Mail', HubCaps(mail=True, calendar=True, mail_search=True, labels='labels'))
+ALPHA = declaration('alpha', 'Alpha Mail', HubCaps(mail=True, calendar=True, mail_search=True, labels='labels', attachments=True, compose_link=True))
 POSTBOX = declaration('postbox', 'Postbox', HubCaps(mail=True, calendar=True, mail_search=False, incremental=False, labels='folders'))
 
 

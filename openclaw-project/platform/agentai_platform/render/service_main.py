@@ -18,7 +18,7 @@ def main():
     parser.add_argument('--wiring', type=Path, default=Path('/etc/agentai-supervisor/native-wiring.json'))
     parser.add_argument('--socket', type=Path, default=Path('/run/agentai-render/render.sock'))
     parser.add_argument('--jobs', type=Path, default=Path('/var/lib/agentai-render/jobs'))
-    parser.add_argument('--image', default='lumina-renderer:1')
+    parser.add_argument('--image', default='lumina-renderer:2')
     parser.add_argument('--app-user', default='agentai-platform')
     parser.add_argument('--slots', type=int, default=2)
     args = parser.parse_args()

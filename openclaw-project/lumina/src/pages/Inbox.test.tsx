@@ -47,6 +47,33 @@ const base = (over: Routes = {}): Routes => ({ '/v1/hub': overview(), '/v1/hub/m
 const show = (at = '/inbox') => render(<MemoryRouter initialEntries={[at]}><Inbox /></MemoryRouter>);
 const asked = (path: string) => calls.map(c => new URL(c.url, 'https://app.test')).filter(u => u.pathname === path).map(u => u.searchParams);
 
+describe('Inbox drafts and links', () => {
+  const lumina = { id: 'd1', account: 'c1', thread: 't-1', to: ['ann@x.test'], cc: [], subject: 'Re: Quarterly numbers', body: 'Thanks, Ann.', origin: 'assistant', created_epoch: NOW, updated_epoch: NOW };
+  it('shows the assistant\'s draft beside its thread, and a reply is written to the last sender with Re: once', async () => {
+    server(base({ '/v1/hub/drafts': (u: URL) => ({ drafts: u.searchParams.get('thread') === 't-1' ? [lumina] : [] }),
+      'POST /v1/hub/drafts': (u: URL) => ({ draft: { ...lumina, id: 'd2', origin: 'customer', body: '' } }) }));
+    show('/inbox?connection=c1&thread=t-1');
+    expect(await screen.findByRole('region', { name: 'Draft by your assistant' })).toBeTruthy();
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('Thanks, Ann.');
+    fireEvent.click(screen.getByRole('button', { name: 'Write a reply' }));
+    const mine = screen.getByRole('region', { name: 'Your draft' });
+    expect((within(mine).getByLabelText('To') as HTMLInputElement).value).toBe('ann@x.test');
+    expect((within(mine).getByLabelText('Subject') as HTMLInputElement).value).toBe('Re: Quarterly numbers');
+    fireEvent.click(within(mine).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls.find(c => c.method === 'POST' && c.url === '/v1/hub/drafts')?.body).toMatchObject({ connection_id: 'c1', thread_id: 't-1', to: ['ann@x.test'] }));
+    expect(calls.some(c => c.method === 'POST' && /send|messages/.test(c.url))).toBe(false);       // nothing is ever sent
+  });
+  it('lists the drafts written in Lumina across accounts', async () => {
+    server(base({ '/v1/hub/drafts': { drafts: [lumina, { ...lumina, id: 'd3', account: 'c2', thread: null, subject: 'Hallo', to: ['bernd@y.test'], origin: 'customer' }] } }));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: /Written in Lumina/ }));
+    const list = await screen.findByRole('list', { name: 'Drafts' });
+    expect(within(list).getAllByRole('button')).toHaveLength(2);
+    fireEvent.click(within(list).getByText('Hallo'));
+    expect(await screen.findByRole('region', { name: 'Your draft' })).toBeTruthy();
+  });
+});
+
 describe('Inbox', () => {
   it('shows the mail of two different providers as one list, each row saying which account it is from', async () => {
     server(base()); show();

@@ -1,5 +1,7 @@
 # Roadmap Phase 3 - shared integration and action infrastructure
 
+**Status (2026-11-16): DEPLOYED AND PROVEN LIVE.** Merged to `main` (pull requests #46, #47, #48); the server runs `8327634`. The live exit gates were run on the server with `platform/deploy/phase23_live.py`: all eight pass (the handoff gate in its few-seconds form; the `--hour` form has not been run). The three owner switches (`connector_writes`, `synthetic_connector`, `account_self_service`) are off. What follows is the record from before the deploy.
+
 **Status (2026-11-15): BUILT AND TESTED, NOT DEPLOYED.** All nine features and the synthetic connector are built, with tests, behind owner switches that are off. Not
 merged, not deployed, on the owner's instruction (see `phase-02.md`). The live exit gate has **not been run**; `platform/deploy/phase23_live.py` runs all five of its
 points on deploy day and already passes against the test database.

@@ -35,6 +35,8 @@ def features(request):
         'connected_services': wiring.connectors_on(getattr(request, 'account_id', None)),      # services built on the connector contract can be connected and read (roadmap Phase 3)
         'connector_writes': wiring.writes_on(getattr(request, 'account_id', None)),            # the assistant may prepare changes in them, each for the customer's approval
         'dashboard': wiring.hub_on(getattr(request, 'account_id', None)),                        # the Mail and Calendar pages (roadmap #D3, #D4)
+        'knowledge': wiring.knowledge_on(getattr(request, 'account_id', None)),                  # the Sources page and the assistant's document tools (roadmap Phase 4)
+        'commitments': wiring.knowledge_on(getattr(request, 'account_id', None)) or wiring.hub_on(getattr(request, 'account_id', None)),   # decisions and commitments (#43)
         'self_service': wiring.switch_on('account_self_service'),                              # export my data, delete a chat, close my account
         'role': getattr(request, 'org_role', None),                                             # the person's role in their organization (owner | admin | member | viewer)
         'billing_mode': wiring.access_mode(),             # invite_only | open | paid_required

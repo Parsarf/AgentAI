@@ -426,6 +426,11 @@ class WorkReader:
             browser = con.execute('SELECT status,url FROM browse_runs WHERE account_id=? AND request_id=?', (account, task_id)).fetchone()
             messages = con.execute("SELECT count(*) FROM chat_messages WHERE account_id=? AND request_id=?", (account, task_id)).fetchone()[0]
             rows = timeline(events)
+            try:
+                checks = [{'kind': c['kind'], 'outcome': c['outcome'], 'detail': json.loads(c['detail_json'] or '{}')} for c in
+                          con.execute('SELECT kind,outcome,detail_json FROM knowledge_checks WHERE account_id=? AND request_id=? ORDER BY created_epoch', (account, task_id))]
+            except Exception:
+                checks = []
             asking = {n['id'] for n in waiting.get(task_id, []) if n['kind'] == 'approval'}
             for r in rows:                                       # a prompt nobody answered in time is not still "waiting"
                 if r['kind'] == 'approval' and r['status'] == 'waiting' and r['key'].removeprefix('approval-') not in asking:
@@ -438,6 +443,10 @@ class WorkReader:
                     browser={'status': browser['status'], 'live': browser['status'] in job_states.LIVE and row['state'] in request_states.ACTIVE,
                              'host': _host(re.sub(r'^https?://', '', browser['url'] or ''))} if browser else None,
                     ended_epoch=round(last_ms / 1000) if row['state'] in request_states.FINAL and last_ms else None)
+        if checks:
+            from .outcome import uncertainty
+            found = uncertainty(checks)
+            view['certainty'] = {k: list(v) for k, v in found.items()}         # #48: what was checked, what could not be, what is missing
         view['rev'] = hashlib.sha256(json.dumps(view, sort_keys=True).encode()).hexdigest()[:16]
         kept = rows[-MAX_ROWS:]
         return {'task': view, 'rows': [r for r in kept if r['seq'] > after], 'cursor': cursor, 'trimmed': len(rows) - len(kept)}

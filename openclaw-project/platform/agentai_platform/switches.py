@@ -133,6 +133,17 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
                           ('policy_published', 'The privacy policy that describes this copy, where it comes from and how long it is kept is published.')),
            needs=(('connector_custody_ready', 'The connector key file is installed on the server (protected storage for the services\' tokens).'),
                   ('hub_sync_timer', 'The mail and calendar sync timer is installed and running on the server.'))),
+    Switch('customer_knowledge', 'Let assistants search, read and cite customers\' own documents',
+           'Every file a customer uploads, every file they add from Files and every attachment they open is read into a private knowledge index: the assistant can search it, '
+           'read it section by section, compare two versions, check its claims against the text and cite the page. Customers see every source on the Sources page and can remove any.',
+           'Documents are read on this server (in a sealed reader with no network) and their passages and search vectors are kept in a database on this server, per customer. '
+           'Pages that have no text (a scan, a photo) and pictures that may be charts are sent to the model provider to be read. Removing a source removes its passages at once.',
+           'Model cost for pages with no text, paid by Lumina (about one to three cents a page), and disk space for the index on this server.', 'high',
+           confirmations=(('vision_understood', 'I understand pages with no text and pictures are sent to the model provider to be read, at Lumina\'s cost.'),
+                          ('policy_published', 'The privacy policy that describes the knowledge index, the parsed text and the model provider reading pictures is published.')),
+           needs=(('knowledge_index_installed', 'The knowledge database and the embedding server are installed and running on this server (deploy/knowledge/install.sh).'),
+                  ('render_service_running', 'The render service with reader image 2 is installed and running (deploy/RENDERER.md).'),
+                  ('knowledge_worker_running', 'The knowledge worker service is installed and running.'))),
     Switch('synthetic_connector', 'Test only: a fake connected service for proving the action pipeline',
            'Adds a fake service ("Synthetic") that can be connected in Settings. It lives inside Lumina and reaches nothing outside.',
            'Used to prove previews, approvals, undo and workflows on the live system with a test account. It holds only what a test puts in it. Leave it off for customers.',

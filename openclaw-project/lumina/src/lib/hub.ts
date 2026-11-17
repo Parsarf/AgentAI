@@ -4,7 +4,7 @@ import { api, ApiError } from './api';
 
 export interface Person { name: string; address: string }
 export interface HubCaps { mail: boolean; calendar: boolean; mail_search: boolean; incremental: boolean; push: boolean; labels: 'labels' | 'folders' | 'none'; subjects: boolean;
-  send: boolean; organize: boolean; mark_read: boolean; event_write: boolean; respond: boolean }
+  send: boolean; organize: boolean; mark_read: boolean; event_write: boolean; respond: boolean; attachments?: boolean; compose_link?: boolean }
 export interface SyncPart { synced_epoch: number | null; filled: boolean; items: number; error: string | null; paused: boolean }
 export interface HubAccount { id: string; provider: string; provider_label: string; identity: string; state: 'working' | 'needs_you'; needs_reason: string | null;
   capabilities: HubCaps; granted: { mail: boolean; calendar: boolean }; mail: SyncPart | null; calendar: SyncPart | null }
@@ -23,6 +23,10 @@ export interface HubEvent { connection_id: string; calendar_id: string; id: stri
   description?: string; organizer?: Person | null; attendees?: (Person & { response: string; self: boolean; optional: boolean })[]; provider_url?: string | null; synced_epoch?: number | null }
 export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[] }; counts: { unread: number; by_account: Record<string, number> };
   calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean }
+/** A mail draft kept in Lumina (#57): never in the mailbox. The customer sends it themselves from their mail service. */
+export interface Draft { id: string; account: string; thread: string | null; to: string[]; cc: string[]; subject: string; body: string; origin: 'customer' | 'assistant';
+  created_epoch: number; updated_epoch: number }
+export type DraftChange = { draft?: string; connection_id?: string; thread_id?: string | null; to?: string[]; cc?: string[]; subject?: string; body?: string };
 export interface ThreadFilters { label: string; accounts?: string[]; provider_label?: string; unread?: boolean; attachments?: boolean; q?: string; cursor?: string; limit?: number }
 export interface Page { count: number; complete: boolean; total_estimate: number | null; continuation: string | null; stopped_by: string | null }
 
@@ -48,7 +52,16 @@ export const hub = {
   setCalendar: (connection_id: string, calendar_id: string, change: { selected?: boolean; colour?: string }) => api<{ calendars: HubCalendar[] }>('POST', '/v1/hub/calendars', { connection_id, calendar_id, ...change }),
   setSettings: (change: { timezone?: string | null; allow_images_from?: string; block_images_from?: string }) => api<{ settings: Overview['settings'] }>('POST', '/v1/hub/settings', change),
   refresh: (connection_id?: string) => api<{ requested: number }>('POST', '/v1/hub/refresh', connection_id ? { connection_id } : {}),
+  drafts: (thread?: string) => api<{ drafts: Draft[] }>('GET', '/v1/hub/drafts' + query({ thread })),
+  saveDraft: (change: DraftChange) => api<{ draft: Draft }>('POST', '/v1/hub/drafts', change),
+  discardDraft: (id: string) => api<{ discarded: string }>('POST', `/v1/hub/drafts/${encodeURIComponent(id)}/discard`, {}),
+  composeLink: (id: string) => api<{ draft: Draft; link: string | null }>('GET', `/v1/hub/drafts/${encodeURIComponent(id)}/compose`),
 };
+
+/** Addresses typed in one box, split on commas, semicolons and spaces. */
+export const addresses = (text: string) => text.split(/[\s,;]+/).map(a => a.trim()).filter(Boolean);
+/** A reply's subject: "Re: " once, never twice. */
+export const replySubject = (subject: string) => (/^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`.trim());
 
 /** A plain sentence for each of the connector layer's fault kinds, for a customer. Never a provider's own text. */
 export const PROBLEM: Record<string, string> = {

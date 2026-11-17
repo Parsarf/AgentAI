@@ -16,7 +16,7 @@ from .lifecycle.types import Conflict
 from .security import NotFound, Principal, require
 
 # What an organization can decide. `kind` is how a value is checked; `plain` is the sentence the settings page shows.
-TOOL_GROUPS = ('browser', 'files', 'memory', 'display', 'location', 'remote_tools', 'connectors')
+TOOL_GROUPS = ('browser', 'files', 'memory', 'display', 'location', 'remote_tools', 'connectors', 'knowledge')
 WRITE_RULES = ('allowed', 'admin_approval', 'blocked')
 POLICIES = {
     'tools_allowed': {'kind': 'tool_list', 'plain': 'Which tools members\' assistants may use.'},
@@ -29,7 +29,8 @@ POLICIES = {
 # What a tool the assistant can be given belongs to, for `tools_allowed` (a name no row covers belongs to no group and is not affected).
 TOOL_GROUP_OF = {'lumina_browser': 'browser', 'lumina_browser_step': 'browser', 'lumina_file_deliver': 'files', 'lumina_memory_*': 'memory', 'lumina_show': 'display',
                  'lumina_request_location': 'location', 'lumina_mcp_*': 'remote_tools', 'mcp__*': 'remote_tools', 'lumina_connector_*': 'connectors',
-                 'lumina_mail_*': 'connectors', 'lumina_calendar_*': 'connectors'}       # the mail and calendar tools read through connected accounts too
+                 'lumina_mail_*': 'connectors', 'lumina_calendar_*': 'connectors',       # the mail and calendar tools read through connected accounts too
+                 'lumina_meeting_brief': 'connectors', 'lumina_knowledge_*': 'knowledge', 'lumina_commitment_*': 'knowledge', 'lumina_commitments': 'knowledge'}
 
 
 def tool_group(name):
@@ -152,8 +153,66 @@ class OrganizationService:
             con.execute('DELETE FROM organization_members WHERE account_id=? AND actor_id=?', (account_id, actor_id))
             con.execute('UPDATE accounts SET organization_id=? WHERE id=?', (org, account_id))
             con.execute("INSERT INTO organization_members(organization_id,actor_id,account_id,role,status,created_epoch,updated_epoch) VALUES (?,?,?,?,'active',?,?)", (org, actor_id, account_id, role, now, now))
+            # Knowledge this person had shared belongs to the organization they left: it becomes theirs alone again, and is indexed again under the new organization.
+            con.execute("UPDATE knowledge_sources SET organization_id=?,scope='account',audience='',state=CASE WHEN state='ready' THEN 'queued' ELSE state END,step='moved to another organization' WHERE account_id=?",
+                        (org, account_id))
             self.coordinator._audit(con, principal.account_id, principal.actor_id, actor_id, 'organization.member.add', 'completed')
         self._changed(actor_id)
+
+    # -- named groups (#40): shared knowledge can be meant for one group of people only --------------------------------------------------------------------
+    def groups(self, principal: Principal) -> list:
+        with self.store.connect() as con:
+            require(principal, 'member.read', con=con)
+            org = self._org(con, principal)
+            groups = [dict(r) for r in con.execute('SELECT id,name,created_epoch FROM organization_groups WHERE organization_id=? ORDER BY lower(name)', (org,))]
+            for g in groups:
+                g['members'] = [r['actor_id'] for r in con.execute('SELECT actor_id FROM organization_group_members WHERE organization_id=? AND group_id=? ORDER BY actor_id', (org, g['id']))]
+        return groups
+
+    def create_group(self, principal: Principal, name: str) -> dict:
+        import uuid
+        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
+            raise ValueError('invalid name')
+        with self.coordinator.transaction() as con:
+            require(principal, 'group.manage', con=con)
+            org = self._org(con, principal)
+            if con.execute('SELECT 1 FROM organization_groups WHERE organization_id=? AND lower(name)=lower(?)', (org, name.strip())).fetchone():
+                raise Conflict('a group with that name exists')
+            if con.execute('SELECT count(*) FROM organization_groups WHERE organization_id=?', (org,)).fetchone()[0] >= 100:
+                raise Conflict('too many groups')
+            group = uuid.uuid4().hex
+            con.execute('INSERT INTO organization_groups(organization_id,id,name,created_epoch) VALUES (?,?,?,?)', (org, group, name.strip(), int(self.clock())))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, group, 'organization.group.create', 'completed')
+            return {'id': group, 'name': name.strip(), 'members': []}
+
+    def set_group_member(self, principal: Principal, group_id: str, actor_id: str, member: bool) -> dict:
+        with self.coordinator.transaction() as con:
+            require(principal, 'group.manage', con=con)
+            org = self._org(con, principal)
+            if not con.execute('SELECT 1 FROM organization_groups WHERE organization_id=? AND id=?', (org, str(group_id))).fetchone():
+                raise NotFound('unavailable')
+            if member:
+                if not con.execute("SELECT 1 FROM organization_members WHERE organization_id=? AND actor_id=? AND status='active'", (org, str(actor_id))).fetchone():
+                    raise NotFound('unavailable')
+                con.execute('INSERT OR IGNORE INTO organization_group_members(organization_id,group_id,actor_id,created_epoch) VALUES (?,?,?,?)', (org, group_id, actor_id, int(self.clock())))
+            else:
+                con.execute('DELETE FROM organization_group_members WHERE organization_id=? AND group_id=? AND actor_id=?', (org, group_id, actor_id))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, group_id, 'organization.group.member', 'completed')
+        return {'group': group_id, 'actor_id': actor_id, 'member': bool(member)}
+
+    def delete_group(self, principal: Principal, group_id: str) -> dict:
+        """Remove a group. Sources shared with it stop being shared (they are their owners' alone again): nobody gains access by a group disappearing."""
+        with self.coordinator.transaction() as con:
+            require(principal, 'group.manage', con=con)
+            org = self._org(con, principal)
+            if not con.execute('SELECT 1 FROM organization_groups WHERE organization_id=? AND id=?', (org, str(group_id))).fetchone():
+                raise NotFound('unavailable')
+            con.execute('DELETE FROM organization_group_members WHERE organization_id=? AND group_id=?', (org, group_id))
+            con.execute('DELETE FROM organization_groups WHERE organization_id=? AND id=?', (org, group_id))
+            con.execute("UPDATE knowledge_sources SET scope='account',audience='',state=CASE WHEN state='ready' THEN 'queued' ELSE state END WHERE organization_id=? AND audience=?",
+                        (org, 'group:' + group_id))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, group_id, 'organization.group.delete', 'completed')
+        return {'deleted': group_id}
 
     def set_role(self, principal: Principal, actor_id: str, role: str):
         if role not in permissions.ROLES:
@@ -189,6 +248,10 @@ class OrganizationService:
                 if con.execute("SELECT count(*) FROM organization_members WHERE organization_id=? AND role='owner' AND status='active'", (org,)).fetchone()[0] <= 1:
                     raise Conflict('an organization keeps at least one owner')
             con.execute("UPDATE organization_members SET status='removed',updated_epoch=? WHERE organization_id=? AND actor_id=?", (int(self.clock()), org, actor_id))
+            con.execute('DELETE FROM organization_group_members WHERE organization_id=? AND actor_id=?', (org, actor_id))
+            # What they shared is no longer shared: a removed person's documents are not left readable by the organization they left.
+            con.execute("UPDATE knowledge_sources SET scope='account',audience='',state=CASE WHEN state='ready' THEN 'queued' ELSE state END WHERE account_id=? AND scope='organization'",
+                        (row['account_id'],))
             self.coordinator._audit(con, principal.account_id, principal.actor_id, actor_id, 'organization.member.remove', 'completed')
             account = row['account_id']
         self._changed(actor_id)

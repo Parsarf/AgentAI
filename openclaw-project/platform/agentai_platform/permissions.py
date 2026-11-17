@@ -58,6 +58,7 @@ TABLE: dict[str, frozenset] = {
     'member.invite': MANAGERS,
     'member.remove': MANAGERS,
     'member.role': MANAGERS,
+    'group.manage': MANAGERS,              # named groups of an organization's people (#40)
     'policy.read': ALL_ROLES,
     'policy.change': MANAGERS,
     'organization.export': frozenset({_O}),
@@ -81,6 +82,11 @@ TOOL_ACTIONS: dict[str, str] = {
     'lumina_connector_list': 'connection.use', 'lumina_connector_read': 'connection.use', 'lumina_connector_search': 'connection.use',
     'lumina_connector_propose': 'action.propose', 'lumina_connector_workflow': 'action.propose',
     'lumina_ask_customer': 'task.run',
+    # The customer's knowledge (Phase 4): reading their own documents is reading their files; adding a file to the index is a change to their files.
+    'lumina_knowledge_search': 'file.read', 'lumina_knowledge_everywhere': 'file.read', 'lumina_knowledge_sources': 'file.read', 'lumina_knowledge_outline': 'file.read',
+    'lumina_knowledge_read': 'file.read', 'lumina_knowledge_compare': 'file.read', 'lumina_knowledge_verify': 'file.read', 'lumina_knowledge_add': 'file.write',
+    'lumina_commitment_record': 'task.run', 'lumina_commitments': 'task.run', 'lumina_commitment_update': 'task.run',
+    'lumina_mail_attachment': 'connection.use', 'lumina_mail_draft': 'connection.use', 'lumina_meeting_brief': 'connection.use',
 }
 
 

@@ -450,3 +450,70 @@ class ReadsArePaced(unittest.TestCase):
         self.assertEqual((error.status, error.code, error.retry_after), (429, 'rateLimitExceeded', 60))
         self.assertEqual(google_hub._failure(429, {'Retry-After': '7'}, b'{}').retry_after, '7')
 
+
+
+class KeepAlive(unittest.TestCase):
+    """One TLS context and kept-alive connections (production, 2026-11-16: a new context and a new TLS connection for every header read)."""
+    def setUp(self):
+        import http.client
+        from agentai_platform import google_hub
+        self.g, self.made = google_hub, []
+        test = self
+
+        class Answer:
+            def __init__(self, status=200, body=b'{}', close=False):
+                self.status, self.body, self.will_close, self.headers, self._done = status, body, close, {'Content-Type': 'application/json'}, False
+            def read(self, n):
+                self._done = True
+                return self.body[:n]
+            def isclosed(self):
+                return self._done
+
+        class Con:
+            def __init__(self, host):
+                self.host, self.sock, self.timeout, self.sent, self.closed = host, None, None, [], False
+                self.script = list(test.script.pop(0)) if test.script else []
+                test.made.append(self)
+            def request(self, method, target, body=None, headers=None):
+                self.sent.append((method, target))
+                step = self.script.pop(0) if self.script else 'ok'
+                if step == 'stale':
+                    raise http.client.RemoteDisconnected('closed')
+                self.step = step
+            def getresponse(self):
+                return Answer(close=self.step == 'close')
+            def close(self):
+                self.closed = True
+        self.script = []
+        self.pool = google_hub._Pool(Con)
+        from unittest.mock import patch
+        patcher = patch.object(google_hub, '_POOL', self.pool); patcher.start(); self.addCleanup(patcher.stop)
+
+    def test_one_tls_context_for_the_process(self):
+        self.assertIs(self.g._tls(), self.g._tls())
+
+    def test_reads_reuse_one_connection_and_a_closing_answer_is_not_kept(self):
+        for _ in range(5):
+            self.assertEqual(self.g.default_http('GET', self.g.GMAIL + '/profile', {})[0], 200)
+        self.assertEqual(len(self.made), 1)                                 # five reads, one connection, one handshake
+        self.assertEqual(len(self.made[0].sent), 5)
+        self.script = [['close']]
+        self.pool.clear()
+        self.g.default_http('GET', self.g.GMAIL + '/profile', {})
+        self.assertTrue(self.made[-1].closed)                               # Google said it closes: it is not handed out again
+
+    def test_a_kept_connection_that_was_closed_meanwhile_is_tried_once_on_a_new_one(self):
+        self.g.default_http('GET', self.g.GMAIL + '/profile', {})
+        self.made[0].script = ['stale']
+        self.assertEqual(self.g.default_http('GET', self.g.GMAIL + '/profile', {})[0], 200)
+        self.assertEqual(len(self.made), 2)
+        self.assertTrue(self.made[0].closed)
+
+    def test_a_token_request_is_never_sent_twice_nor_kept(self):
+        self.script = [['stale']]
+        with self.assertRaises(self.g.ProviderError):
+            self.g.default_http('POST', self.g.TOKEN_URL, {'Content-Type': 'application/x-www-form-urlencoded'}, b'a=b')
+        self.assertEqual(len(self.made), 1)
+        self.g.default_http('POST', self.g.TOKEN_URL, {}, b'a=b')
+        self.assertTrue(self.made[-1].closed)
+        self.assertEqual(self.pool.free, {})

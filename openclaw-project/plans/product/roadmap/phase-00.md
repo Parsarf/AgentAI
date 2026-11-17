@@ -1,5 +1,7 @@
 # Roadmap Phase 0 - ship what is written and remove the launch blockers
 
+**Update (2026-11-16):** the one remaining step is done: the repository variable `AUTO_DEPLOY_ENABLED` is `true`, and a merge to `main` now deploys by itself once CI on `main` passes (the last three deploys, `d7fb56d`, `1757ae8` and `9b01cf1`, were started that way; the server runs `9b01cf1`).
+
 **Status (2026-11-15): PASS.** Production runs `main`, deployed by the deploy workflow without any "overwrite manual changes" (run by hand; the one remaining step to make merges deploy by themselves is the owner's repository setting `AUTO_DEPLOY_ENABLED`), the model prompt cache is fixed and measured, timing marks are on and report medians, the push stream is on, and the server-side owner items that can be done from code are done. What only the owner can do (accounts, credentials, a place to send backups) is written as exact steps in `LAUNCH.md`.
 
 ## What passed (live), with evidence

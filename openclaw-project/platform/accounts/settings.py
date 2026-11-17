@@ -159,6 +159,16 @@ HINDSIGHT_URL = os.environ.get('AGENTAI_HINDSIGHT_URL', '')
 HINDSIGHT_KEY_FILE = os.environ.get('AGENTAI_HINDSIGHT_KEY_FILE', '')
 HINDSIGHT_BANK_SECRET_FILE = os.environ.get('AGENTAI_HINDSIGHT_BANK_SECRET_FILE', '')
 MCP_OAUTH_CLIENTS_FILE = os.environ.get('AGENTAI_MCP_OAUTH_CLIENTS_FILE', '')
+# The customer's knowledge (roadmap Phase 4, agentai_platform/knowledge.py). The index is its own PostgreSQL database on this host (a private file holds its address and
+# password); vectors come from a self-hosted embedding server on a loopback address; pages with no text are read by the vision model with a Lumina key kept for that only.
+# Off until the owner's `customer_knowledge` switch is on AND the index and the embedding server are configured. The development server may use a local SQLite index and
+# the deterministic stand-in for embeddings instead (never in production: AGENTAI_KNOWLEDGE_LOCAL_INDEX is refused when DEBUG is off).
+KNOWLEDGE_INDEX_FILE = os.environ.get('AGENTAI_KNOWLEDGE_INDEX_FILE', '')
+KNOWLEDGE_LOCAL_INDEX = os.environ.get('AGENTAI_KNOWLEDGE_LOCAL_INDEX', '')
+EMBEDDINGS_URL = os.environ.get('AGENTAI_EMBEDDINGS_URL', '')
+KNOWLEDGE_MODEL_KEY_FILE = os.environ.get('AGENTAI_KNOWLEDGE_MODEL_KEY_FILE', '')
+KNOWLEDGE_VISION_MODEL = os.environ.get('AGENTAI_KNOWLEDGE_VISION_MODEL', 'claude-sonnet-5-5')
+KNOWLEDGE_MODEL_PROXY = os.environ.get('AGENTAI_KNOWLEDGE_MODEL_PROXY', '10.77.0.1:4000')
 # The sign-in app for Google mail and calendars (the dashboard's first provider). Both must be set for Google to be offered; the redirect address registered at Google must be
 # PUBLIC_ORIGIN + '/v1/hub/link/callback'. The secret is read from the environment file (root-only on the server) and is never sent to a browser or a cell.
 GOOGLE_CLIENT_ID = os.environ.get('AGENTAI_GOOGLE_CLIENT_ID') or os.environ.get('GOOGLE_CLIENT_ID', '')

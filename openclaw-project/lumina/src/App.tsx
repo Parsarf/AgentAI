@@ -11,6 +11,8 @@ import Inbox from './pages/Inbox';
 import CalendarPage from './pages/CalendarPage';
 import { Settings } from './pages/Settings';
 import Files from './pages/Files';
+import Knowledge from './pages/Knowledge';
+import DocumentView from './pages/DocumentView';
 import { useData } from './state/data';
 
 
@@ -32,7 +34,7 @@ export default function App() {
         <Route element={<Shell />}>
           <Route index element={<Chat />} /><Route path="home" element={<Home />} /><Route path="history" element={<History />} /><Route path="chat" element={<Chat />} /><Route path="chat/:id" element={<Chat />} />
           <Route path="gen-gallery" element={<Suspense fallback={null}><Gallery /></Suspense>} /><Route path="frame-stress/:kind" element={<Suspense fallback={null}><FrameStress /></Suspense>} /><Route path="activity" element={<Activity />} /><Route path="activity/:id" element={<Activity />} /><Route path="tasks" element={<Navigate to="/activity" replace />} /><Route path="tasks/:id" element={<OldTaskLink />} />
-          <Route path="live" element={<Live />} /><Route path="live/:id" element={<Live />} /><Route path="browser" element={<Navigate to="/live" replace />} /><Route path="browser/:id" element={<OldBrowserLink />} /><Route path="files" element={<Files />} /><Route path="inbox" element={<Inbox />} /><Route path="calendar" element={<CalendarPage />} />
+          <Route path="live" element={<Live />} /><Route path="live/:id" element={<Live />} /><Route path="browser" element={<Navigate to="/live" replace />} /><Route path="browser/:id" element={<OldBrowserLink />} /><Route path="files" element={<Files />} /><Route path="knowledge" element={<Knowledge />} /><Route path="knowledge/:sourceId" element={<DocumentView />} /><Route path="inbox" element={<Inbox />} /><Route path="calendar" element={<CalendarPage />} />
           <Route path="automations" element={<Navigate to="/activity" replace />} /><Route path="integrations" element={<Navigate to="/settings/integrations" replace />} /><Route path="settings" element={<Settings />} /><Route path="settings/:section" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

@@ -97,7 +97,8 @@ class ToolPermit:
 class Relay:
     """The MCP protocol and the tools; no sockets (the handler below owns those)."""
 
-    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None, location=None, files=None, show=None, connectors=None, permit=None, hub=None):
+    def __init__(self, tool: BrowserTool, progress=None, *, origin=None, remote=None, memory=None, location=None, files=None, show=None, connectors=None, permit=None, hub=None,
+                 knowledge=None):
         self.tool, self.progress, self.origin, self.remote = tool, progress, origin, remote
         self.location = location
         self.memory = memory                                        # longterm_memory.MemoryTools or None; its two tools exist for an account only while the owner's switch is on
@@ -105,6 +106,7 @@ class Relay:
         self.show = show                                            # show_tool.ShowTools or None; shows a table, chart, cards or a form under the reply
         self.connectors = connectors                                # connector_tools.ConnectorTools or None; reads through connected services and proposes changes for approval
         self.hub = hub                                              # hub_tools.HubTools or None; reads the customer's connected mail and calendars (read only)
+        self.knowledge = knowledge                                  # knowledge_tools.KnowledgeTools or None; the customer's documents, commitments, drafts and meeting briefs
         self.permit = permit                                        # ToolPermit or None: the role and organization-policy check asked before a tool runs (roadmap #12, #15)
         self.tools = {**TOOLS, **({PROGRESS_NAME: PROGRESS_TOOL} if progress is not None else {})}
         if location is not None:
@@ -141,9 +143,9 @@ class Relay:
                     spec = copy.deepcopy(spec)
                     spec['inputSchema'].setdefault('properties', {})['_lumina_origin'] = {'type': 'string', 'description': 'Runtime ownership proof. Leave unset.'}
                     specs.append(spec)
-            for extra in (self.memory, self.files, self.show, self.connectors, self.hub):
+            for extra in (self.memory, self.files, self.show, self.connectors, self.hub, self.knowledge):
                 if extra is not None and extra.enabled(account):
-                    for spec in extra.specs():
+                    for spec in (extra.specs_for(account) if hasattr(extra, 'specs_for') else extra.specs()):
                         spec['inputSchema']['properties']['_lumina_origin'] = {'type': 'string', 'description': 'Runtime-generated ownership proof. Leave unset; the runtime supplies it.'}
                         specs.append(spec)
             if self.permit is not None:
@@ -159,18 +161,19 @@ class Relay:
             show_call = self.show is not None and name in self.show.names and self.show.enabled(account)
             connector_call = self.connectors is not None and name in self.connectors.names and self.connectors.enabled(account)
             hub_call = self.hub is not None and name in self.hub.names and self.hub.enabled(account)
+            knowledge_call = self.knowledge is not None and name in self.knowledge.names and self.knowledge.enabled(account)
             if not isinstance(params.get('arguments') or {}, dict):
                 return self._error(rid, -32602, 'invalid arguments')
-            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call and not memory_call and not files_call and not show_call and not connector_call and not hub_call):
+            if (self.remote is not None and self.remote.is_generic(name) and not remote_on) or (name not in self.tools and not remote_call and not memory_call and not files_call and not show_call and not connector_call and not hub_call and not knowledge_call):
                 return self._error(rid, -32602, 'unknown tool')
             location_call = self.location is not None and name == 'lumina_request_location'
-            busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'files' if files_call else 'show' if show_call else 'connectors' if connector_call else 'hub' if hub_call else 'progress' if name == PROGRESS_NAME else 'browser')
+            busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'files' if files_call else 'show' if show_call else 'connectors' if connector_call else 'hub' if hub_call else 'knowledge' if knowledge_call else 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:
                 if busy_key in self._busy:
                     return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
                 self._busy.add(busy_key)
             try:
-                handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.files if files_call else self.show if show_call else self.connectors if connector_call else self.hub if hub_call else self.progress if name == PROGRESS_NAME else self.tool
+                handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.files if files_call else self.show if show_call else self.connectors if connector_call else self.hub if hub_call else self.knowledge if knowledge_call else self.progress if name == PROGRESS_NAME else self.tool
                 arguments = params.get('arguments') or {}
                 bound = {}
                 if self.origin is not None:

@@ -89,6 +89,17 @@ ROUTES = {
     'v1/retention': 'retention.read',
     'v1/exports': {R: 'data.export', W: 'data.export'}, 'v1/exports/<str:export_id>': 'data.export', 'v1/exports/<str:export_id>/ticket': 'data.export',
     'v1/account/offboarding': {R: 'account.read', W: 'data.delete'}, 'v1/account/offboarding/<str:action>': 'data.delete',
+    # -- the customer's knowledge, commitments and memory correction (roadmap Phase 4); drafts and attachments (Phase 5) ----------------------------------
+    'v1/knowledge': 'file.read', 'v1/knowledge/sources': 'file.write', 'v1/knowledge/sources/<str:source_id>/remove': 'file.write',
+    'v1/knowledge/sources/<str:source_id>/reindex': 'file.write', 'v1/knowledge/sources/<str:source_id>/share': 'file.write',
+    'v1/knowledge/sources/<str:source_id>/document': 'file.read', 'v1/knowledge/search': 'file.read', 'v1/knowledge/passages/<str:passage_id>': 'file.read',
+    'v1/knowledge/compare': 'file.read',
+    'v1/organization/groups': {R: 'member.read', W: 'group.manage'}, 'v1/organization/groups/<str:group_id>/members': 'group.manage',
+    'v1/organization/groups/<str:group_id>/delete': 'group.manage',
+    'v1/commitments': {R: 'task.read', W: 'task.run'}, 'v1/commitments/<str:item_id>': 'task.run',
+    'v1/longterm-memory/<str:entry_id>/correct': 'memory.write', 'v1/longterm-memory/<str:entry_id>/history': 'memory.read',
+    'v1/hub/drafts': {R: 'connection.read', W: 'connection.use'}, 'v1/hub/drafts/<str:draft_id>/discard': 'connection.use', 'v1/hub/drafts/<str:draft_id>/compose': 'connection.read',
+    'v1/hub/mail/attachment': 'connection.use',
     # -- kept disabled on purpose (they answer "disabled" to anyone signed in) ---------------------------------------------------------------------
     **{f'v1/{kind}{tail}': 'account.read' for kind in ('streams', 'memory', 'schedules') for tail in ('', '/<str:object_id>', '/<str:object_id>/<str:action>')},
 }

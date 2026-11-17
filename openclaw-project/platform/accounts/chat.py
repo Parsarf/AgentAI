@@ -82,7 +82,10 @@ def chat_restore(request, conversation_id):
         return JsonResponse({'error': 'conversation_conflict'}, status=409)
 
 
-@endpoint(['GET', 'POST'], ['project_id'], form='chat')
+PANEL_PROJECT = 'Assistant panel'
+
+
+@endpoint(['GET', 'POST'], ['project_id', 'place'], form='chat')
 def chat_conversations(request, conversation_id=None):
     denied = customer(request)
     if denied:
@@ -92,6 +95,14 @@ def chat_conversations(request, conversation_id=None):
         p = principal(request)
         if request.method == 'POST':
             project_id = request.input.get('project_id', '')
+            if not project_id and request.input.get('place') == 'assistant':
+                # The assistant panel's chats (roadmap #D5) are ordinary chats, kept in a project of their own so they do not crowd the chat list.
+                projects = s.projects(p)
+                found = next((x for x in projects if x['name'] == PANEL_PROJECT), None)
+                try:
+                    project_id = found['id'] if found else s.create_project(p, PANEL_PROJECT)['id']
+                except Conflict:
+                    project_id = ''                  # no room for another project: the chat goes where every new chat goes
             if not project_id:                       # a new chat needs no project choice: use the account's first one
                 projects = s.projects(p)
                 project_id = projects[0]['id'] if projects else ''

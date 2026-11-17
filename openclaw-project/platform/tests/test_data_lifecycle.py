@@ -198,7 +198,7 @@ class Deletion(Base):
             row = con.execute('SELECT * FROM account_jobs WHERE id=?', (job,)).fetchone()
         report = json.loads(row['report_json'])
         self.assertEqual((row['state'], report['verification']['clean'], report['verification']['found']), ('completed', True, {}))
-        self.assertEqual([s['step'] for s in json.loads(row['steps_json'])], ['stop_work', 'connections', 'custody', 'memory', 'model_key', 'cell', 'files', 'database', 'verification', 'confirmation', 'identity'])
+        self.assertEqual([s['step'] for s in json.loads(row['steps_json'])], ['stop_work', 'connections', 'custody', 'memory', 'knowledge', 'model_key', 'cell', 'files', 'database', 'verification', 'confirmation', 'identity'])
         left = {}
         with self.store.connect() as con:
             from agentai_platform.data_lifecycle import _tables_with_account

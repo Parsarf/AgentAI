@@ -344,10 +344,28 @@ def preview(made: Path, work: Path) -> Path | None:
         return None
 
 
+def parse_job(job: Path) -> int:
+    """A parse job (roadmap #31 to #34): parse.py, which sits beside this file in the image, reads the file into one structure."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('lumina_parse', Path(__file__).with_name('parse.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main(job)
+    try:
+        return 0 if json.loads((job / 'out' / 'result.json').read_text()).get('ok') else 1
+    except (OSError, ValueError):
+        return 1
+
+
 def main(job='/job'):
     job = Path(job)
     out_dir = job / 'out'
     result = {'ok': False, 'error': 'The conversion failed'}
+    try:
+        if json.loads((job / 'request.json').read_text()).get('op') == 'parse':
+            return parse_job(job)
+    except (OSError, ValueError):
+        pass
     try:
         request = json.loads((job / 'request.json').read_text())
         target, name = request.get('target'), request.get('source')

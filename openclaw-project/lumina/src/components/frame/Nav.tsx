@@ -21,7 +21,7 @@ export const PLACES: Place[] = [
   { to: '/chat', label: 'Chat', icon: I.Chat, group: 'main', also: ['/history'], key: 'c' },
   { to: '/inbox', label: 'Inbox', icon: I.Mail, group: 'work', feature: 'dashboard', key: 'i' },
   { to: '/calendar', label: 'Calendar', icon: I.Calendar, group: 'work', feature: 'dashboard', key: 'l' },
-  { to: '/files', label: 'Files', icon: I.Files, group: 'work', feature: 'files', key: 'f' },
+  { to: '/files', label: 'Files', icon: I.Files, group: 'work', feature: 'files', also: ['/knowledge'], key: 'f' },
   { to: '/activity', label: 'Activity', icon: I.Tasks, group: 'activity', also: ['/tasks', '/live', '/automations'], key: 'a' },
   { to: '/settings', label: 'Settings', icon: I.Gear, group: 'bottom', also: ['/integrations'], key: 's' },
 ];

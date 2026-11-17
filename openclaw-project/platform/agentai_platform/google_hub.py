@@ -23,8 +23,6 @@ import ssl
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from email.utils import getaddresses, parsedate_to_datetime
 from urllib.parse import quote, urlencode, urlsplit
@@ -61,7 +59,7 @@ DECLARATION = Declaration(
     implementation='first_party', reason='The dashboard needs incremental sync (a history id for mail, a sync token for calendars), which only the REST APIs offer.',
     hosts=HOSTS, freshness_seconds={'mailbox': 900, 'calendar': 900}, caps=Caps(pages=4, items=100, bytes=2_000_000, seconds=25.0),
     disclosure='Reads your mail and calendars. It cannot send, change or delete anything.',
-    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels'), several_accounts=True)
+    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True), several_accounts=True)
 
 # Gmail's system labels in the common set. Everything else is the customer's own label and is kept by its name.
 SYSTEM_LABELS = {'INBOX': 'inbox', 'SENT': 'sent', 'DRAFT': 'drafts', 'SPAM': 'spam', 'TRASH': 'trash', 'STARRED': 'starred', 'UNREAD': 'unread'}
@@ -72,11 +70,6 @@ RESPONSES = {'accepted': 'accepted', 'declined': 'declined', 'tentative': 'tenta
 
 
 # -- the network -----------------------------------------------------------------------------------------------------------------------------------------
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
 class _V4First(http.client.HTTPSConnection):
     """Connect over IPv4 when the host has an IPv4 address. Google's hosts list several IPv6 addresses first; on a server with no working IPv6 route every one of them is
     tried and waited for before IPv4 is, which made each request take about 25 seconds (measured on the production host, 2026-11-16). The certificate is still checked
@@ -92,24 +85,83 @@ class _V4First(http.client.HTTPSConnection):
         self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
 
 
-class _V4Handler(urllib.request.HTTPSHandler):
-    def https_open(self, req):
-        return self.do_open(_V4First, req, context=ssl.create_default_context())
+_TLS, _TLS_LOCK = [], threading.Lock()
+
+
+def _tls() -> ssl.SSLContext:
+    """One TLS context for the process. Building one loads the whole certificate store into OpenSSL; the sync used to build one for every header it read (tens of
+    thousands in a first fill). A context may be shared by threads without a lock once it is set up."""
+    with _TLS_LOCK:
+        if not _TLS:
+            _TLS.append(ssl.create_default_context())
+        return _TLS[0]
+
+
+class _Pool:
+    """Idle keep-alive connections to Google's hosts, shared by the threads that read headers. A connection is used by one request at a time; one that answered in full
+    goes back, anything else is closed. Before this, every read opened a new TLS connection (a handshake each) and closed it."""
+    def __init__(self, make, *, idle=8):
+        self.make, self.idle, self.free, self.lock = make, idle, {}, threading.Lock()
+
+    def take(self, host):
+        with self.lock:
+            free = self.free.get(host)
+            if free:
+                return free.pop(), True
+        return self.make(host), False
+
+    def give(self, host, con):
+        with self.lock:
+            free = self.free.setdefault(host, [])
+            if len(free) < self.idle:
+                free.append(con)
+                return
+        con.close()
+
+    def clear(self):
+        with self.lock:
+            free, self.free = self.free, {}
+        for cons in free.values():
+            for con in cons:
+                con.close()
+
+
+_POOL = _Pool(lambda host: _V4First(host, 443, timeout=20, context=_tls()))
+_STALE = (http.client.RemoteDisconnected, http.client.CannotSendRequest, http.client.BadStatusLine, BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
 
 
 def default_http(method, url, headers, data=None, timeout=20):
+    """One HTTPS request to Google: -> (status, headers, body). Redirects are not followed. A kept-alive connection that the other side has closed meanwhile is tried
+    again once on a new one, for reads only (a token request is never sent twice)."""
     parts = urlsplit(url)
     if parts.scheme != 'https' or parts.hostname not in HOSTS or parts.port not in (None, 443):
         raise ProviderError(0, 'host_not_allowed')
-    request = urllib.request.Request(url, data=data, method=method, headers=headers)
-    opener = urllib.request.build_opener(_NoRedirect(), _V4Handler())
-    try:
-        with opener.open(request, timeout=timeout) as answer:
-            return answer.status, dict(answer.headers), answer.read(MAX_ANSWER + 1)[:MAX_ANSWER]
-    except urllib.error.HTTPError as error:
-        return error.code, dict(error.headers or {}), error.read(200_000)
-    except (urllib.error.URLError, TimeoutError, OSError):
-        raise ProviderError(0, 'unreachable') from None
+    target = (parts.path or '/') + ('?' + parts.query if parts.query else '')
+    for attempt in (0, 1):
+        con, reused = _POOL.take(parts.hostname) if method == 'GET' else (_POOL.make(parts.hostname), False)
+        con.timeout = timeout
+        if con.sock is not None:
+            con.sock.settimeout(timeout)
+        try:
+            con.request(method, target, body=data, headers=dict(headers or {}))
+            answer = con.getresponse()
+            limit = MAX_ANSWER if answer.status < 400 else 200_000
+            raw = answer.read(limit + 1)
+            status, found = answer.status, dict(answer.headers)
+        except _STALE:
+            con.close()
+            if reused and attempt == 0:
+                continue
+            raise ProviderError(0, 'unreachable') from None
+        except (http.client.HTTPException, TimeoutError, OSError):
+            con.close()
+            raise ProviderError(0, 'unreachable') from None
+        if len(raw) <= limit and answer.isclosed() and not answer.will_close and method == 'GET':
+            _POOL.give(parts.hostname, con)
+        else:
+            con.close()
+        return status, found, raw[:limit]
+    raise ProviderError(0, 'unreachable')
 
 
 def _failure(status, headers, raw) -> ProviderError:
@@ -427,6 +479,23 @@ class GoogleAdapter:
 
     def mail_body(self, credential, message_id):
         return to_body(self._get(credential, f'{GMAIL}/messages/{quote(message_id, safe="")}', [('format', 'full')]))
+
+    def mail_attachment(self, credential, message_id, attachment_id) -> bytes:
+        """One attachment's bytes, read only (the knowledge pipeline reads it when the customer or their assistant opens it, #55)."""
+        found = self._get(credential, f'{GMAIL}/messages/{quote(message_id, safe="")}/attachments/{quote(attachment_id, safe="")}')
+        data = found.get('data') if isinstance(found, dict) else None
+        if not isinstance(data, str):
+            raise ProviderError(0, 'bad_answer')
+        try:
+            return base64.urlsafe_b64decode(data + '=' * (-len(data) % 4))
+        except (ValueError, TypeError):
+            raise ProviderError(0, 'bad_answer') from None
+
+    @staticmethod
+    def compose_link(to=(), cc=(), subject='', body='') -> str:
+        """Where the customer finishes and sends a Lumina draft themselves (#57): the provider's own compose screen, filled in. Nothing is created in the mailbox."""
+        fields = [('view', 'cm'), ('fs', '1'), ('to', ','.join(to)), ('cc', ','.join(cc)), ('su', subject), ('body', body[:6000])]
+        return 'https://mail.google.com/mail/?' + urlencode([(k, v) for k, v in fields if v])
 
     def mail_search(self, credential, query, labels, position, limit):
         """Mail of any age, searched by Gmail. With only some labels chosen, the search is held to them."""

@@ -62,6 +62,10 @@ EXPORT = (
     ('mail/messages.json', 'The copy of your connected mail that Lumina holds: who, subject, preview, and the text of messages that were opened', 'hub_messages'),
     ('calendar/calendars.json', 'Your connected calendars and how you set them up', 'hub_calendars'), ('calendar/events.json', 'The copy of your calendar events that Lumina holds', 'hub_events'),
     ('settings/mail_and_calendar.json', 'Your mail and calendar settings', 'hub_settings'),
+    ('mail/drafts.json', 'Mail drafts written in Lumina', 'hub_drafts'),
+    ('knowledge/sources.json', 'What is in your knowledge index: each source, where it came from and how it was read (the files themselves are in files/)', 'knowledge_sources'),
+    ('knowledge/commitments.json', 'Your decisions and commitments, and the ones suggested to you', 'commitments'),
+    ('memory/long_term_memory_history.json', 'What corrected memory notes said before', 'longterm_memory_history'),
     ('settings/spending_limits.json', 'Your spending limits', 'spend_limits'), ('settings/plan_settings.json', 'Per-plan settings', 'plan_settings'),
     ('usage/receipts.json', 'What each task cost', 'provider_receipts'), ('usage/usage.json', 'Usage entries', 'usage_entries'),
 )
@@ -70,6 +74,7 @@ NEVER_EXPORTED = {
     'event_streams': 'stream positions', 'events': 'the step-by-step timeline (kept 30 days; the results are in the chats)', 'chat_deliveries': 'delivery bookkeeping',
     'hub_threads': 'the list of threads (made from the messages in mail/messages.json)', 'hub_sync': 'sync bookkeeping',
     'tasks': 'bookkeeping (the tasks are in tasks/tasks.json)', 'task_reservations': 'budget bookkeeping', 'entitlements': 'plan bookkeeping',
+    'knowledge_checks': 'what the assistant checked during tasks (ids and fixed words, kept 90 days)',
 }
 # Deletion: rows of these tables stay. Everything else that has an `account_id` column goes.
 KEPT_AT_DELETION = ('accounts', 'memberships', 'audit_events', 'account_jobs', 'financial_records', 'billing_customers', 'billing_checkout_sessions', 'billing_subscriptions',
@@ -366,7 +371,7 @@ class AccountJobs:
         if self._still_running(account):
             return self._wait(job_id, 'running_tasks')
         # The stores outside the database, each with its adapter.
-        for name in ('connections', 'custody', 'memory', 'model_key', 'cell'):
+        for name in ('connections', 'custody', 'memory', 'knowledge', 'model_key', 'cell'):
             if self._done(job_id, name):
                 continue
             detail, ok = self._adapter(name, account)

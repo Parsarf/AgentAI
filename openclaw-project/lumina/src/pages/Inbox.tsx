@@ -10,10 +10,11 @@ import { useSelection, type Action, type Looking } from '../components/frame/Ass
 import { useSettings } from '../state/settings';
 import { useCommands } from '../components/frame/CommandBar';
 import MessageBody from '../components/hub/MessageBody';
+import DraftEditor, { type DraftStart } from '../components/hub/DraftEditor';
 import { usePulse } from '../components/hub/usePulse';
 import { api } from '../lib/api';
 import { browserZone, failed, fileSize, fullTime, hub, LABEL_WORDS, LIST_ORDER, listTime, people, personName, problemWords, threadKey, validZone,
-  type HubAccount, type Message, type Overview, type Thread } from '../lib/hub';
+  replySubject, type Draft, type HubAccount, type Message, type Overview, type Thread } from '../lib/hub';
 import { useData } from '../state/data';
 import '../styles/hub.css';
 
@@ -56,10 +57,18 @@ function MessageItem({ connection, message, zone, initiallyOpen, onSender }: { c
     </article>);
 }
 
+/** A reply to a thread: to whoever wrote its last message that was not from this account, with "Re:" once. */
+function replyTo(opened: Opened, own: string | undefined): DraftStart {
+  const mine = (own ?? '').toLowerCase();
+  const last = [...opened.messages].reverse().find(m => m.sender.address && m.sender.address.toLowerCase() !== mine) ?? opened.messages[opened.messages.length - 1];
+  return { account: opened.thread.connection_id, thread: opened.thread.id, to: last?.sender.address ? [last.sender.address] : [], subject: replySubject(opened.thread.subject || last?.subject || '') };
+}
+
 /** The Inbox: the mail of every connected account in one list. Context: accounts, mailboxes and filters. Canvas: the threads, newest first (only the rows in view are drawn,
  *  so a mailbox of any size scrolls smoothly). Inspector: the open thread, or the thread in place of the list in the full reading view. Read-only in this phase: nothing here
  *  sends, archives, labels or marks anything as read in the customer's mailbox, and the page says so where those controls would be. */
 const READING_KEY = 'lumina.inbox.reading';
+const LUMINA = 'lumina';                 // the "Written in Lumina" list: drafts kept in Lumina, across accounts
 const readReading = (): 'split' | 'full' => { try { return localStorage.getItem(READING_KEY) === 'full' ? 'full' : 'split'; } catch { return 'split'; } };
 
 export default function Inbox() {
@@ -71,6 +80,10 @@ export default function Inbox() {
   const [own, setOwn] = useState<{ connection_id: string; labels: { id: string; name: string; threads: number }[] }[]>([]);
   const [selected, setSelected] = useState<string | null>(null); const [opened, setOpened] = useState<Opened | null>(null); const [openErr, setOpenErr] = useState('');
   const [older, setOlder] = useState<Older | null>(null);
+  // Drafts kept in Lumina (#57): those of the open thread, the "Written in Lumina" list, and one opened on its own (a new message, not a reply).
+  const [threadDrafts, setThreadDrafts] = useState<Draft[]>([]); const [replying, setReplying] = useState<DraftStart | null>(null);
+  const [luminaDrafts, setLuminaDrafts] = useState<Draft[] | null>(null); const [openDraft, setOpenDraft] = useState<Draft | DraftStart | null>(null);
+  const wantedDraft = useRef<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(() => new Set()); const anchor = useRef<number | null>(null);
   const [reading, setReadingState] = useState<'split' | 'full'>(readReading);
   const setReading = (r: 'split' | 'full') => { setReadingState(r); try { localStorage.setItem(READING_KEY, r); } catch { /* private mode */ } };
@@ -109,7 +122,11 @@ export default function Inbox() {
     attachments: attachments || undefined, q: query || undefined, limit: 50 }), [label, providerLabel, chosen, shownAccounts, unread, attachments, query]);
   const filterKey = JSON.stringify(filters);
   const further = useRef(false); const [fresh, setFresh] = useState(false);
+  const loadDrafts = useCallback(async () => {
+    try { const r = await hub.drafts(); setLuminaDrafts(r.drafts); } catch (e) { setErr(failed(e)); setLuminaDrafts(prev => prev ?? []); }
+  }, []);
   const load = useCallback(async (cursor?: string) => {
+    if (label === LUMINA) { setThreads([]); setNext(null); void loadDrafts(); return; }
     if (filters.accounts && !filters.accounts.length) { setThreads([]); setNext(null); return; }
     const mine = ++request.current; setLoading(true);
     try {
@@ -119,11 +136,11 @@ export default function Inbox() {
     } catch (e) { if (mine === request.current) { setErr(failed(e)); setThreads(prev => prev ?? []); } }
     finally { if (mine === request.current) setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey]);
+  }, [filterKey, loadDrafts]);
   useEffect(() => { if (on) { setOlder(null); setPicked(new Set()); void load(); } }, [load, on]);
   // Live: when anything changed at the server, the accounts and the first page of the list are loaded again, quietly. New mail joins at the top while the rows the reader
   // is looking at stay where they are. If the customer has paged further down, the list is left as it is and a line offers the new mail instead.
-  usePulse(on, () => { void loadOverview(); if (further.current) setFresh(true); else void load(); });
+  usePulse(on, () => { void loadOverview(); if (further.current) setFresh(true); else void load(); void loadThreadDrafts(); });
 
   const fetchThread = useCallback(async (t: Thread) => {
     const k = threadKey(t); const known = cache.current.get(k); if (known) return known;
@@ -131,8 +148,13 @@ export default function Inbox() {
     return r;
   }, []);
   const shownThread = useRef<string | null>(null); const listRef = useRef<Thread[] | null>(null); listRef.current = threads;
+  const loadThreadDrafts = useCallback(async () => {
+    const k = shownThread.current; if (!k) { setThreadDrafts([]); return; }
+    const cut = k.indexOf('\u0000'); const [connection, id] = [k.slice(0, cut), k.slice(cut + 1)];      // a thread's key: its account and its id (threadKey)
+    try { const r = await hub.drafts(id); if (shownThread.current === k) setThreadDrafts(r.drafts.filter(d => d.account === connection)); } catch { /* the thread still shows */ }
+  }, []);
   const open = useCallback(async (t: Thread) => {
-    const k = threadKey(t); shownThread.current = k; setSelected(k); setOpenErr('');
+    const k = threadKey(t); shownThread.current = k; setSelected(k); setOpenErr(''); setOpenDraft(null); setReplying(null); setThreadDrafts([]); void loadThreadDrafts();
     setOpened(cache.current.get(k) ?? null);                             // known already (fetched ahead): shown at once, from its headers if nothing else
     let r: Opened;
     try { r = await fetchThread(t); } catch (e) { if (shownThread.current === k) setOpenErr(failed(e)); return; }
@@ -141,8 +163,8 @@ export default function Inbox() {
     // The next thread down is fetched ahead, so moving on with j shows it at once.
     const list = listRef.current ?? []; const at = list.findIndex(x => threadKey(x) === k);
     if (at > -1 && list[at + 1]) void fetchThread(list[at + 1]).catch(() => undefined);
-  }, [fetchThread]);
-  const close = () => { shownThread.current = null; setSelected(null); setOpened(null); setOpenErr(''); };
+  }, [fetchThread, loadThreadDrafts]);
+  const close = () => { shownThread.current = null; setSelected(null); setOpened(null); setOpenErr(''); setOpenDraft(null); setReplying(null); setThreadDrafts([]); };
 
   const refresh = async () => { try { await hub.refresh(); } catch (e) { setErr(failed(e)); } window.setTimeout(() => { void loadOverview(); void load(); }, 1500); };
   const toggle = (id: string) => setChosen(prev => { const base = new Set(prev ?? accounts.map(a => a.id)); if (base.has(id)) base.delete(id); else base.add(id); return base; });
@@ -184,7 +206,7 @@ export default function Inbox() {
     return () => window.removeEventListener('keydown', onKey);
   });   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const title = providerLabel ? providerLabel.name : LABEL_WORDS[label] ?? label;
+  const title = providerLabel ? providerLabel.name : label === LUMINA ? 'Written in Lumina' : LABEL_WORDS[label] ?? label;
   const openThread = opened && selected === threadKey(opened.thread) ? opened : null;
   const looking: Looking = openThread ? { kind: 'thread', connection: openThread.thread.connection_id, thread: openThread.thread.id } : { kind: 'mail', label, ...(query ? { query } : {}) };
   const lookingWords = openThread ? `the thread “${openThread.thread.subject || '(no subject)'}”` : `${title}${query ? `, searching “${query}”` : ''}`;
@@ -196,14 +218,17 @@ export default function Inbox() {
     { id: 'mail-reading', label: reading === 'full' ? 'Read threads beside the list' : 'Read threads in place of the list', run: () => setReading(reading === 'full' ? 'split' : 'full') },
     { id: 'mail-unread', label: unread ? 'Show all mail, read and unread' : 'Show unread mail only', run: () => setUnread(!unread) },
     { id: 'mail-search', label: 'Search mail', shortcut: 'mail-search', run: () => window.setTimeout(() => search.current?.focus(), 0) }] : []);
-  // Opened from the command bar: ?connection=&thread= opens that thread at once (its headers come with it).
-  const linked = useRef(false);
+  // Opened from the command bar or from a link in an answer: ?connection=&thread= opens that thread (its headers come with it), &draft= also opens that Lumina draft;
+  // ?connection=&draft= alone opens a draft that is not a reply. A new link while the page is open selects the new thread in place.
+  const linked = useRef('');
   useEffect(() => {
-    const id = params.get('thread'), connection = params.get('connection');
-    if (!on || linked.current || !id || !connection) return;
-    linked.current = true;
-    void open({ connection_id: connection, id, subject: '', snippet: '', people: [], last_epoch: 0, message_count: 0, unread: false, starred: false, has_attachments: false, labels: [], provider_labels: [] });
-  }, [on, params, open]);
+    const id = params.get('thread'), connection = params.get('connection'), draft = params.get('draft');
+    const key = `${connection}|${id}|${draft}`;
+    if (!on || linked.current === key || !connection || (!id && !draft)) return;
+    linked.current = key; wantedDraft.current = draft;
+    if (id) { void open({ connection_id: connection, id, subject: '', snippet: '', people: [], last_epoch: 0, message_count: 0, unread: false, starred: false, has_attachments: false, labels: [], provider_labels: [] }); return; }
+    hub.drafts().then(r => { const found = r.drafts.find(d => d.id === draft); if (found) { close(); setOpenDraft(found); setSelected('draft:' + found.id); } }).catch(e => setErr(failed(e)));
+  }, [on, params, open]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!on) return (
     <Workspace title="Inbox"><EmptyState title="Not available yet" action={<Link className="btn" to="/home">Back to Home</Link>}>The mail of your connected accounts in one place, with your assistant beside it.</EmptyState></Workspace>);
@@ -220,6 +245,8 @@ export default function Inbox() {
     <nav className="hub-labels" aria-label="Mailboxes">
       {LIST_ORDER.map(l => <button key={l} type="button" className="hub-label" aria-current={!providerLabel && label === l ? 'page' : undefined} onClick={() => { setProviderLabel(null); setLabel(l); }}>
         <span>{LABEL_WORDS[l]}</span>{l === 'inbox' && !!view?.counts.unread && <span className="badge accent" aria-label={`${view.counts.unread} unread`}>{view.counts.unread}</span>}</button>)}
+      <button type="button" className="hub-label" aria-current={!providerLabel && label === LUMINA ? 'page' : undefined} onClick={() => { setProviderLabel(null); setLabel(LUMINA); }}>
+        <span>Written in Lumina</span>{!!luminaDrafts?.length && <span className="faint small">{luminaDrafts.length}</span>}</button>
     </nav>
     <div className="hub-toggles">
       <label><input type="checkbox" checked={unread} onChange={e => setUnread(e.target.checked)} /> Unread only</label>
@@ -233,7 +260,7 @@ export default function Inbox() {
       </details>))}
   </div>;
 
-  const threadView = !selected ? null : <section className="hub-open" aria-label="Open thread">
+  const threadView = !selected || selected.startsWith('draft:') ? null : <section className="hub-open" aria-label="Open thread">
     <header className="hub-open-head">
       <button type="button" className="iconbtn small ghost hub-back" aria-label="Back to the list" onClick={close}><I.Chevron width={16} height={16} /></button>
       <div><h2>{(openThread?.thread ?? summaryOf)?.subject || '(no subject)'}</h2>
@@ -246,8 +273,40 @@ export default function Inbox() {
         {openThread.problem && <p className="notice warning" role="alert">{problemWords(openThread.problem)}</p>}
         <div className="hub-messages">{openThread.messages.map((m, i) => <MessageItem key={m.id} connection={openThread.thread.connection_id} message={m} zone={zone}
           initiallyOpen={i === openThread.messages.length - 1} onSender={allowSender} />)}</div>
+        <div className="hub-drafts" aria-label="Drafts for this thread">
+          {threadDrafts.map(d => <DraftEditor key={d.id} draft={d} accountLabel={byId[d.account]?.identity ?? 'this account'} canOpenInService={!!byId[d.account]?.capabilities.compose_link}
+            autoFocus={wantedDraft.current === d.id} onSaved={saved => setThreadDrafts(list => list.map(x => (x.id === saved.id ? saved : x)))}
+            onDiscarded={gone => setThreadDrafts(list => list.filter(x => x.id !== gone))} />)}
+          {replying && <DraftEditor start={replying} accountLabel={byId[replying.account]?.identity ?? 'this account'} canOpenInService={!!byId[replying.account]?.capabilities.compose_link} autoFocus
+            onSaved={saved => { setReplying(null); setThreadDrafts(list => [saved, ...list.filter(x => x.id !== saved.id)]); }} onDiscarded={() => setReplying(null)} />}
+          {!replying && <button type="button" className="btn small" onClick={() => setReplying(replyTo(openThread, byId[openThread.thread.connection_id]?.identity))}>Write a reply</button>}
+        </div>
       </>}
   </section>;
+
+  const draftView = openDraft && <section className="hub-open" aria-label="Draft">
+    <header className="hub-open-head">
+      <button type="button" className="iconbtn small ghost hub-back" aria-label="Back to the list" onClick={close}><I.Chevron width={16} height={16} /></button>
+      <div><h2>{('subject' in openDraft && openDraft.subject) || 'New message'}</h2><p className="faint small">{byId[openDraft.account]?.identity}</p></div>
+    </header>
+    <DraftEditor key={'id' in openDraft ? openDraft.id : 'new'} draft={'id' in openDraft ? openDraft : undefined} start={'id' in openDraft ? undefined : openDraft}
+      accountLabel={byId[openDraft.account]?.identity ?? 'this account'} canOpenInService={!!byId[openDraft.account]?.capabilities.compose_link} autoFocus
+      onSaved={saved => { setOpenDraft(saved); setSelected('draft:' + saved.id); void loadDrafts(); }} onDiscarded={() => { close(); void loadDrafts(); }} />
+  </section>;
+  const draftList = label === LUMINA && <div className="hub-pad">
+    <p className="faint small">Drafts you or your assistant wrote in Lumina. They are not in your mailbox: open one to edit it, copy it or open it in your mail service.</p>
+    {accounts.length > 0 && <button type="button" className="btn small" onClick={() => { close(); setOpenDraft({ account: accounts[0].id, thread: null, to: [], subject: '' }); setSelected('draft:new'); }}>New message</button>}
+    {luminaDrafts === null ? <div className="skeleton" style={{ height: 48 }} /> : !luminaDrafts.length ? <EmptyState>No drafts yet. Ask your assistant to draft a reply, or write one here.</EmptyState>
+      : <ul className="hub-threads" aria-label="Drafts">{luminaDrafts.map(d => <li key={d.id}>
+        <button type="button" className="hub-thread" aria-current={selected === 'draft:' + d.id ? 'true' : undefined} onClick={() => {
+          if (d.thread) { wantedDraft.current = d.id; void open({ connection_id: d.account, id: d.thread, subject: d.subject, snippet: '', people: [], last_epoch: d.updated_epoch, message_count: 0, unread: false, starred: false, has_attachments: false, labels: [], provider_labels: [] }); }
+          else { close(); setOpenDraft(d); setSelected('draft:' + d.id); } }}>
+          <span className="hub-thread-top"><span className="hub-thread-who">{d.to.join(', ') || 'No one yet'}</span><time className="faint small">{listTime(d.updated_epoch, zone, now)}</time></span>
+          <span className="hub-thread-subject">{d.subject || '(no subject)'}</span>
+          <span className="hub-thread-snippet faint">{d.origin === 'assistant' ? 'By your assistant · ' : ''}{d.body.slice(0, 140)}</span>
+          {accounts.length > 1 && <span className="hub-thread-marks faint small"><span className="hub-thread-account">{byId[d.account]?.identity}</span></span>}
+        </button></li>)}</ul>}
+  </div>;
 
   const notices = <div className="hub-notices">
     <p className="hub-readonly faint small">Read only for now: nothing here changes your mailbox, and opening a message does not mark it as read there.</p>
@@ -275,7 +334,7 @@ export default function Inbox() {
     </div>}
   </div>;
 
-  const list = view && !accounts.length ? (
+  const list = label === LUMINA ? draftList : view && !accounts.length ? (
     <EmptyState title="No mail account is connected" action={<AddAccount providers={view.providers ?? []} primary />}>Connect an account and choose what Lumina may read. It shows up here.</EmptyState>
   ) : threads === null ? <div className="hub-loading" role="status">{[0, 1, 2, 3, 4].map(n => <div key={n} className="skeleton" style={{ height: rowHeight - 16 }} />)}<span className="sr">Loading…</span></div>
     : !threads.length && !loading ? (
@@ -309,7 +368,8 @@ export default function Inbox() {
     <button type="button" className="iconbtn small ghost" aria-label="Refresh" title="Refresh" onClick={refresh}><I.Retry width={16} height={16} /></button>
   </>;
   return (
-    <Workspace title={title} fill tools={tools} context={context} contextLabel="Mail" inspector={reading === 'split' ? threadView : null} inspectorLabel="Open thread" onInspectorClose={close} className="hub-inbox">
-      <div className="wsp-body">{notices}{full ? <div className="hub-full">{threadView}</div> : <>{shownList}{list && olderPart}</>}</div>
+    <Workspace title={title} fill tools={tools} context={context} contextLabel="Mail" inspector={reading === 'split' ? (draftView || threadView) : null} inspectorLabel={draftView ? 'Draft' : 'Open thread'}
+      onInspectorClose={close} className="hub-inbox">
+      <div className="wsp-body">{notices}{full ? <div className="hub-full">{draftView || threadView}</div> : <>{shownList}{list && label !== LUMINA && olderPart}</>}</div>
     </Workspace>);
 }

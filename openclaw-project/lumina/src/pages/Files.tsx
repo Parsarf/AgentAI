@@ -177,6 +177,7 @@ export default function Files() {
   const tools = <>
     {cat?.uploads && <><input ref={picker} type="file" multiple hidden accept={UPLOAD_ACCEPT} aria-label="Choose files to upload" onChange={e => upload(e.target.files as unknown as FileList)} />
       <button className="btn small primary" disabled={busy || !activeProject} onClick={() => picker.current?.click()}><I.Up width={16} height={16} /> Upload</button></>}
+    {(app?.features.knowledge || app?.features.commitments) && <Link className="btn small" to="/knowledge">Sources</Link>}
     {(list?.files.length ?? 0) > 0 && <button className="btn small" disabled={busy} onClick={zip}>Download all (.zip)</button>}
     <div className="seg" role="group" aria-label="Show files as"><button type="button" className="seg-item" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button>
       <button type="button" className="seg-item" aria-pressed={view === 'grid'} onClick={() => setView('grid')}>Grid</button></div>

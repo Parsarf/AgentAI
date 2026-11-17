@@ -187,12 +187,14 @@ export default function CalendarPage() {
   useCommands(on ? [{ id: 'cal-later', label: `Go to the next ${unit}`, shortcut: 'cal-later', run: () => step(1) }, { id: 'cal-earlier', label: `Go to the previous ${unit}`, shortcut: 'cal-earlier', run: () => step(-1) },
     { id: 'cal-today', label: 'Go to today', shortcut: 'cal-today', run: () => { setFound(null); setAnchor(null); } },
     ...VIEWS.filter(v => v.id !== view).map(v => ({ id: `cal-${v.id}`, label: `Show the ${v.label.toLowerCase()} view`, run: () => { setFound(null); setView(v.id); } }))] : []);
-  // Opened from the command bar: ?connection=&calendar=&event= opens that event and shows its day.
-  const linked = useRef(false);
+  // Opened from the command bar or from a link in an answer: ?connection=&calendar=&event= opens that event and shows its day. A new link while the page is open selects
+  // the new event in place.
+  const linked = useRef('');
   useEffect(() => {
     const id = params.get('event'), connection = params.get('connection'), cal = params.get('calendar');
-    if (!on || linked.current || !id || !connection || !cal || !info) return;
-    linked.current = true;
+    const key = `${connection}|${cal}|${id}`;
+    if (!on || linked.current === key || !id || !connection || !cal || !info) return;
+    linked.current = key;
     hub.event(connection, cal, id).then(r => { setAnchor(dayKey(r.event.start_epoch, zone)); setSelected(eventKey(r.event)); setDetail(r.event); }).catch(e => setErr(failed(e)));
   }, [on, params, info, zone]);
   /** A day heading: click to open the day; drag across headings, or Shift with the arrow keys, to choose a range; the arrows alone move between headings. */

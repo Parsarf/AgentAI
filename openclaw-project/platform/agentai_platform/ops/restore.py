@@ -19,7 +19,8 @@ from .crypto import AgeCrypto
 
 # Backup wins on conflict; rows created after the backup are kept.
 RESTORE = ['projects', 'conversations', 'project_files', 'file_folders', 'file_places', 'artifacts', 'memory_entries', 'memory_terms', 'skills', 'skill_versions',
-           'ui_blocks', 'data_blocks', 'gen_artifact_state', 'card_images', 'signups', 'plan_revisions', 'plan_phase_runs', 'plan_proposals', 'plan_settings', 'watchers', 'schedules', 'schedule_runs', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts', 'saved_choices']
+           'ui_blocks', 'data_blocks', 'gen_artifact_state', 'card_images', 'signups', 'plan_revisions', 'plan_phase_runs', 'plan_proposals', 'plan_settings', 'watchers', 'schedules', 'schedule_runs', 'watcher_notifications', 'objectives', 'objective_checkpoints', 'objective_children', 'connector_drafts', 'saved_choices',
+           'commitments']
 # Live wins; only rows missing live are added (then neutralized).
 MERGE = ['browse_runs', 'browse_steps', 'browse_sessions', 'tasks', 'customer_requests', 'chat_messages', 'chat_deliveries', 'events', 'browser_profiles']
 # Append-only history: add what is missing, never change or remove anything.
@@ -46,7 +47,11 @@ LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships'
         'longterm_memories',    # what the assistant remembers about a customer: never brought back from a backup, so a deleted memory cannot return (the index is a separate store, so a restored ledger would not match it either)
         'safety_overrides', 'safety_access', 'mcp_connections', 'mcp_tool_choices', 'mcp_calls',   # safety switches and who may open the menu: only the owner changes them, never a restore (an old backup must not bring back an old "off")
         'location_requests',   # transient device coordinates, deleted once used: never brought back from a backup
-        'spend_limits']        # the customer's own spending limits: what they chose last stands (an old backup must not bring back a limit they removed, or remove one they set)
+        'spend_limits',        # the customer's own spending limits: what they chose last stands (an old backup must not bring back a limit they removed, or remove one they set)
+        # The knowledge index is DERIVED from the files and is rebuilt from them; a backup must never bring back a source the customer removed, or a share they took back.
+        # What the assistant checked belongs to tasks that already ended. Groups are who may see what, like memberships: what stands now stands. A corrected memory note's
+        # history and mail drafts follow their note and their connection, which are never restored either.
+        'knowledge_sources', 'knowledge_checks', 'organization_groups', 'organization_group_members', 'longterm_memory_history', 'hub_drafts']
 SCOPE = {**{t: 'restore' for t in RESTORE}, **{t: 'merge' for t in MERGE}, **{t: 'ledger' for t in LEDGER}, **{t: 'live' for t in LIVE}}
 NON_TERMINAL_TASK = ('queued', 'running', 'waiting_for_approval', 'paused')
 NON_TERMINAL_REQUEST = request_states.ACTIVE

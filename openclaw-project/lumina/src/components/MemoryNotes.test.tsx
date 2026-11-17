@@ -23,6 +23,15 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Settings → Memory', () => {
+  it('corrects a note by sending the new text and shows the old one is kept', async () => {
+    render(<MemoryNotes />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit note: Prefers aisle seats' }));
+    fireEvent.change(screen.getByLabelText('Corrected note: Prefers aisle seats'), { target: { value: 'Prefers window seats' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(posts().some(c => c[1] === `/v1/longterm-memory/${'a'.repeat(32)}/correct` && JSON.stringify(c[2]) === '{"content":"Prefers window seats"}')).toBe(true));
+    expect(await screen.findByText(/kept in its history/)).toBeTruthy();
+  });
+
   it('is not on the page when the server says it is not available', async () => {
     server = { available: false, memories: [] };
     const { container } = render(<MemoryNotes />);
