@@ -1,4 +1,5 @@
-import { memo, useRef, useState } from 'react';
+import { memo, useRef, useState, type ReactNode } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { useData } from '../../state/data';
 import { exportError, saveFrom, saveText, tableData, toCsv } from '../../lib/files';
 import '../files/files.css';
@@ -12,6 +13,28 @@ import { ChartCard, ComparisonCard, TableCard } from '../genui/Cards';
 import { isEmojiUrl, remarkEmoji } from '../../lib/emojify';
 import { EmojiImg } from '../Emoji';
 
+/** A link in an answer to one of Lumina's own pages (a cited thread, event or document): "/inbox?connection=…&thread=…", or the same address in full on this site. -> the
+ *  app path, or undefined for anything else. Opened inside the app; on the page it names, it selects the item in place. */
+const APP_PLACES = /^\/(inbox|calendar|knowledge|files|chat|activity|home|settings)(?=[/?#]|$)/;
+export function appLink(value: string): string | undefined {
+  let path = value.trim();
+  try {
+    if (/^https?:\/\//i.test(path)) {
+      const url = new URL(path);
+      if (typeof window === 'undefined' || url.origin !== window.location.origin || !url.pathname.startsWith('/app/')) return undefined;
+      path = url.pathname.slice(4) + url.search + url.hash;
+    }
+  } catch { return undefined; }
+  if (!path.startsWith('/') || path.startsWith('//') || /[\s\\]/.test(path) || !APP_PLACES.test(path)) return undefined;
+  return path;
+}
+function AnswerLink({ href, children }: { href?: string; children?: ReactNode }) {
+  const routed = useInRouterContext();
+  const inApp = href ? appLink(href) : undefined;
+  if (inApp) return routed ? <Link to={inApp} className="answer-cite">{children}</Link> : <a href={'/app' + inApp} className="answer-cite">{children}</a>;
+  const url = href && safeResponseUrl(href);
+  return url ? <a href={url} target="_blank" rel="noopener noreferrer">{children}<span className="sr"> (opens in a new tab)</span></a> : <span>{children}</span>;
+}
 export function safeResponseUrl(value: string): string | undefined {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
 }
@@ -43,7 +66,7 @@ function dataCard(value: string) {
   return <ComparisonCard spec={card.spec} />;
 }
 const COMPONENTS: Components = {
-    a: ({ href, children }) => { const url = href && safeResponseUrl(href); return url ? <a href={url} target="_blank" rel="noopener noreferrer">{children}<span className="sr"> (opens in a new tab)</span></a> : <span>{children}</span>; },
+    a: ({ href, children }) => <AnswerLink href={href}>{children}</AnswerLink>,
     p: ({ node, children }) => {
       // An emoji picture counts as the text it stands for, so a JSON card containing emoji is still recognised as one.
       const textOf = (c: NonNullable<typeof node>['children'][number]) => c.type === 'text' ? c.value

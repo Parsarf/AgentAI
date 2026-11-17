@@ -14,8 +14,19 @@ export interface Source {
 interface Overview { available: boolean; sources: Source[]; shared_with_me: Source[]; groups: { id: string; name: string }[] }
 export interface Commitment {
   id: string; kind: string; what: string; owner: string; due_epoch: number | null; due_zone: string; due_has_time: boolean; source_kind: string; origin: string; state: string; suggested: boolean;
-  source: { name?: string; label?: string } | null;
+  source: Record<string, string> | null;
 }
+
+/** Where a commitment came from, as an address in the app: the chat, the thread, the document at its passage, the event. */
+export function sourceLink(c: Pick<Commitment, 'source_kind' | 'source'>): string | null {
+  const s = c.source ?? {}; const q = (o: Record<string, string>) => new URLSearchParams(o).toString();
+  if (c.source_kind === 'conversation' && s.conversation) return `/chat/${encodeURIComponent(s.conversation)}`;
+  if (c.source_kind === 'email' && s.account && s.thread) return `/inbox?${q({ connection: s.account, thread: s.thread })}`;
+  if (c.source_kind === 'document' && s.source_id) return `/knowledge/${encodeURIComponent(s.source_id)}${s.passage_id ? `?${q({ passage: s.passage_id })}` : ''}`;
+  if (c.source_kind === 'meeting' && s.account && s.calendar && s.event) return `/calendar?${q({ connection: s.account, calendar: s.calendar, event: s.event })}`;
+  return null;
+}
+const SOURCE_WORDS: Record<string, string> = { conversation: 'the chat', email: 'the email', document: 'the document', meeting: 'the meeting' };
 
 const day = (epoch: number | null, zone: string) => {
   if (epoch == null) return '';
@@ -30,7 +41,7 @@ function SourceRow({ s, busy, act }: { s: Source; busy: boolean; act(path: strin
   return (
     <li className="file-item">
       <div className="file-item-row">
-        <div className="file-card-text"><b title={s.name}>{s.name}</b>
+        <div className="file-card-text">{s.state === 'ready' ? <Link to={`/knowledge/${encodeURIComponent(s.id)}`} title={s.name}><b>{s.name}</b></Link> : <b title={s.name}>{s.name}</b>}
           <span className="faint small">{sourceState(s)} · {humanSize(s.size_bytes)}{s.state === 'ready' && ` · ${s.passages} passages${s.pages ? ` on ${s.pages} pages` : ''}`}
             {s.tables > 0 && ` · ${s.tables} tables`}{s.charts > 0 && ` · ${s.charts} charts`}{s.scope === 'organization' && ' · shared with your organization'}{!s.own && ' · shared with you'}</span>
           {s.low_confidence && <span className="faint small">Some of this was read from a scan and may contain errors.</span>}
@@ -47,12 +58,13 @@ function SourceRow({ s, busy, act }: { s: Source; busy: boolean; act(path: strin
 }
 
 function CommitmentRow({ c, busy, change }: { c: Commitment; busy: boolean; change(id: string, state: string): void }) {
-  const from = c.source?.name || c.source?.label;
+  const link = sourceLink(c);
   return (
     <li className="file-item">
       <div className="file-item-row">
         <div className="file-card-text"><b>{c.what}</b>
-          <span className="faint small">{c.kind === 'decision' ? 'Decision' : 'Commitment'}{c.owner && ` · ${c.owner}`}{c.due_epoch != null && ` · due ${day(c.due_epoch, c.due_zone)}`}{from && ` · from ${from}`}</span>
+          <span className="faint small">{c.kind === 'decision' ? 'Decision' : 'Commitment'}{c.owner && ` · ${c.owner}`}{c.due_epoch != null && ` · due ${day(c.due_epoch, c.due_zone)}`}
+            {link && <> · <Link to={link}>Open {SOURCE_WORDS[c.source_kind] ?? 'its source'}</Link></>}</span>
           {c.suggested && <span className="faint small">Suggested from {c.source_kind}. It counts only once you confirm it.</span>}</div>
         <div className="file-item-actions">
           {c.suggested ? <>

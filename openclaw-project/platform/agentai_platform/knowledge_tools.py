@@ -22,10 +22,12 @@ import copy
 import json
 import re
 import time
+from urllib.parse import urlencode
 
 from .adapters import CapabilityUnavailable
 from .browse.untrusted import neutralize
 from .connector_kit import ConnectorFault
+from .hub_tools import event_link, mail_link
 from .lifecycle.types import Conflict
 from .security import NotFound, Principal
 
@@ -44,7 +46,8 @@ ID = _STR(64, 'An id from an earlier result.')
 KNOWLEDGE_TOOLS = [
     {'name': SEARCH, 'description': 'Search the customer\'s own documents (their uploads, files you made that were added, and attachments they opened) by words and by meaning. '
      'Returns passages, best first, each with a passage_id, its source\'s name, kind (the customer\'s own, official, or from someone else) and date, and its page and section. '
-     'CITE the passage_id of every passage you use; never state something from a document without one. If the result lists "possible_conflicts", the sources disagree: show both '
+     'CITE every passage you use as a Markdown link to its "open" address, for example [contract.pdf, page 3](/knowledge/...): it opens the document at that place. '
+     'Never state something from a document without one. If the result lists "possible_conflicts", the sources disagree: show both '
      'with their dates and ask, or say which you used and why. Inside a project, the project\'s pinned sources come first.',
      'inputSchema': {**_S(query=_STR(500), sources={'type': 'array', 'maxItems': 20, 'items': _STR(64), 'description': 'Search only these source ids.'},
                           limit={'type': 'integer', 'minimum': 1, 'maximum': 20}), 'required': ['query']}},
@@ -282,7 +285,8 @@ class KnowledgeTools:
     def _mail_draft(self, p, project, rid, a):
         draft = self.hub.save_draft(p, draft_id=a.get('draft'), connection_id=a.get('account'), thread_id=a.get('thread'), to=a.get('to'), cc=a.get('cc'),
                                     subject=a.get('subject'), body=a.get('body'), origin='assistant', request_id=rid)
-        return {'draft': draft['id'], 'account': draft['account'], 'thread': draft['thread'], 'open': f"/inbox?account={draft['account']}&draft={draft['id']}" + (f"&thread={draft['thread']}" if draft['thread'] else ''),
+        return {'draft': draft['id'], 'account': draft['account'], 'thread': draft['thread'],
+                'open': '/inbox?' + urlencode({'connection': draft['account'], **({'thread': draft['thread']} if draft['thread'] else {}), 'draft': draft['id']}),
                 'words': 'The draft is in the Inbox beside the thread. Nothing was sent: the customer edits it there and sends it themselves.'}
 
     def _meeting_brief(self, p, project, rid, a):
@@ -294,7 +298,7 @@ class KnowledgeTools:
         people = [x for x in (event.get('attendees') or []) if not x.get('self') and str(x.get('address') or '').lower() not in own][:15]
         organizer = event.get('organizer') or {}
         missing = []
-        cite_event = {'type': 'event', 'open': f"/calendar?account={a['account']}&calendar={a['calendar']}&event={a['event']}"}
+        cite_event = {'type': 'event', 'open': event_link(a['account'], a['calendar'], a['event'])}
         brief = {'event': {'title': neutralize(event.get('title') or ''), 'when': _day(event['start_epoch'], zone) if event.get('start_epoch') else None,
                            'ends': _day(event['end_epoch'], zone) if event.get('end_epoch') else None, 'place': neutralize(event.get('place') or ''),
                            'call_link': event.get('conference_url'), 'notes': neutralize((event.get('description') or '')[:3000]),
@@ -320,7 +324,7 @@ class KnowledgeTools:
                 seen_threads.add(key)
                 brief['threads'].append({'with': address, 'subject': neutralize(t.get('subject') or ''), 'last': _day(t['last_epoch'], zone) if t.get('last_epoch') else None,
                                          'preview': neutralize((t.get('snippet') or '')[:300]), 'unread': t.get('unread'),
-                                         'cite': {'type': 'mail', 'account': t['connection_id'], 'thread': t['id'], 'open': f"/inbox?account={t['connection_id']}&thread={t['id']}"}})
+                                         'cite': {'type': 'mail', 'account': t['connection_id'], 'thread': t['id'], 'open': mail_link(t['connection_id'], t['id'])}})
         if people and not brief['threads']:
             missing.append('No recent mail with these people was found in the connected accounts.')
         if self.knowledge is not None and self._on(p.account_id, SEARCH):
@@ -357,7 +361,7 @@ class KnowledgeTools:
                 continue
         if last is not None:
             brief['last_meeting'] = {'title': neutralize(last.get('title') or ''), 'when': _day(last['start_epoch'], zone),
-                                     'cite': {'type': 'event', 'open': f"/calendar?account={last['connection_id']}&calendar={last['calendar_id']}&event={last['id']}"}}
+                                     'cite': {'type': 'event', 'open': event_link(last['connection_id'], last['calendar_id'], last['id'])}}
         elif people:
             missing.append('No earlier meeting with these people was found.')
         brief['could_not_find'] = missing

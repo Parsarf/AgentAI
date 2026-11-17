@@ -712,7 +712,7 @@ class Dashboard(KnowledgeBase):
         self.assertEqual(brief['event']['title'], 'Contract review')
         self.assertEqual([p['address'] for p in brief['people']], ['ann@x.test'])          # the customer themselves is not "people to prepare for"
         self.assertEqual([t['subject'] for t in brief['threads']], ['Fees for the contract'])
-        self.assertTrue(brief['threads'][0]['cite']['open'].startswith('/inbox?account='))
+        self.assertTrue(brief['threads'][0]['cite']['open'].startswith('/inbox?connection='))      # the address the Inbox reads: it selects the thread
         self.assertEqual(brief['documents'][0]['source'], 'contract review notes.md')
         self.assertEqual([c['what'] for c in brief['commitments']], ['Send the redlined contract'])
         self.assertEqual(brief['last_meeting']['title'], 'Kick-off')

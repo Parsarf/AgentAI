@@ -114,8 +114,10 @@ class HubService:
                 coalesce(sum(state='paused'),0) AS paused FROM hub_sync WHERE account_id=?""", (principal.account_id,)).fetchone()
             accounts = con.execute("SELECT count(*) AS n,coalesce(sum(state!='connected'),0) AS needing FROM connector_connections WHERE account_id=? AND state!='revoked'",
                                    (principal.account_id,)).fetchone()
+            drafts = con.execute("SELECT count(*) AS n,coalesce(max(updated_epoch),0) AS changed FROM hub_drafts WHERE account_id=? AND state='draft'", (principal.account_id,)).fetchone()
         loading = row['parts'] - row['filled']
-        return {'mark': f"{row['changed']}.{row['items']}.{row['filled']}.{row['parts']}.{row['paused']}.{accounts['n']}.{accounts['needing']}", 'loading': loading > 0, 'items': row['items']}
+        return {'mark': f"{row['changed']}.{row['items']}.{row['filled']}.{row['parts']}.{row['paused']}.{accounts['n']}.{accounts['needing']}.{drafts['n']}.{drafts['changed']}",
+                'loading': loading > 0, 'items': row['items']}
 
     # -- what the customer has open, for a message sent from the dashboard ---------------------------------------------------------------------------
     def looking_at(self, principal, raw) -> dict | None:

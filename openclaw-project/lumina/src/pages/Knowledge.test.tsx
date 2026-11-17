@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import Knowledge, { type Commitment, type Source } from './Knowledge';
+import Knowledge, { sourceLink, type Commitment, type Source } from './Knowledge';
 
 let features: Record<string, boolean> = { knowledge: true, commitments: true };
 vi.mock('../state/data', () => ({ useData: () => ({ app: { features } }) }));
@@ -52,6 +52,17 @@ describe('Knowledge', () => {
     fireEvent.change(await screen.findByLabelText('What was decided or promised'), { target: { value: 'Call the bank' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => expect(calls.find(c => c.method === 'POST' && c.url === '/v1/commitments')?.body).toEqual({ what: 'Call the bank' }));
+  });
+
+  it('each commitment opens where it came from, and each ready source opens as a document', async () => {
+    expect(sourceLink({ source_kind: 'email', source: { account: 'c1', thread: 't 1' } })).toBe('/inbox?connection=c1&thread=t+1');
+    expect(sourceLink({ source_kind: 'document', source: { source_id: 's1', passage_id: 'p2' } })).toBe('/knowledge/s1?passage=p2');
+    expect(sourceLink({ source_kind: 'meeting', source: { account: 'c1', calendar: 'k', event: 'e' } })).toBe('/calendar?connection=c1&calendar=k&event=e');
+    expect(sourceLink({ source_kind: 'conversation', source: { conversation: 'c9' } })).toBe('/chat/c9');
+    expect(sourceLink({ source_kind: 'customer', source: {} })).toBeNull();
+    server([source()], [item({ source_kind: 'email', source: { account: 'c1', thread: 't1' } })]); show();
+    expect((await screen.findByRole('link', { name: 'contract.pdf' })).getAttribute('href')).toBe('/knowledge/s1');
+    expect(screen.getByRole('link', { name: 'Open the email' }).getAttribute('href')).toBe('/inbox?connection=c1&thread=t1');
   });
 
   it('says so when both features are off', () => {
