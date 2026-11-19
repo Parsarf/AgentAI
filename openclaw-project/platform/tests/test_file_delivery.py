@@ -4,6 +4,7 @@ import io
 import json
 import os
 import socket
+import stat
 import subprocess
 import tempfile
 import threading
@@ -234,6 +235,28 @@ class RenderServiceChecks(unittest.TestCase):
         self.assertEqual(out, {'data': b'%PDF-1.7 made', 'preview': JPEG, 'pages': 3})
         self.assertEqual(docker.seen, {'request': {'source': 'report.md', 'target': 'pdf', 'preview': True}, 'in': {'report.md': b'# Hi', 'img/logo.png': b'\x89PNG'}})
         self.assertEqual(list(self.jobs.iterdir()), [])                                  # the job folder is gone
+
+    def test_the_container_user_can_read_its_input_under_the_services_umask(self):
+        # agentai-render.service runs with UMask=0077: mkdir(mode=0o755) alone gives 0700, which the container user (not root) cannot enter. On 2026-11-19 every
+        # live parse and conversion failed that way; the job's folders and files must carry their modes explicitly.
+        modes = {}
+
+        def docker(argv, **kwargs):
+            folder = Path(next(a for a in argv if a.endswith(':/job/out:rw')).split(':')[0]).parent
+            modes.update({str(p.relative_to(folder)): stat.S_IMODE(p.stat().st_mode) for p in [folder, *folder.rglob('*')] if p.name != 'out'})
+            (folder / 'out' / 'result.json').write_text(json.dumps({'ok': False, 'error': 'stop here'}))
+            return subprocess.CompletedProcess(argv, 0)
+        old = os.umask(0o077)
+        try:
+            with self.assertRaises(RenderError):
+                self.service(docker).convert('report.md', 'pdf', {'report.md': b'# Hi', 'img/logos/logo.png': b'\x89PNG'})
+            converted, modes = dict(modes), {}
+            with self.assertRaises(RenderError):
+                self.service(docker).parse('scan.pdf', b'%PDF-1.7')
+        finally:
+            os.umask(old)
+        self.assertEqual(converted, {'.': 0o711, 'in': 0o755, 'in/img': 0o755, 'in/img/logos': 0o755, 'in/report.md': 0o644, 'in/img/logos/logo.png': 0o644, 'request.json': 0o644})
+        self.assertEqual(modes, {'.': 0o711, 'in': 0o755, 'in/scan.pdf': 0o644, 'request.json': 0o644})
 
     def test_failures_are_short_reasons_and_nothing_the_container_wrote_is_trusted(self):
         cases = [

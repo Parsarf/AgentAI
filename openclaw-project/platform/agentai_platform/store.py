@@ -51,12 +51,16 @@ class Store:
                 except Exception:
                     con.execute("ROLLBACK");raise
 
-    def ready(self) -> bool:
+    def ready(self, deep: bool = True) -> bool:
+        """The schema is exactly the migrations and foreign keys are on; with `deep`, also the integrity scans (quick_check, foreign_key_check), which read the
+        whole database (about 0.4 s of CPU for 150 MB on the production host)."""
         try:
             with self.connect() as con:
                 applied={row["version"]:row["checksum"] for row in con.execute("SELECT version,checksum FROM schema_migrations")}
                 expected={f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in MIGRATIONS.glob("*.sql")}
-                return bool(expected) and applied==expected and con.execute("PRAGMA foreign_keys").fetchone()[0]==1 and con.execute("PRAGMA quick_check").fetchone()[0]=="ok" and not con.execute("PRAGMA foreign_key_check").fetchall()
+                if not (bool(expected) and applied==expected and con.execute("PRAGMA foreign_keys").fetchone()[0]==1):
+                    return False
+                return not deep or (con.execute("PRAGMA quick_check").fetchone()[0]=="ok" and not con.execute("PRAGMA foreign_key_check").fetchall())
         except (sqlite3.Error,OSError): return False
 
     def _authorize(self, con, principal: Principal):

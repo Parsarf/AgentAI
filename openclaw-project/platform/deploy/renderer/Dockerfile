@@ -3,8 +3,8 @@
 # One container per job, started by agentai-render.service with: no network, read-only root, no capabilities, a non-root user.
 # Build from the platform folder, into the CELL engine (it has its own image store):
 #   DOCKER_HOST=<cell engine socket> docker build -f deploy/renderer/Dockerfile -t lumina-renderer:2 .
-# Pin the base by digest before the first production build and record it in runtime.lock.json.
-FROM debian:bookworm-slim
+# The base is pinned by digest (recorded in runtime.lock.json "images"; first production build 2026-11-19).
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \

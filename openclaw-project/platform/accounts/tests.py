@@ -368,3 +368,29 @@ class AccountBoundaryTests(TestCase):
         with override_settings(EMAIL_BACKEND='django.core.mail.backends.smtp.EmailBackend'),patch('accounts.management.commands.deliver_account_mail.deliver') as delivery:
             call_command('deliver_account_mail',stdout=io.StringIO());delivery.assert_not_called()
         job.refresh_from_db();self.assertEqual(job.state,'failed')
+
+
+class ReadinessSchedule(TestCase):
+    """/readyz is public and unmetered: the integrity scans read the whole database (0.4 s of CPU on production, 1.8 s under the app's CPU limit), so they run on a
+    process's first call and then at most every five minutes, and on every call while one failed. The schema check runs every time."""
+    def test_the_whole_database_is_scanned_on_the_first_call_then_at_most_every_five_minutes(self):
+        from . import views
+        from agentai_platform.store import Store
+        seen, answers = [], []
+        def ready(store, deep=True):                                          # the test database is not the migrated platform file: the answer is the test's
+            seen.append(deep)
+            return answers.pop(0) if answers else True
+        clock = {'now': 1000.0}
+        with patch.dict(views._DEEP_READY, {'at': None, 'ok': False}), patch.object(Store, 'ready', ready), patch.object(views.time, 'monotonic', lambda: clock['now']):
+            c = Client()
+            for _ in range(3):
+                self.assertEqual(c.get('/readyz', secure=True).status_code, 200)
+            self.assertEqual(seen, [True, False, False])
+            clock['now'] += views.DEEP_READY_SECONDS
+            c.get('/readyz', secure=True)
+            self.assertEqual(seen[-1], True)
+            answers.append(False)                                             # a scan that fails...
+            clock['now'] += views.DEEP_READY_SECONDS
+            self.assertEqual(c.get('/readyz', secure=True).status_code, 503)
+            c.get('/readyz', secure=True)
+            self.assertEqual(seen[-2:], [True, True])                         # ...is repeated on the next call, not cached

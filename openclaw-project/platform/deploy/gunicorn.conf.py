@@ -1,5 +1,9 @@
+import os
 bind='127.0.0.1:18800'
-workers=1
+# The worker count comes from the unit (agentai-platform-app.service sets AGENTAI_APP_WORKERS beside the memory and CPU limits sized for it), so a release
+# never starts more workers than its unit has room for. One worker served the whole web app one request at a time: the Inbox's first calls queued behind
+# each other (2026-11-19). Sync workers share the SQLite file in WAL mode like every other process of the platform.
+workers=max(1, min(8, int(os.environ.get('AGENTAI_APP_WORKERS') or 1)))
 worker_class='sync'
 threads=1
 timeout=15

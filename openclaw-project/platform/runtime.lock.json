@@ -40,5 +40,13 @@
   "http": "Gunicorn WSGI app; loopback TLS proxy required. Stdlib control remains disabled/private.",
   "local_sqlite_verified": "3.53.4",
   "server_sqlite_observed": "3.45.1",
-  "identity": "Django database sessions/password authentication + django-otp confirmed TOTP operator MFA"
+  "identity": "Django database sessions/password authentication + django-otp confirmed TOTP operator MFA",
+  "images": {
+    "_about": "Container images Lumina runs beside the app, pinned by digest (read back from the server on 2026-11-19). Rebuild or re-pull only on purpose, then update this list.",
+    "knowledge-db": "pgvector/pgvector@sha256:7d0a41464797aeb9862dfdc0bbf1526b82cfd324cdd8036df19e3545f4a9ccb8",
+    "embeddings": "ghcr.io/huggingface/text-embeddings-inference@sha256:8de25e75ce39617f17f2f6c77d60a4f75b65e779ed5005420eb1400072a15c1c",
+    "embedding-model": "intfloat/multilingual-e5-small (downloaded once by deploy/knowledge/install.sh into the agentai-embeddings-models volume; runs with HF_HUB_OFFLINE=1)",
+    "renderer-base": "debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc",
+    "renderer": "lumina-renderer:2, built into the cell engine from deploy/renderer/Dockerfile on that base (image id sha256:fe8c09db18cdefb09dfa9101af0c1055c0d20e0905313257abcd37c1d4d2f2c7)"
+  }
 }

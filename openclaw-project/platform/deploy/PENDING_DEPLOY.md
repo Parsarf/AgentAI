@@ -111,23 +111,26 @@ The cause of the growth during a fill is not found yet: the request path alone l
 **Fixed by PR #60 (release `7a73420`):** the service builds its services once, reuses one TLS context and kept-alive connections, and starts afresh at `AGENTAI_HUB_SYNC_RECYCLE_MB` (600) before the kernel would kill it; nothing to install (the unit is unchanged). Before it, **(read on the server 2026-11-16, release `9b01cf1`):** the service is still killed at its 1 GB cap during the first fill and restarts in 5 s with its progress kept
 (64 restarts since it was last started, 30 out-of-memory lines in the journal in the last three hours). The fill advances between kills; the growth is not found.
 
-## Roadmap Phase 4: customer knowledge (merged and deployed in `7a73420`, PR #60; the host steps below are NOT done)
+## Roadmap Phase 4: customer knowledge (code in `7a73420`, PR #60; host install done 2026-11-19; finishing release on branch `phase-4-5-finish`)
 
-Everything is behind the owner switch `customer_knowledge` (off; it refuses to turn on until the steps below are done and recorded). Status: `plans/product/roadmap/phase-04.md`.
+**Done on the server on 2026-11-19 (before the finishing release):**
+- `deploy/knowledge/install.sh` ran as root: `agentai-knowledge-db` (PostgreSQL 17 with the vector extension, 127.0.0.1:5433, own volume and password) and `agentai-embeddings`
+  (text-embeddings-inference on CPU, `intfloat/multilingual-e5-small`, 127.0.0.1:8890, answers with 384 dimensions) run; `index.url` and `model-key` are in
+  `/var/lib/agentai-platform/knowledge/` (0600, the app user); image digests in `/etc/agentai-knowledge/image-digests` and `runtime.lock.json` `images`.
+- `lumina-renderer:2` built into the cell engine from `deploy/renderer/Dockerfile` (base pinned by digest); `agentai-render.service` and `agentai-knowledge.service`
+  installed and enabled; the tool relay unit reinstalled (512M; the installed copy differed only in that and in `After=`); `accounts.env` (backup `.bak-20261119`) gained
+  `AGENTAI_RENDER_SOCKET`, `AGENTAI_KNOWLEDGE_INDEX_FILE`, `AGENTAI_EMBEDDINGS_URL`, `AGENTAI_KNOWLEDGE_MODEL_KEY_FILE`; app, tool relay, request worker and cell bridge restarted.
+- The first live proof found that **every parse and every conversion failed**: the render service runs with `UMask=0077`, so the job's `in/` folder was 0700 and the
+  container user could not open the file. Fixed in the finishing release (`render/service.py` `_write_input`, test `test_the_container_user_can_read_its_input_under_the_services_umask`).
 
-1. **Migration 0050** only adds tables (`knowledge_*`, `commitments`, `organization_groups`, memory history). The previous release ignores them.
-2. **The index and the embedding server**: run `platform/deploy/knowledge/install.sh` as root. It starts `agentai-knowledge-db` (PostgreSQL 17 with the vector extension on
-   127.0.0.1:5433, its own volume and password, not Hindsight's) and `agentai-embeddings` (text-embeddings-inference on CPU with `intfloat/multilingual-e5-small` on
-   127.0.0.1:8890), writes `/var/lib/agentai-platform/knowledge/index.url` and a model key used only to read pages that have no text. It never prints a secret. Then record the
-   fact `knowledge_index_installed`.
-3. **The render service with reader image 2** (`deploy/RENDERER.md`, "Install (once)"): documents are parsed in its sealed container. It has **never been installed** on
-   this server (read 2026-11-16: no unit, no `AGENTAI_RENDER_SOCKET`), so file conversions are off today too: build `lumina-renderer:2` into the cell engine, install and
-   enable `agentai-render.service`, add `AGENTAI_RENDER_SOCKET=/run/agentai-render/render.sock` to `accounts.env`, reinstall the tool relay unit, restart the four services
-   RENDERER.md names. Record `render_service_running` once it runs.
-4. **The worker**: install `platform/deploy/agentai-knowledge.service`, `systemctl enable --now agentai-knowledge.service`, record `knowledge_worker_running`.
-5. **Privacy before the switch**: the policy must name the knowledge index, the parsed text, the search vectors kept on the server, and the model provider reading pages that
-   have no text and pictures that may be charts. `privacy/facts.json` and the public page are **not** changed yet (`tests/test_privacy_policy.py` fails on that, as it already
-   did on `main` for the mail and calendar copy). Then the two confirmations of the switch: `vision_understood`, `policy_published`.
-6. `customer_uploads` stays off until the owner turns it on; the knowledge index reads uploads only once uploads exist.
-7. **Prove it** with `deploy/phase45_live.py` (its docstring has the command). It needs steps 2 to 4, not the switches: the features are on inside that process only, for
-   the two disposable accounts it makes and offboards.
+**With the finishing release (after the deploy):**
+1. Install the resized app unit: `cp /opt/agentai-platform/current/deploy/agentai-platform-app.service /etc/systemd/system/ && systemctl daemon-reload && systemctl restart
+   agentai-platform-app`. It sets `AGENTAI_APP_WORKERS=3` with `MemoryMax=512M` and `CPUQuota=200%` (was one worker under 128M and 25% of one CPU: the Inbox's first call took
+   294 ms of which 223 ms was waiting for the CPU limit). Without the new unit the release runs one worker, as before.
+2. Run `deploy/phase45_live.py` (its docstring has the command); every gate must pass.
+3. The policy is published by this merge (Vercel builds `main`). Then record the facts `knowledge_index_installed`, `render_service_running`, `knowledge_worker_running`, add
+   `AGENTAI_UPLOADS_ENABLED=1` to `accounts.env` and record `uploads_host_ready`, record the confirmations (`scan_understood`, `vision_understood`, `policy_published`) and turn
+   `customer_uploads` and `customer_knowledge` on (the owner's choice of 2026-11-19: on for every account).
+4. Phase 5 gate 1: the owner connects a second Google account; run the read-only suite with both.
+
+Migration 0051 only adds an index (`hub_threads_unread`). `/readyz` now runs the whole-database scans on a process's first call and then at most every five minutes.

@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from functools import wraps
 from django.conf import settings
@@ -105,10 +106,19 @@ def customer(request):
 @endpoint(['GET'])
 def health(request): return JsonResponse({'status':'ok','service':'accounts'})
 
+_DEEP_READY = {'at': None, 'ok': False}
+DEEP_READY_SECONDS = 300
+
 @endpoint(['GET'])
 def ready(request):
+    """/readyz is public and unmetered. The schema check runs on every call; the integrity scans read the whole database, so they run on a process's first call
+    (what the deploy probes and the live acceptance hit, on a fresh release) and again at most every DEEP_READY_SECONDS, or on every call while one failed."""
     from agentai_platform.store import Store
-    foundation=Store(settings.DATABASES['default']['NAME']).ready()
+    now = time.monotonic()
+    deep = not _DEEP_READY['ok'] or _DEEP_READY['at'] is None or now - _DEEP_READY['at'] >= DEEP_READY_SECONDS
+    foundation=Store(settings.DATABASES['default']['NAME']).ready(deep=deep)
+    if deep:
+        _DEEP_READY.update(at=now, ok=foundation)
     try: Identity.objects.exists(); identity=True
     except DatabaseError: identity=False
     return JsonResponse({'foundation_ready':foundation,'identity_ready':identity,'customer_ready':False,

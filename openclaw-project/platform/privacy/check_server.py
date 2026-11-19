@@ -77,8 +77,12 @@ def evaluate(state, facts=FACTS, today=None):
           + (f' (the 30-day promise runs out {s["known_gap"].split("until ")[-1].strip(".")})' if 'until ' in s.get('known_gap', '') else ''))
     check('FAIL', state.get('model_providers') == s['model_providers'], f'every model goes to {", ".join(s["model_providers"])} (the policy names it)',
           f'the models now route to {state.get("model_providers")!r} but the policy and record say {s["model_providers"]!r}: a new company would receive chat content, so update the policy first')
-    for key, label in (('uploads_on', 'file uploads'), ('telegram_configured', 'Telegram linking'), ('connectors_on', 'Google connectors')):
-        check('FAIL', not state.get(key), f'{label} is off, so the policy rightly says nothing about it', f'{label} is ON but the policy does not cover it: update the policy first')
+    silent = s.get('features_off_so_policy_is_silent_on_them', [])
+    for key, label, fact in (('uploads_on', 'file uploads', 'file_uploads'), ('telegram_configured', 'Telegram linking', 'telegram_linking'), ('connectors_on', 'Google connectors', 'google_connectors')):
+        if fact in silent:      # the policy says nothing about it, so it must be off
+            check('FAIL', not state.get(key), f'{label} is off, so the policy rightly says nothing about it', f'{label} is ON but the policy does not cover it: update the policy first')
+        else:                   # the policy describes it (the record no longer lists it as silent), so on or off are both true
+            check('FAIL', True, f'{label} is {"on" if state.get(key) else "off"} and the policy describes it', '')
     check('WARN', bool(state.get('retention_job_scheduled')) == bool(r['scheduled_retention_jobs']), 'the retention job schedule matches the record',
           'the retention job (accounts/.../retention_accounts.py) is ' + ('scheduled' if state.get('retention_job_scheduled') else 'not scheduled') + ' on the server but the record says otherwise: the retention table in the policy may need to change')
     return results

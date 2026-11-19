@@ -145,10 +145,20 @@ class ServerCheck(unittest.TestCase):
         self.assertEqual(self.worst(), 'PASS')
 
     def test_each_promise_fails_on_its_own(self):
+        silent = FACTS['server']['features_off_so_policy_is_silent_on_them']
+        features = {'uploads on': ('file_uploads', {'uploads_on': True}), 'telegram on': ('telegram_linking', {'telegram_configured': True}), 'connectors on': ('google_connectors', {'connectors_on': True})}
         for what, change in {'logs kept longer': {'journald_max_retention': 'infinity'}, 'logs not capped': {'journald_max_retention': None}, 'no backups': {'timers': []},
                              'old encrypted backup': {'encrypted_backups': {'count': 20, 'oldest_days': 31}}, 'old plaintext copy': {'plaintext_snapshots': {'count': 3, 'oldest_days': 31}},
-                             'a second model company': {'model_providers': ['anthropic', 'openai']}, 'models unreadable': {'model_providers': None}, 'uploads on': {'uploads_on': True}, 'telegram on': {'telegram_configured': True}, 'connectors on': {'connectors_on': True}}.items():
+                             'a second model company': {'model_providers': ['anthropic', 'openai']}, 'models unreadable': {'model_providers': None},
+                             **{w: c for w, (fact, c) in features.items() if fact in silent}}.items():
             self.assertEqual(self.worst(**change), 'FAIL', what)
+
+    def test_a_feature_the_policy_describes_may_be_on_or_off(self):
+        # A feature leaves features_off_so_policy_is_silent_on_them when the published policy describes it: from then on the server may have it on.
+        facts = json.loads(json.dumps(FACTS)); facts['server']['features_off_so_policy_is_silent_on_them'] = ['telegram_linking']
+        for state in ({'uploads_on': True}, {'uploads_on': False}, {'connectors_on': True}):
+            self.assertNotIn('FAIL', [l for l, _ in check_server.evaluate({**self.GOOD, **state}, facts)], state)
+        self.assertIn('FAIL', [l for l, _ in check_server.evaluate({**self.GOOD, 'telegram_configured': True}, facts)])
 
     def test_too_many_copies_or_a_retention_job_that_does_not_match_the_record_is_a_warning_not_a_failure(self):
         self.assertEqual(self.worst(plaintext_snapshots={'count': 38, 'oldest_days': 19}), 'WARN')

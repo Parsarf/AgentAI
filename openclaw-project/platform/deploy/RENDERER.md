@@ -18,7 +18,8 @@ The job folder (`/var/lib/agentai-render/jobs/<id>`) is removed when the job end
 
 1. Build the image into the **cell engine** (it has its own image store), from the platform folder of the release:
    `DOCKER_HOST=<cell engine socket> docker build -f deploy/renderer/Dockerfile -t lumina-renderer:2 .`
-   Pin the Debian base by digest first and record it in `runtime.lock.json`.
+   The Debian base is pinned by digest in the Dockerfile and recorded in `runtime.lock.json` `images`. **Installed on production 2026-11-19**
+   (cell engine socket `unix:///run/agentai-cells/docker.sock`, from `fleet_custody` in the wiring file).
 2. Install the unit: copy `deploy/agentai-render.service` to `/etc/systemd/system/`, then `systemctl daemon-reload && systemctl enable --now agentai-render`.
    It reads the cell engine socket from the same wiring file as the browse service.
 3. Tell the app: add `AGENTAI_RENDER_SOCKET=/run/agentai-render/render.sock` to `/etc/agentai-platform/accounts.env`.
@@ -43,5 +44,6 @@ The job folder (`/var/lib/agentai-render/jobs/<id>`) is removed when the job end
 | "The converter is not available" | The image name is wrong or was built into the host engine instead of the cell engine |
 | "The conversion took too long" | The 150 second limit; very large spreadsheets or documents |
 | Text shows as boxes | A script the image has no font for: add the font package to the Dockerfile and rebuild |
+| Every file "could not be read" or "the conversion failed" within a second | The container user cannot open its input. The service runs with `UMask=0077`; job folders must get their modes explicitly (`render/service.py` `_write_input`; fixed 2026-11-19) |
 
 To switch it off: remove `AGENTAI_RENDER_SOCKET` and restart the app and the tool relay. Nothing else depends on it.
