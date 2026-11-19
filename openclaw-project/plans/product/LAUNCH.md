@@ -1,6 +1,6 @@
 # Launch readiness (Lumina, getlumina.pro)
 
-Status as of 2026-11-16. Production runs `main` (deployed by `.github/workflows/deploy.yml`; the server's `/var/lib/agentai-deploy/last` is the commit). Merge to `main` deploys the website through Vercel.
+Status as of 2026-11-19. Production runs `main` (deployed by `.github/workflows/deploy.yml`; the server's `/var/lib/agentai-deploy/last` is the commit). Merge to `main` deploys the website through Vercel.
 
 ## Done and live
 Sign-in and accounts, isolated per-customer assistants, chat with history, plans and forms, data cards, web search, files, Activity window, browser tasks (switch ON), JEV routing (switch ON, record-only), serial task queue, budget caps ($79/mo, $25 included, $5 task cap, 7-day $1 trial, no auto overage), nightly backups on the server, monitor every 5 minutes.
@@ -16,15 +16,15 @@ Each needs an account, a credential or a decision only the owner has. What the c
 | 4 | **Stripe** | Not done: needs the owner's Stripe account. Billing is built and tested in test mode. | Owner: create the account and products, give the keys, then turn on `billing_checkout`; run one real payment and one refund. |
 | 5 | **Legal pages** | The privacy policy exists and is kept true by `privacy/` (see its README). Terms and refund policy are not written. | Owner: provide or approve the text; the app already links to the pages. |
 | 6 | **Search key** | Every assistant uses the owner's Brave key. | Owner: create a dedicated key with a spend alert and put it in the search key file (`platform/deploy/accounts.env.example`). |
-| 7 | **Google (Mail and Calendar)** | **Live 2026-11-16, read only, switch `mail_calendar_dashboard` ON for every account.** Proven with the owner's own account only. GitHub and Drive connectors: built, off. | Owner: (a) publish the policy text for the copy (`platform/privacy/proposed/`); (b) a sign-in client of a Lumina Google project (today's client belongs to ManagerAI, whose name the consent screen shows); (c) Google's verification for the restricted `gmail.readonly` scope: OAuth verification plus a CASA security assessment, renewed yearly, which takes weeks; until then only listed test users can connect. |
+| 7 | **Google (Mail and Calendar)** | **Live since 2026-11-16, read only, switch `mail_calendar_dashboard` ON for every account; the policy describing the copy was published on 2026-11-19.** Proven with the owner's own account; the two-account gate is `deploy/phase5_live.py`. GitHub and Drive connectors: built, off. | Owner: (a) done; (b) a sign-in client of a Lumina Google project (today's client belongs to ManagerAI, whose name the consent screen shows); (c) Google's verification for the restricted `gmail.readonly` scope: OAuth verification plus a CASA security assessment, renewed yearly, which takes weeks; until then only listed test users can connect. |
 | 8 | **Support** | Not set up. | Owner: a support email address and who answers it. |
 
-## The launch line: roadmap Phase 4 and 5 (state on 2026-11-16)
+## The launch line: roadmap Phase 4 and 5 (state on 2026-11-19)
 
 | Part | State | Before real customers |
 |---|---|---|
-| Mail and Calendar (#D1-#D5, #49-#58) | Live: one inbox and one calendar across accounts, search, the assistant beside them with citations that select the thread or event, drafts kept in Lumina (Copy, Open in your mail service), the meeting brief | Item 7 above; the Inbox's first page measured 349-419 ms against a 300 ms target |
-| Customer knowledge (#30-#48) | Deployed (PR #60) with switch `customer_knowledge` OFF; not installed on the host | Run `deploy/knowledge/install.sh`, install the render service and the knowledge worker (`PENDING_DEPLOY.md`), run `deploy/phase45_live.py`, publish the policy text (`platform/privacy/proposed/`), then turn on `customer_uploads` and `customer_knowledge` with their confirmations |
+| Mail and Calendar (#D1-#D5, #49-#58) | Live: one inbox and one calendar across accounts, search, the assistant beside them with citations that select the thread or event, drafts kept in Lumina (Copy, Open in your mail service), the meeting brief, attachments read into the knowledge index. The Inbox's first call takes 46 ms on the server (was 294 ms: one app worker held to a quarter of a CPU, and an unindexed badge count) | Item 7 (b) and (c) |
+| Customer knowledge (#30-#48) | **Live 2026-11-19, on for every account** (`customer_uploads`, `customer_knowledge`): installed on the host, all four exit gates passed live (`deploy/phase45_live.py`), the policy published | Nothing |
 | Managing mail and events (send, archive, create, answer) | Not built: Phase 6 | Launch read-only and say managing comes next, or wait for Phase 6 |
 | Microsoft (Outlook) | Not built: Phase 6 (#D8) | Microsoft's app registration and publisher verification take calendar time: start them now |
 
