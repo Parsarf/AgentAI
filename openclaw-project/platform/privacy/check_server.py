@@ -38,7 +38,7 @@ except Exception: sw = {}
 out['connectors_on'] = bool((sw.get('connectors_linking') or {}).get('on'))
 try: out['local_browser_off_for_everyone'] = json.load(open('/etc/agentai-supervisor/browse-engine.json')).get('local') is False
 except Exception: out['local_browser_off_for_everyone'] = False
-try: out['retention_job_scheduled'] = bool(re.search(r'retention_accounts|retention_sweep|prune_expired', sh('grep -rl "retention_accounts\|retention_sweep\|prune_expired" /etc/systemd/system /etc/cron.d 2>/dev/null')))
+try: out['retention_job_scheduled'] = bool(sh('grep -rl "retention_accounts\|retention_sweep\|prune_expired" /etc/systemd/system /etc/cron.d 2>/dev/null').strip())      # grep -l prints the unit's file name, not the command
 except Exception: out['retention_job_scheduled'] = False
 try:
     out['model_providers'] = sorted(set(re.findall(r'^\s+model:\s*([\w.-]+)/', open('/opt/openclaw-production/config/litellm.yaml').read(), re.M)))
