@@ -137,6 +137,34 @@ class Parsing(unittest.TestCase):
 
 
 # ===================================================================================================================================== tables and charts
+class VisionRequest(unittest.TestCase):
+    def test_the_request_carries_no_temperature_and_a_refusal_leaves_the_page_unread(self):
+        # The proxy refuses the whole call for a parameter the model does not take (claude-sonnet-5-5 accepts only its default temperature): on 2026-11-19
+        # every scanned page went unread on the live stack because the request asked for temperature 0.
+        sent = {}
+
+        class Answer:
+            def __init__(self, status, body): self.status, self._body = status, body
+            def read(self, n=-1): return self._body
+            def getheader(self, name): return None
+
+        class Conn:
+            status = 200
+            def __init__(self, host, port, timeout=None): pass
+            def request(self, method, path, body, headers): sent.update(json.loads(body))
+            def getresponse(self):
+                reply = {'choices': [{'message': {'content': json.dumps({'blocks': [{'kind': 'paragraph', 'text': 'Notice: fourteen days.', 'confidence': 0.9}]})}}], 'usage': {}}
+                return Answer(Conn.status, json.dumps(reply).encode())
+            def close(self): pass
+        vision = kp.Vision(key='k', connect=Conn)
+        got = vision.read(b'\x89PNG....', 'image/png', page=1, why='no_text')
+        self.assertNotIn('temperature', sent)
+        self.assertEqual([b['text'] for b in got['blocks']], ['Notice: fourteen days.'])
+        Conn.status = 400
+        with self.assertRaises(CapabilityUnavailable):
+            vision.read(b'\x89PNG....', 'image/png', page=1, why='no_text')
+
+
 class TablesAndCharts(unittest.TestCase):
     def test_numbers_in_every_usual_form(self):
         cases = {'1,200': 1200, '1.200,50': 1200.5, '(300)': -300, '-5%': -5, '$40': 40, '1 200': 1200, '2.5': 2.5, '12,5': 12.5, 'INV-1': None, 'Total': None, '': None}

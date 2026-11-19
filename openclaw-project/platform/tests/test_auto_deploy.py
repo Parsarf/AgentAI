@@ -189,7 +189,7 @@ class LiveAcceptance(unittest.TestCase):
         self.assertEqual(os.path.realpath(root / 'sup' / 'current'), str(root / 'sup' / 'releases' / 'old'))
         self.assertEqual((root / 'ui' / 'index.html').read_text(), 'old')
         self.assertEqual((root / 'base' / 'last').read_text().strip(), 'b' * 40)
-        self.assertEqual(ran, [['systemctl', 'restart', *deploy.UNITS, *deploy.APP_UNITS]])
+        self.assertEqual(ran, [['systemctl', 'restart', *deploy.UNITS, *deploy.APP_UNITS], ['systemctl', 'try-restart', *deploy.OPTIONAL_UNITS]])      # the render service and the knowledge worker run release code too
         self.assertTrue(any('web app bundle restored' in d for d in done))
 
     def test_a_rollback_to_a_release_that_is_not_there_changes_nothing(self):

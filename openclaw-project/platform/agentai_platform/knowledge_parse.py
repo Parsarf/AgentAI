@@ -120,7 +120,8 @@ class Vision:
         """-> {'blocks': [...], 'cost_microusd': int}. Raises CapabilityUnavailable when the model cannot be reached or answers with something else."""
         if not self.key:
             raise CapabilityUnavailable('vision model not configured')
-        body = {'model': self.model, 'max_tokens': 4096, 'temperature': 0,
+        # No temperature: the current models accept only their default and the proxy refuses the whole call otherwise (400; every scanned page went unread live, 2026-11-19).
+        body = {'model': self.model, 'max_tokens': 4096,
                 'messages': [{'role': 'system', 'content': FIGURE_RULES if why == 'figure' else VISION_RULES},
                              {'role': 'user', 'content': [{'type': 'text', 'text': f'Page {int(page)}. Return the JSON only.'},
                                                           {'type': 'image_url', 'image_url': {'url': f'data:{media};base64,' + base64.b64encode(picture).decode()}}]}]}
