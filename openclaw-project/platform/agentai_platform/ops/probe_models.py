@@ -26,7 +26,7 @@ def _read_key(path):
 
 def probe(base, key, model, *, opener=urllib.request.urlopen, timeout=30):
     """-> a plain dict describing what happened for one model. Never raises for an HTTP or network problem."""
-    body = {'model': model, 'max_tokens': 8, 'temperature': 0, 'messages': [{'role': 'user', 'content': 'Reply with the single word: ok'}]}
+    body = {'model': model, 'max_tokens': 8, 'messages': [{'role': 'user', 'content': 'Reply with the single word: ok'}]}
     req = urllib.request.Request(base.rstrip('/') + '/v1/chat/completions', data=json.dumps(body).encode(), method='POST',
                                  headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
     out = {'model': model, 'accepted': False, 'status': None, 'answered_by': None, 'usage_fields': [], 'tokens': {}, 'error': ''}

@@ -44,7 +44,7 @@ MAX_BYTES = 400 * 1024 * 1024
 COMMAND = re.compile(r'^(deploy|deploy-dry|accept) ([0-9a-f]{40})$')
 PREVIOUS = BASE / 'previous.json'          # what the last deploy replaced: where `accept` goes back to when the live acceptance fails
 TIERB = BASE / 'tierb.json'                # the last live acceptance result: {sha, passed, at, cases}
-OPTIONAL_UNITS = ['agentai-hub-sync']       # long-running services that exist only where their feature was set up: restarted when they are running, so they run the new code
+OPTIONAL_UNITS = ['agentai-hub-sync', 'agentai-render', 'agentai-knowledge']       # long-running services that exist only where their feature was set up: restarted when they are running, so they run the new code (the render service runs the supervisor tree, the knowledge worker the app tree)
 APP_UNITS = ['agentai-platform-app', 'agentai-push']       # the services that run the app tree (restarted by a rollback)
 REQUIRED = ('accounts', 'agentai_platform', 'deploy', 'manage.py', 'migrations', 'requirements.lock')
 
@@ -85,6 +85,7 @@ def rollback(previous, *, link=None, run=None, base=None, app=None, sup=None, ui
         os.rename(prev, ui)
         done.append('web app bundle restored')
     run(['systemctl', 'restart', *UNITS, *APP_UNITS])
+    run(['systemctl', 'try-restart', *OPTIONAL_UNITS])      # only those that are running: the previous release's code
     if previous.get('previous_sha'):
         (base / 'last').write_text(previous['previous_sha'] + '\n')
         done.append('last -> ' + previous['previous_sha'][:7])
