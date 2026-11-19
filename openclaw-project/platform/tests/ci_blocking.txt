@@ -60,3 +60,4 @@ test_file_organization
 test_ci_pipeline
 test_knowledge
 test_knowledge_eval
+test_privacy_policy

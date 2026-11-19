@@ -79,6 +79,23 @@ def _read_regular(folder: Path, name: str, limit: int) -> bytes:
         os.close(fd)
 
 
+def _write_input(folder: Path, path: str, data: bytes):
+    """Writes one input file under folder/in, readable by the container user. Every folder on the way gets its mode set explicitly: the service runs with
+    UMask=0077, which turns mkdir(mode=0o755) into 0700, and the container user (not root) could then not open the file (2026-11-19: every live parse and
+    conversion failed that way)."""
+    current = folder / 'in'
+    current.mkdir(exist_ok=True)
+    os.chmod(current, 0o755)
+    for part in Path(path).parts[:-1]:              # the path was checked by safe_path: relative, no '..'
+        current = current / part
+        current.mkdir(exist_ok=True)
+        os.chmod(current, 0o755)
+    where = folder / 'in' / path
+    with open(where, 'xb') as handle:
+        handle.write(data)
+    os.chmod(where, 0o644)
+
+
 class RenderService:
     def __init__(self, root, *, image, run=subprocess.run, env=None, uid=CONTAINER_UID, slots=2, own=os.chown):
         """root: a private folder for job folders. run: subprocess.run-compatible. own(path, uid, gid): gives the container its folders (root only; tests pass a no-op)."""
@@ -101,14 +118,10 @@ class RenderService:
         job_id = uuid.uuid4().hex
         folder = self.root / job_id
         try:
-            (folder / 'in').mkdir(parents=True, mode=0o755)
+            folder.mkdir()
             (folder / 'out').mkdir(mode=0o700)
             os.chmod(folder, 0o711)
-            where = folder / 'in' / source
-            where.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
-            with open(where, 'xb') as handle:
-                handle.write(data)
-            os.chmod(where, 0o644)
+            _write_input(folder, source, data)
             (folder / 'request.json').write_text(json.dumps({'op': 'parse', 'source': source}))
             os.chmod(folder / 'request.json', 0o644)
             self.own(folder / 'out', self.uid, self.uid)
@@ -166,15 +179,11 @@ class RenderService:
         job_id = uuid.uuid4().hex
         folder = self.root / job_id
         try:
-            (folder / 'in').mkdir(parents=True, mode=0o755)
+            folder.mkdir()
             (folder / 'out').mkdir(mode=0o700)
             os.chmod(folder, 0o711)                        # the container user must reach in/ and out/ and nothing else
             for path, data in files.items():
-                where = folder / 'in' / path
-                where.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
-                with open(where, 'xb') as handle:
-                    handle.write(data)
-                os.chmod(where, 0o644)
+                _write_input(folder, path, data)
             (folder / 'request.json').write_text(json.dumps({'source': source, 'target': target, 'preview': bool(preview)}))
             os.chmod(folder / 'request.json', 0o644)
             self.own(folder / 'out', self.uid, self.uid)

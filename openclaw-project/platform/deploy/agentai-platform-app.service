@@ -6,6 +6,8 @@ User=agentai-platform
 Group=agentai-platform
 WorkingDirectory=/opt/agentai-platform/current
 EnvironmentFile=/etc/agentai-platform/accounts.env
+# Three workers; MemoryMax and CPUQuota below are sized for them (about 75 MB each). See deploy/gunicorn.conf.py.
+Environment=AGENTAI_APP_WORKERS=3
 ExecStart=/opt/agentai-platform/current/.venv/bin/gunicorn -c deploy/gunicorn.conf.py accounts.wsgi:application
 Restart=on-failure
 RestartSec=5
@@ -22,10 +24,10 @@ RestrictSUIDSGID=yes
 RestrictAddressFamilies=AF_INET AF_UNIX
 CapabilityBoundingSet=
 ReadWritePaths=/var/lib/agentai-platform
-MemoryMax=128M
+MemoryMax=512M
 MemorySwapMax=0
-CPUQuota=25%
-TasksMax=16
+CPUQuota=200%
+TasksMax=64
 TimeoutStopSec=10
 [Install]
 WantedBy=multi-user.target
