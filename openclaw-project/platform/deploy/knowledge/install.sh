@@ -18,6 +18,12 @@ NET=agentai-knowledge
 PG_IMAGE="${KNOWLEDGE_PG_IMAGE:-pgvector/pgvector:pg17}"
 TEI_IMAGE="${KNOWLEDGE_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.8}"
 MODEL="${KNOWLEDGE_EMBED_MODEL:-intfloat/multilingual-e5-small}"
+# The embedding server's memory and the tokens it puts through the model at once. At 1500m and 8192 it was killed by its memory cap on the first request of
+# 32 long passages (a real 320 KB PDF, 2026-11-19; ten restarts that day). 4096 bounds one forward pass, 2500m leaves headroom; measured: 32 long passages in
+# 5.4 s, no restart in ten requests. A container made with other settings is replaced (its label says what it was made with).
+EMBED_MEMORY="${KNOWLEDGE_EMBED_MEMORY:-2500m}"
+EMBED_BATCH_TOKENS="${KNOWLEDGE_EMBED_BATCH_TOKENS:-4096}"
+EMBED_SETTINGS="image=$TEI_IMAGE model=$MODEL memory=$EMBED_MEMORY batch_tokens=$EMBED_BATCH_TOKENS"
 WIRING=/etc/agentai-supervisor/native-wiring.json
 
 install -d -m 0700 -o "$APPUSER" -g "$APPUSER" "$STATE"
@@ -43,17 +49,22 @@ docker exec agentai-knowledge-db psql -U knowledge -d knowledge -qc 'CREATE EXTE
 printf 'postgresql://knowledge:%s@127.0.0.1:5433/knowledge\n' "$PW" > "$STATE/index.url"
 chown "$APPUSER:$APPUSER" "$STATE/index.url"; chmod 0600 "$STATE/index.url"
 
+if docker container inspect agentai-embeddings >/dev/null 2>&1 && \
+   [ "$(docker inspect agentai-embeddings --format '{{index .Config.Labels "lumina.settings"}}' 2>/dev/null)" != "$EMBED_SETTINGS" ]; then
+  echo "the embedding server was made with other settings: replacing it (requests in the next seconds are retried by the knowledge worker)"
+  docker rm -f agentai-embeddings >/dev/null
+fi
 if ! docker container inspect agentai-embeddings >/dev/null 2>&1; then
   # First start downloads the model into its own volume; it is then restarted with downloads off.
   docker run -d --name agentai-embeddings --restart unless-stopped --network "$NET" \
-    --memory 1500m --memory-swap 1500m --cpus 2 -p 127.0.0.1:8890:80 \
-    -v agentai-embeddings-models:/data "$TEI_IMAGE" --model-id "$MODEL" --max-batch-tokens 8192 >/dev/null
+    --memory "$EMBED_MEMORY" --memory-swap "$EMBED_MEMORY" --cpus 2 -p 127.0.0.1:8890:80 \
+    -v agentai-embeddings-models:/data "$TEI_IMAGE" --model-id "$MODEL" --max-batch-tokens "$EMBED_BATCH_TOKENS" >/dev/null
   echo "waiting for the embedding server to download its model..."
   for i in $(seq 1 120); do curl -fsS -m 3 http://127.0.0.1:8890/health >/dev/null 2>&1 && break; sleep 5; done
   docker rm -f agentai-embeddings >/dev/null
-  docker run -d --name agentai-embeddings --restart unless-stopped --network "$NET" \
-    --memory 1500m --memory-swap 1500m --cpus 2 -p 127.0.0.1:8890:80 -e HF_HUB_OFFLINE=1 \
-    -v agentai-embeddings-models:/data "$TEI_IMAGE" --model-id "$MODEL" --max-batch-tokens 8192 >/dev/null
+  docker run -d --name agentai-embeddings --restart unless-stopped --network "$NET" --label "lumina.settings=$EMBED_SETTINGS" \
+    --memory "$EMBED_MEMORY" --memory-swap "$EMBED_MEMORY" --cpus 2 -p 127.0.0.1:8890:80 -e HF_HUB_OFFLINE=1 \
+    -v agentai-embeddings-models:/data "$TEI_IMAGE" --model-id "$MODEL" --max-batch-tokens "$EMBED_BATCH_TOKENS" >/dev/null
 fi
 for i in $(seq 1 60); do curl -fsS -m 3 http://127.0.0.1:8890/health >/dev/null 2>&1 && break; sleep 3; done
 DIMS=$(curl -fsS -m 30 http://127.0.0.1:8890/embed -H 'Content-Type: application/json' -d '{"inputs":["query: test"]}' | python3 -c 'import json,sys; print(len(json.load(sys.stdin)[0]))')

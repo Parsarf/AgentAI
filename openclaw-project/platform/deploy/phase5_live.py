@@ -82,12 +82,17 @@ def main():
     ids = [a['id'] for a in working]
 
     # -- G1-INBOX ----------------------------------------------------------------------------------------------------------------------------------------------
-    page = hub.threads(p, label='all', limit=200)
-    by = {}
-    for t in page['threads']:
-        by.setdefault(t['connection_id'], []).append(t)
+    by, cursor, pages = {}, None, 0
+    while pages < 30:                                        # the newest threads may all be one account's: page through the ONE list until both appear
+        page = hub.threads(p, label='all', limit=100, cursor=cursor)
+        pages += 1
+        for t in page['threads']:
+            by.setdefault(t['connection_id'], []).append(t)
+        cursor = page.get('next')
+        if not cursor or len([i for i in ids if by.get(i)]) >= 2:
+            break
     record('G1-INBOX', 'One list holds threads of both accounts', len([i for i in ids if by.get(i)]) >= 2,
-           {'threads_on_first_pages': {f'account_{n + 1}': len(by.get(i, [])) for n, i in enumerate(ids)}})
+           {'pages_read': pages, 'threads_seen': {f'account_{n + 1}': len(by.get(i, [])) for n, i in enumerate(ids)}})
 
     # -- G1-CALENDAR -------------------------------------------------------------------------------------------------------------------------------------------
     now = int(time.time())
@@ -129,15 +134,27 @@ def main():
 
     # -- G1-ATTACHMENT -----------------------------------------------------------------------------------------------------------------------------------------
     marks = ','.join('%s' for _ in ids)
-    candidates = sql(f'SELECT connection_id,id FROM hub_messages WHERE account_id=%s AND connection_id IN ({marks}) AND has_attachments=1 ORDER BY sent_epoch DESC LIMIT 25',
+    candidates = sql(f'SELECT connection_id,id FROM hub_messages WHERE account_id=%s AND connection_id IN ({marks}) AND has_attachments=1 ORDER BY sent_epoch DESC LIMIT 40',
                      [account, *ids])
-    attachment = None
-    for conn, message in candidates:
-        body = (hub.message(p, conn, message).get('body') or {})
-        files = [f for f in body.get('attachments') or [] if str(f.get('name') or '').rsplit('.', 1)[-1].lower() in DOCUMENTS and (f.get('size') or 0) < 10 * 2 ** 20]
-        if files:
-            attachment = {'account': conn, 'message': message, 'attachment': files[0]['id']}
+    for i in ids:                                            # and what the provider's own search finds with a document attached
+        for m in (hub.search_older(p, i, 'has:attachment filename:pdf').get('messages') or [])[:10]:
+            if sql('SELECT 1 FROM hub_messages WHERE account_id=%s AND connection_id=%s AND id=%s', [account, i, m.get('id')]):
+                candidates.append((i, m['id']))
+    attachment, checked, best = None, 0, None
+    for conn, message in candidates:                         # a document first (a PDF, an Office file, text); a picture only if it is more than a logo
+        checked += 1
+        body = ((hub.message(p, conn, message).get('message') or {}).get('body') or {})
+        for f in body.get('attachments') or []:
+            kind = str(f.get('name') or '').rsplit('.', 1)[-1].lower()
+            size = f.get('size') or 0
+            if kind not in DOCUMENTS or not 0 < size < 10 * 2 ** 20 or (kind in ('png', 'jpg', 'jpeg') and size < 30_000):
+                continue
+            rank = DOCUMENTS.index(kind)
+            if best is None or rank < best[0]:
+                best = (rank, {'account': conn, 'message': message, 'attachment': f['id']})
+        if best and best[0] == 0:
             break
+    attachment = best[1] if best else None
     if attachment:
         out = tools._mail_attachment(p, None, None, attachment)
         state = sql('SELECT state,passages,kind FROM knowledge_sources WHERE account_id=%s AND id=%s', [account, out.get('source')]) if out.get('source') else []
@@ -145,7 +162,7 @@ def main():
         record('G1-ATTACHMENT', 'An attachment is read through the knowledge pipeline, with the email as its source', ok,
                {'state': state[0][0] if state else None, 'passages': state[0][1] if state else 0})
     else:
-        record('G1-ATTACHMENT', 'An attachment is read through the knowledge pipeline', False, {'messages_with_a_document_attachment': 0})
+        record('G1-ATTACHMENT', 'An attachment is read through the knowledge pipeline', False, {'messages_checked': checked, 'with_a_document_attachment': 0})
 
     # -- G1-DRAFT ----------------------------------------------------------------------------------------------------------------------------------------------
     draft_ok, detail = False, {}
