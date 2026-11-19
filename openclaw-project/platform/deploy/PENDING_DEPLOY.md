@@ -111,26 +111,14 @@ The cause of the growth during a fill is not found yet: the request path alone l
 **Fixed by PR #60 (release `7a73420`):** the service builds its services once, reuses one TLS context and kept-alive connections, and starts afresh at `AGENTAI_HUB_SYNC_RECYCLE_MB` (600) before the kernel would kill it; nothing to install (the unit is unchanged). Before it, **(read on the server 2026-11-16, release `9b01cf1`):** the service is still killed at its 1 GB cap during the first fill and restarts in 5 s with its progress kept
 (64 restarts since it was last started, 30 out-of-memory lines in the journal in the last three hours). The fill advances between kills; the growth is not found.
 
-## Roadmap Phase 4: customer knowledge (code in `7a73420`, PR #60; host install done 2026-11-19; finishing release on branch `phase-4-5-finish`)
+## Roadmap Phase 4 and 5 finishing release (PRs #62 to #64, `b0a5dd7`): done on 2026-11-19
 
-**Done on the server on 2026-11-19 (before the finishing release):**
-- `deploy/knowledge/install.sh` ran as root: `agentai-knowledge-db` (PostgreSQL 17 with the vector extension, 127.0.0.1:5433, own volume and password) and `agentai-embeddings`
-  (text-embeddings-inference on CPU, `intfloat/multilingual-e5-small`, 127.0.0.1:8890, answers with 384 dimensions) run; `index.url` and `model-key` are in
-  `/var/lib/agentai-platform/knowledge/` (0600, the app user); image digests in `/etc/agentai-knowledge/image-digests` and `runtime.lock.json` `images`.
-- `lumina-renderer:2` built into the cell engine from `deploy/renderer/Dockerfile` (base pinned by digest); `agentai-render.service` and `agentai-knowledge.service`
-  installed and enabled; the tool relay unit reinstalled (512M; the installed copy differed only in that and in `After=`); `accounts.env` (backup `.bak-20261119`) gained
-  `AGENTAI_RENDER_SOCKET`, `AGENTAI_KNOWLEDGE_INDEX_FILE`, `AGENTAI_EMBEDDINGS_URL`, `AGENTAI_KNOWLEDGE_MODEL_KEY_FILE`; app, tool relay, request worker and cell bridge restarted.
-- The first live proof found that **every parse and every conversion failed**: the render service runs with `UMask=0077`, so the job's `in/` folder was 0700 and the
-  container user could not open the file. Fixed in the finishing release (`render/service.py` `_write_input`, test `test_the_container_user_can_read_its_input_under_the_services_umask`).
+Done on the server: `deploy/knowledge/install.sh` (knowledge database, embedding server at 2.5 GB with 4,096 batch tokens), `lumina-renderer:2` built into the cell engine,
+`agentai-render.service` and `agentai-knowledge.service` installed and enabled, the tool relay unit (512M) and the app unit (three workers, 512M, 200% CPU) installed,
+`accounts.env` (backups `.bak-20261119`, `.bak-20261119-uploads`) gained `AGENTAI_RENDER_SOCKET`, `AGENTAI_KNOWLEDGE_INDEX_FILE`, `AGENTAI_EMBEDDINGS_URL`,
+`AGENTAI_KNOWLEDGE_MODEL_KEY_FILE` and `AGENTAI_UPLOADS_ENABLED=1`; switch facts `knowledge_index_installed`, `render_service_running`, `knowledge_worker_running`,
+`uploads_host_ready` recorded; `customer_uploads` and `customer_knowledge` on (owner, 2026-11-19); `deploy/phase45_live.py` passed every gate. Since #63 the deploy program
+restarts the render service and the knowledge worker itself.
 
-**With the finishing release (after the deploy):**
-1. Install the resized app unit: `cp /opt/agentai-platform/current/deploy/agentai-platform-app.service /etc/systemd/system/ && systemctl daemon-reload && systemctl restart
-   agentai-platform-app`. It sets `AGENTAI_APP_WORKERS=3` with `MemoryMax=512M` and `CPUQuota=200%` (was one worker under 128M and 25% of one CPU: the Inbox's first call took
-   294 ms of which 223 ms was waiting for the CPU limit). Without the new unit the release runs one worker, as before.
-2. Run `deploy/phase45_live.py` (its docstring has the command); every gate must pass.
-3. The policy is published by this merge (Vercel builds `main`). Then record the facts `knowledge_index_installed`, `render_service_running`, `knowledge_worker_running`, add
-   `AGENTAI_UPLOADS_ENABLED=1` to `accounts.env` and record `uploads_host_ready`, record the confirmations (`scan_understood`, `vision_understood`, `policy_published`) and turn
-   `customer_uploads` and `customer_knowledge` on (the owner's choice of 2026-11-19: on for every account).
-4. Phase 5 gate 1: the owner connects a second Google account; run the read-only suite with both.
-
-Migration 0051 only adds an index (`hub_threads_unread`). `/readyz` now runs the whole-database scans on a process's first call and then at most every five minutes.
+**Still open:** Phase 5 gate 1: the owner connects a second Google account (test user on the consent screen, then Inbox > Add account) and asks the assistant panel about a
+thread of it; then run `deploy/phase5_live.py` (its docstring has the command).
