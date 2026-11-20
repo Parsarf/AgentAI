@@ -339,6 +339,7 @@ On the 4-CPU / 16 GiB server that is about three; 8 CPU / 32 GiB about 8; 16 CPU
 
 ## 18c. Things learned running the Phase 1 proof (read before touching cells by hand)
 
+* **A deploy restarts the supervisor too (since #71, 2026-11-20)**, only while no cell operation is in flight (the deploy log says when it skipped it). Running cells survive it. The supervisor sets up every cell it starts (tool hook, configuration, rules), so a change to that code reaches a cell at its next start; a running cell whose tool hook is older than the release is restarted at its next quiet moment (#70). A cell stop never runs while a request of that account waits or runs, and no request starts while a stop runs (#72).
 * **Stopping the supervisor stops the lifecycle worker.** `agentai-lifecycle-worker` has `Requires=agentai-supervisor-native`. `systemctl restart agentai-supervisor-native` brings both back; a plain `stop` then `start` of
   the supervisor does NOT restart the worker, and nothing wakes a customer's cell until it is started again (`systemctl start agentai-lifecycle-worker`).
 * **A cell is removed through the runtime's own registry, or the next creation fails.** The runtime keeps its own list of cells (`openclaw fleet list --json`, run in `/var/lib/agentai-fleet` with the supervisor's `HOME`
