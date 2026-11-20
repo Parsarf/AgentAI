@@ -7773,6 +7773,37 @@
     "parameters": []
    }
   },
+  "/v1/hub/feeds": {
+   "post": {
+    "summary": "Add a calendar feed by its address (read only; the address is kept like a password and never shown again in full); 409 not_a_feed with the reason",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
   "/v1/hub/link/callback": {
    "get": {
     "summary": "Where the provider sends the browser back. No session arrives with a request from another site, so this only redirects to the Inbox with the two values in the address fragment; the page then calls /v1/hub/link/finish",

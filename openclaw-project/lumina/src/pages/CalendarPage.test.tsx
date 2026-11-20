@@ -40,7 +40,9 @@ function server(routes: Routes) {
     const url = new URL(raw, 'https://app.test'); const method = init?.method ?? 'GET'; const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, url, body });
     const found = routes[`${method} ${url.pathname}`] ?? routes[url.pathname];
-    return found === undefined ? reply({ error: 'not_found' }, 404) : reply(typeof found === 'function' ? (found as (u: URL, b?: any) => unknown)(url, body) : found);
+    if (found === undefined) return reply({ error: 'not_found' }, 404);
+    const answer = typeof found === 'function' ? (found as (u: URL, b?: any) => unknown)(url, body) : found;
+    return answer instanceof Response ? Promise.resolve(answer) : reply(answer);
   }));
 }
 const base = (over: Routes = {}): Routes => ({ '/v1/hub': overview(), '/v1/hub/events': { events: EVENTS, complete: true },
@@ -285,5 +287,23 @@ describe('Calendar changes (Phase 6, #62, #D7)', () => {
     fireEvent.click(within(ask).getByRole('button', { name: 'Move it' }));
     await waitFor(() => expect(asked('/v1/hub/events/change').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'e1', start: '2026-05-20T10:00',
       end: '2026-05-20T10:30', timezone: 'America/New_York', notify: true }]));
+  });
+});
+
+describe('Calendar feeds (Phase 6, #D9)', () => {
+  it('adds a feed by its address, and says why when the address is not a calendar', async () => {
+    let tries = 0;
+    server(base({ '/v1/hub': overview({ feeds: true }), 'POST /v1/hub/feeds': () => (tries++ ? { connection_id: 'f1' } : new Response(JSON.stringify({ error: 'not_a_feed', detail: 'That address does not give a calendar (an .ics feed).' }), { status: 409 })) }));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a calendar feed' }));
+    const form = screen.getByRole('form', { name: 'Add a calendar feed' });
+    fireEvent.change(within(form).getByLabelText(/Feed address/), { target: { value: 'https://school.test/page' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Add' }));
+    expect((await within(form).findByRole('alert')).textContent).toBe('That address does not give a calendar (an .ics feed).');
+    fireEvent.change(within(form).getByLabelText(/Feed address/), { target: { value: 'webcal://school.test/cal.ics' } });
+    fireEvent.change(within(form).getByLabelText(/Name/), { target: { value: 'School' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Add' }));
+    await screen.findByRole('button', { name: 'Add a calendar feed' });
+    expect(asked('/v1/hub/feeds').map(c => c.body)).toEqual([{ address: 'https://school.test/page' }, { address: 'webcal://school.test/cal.ics', name: 'School' }]);
   });
 });

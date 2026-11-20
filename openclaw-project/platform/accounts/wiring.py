@@ -86,6 +86,8 @@ def connector_registry(db=None):
     from agentai_platform import synthetic_connector
     from agentai_platform.connector_kit import Registry
     registry = synthetic_connector.register(Registry(), db or store())
+    from agentai_platform import ics_feed
+    ics_feed.register(registry)                              # calendar feeds by address (#D9): no sign-in app, nothing to configure
     for provider in sign_in_providers().values():           # mail and calendar providers whose sign-in app is configured on this host
         provider['register'](registry)
     return registry

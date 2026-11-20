@@ -15,6 +15,7 @@ import SeriesScope from '../components/hub/SeriesScope';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
   validZone, zonedEpoch, localTime, type HubAccount, type HubAction, type HubCalendar, type HubEvent, type MeetingProposal, type Overview, type Scope } from '../lib/hub';
 import { useData } from '../state/data';
+import { ApiError } from '../lib/api';
 import '../styles/hub.css';
 
 type View = 'day' | 'week' | 'month' | 'agenda';
@@ -111,6 +112,29 @@ function Inspector({ event, zone, account, calendar, now, writes, onCancel, onRe
       <p className="faint small">{calendar ? (changeable || (writes && account?.capabilities.event_write && (calendar.access === 'owner' || calendar.access === 'write')) ? 'You can change this calendar' : ACCESS[calendar.access]) : 'Read only'} · Updated {ago(event.synced_epoch, now)}.
         {event.provider_url && account && <> <a href={event.provider_url} target="_blank" rel="noopener noreferrer">Open in {account.provider_label}</a></>}</p>
     </section>);
+}
+
+/** A calendar feed by its address (#D9): a school's, a team's or a booking system's. Read only. The address is checked to be a calendar, then kept like a password and
+ *  never shown again in full. */
+function FeedForm({ onAdded }: { onAdded(): void }) {
+  const [open, setOpen] = useState(false); const [address, setAddress] = useState(''); const [name, setName] = useState(''); const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(''); const [err, setErr] = useState('');
+  if (!open) return <button type="button" className="btn small tertiary" onClick={() => { setOpen(true); setNote(''); }}>Add a calendar feed</button>;
+  const add = async () => {
+    setBusy(true); setErr('');
+    try { await hub.addFeed(address.trim(), name.trim() || undefined); setOpen(false); setAddress(''); setName(''); setNote('Added. Its events appear in a moment.'); onAdded(); }
+    catch (e) { setErr(e instanceof ApiError && e.detail ? e.detail : failed(e)); } finally { setBusy(false); }
+  };
+  return (
+    <form className="hub-feed" aria-label="Add a calendar feed" onSubmit={e => { e.preventDefault(); if (address.trim()) void add(); }}>
+      <label className="small">Feed address <input className="input" value={address} onChange={e => setAddress(e.target.value)} placeholder="https://… or webcal://…" required /></label>
+      <label className="small">Name (optional) <input className="input" value={name} onChange={e => setName(e.target.value)} maxLength={200} /></label>
+      <p className="faint small">Read only. Lumina keeps the address private and does not show it again.</p>
+      {err && <p className="notice warning small" role="alert">{err}</p>}
+      {note && <p className="faint small" role="status">{note}</p>}
+      <div className="row"><button type="submit" className="btn small" disabled={busy || !address.trim()}>Add</button>
+        <button type="button" className="btn small tertiary" onClick={() => setOpen(false)} disabled={busy}>Cancel</button></div>
+    </form>);
 }
 
 /** A small month for jumping to a day. The days of the current view are marked. */
@@ -374,6 +398,7 @@ export default function CalendarPage() {
   const context = <div className="hub-side" aria-label="Calendars">
     <MiniMonth day={day} today={today} from={span.from} to={span.to} onPick={d => { setFound(null); setAnchor(d); }} />
     <Accounts accounts={accounts} part="calendar" chosen={new Set(shownAccounts)} onToggle={toggleAccount} now={now} providers={info?.providers} onChoose={a => setChoosing(a.id)} />
+    {info?.feeds && <FeedForm onAdded={() => window.setTimeout(() => { void loadInfo(); void load(); }, 1500)} />}
     {accounts.filter(a => shownAccounts.includes(a.id)).map(a => { const mine = calendars.filter(c => c.connection_id === a.id); return !mine.length ? null : (
       <section key={a.id} className="hub-calendars" aria-label={`Calendars of ${a.identity}`}>
         <h2 className="hub-side-title" title={a.identity}>{a.identity}</h2>

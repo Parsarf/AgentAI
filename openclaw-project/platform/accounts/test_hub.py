@@ -288,6 +288,8 @@ class SignIn(Base):
         def registry(db=None):
             made = Registry()
             made.register(ALPHA, lambda: Alpha(self.alpha_worlds)); made.register(POSTBOX, lambda: Postbox(self.postbox_worlds))
+            from agentai_platform import ics_feed
+            ics_feed.register(made)                                            # as the host does (accounts/wiring.py connector_registry)
             return google_hub.register(made, http)
         fake = patch.object(wiring, 'connector_registry', registry); fake.start(); self.addCleanup(fake.stop)
         origin = override_settings(PUBLIC_ORIGIN='https://app.test'); origin.enable(); self.addCleanup(origin.disable)
@@ -414,6 +416,24 @@ class SignIn(Base):
         self.assertEqual(rest.status_code, 200, rest.content)
         self.assertEqual(self.g.events['dana@gmail.test']['wk']['recurrence'], ['RRULE:FREQ=WEEKLY;UNTIL=20330523T125959Z'])
         self.assertEqual(self.post(self.b, '/v1/hub/events/change', change).status_code, 404)                  # another customer reaches nothing
+
+    def test_a_calendar_feed_is_added_only_once_the_owner_allowed_it_and_its_address_is_never_shown(self):
+        from unittest.mock import patch
+        from agentai_platform import hub_model, ics_feed
+        feed = b'BEGIN:VCALENDAR\r\nX-WR-CALNAME:School\r\nBEGIN:VEVENT\r\nUID:a\r\nSUMMARY:Assembly\r\nDTSTART:20330516T130000Z\r\nDTEND:20330516T140000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n'
+        self.assertEqual(self.post(self.a, '/v1/hub/feeds', {'address': 'https://school.test/s3cret/cal.ics'}).status_code, 503)    # not offered until the policy says so
+        self.assertFalse(self.a.get('/v1/hub', secure=True).json()['feeds'])
+        hub_model.PROVING_IN_THIS_PROCESS.add('feeds')
+        self.addCleanup(hub_model.PROVING_IN_THIS_PROCESS.clear)
+        with patch.object(ics_feed, 'fetch', lambda url, **kw: feed):
+            added = self.post(self.a, '/v1/hub/feeds', {'address': 'https://school.test/s3cret/cal.ics'})
+            self.assertEqual(added.status_code, 201, added.content)
+            with patch.object(ics_feed, 'fetch', lambda url, **kw: b'<html></html>'):
+                refused = self.post(self.a, '/v1/hub/feeds', {'address': 'https://school.test/page'})
+        self.assertEqual((refused.status_code, refused.json()['error']), (409, 'not_a_feed'))
+        listed = self.a.get('/v1/hub', secure=True).json()
+        self.assertNotIn('s3cret', json.dumps(listed))
+        self.assertIn('School', [a['identity'] for a in listed['accounts']])
 
     def test_send_waits_out_undo_send_says_a_limit_in_a_sentence_and_organize_goes_through_the_pipeline(self):
         from urllib.parse import parse_qs, urlsplit

@@ -333,6 +333,34 @@ class ConnectorService:
                                     'connector.link.complete', 'completed')
             return connection_id
 
+    # ---------- a calendar feed by its address (roadmap Phase 6, #D9): no sign-in, read only ----------
+    def add_feed(self, principal: Principal, address: str, name: str = '', *, fetch=None) -> str:
+        """Add an ICS feed. The address is read once through the destination guard (it must be a calendar), kept in custody like a token (it may carry a secret) and
+        never shown again in full; the connection is named by the customer, the feed's own name, or its host. Its one calendar is chosen to show. -> the connection id.
+        Raises ics_feed.FeedError (a sentence for the customer)."""
+        from urllib.parse import urlsplit
+        from . import ics_feed
+        from .security import require
+        if not isinstance(address, str) or not address.strip() or len(address) > 2048 or not isinstance(name, str) or len(name) > 200:
+            raise ics_feed.FeedError('Paste the full address of the calendar feed, starting with https://.')
+        address = address.strip()
+        if address.startswith('webcal://'):
+            address = 'https://' + address[len('webcal://'):]
+        feed = ics_feed.parse((fetch or ics_feed.fetch)(address))
+        label = (name.strip() or feed['name'] or 'Calendar from ' + (urlsplit(address).hostname or 'a feed'))[:200]
+        now = int(self.clock())
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            require(principal, 'connection.create', con=con)
+            ref = custody_put(self.custody, con, principal.account_id, ics_feed.PROVIDER, json.dumps({'url': address, 'name': label}).encode())
+            connection_id = uuid.uuid4().hex
+            con.execute('''INSERT INTO connector_connections(account_id,id,service,state,identity_label,granted_scopes,selected_resources,secret_ref,created_epoch,updated_epoch)
+                VALUES (?,?,?,'connected',?,'[]','[]',?,?,?)''', (principal.account_id, connection_id, ics_feed.PROVIDER, label, ref, now, now))
+            con.execute('''INSERT INTO connector_grants(account_id,connection_id,resource_kind,resource_id,resource_name,access,granted_by,granted_epoch)
+                VALUES (?,?,'calendar',?,?,'read',?,?)''', (principal.account_id, connection_id, ics_feed.CALENDAR_ID, label, str(principal.actor_id), now))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, connection_id, 'connector.feed.add', 'completed')
+        return connection_id
+
     # ---------- linking a connector built on the contract (its provider module builds the sign-in address and does the exchange) ----------
 
     def start_link(self, principal: Principal, service: str, redirect_uri: str, *, upgrade: str | None = None) -> dict:

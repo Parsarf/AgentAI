@@ -341,6 +341,11 @@ class HubSync:
                 continue
             keep = [e for e in changes.items if e['calendar_id'] == calendar_id and e['end_epoch'] >= state['window_start_epoch'] and e['start_epoch'] <= state['window_end_epoch']]
             gone = list(changes.removed) + [e['id'] for e in changes.items if e not in keep]
+            if getattr(changes, 'complete', False):                     # the whole set (no change cursor): what the copy holds beyond it is gone
+                with self.store.connect() as con:
+                    present = {e['id'] for e in keep}
+                    gone += [r[0] for r in con.execute('SELECT id FROM hub_events WHERE account_id=? AND connection_id=? AND calendar_id=?', (account, connection, calendar_id))
+                             if r[0] not in present]
             changed |= self._apply_events(account, connection, calendar_id, keep, gone, changes.cursor, filled=not changes.more or bool(state['filled']))
             more = changes.more
             if not more:
