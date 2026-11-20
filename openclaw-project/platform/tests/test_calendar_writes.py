@@ -291,14 +291,16 @@ class SeriesChanges(GoogleBase):
         self.actions.approve(self.a, back['id'], back['payload_hash'])
         return back, self.actions.execute('a', back['id'])
 
-    def test_a_change_is_off_until_proven_then_one_event_changes_once_says_who_is_told_and_undoes(self):
-        caps = next(a for a in self.hub.accounts(self.a) if a['id'] == self.connection)['capabilities']
-        self.assertEqual((caps['event_write'], caps['event_change'], caps['event_series']), (True, False, False))   # built, not yet proven on the real provider
+    def test_a_capability_still_being_proven_is_off_for_customers_and_on_only_in_the_proof(self):
+        from agentai_platform.hub_model import Grant, HubCaps
+        caps = HubCaps(calendar=True, event_write=True, event_change=True, grants=(Grant('calendar_write', 'scope-x', ('event_write', 'event_change'), 'w'),), proving=('event_change',))
+        self.assertEqual((caps.effective(['scope-x'])['event_write'], caps.effective(['scope-x'])['event_change']), (True, False))   # no control, and no change accepted
+        self.assertNotIn('event_change', caps.effective([])['missing'])                                                     # nor a permission to ask for
+        self.proving.add('event_change')
+        self.assertTrue(caps.effective(['scope-x'])['event_change'])                                                        # the live proof, in its own process
+
+    def test_one_event_changes_once_says_who_is_told_and_undoes(self):
         change = {'event': 'dana@gmail.test|one', 'title': 'Planning (moved)', 'start': '2033-05-20T14:00', 'end': '2033-05-20T15:00', 'timezone': 'America/New_York', 'notify': True}
-        with self.assertRaises(ConnectorFault) as refused:
-            self.actions.propose(self.a, self.connection, 'event.update', change)
-        self.assertEqual(refused.exception.kind, 'refused')
-        self.proving.update({'event_change', 'event_series'})
         action = self.actions.propose(self.a, self.connection, 'event.update', change)
         fields = {c['field']: c for c in action['preview']['changes']}
         self.assertEqual((fields['title']['before'], fields['title']['after']), ('Planning', 'Planning (moved)'))

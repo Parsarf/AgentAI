@@ -58,8 +58,10 @@ RULES: tuple[Rule, ...] = (
          change='Close or drop them in Commitments.'),
     Rule('meeting_proposals', 'Times your assistant found for a meeting (who it is with and the suggested times)', 30, 'from when it was last changed', 'sweeper',
          ('meeting_proposals',), note='Removed at once when you remove the account it is for.'),
-    Rule('mail_drafts', 'Mail drafts you or your assistant wrote in Lumina (never in your mailbox)', None, 'until you discard the draft, remove the account or delete your account',
+    Rule('mail_drafts', 'Mail drafts you or your assistant wrote in Lumina (never in your mailbox until sent)', None, 'until you discard the draft, remove the account or delete your account',
          'customer', ('hub_drafts',), change='Discard a draft in Mail.'),
+    Rule('sent_drafts', 'A draft that was sent (the record of the sent message is kept with the changes)', 30, 'from when it was sent', 'sweeper', (),
+         note='The drafts that were sent, in the table of mail drafts.'),
     Rule('connections', 'Connected services: what is connected, what it may reach, and how fresh its data is', None, 'until you remove the connection or delete your account', 'customer',
          ('connector_connections', 'connector_grants', 'connector_freshness', 'connector_secrets', 'connector_drafts', 'browser_profiles', 'mcp_connections', 'mcp_tool_choices',
           'action_auto_approvals', 'telegram_links', 'telegram_link_codes', 'telegram_outbox', 'telegram_updates', 'hub_sync', 'hub_calendars', 'hub_settings'),
@@ -172,6 +174,8 @@ def sweep(store, *, now=None, storage=None) -> dict:
             done['spend_marks'] = con.execute('DELETE FROM spend_marks WHERE epoch<?', (epoch(BY_KEY['spend_marks'].days),)).rowcount
             done['task_checks'] = con.execute('DELETE FROM knowledge_checks WHERE created_epoch<?', (epoch(BY_KEY['task_checks'].days),)).rowcount
             done['meeting_proposals'] = con.execute('DELETE FROM meeting_proposals WHERE updated_epoch<?', (epoch(BY_KEY['meeting_proposals'].days),)).rowcount
+            done['sent_drafts'] = con.execute("""DELETE FROM hub_drafts WHERE sent_action_id IN (SELECT id FROM actions WHERE actions.account_id=hub_drafts.account_id
+                AND state='done' AND coalesce(executed_epoch,updated_epoch)<?)""", (epoch(BY_KEY['sent_drafts'].days),)).rowcount
             done['audit'] = _audit_delete(con, iso(BY_KEY['audit'].days))
             from . import hub_sync
             done.update(hub_sync.sweep(con, now))

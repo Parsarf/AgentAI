@@ -22,6 +22,7 @@
      "browser_pictures": 1,
      "task_checks": 90,
      "meeting_proposals": 30,
+     "sent_drafts": 30,
      "mail_bodies": 90,
      "connection_setup": 1,
      "connector_records": 180,
@@ -42,6 +43,7 @@
      "mail_bodies",
      "meeting_proposals",
      "schedule_runs",
+     "sent_drafts",
      "spend_marks",
      "task_checks"
     ]
@@ -186,7 +188,7 @@
   },
   "gmail.googleapis.com": {
    "who": "Google",
-   "why": "Mail and Calendar (read only): the chosen labels, message headers and previews, a message when it is opened, changes since the last sync, older-mail search",
+   "why": "Mail and Calendar: the chosen labels, message headers and previews, a message when it is opened, changes since the last sync, older-mail search; a message the customer sends and label changes they make (only with the send or organize permission, on their own press or approval)",
    "customer_data": true,
    "in_policy": "Google"
   },
@@ -334,7 +336,17 @@
   "The Sources page",
   "Calendar changes",
   "only when you press the button yourself or approve a change your assistant prepared",
-  "Records of changes made to your connected calendars"
+  "Records of changes made in your connected mail and calendars",
+  "Drafts and sending",
+  "cannot be taken back",
+  "at most 50 people a message and 30 messages an hour",
+  "Organizing your mail",
+  "It never deletes mail for good",
+  "Meeting times",
+  "Calendar feeds",
+  "stored encrypted and not shown again",
+  "A draft that was sent is removed 30 days",
+  "The calendar feeds you add"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -463,6 +475,11 @@
    "date": "2026-11-20",
    "by": "Claude Code, roadmap Phase 6 (#66, #67, #D6 mail from the dashboard)",
    "note": "Migration 0054: hub_settings.mail_json (the customer's own mail settings: Undo send's wait, marking read on open, their own sending limits) and hub_drafts.sent_action_id (which change sent a draft: an id). Sending (gmail.send) and organizing (gmail.modify) ship OFF for every customer (HubCaps.proving) until the owner approves the policy text that describes them; until then the published text (mail read only) stays true. Google receives the messages a customer sends and the label changes they make, only through their own account."
+  },
+  {
+   "date": "2026-11-20",
+   "by": "prepared for owner approval (roadmap Phase 6: mail, meetings, feeds, event changes)",
+   "note": "Sending (gmail.send) and organizing (gmail.modify), each asked separately on first use; sent only on the customer's press or their approval of exactly what the assistant prepared; first-time, large-audience and outside-organization notes before Send; Undo send (10 s default); at most 50 people a message and 30 messages an hour (lower by customer or organization); never a permanent deletion (bin furthest); record of each change incl. a sent message's recipients and text kept 180 days (connector_records); a sent draft removed 30 days after sending (retention rule sent_drafts); meeting times with attendee addresses kept 30 days (meeting_proposals); calendar feeds: address encrypted in custody, copy of events until removed, the feed host receives only our request; event changes and series scope; mail settings. Published together with switching these kinds on (HubCaps.proving emptied, MEETINGS_LIVE, FEEDS_LIVE), all proven live 2026-11-20 (deploy/phase6_live.py, 17 of 17)."
   }
  ],
  "assistant_recipients": {

@@ -569,8 +569,9 @@ class Connected(GoogleBase):
         self.assertEqual(self.g.messages['18c00001']['labelIds'], ['INBOX', 'UNREAD'])             # opening it did not mark it read at Google
         # Phase 6: Google declares changes, but a connection signed in to read has none of them until its customer gives that permission (re-consent on first use).
         caps = next(a for a in self.hub.accounts(self.a) if a['id'] == connection)['capabilities']
-        self.assertFalse(caps['send'] or caps['organize'] or caps['mark_read'] or caps['event_write'] or caps['respond'])
-        self.assertEqual(caps['missing'], {'event_write': 'calendar_write', 'respond': 'calendar_write'})
+        self.assertFalse(any(caps[k] for k in ('send', 'organize', 'mark_read', 'event_write', 'respond', 'event_change', 'event_series')))
+        self.assertEqual(caps['missing'], {'event_write': 'calendar_write', 'respond': 'calendar_write', 'event_change': 'calendar_write', 'event_series': 'calendar_write',
+                                           'send': 'send', 'organize': 'organize', 'mark_read': 'organize'})
 
 
 if __name__ == '__main__':

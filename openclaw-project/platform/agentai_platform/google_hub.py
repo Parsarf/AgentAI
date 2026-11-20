@@ -78,7 +78,7 @@ DECLARATION = Declaration(
     disclosure='Reads your mail and calendars. It changes them only when you allow each kind of change and then do it yourself or approve what your assistant prepared.',
     hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True, free_busy=True, event_write=True, respond=True,
                 event_change=True, event_series=True, send=True, organize=True, mark_read=True,
-                proving=('event_change', 'event_series', 'send', 'organize', 'mark_read'), grants=GRANTS), several_accounts=True)
+                proving=(), grants=GRANTS), several_accounts=True)          # every kind proven live 2026-11-20 (deploy/phase6_live.py), policy published with it
 
 # Gmail's system labels in the common set. Everything else is the customer's own label and is kept by its name.
 SYSTEM_LABELS = {'INBOX': 'inbox', 'SENT': 'sent', 'DRAFT': 'drafts', 'SPAM': 'spam', 'TRASH': 'trash', 'STARRED': 'starred', 'UNREAD': 'unread'}
