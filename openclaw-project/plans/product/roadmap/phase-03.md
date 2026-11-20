@@ -49,6 +49,6 @@ brings a real connector; turning it on earlier changes nothing a customer can re
 
 ## Cost, unknowns, rollback
 
-Cost so far: none. Unknowns: the assistant's own use of the six tools (does it end its turn after `propose` as told) is not proven with a real model: the tools' words
+**2026-11-19:** the six connector tools were refused by the relay for every real cell until #66 (the origin check and the cell plugin knew only the 13 older tools); fixed and covered by a blocking test. Cost so far: none. Unknowns: the assistant's own use of the six tools (does it end its turn after `propose` as told) is not proven with a real model: the tools' words
 say so and the resume turn tells it not to repeat, but the first real connector's evaluation in Phase 5 is where that is measured. Rollback: switches off, then the
 release back (`PENDING_DEPLOY.md`).

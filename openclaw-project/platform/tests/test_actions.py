@@ -523,7 +523,7 @@ class Handoff(Base):
 
     def test_the_assistant_prepares_a_change_through_its_tool_and_is_told_to_stop(self):
         from agentai_platform.connector_tools import ConnectorTools
-        tools = ConnectorTools(self.store, self.connectors, self.client, self.actions, self.workflows, clock=lambda: self.now, enabled=lambda a: True, writes_on=lambda a: True)
+        tools = ConnectorTools(self.store, self.connectors, self.client, self.actions, self.workflows, clock=lambda: self.now, enabled=lambda a: True, writes_on=lambda a, service=None: True)
         text, error = tools.call('a', {'connection': self.connection, 'kind': 'note.create', 'payload': NOTE}, name='lumina_connector_propose', request_id='req-a')
         self.assertFalse(error); self.assertIn('NOT SENT', text); self.assertIn('END YOUR TURN', text)
         self.assertEqual(self.notes(), [])

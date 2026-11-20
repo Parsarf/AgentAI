@@ -16,24 +16,39 @@ Tokens come from custody as `credential` and are never logged, returned or put i
 """
 from __future__ import annotations
 import base64
+import hashlib
 import http.client
 import json
+import re
 import socket
 import ssl
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from email.utils import getaddresses, parsedate_to_datetime
 from urllib.parse import quote, urlencode, urlsplit
 
-from .connector_kit import Caps, Declaration, Page, ProviderError
-from .hub_model import Changes, HubCaps, ResyncRequired, body, calendar, event, message
+from .connector_kit import Caps, Declaration, Page, ProviderError, Unanswered, WriteKind, record
+from .hub_model import Changes, Grant, HubCaps, ResyncRequired, body, calendar, event, message
+from .google_calendar_writes import WRITE_KINDS as CALENDAR_WRITE_KINDS, CalendarWrites
 
 PROVIDER = 'google'
 MAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
 IDENTITY_SCOPES = ('openid', 'email', 'https://www.googleapis.com/auth/userinfo.email')
+# Permissions to change things (roadmap Phase 6), each asked for on its own, when the customer first uses what it allows; a sign-in never asks for them.
+EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events'          # Google: sensitive
+SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'                 # Google: sensitive
+MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'             # Google: restricted (as gmail.readonly already is)
+GRANTS = (Grant('calendar_write', EVENTS_SCOPE, ('event_write', 'respond'),
+                'Create, change and cancel events in your Google calendars and answer invitations: each time only when you do it yourself or approve what your assistant prepared.'),
+          Grant('send', SEND_SCOPE, ('send',),
+                'Send mail from this Google account: only a message you send yourself or whose exact text you approved.'),
+          Grant('organize', MODIFY_SCOPE, ('organize', 'mark_read'),
+                'Organize this mailbox (archive, labels, read or unread, star, move to the bin): each time you do it yourself or approve it, with Undo. Nothing is deleted for good.'))
+WRITE_SCOPES = tuple(g.scope for g in GRANTS)
 AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN_URL = 'https://oauth2.googleapis.com/token'
 GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me'
@@ -50,16 +65,16 @@ READ_RETRIES = (2, 4, 6)               # seconds to wait before trying a refused
 EVENT_PAGE = 250
 
 DECLARATION = Declaration(
-    provider=PROVIDER, label='Google', auth='oauth', scopes=(MAIL_SCOPE, CALENDAR_SCOPE) + IDENTITY_SCOPES,
-    resource_kinds=('mailbox', 'label', 'calendar'), record_kinds=(), read_operations=(), write_kinds=(),
-    change_tokens=True, version_token='etag', paging='page_token',
+    provider=PROVIDER, label='Google', auth='oauth', scopes=(MAIL_SCOPE, CALENDAR_SCOPE) + IDENTITY_SCOPES + WRITE_SCOPES,
+    resource_kinds=('mailbox', 'label', 'calendar'), record_kinds=('event',), read_operations=(), write_kinds=CALENDAR_WRITE_KINDS,
+    change_tokens=True, version_token='etag', preconditions=True, idempotency_keys=True, paging='page_token',
     error_map={'rateLimitExceeded': 'retry_later', 'userRateLimitExceeded': 'retry_later', 'quotaExceeded': 'retry_later', 'dailyLimitExceeded': 'retry_later',
                'insufficientPermissions': 'needs_customer', 'ACCESS_TOKEN_SCOPE_INSUFFICIENT': 'needs_customer', 'authError': 'needs_customer', 'invalid_grant': 'needs_customer',
-               403: 'refused'},
+               'conditionNotMet': 'conflict', 412: 'conflict', 403: 'refused'},
     implementation='first_party', reason='The dashboard needs incremental sync (a history id for mail, a sync token for calendars), which only the REST APIs offer.',
     hosts=HOSTS, freshness_seconds={'mailbox': 900, 'calendar': 900}, caps=Caps(pages=4, items=100, bytes=2_000_000, seconds=25.0),
     disclosure='Reads your mail and calendars. It cannot send, change or delete anything.',
-    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True), several_accounts=True)
+    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True, free_busy=True, event_write=True, grants=GRANTS), several_accounts=True)
 
 # Gmail's system labels in the common set. Everything else is the customer's own label and is kept by its name.
 SYSTEM_LABELS = {'INBOX': 'inbox', 'SENT': 'sent', 'DRAFT': 'drafts', 'SPAM': 'spam', 'TRASH': 'trash', 'STARRED': 'starred', 'UNREAD': 'unread'}
@@ -328,7 +343,7 @@ _READS = Pace(READS_PER_SECOND)
 
 
 # -- the adapter -------------------------------------------------------------------------------------------------------------------------------------------
-class GoogleAdapter:
+class GoogleAdapter(CalendarWrites):
     def __init__(self, http=default_http, pace=None, sleep=time.sleep):
         self.http, self.sleep = http, sleep
         self.pace = pace if pace is not None else (_READS if http is default_http else None)      # the real network is paced; a test's fake is not
@@ -518,10 +533,14 @@ def _search_label(label_id, names) -> str:
 
 
 # -- signing in ---------------------------------------------------------------------------------------------------------------------------------------------
-def authorize_url(client_id, redirect_uri, state, challenge, *, hint=None) -> str:
-    """Where the customer is sent to give Lumina read access. `prompt=consent` with offline access, so a refresh token is always given and the customer always sees what is asked."""
-    query = {'client_id': client_id, 'redirect_uri': redirect_uri, 'response_type': 'code', 'scope': ' '.join((MAIL_SCOPE, CALENDAR_SCOPE, 'openid', 'email')), 'state': state,
-             'code_challenge': challenge, 'code_challenge_method': 'S256', 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'false'}
+def authorize_url(client_id, redirect_uri, state, challenge, *, hint=None, add=()) -> str:
+    """Where the customer is sent to give Lumina read access. `prompt=consent` with offline access, so a refresh token is always given and the customer always sees what is asked.
+    `add` names grants (GRANTS) to ask for on top, for an account already connected (`hint` is its address): Google then shows only what is new and keeps what was given."""
+    extra = [g.scope for g in GRANTS if g.name in set(add or ())]
+    if set(add or ()) - {g.name for g in GRANTS}:
+        raise ValueError('unknown grant')
+    query = {'client_id': client_id, 'redirect_uri': redirect_uri, 'response_type': 'code', 'scope': ' '.join((MAIL_SCOPE, CALENDAR_SCOPE, 'openid', 'email', *extra)), 'state': state,
+             'code_challenge': challenge, 'code_challenge_method': 'S256', 'access_type': 'offline', 'prompt': 'consent', 'include_granted_scopes': 'true' if extra else 'false'}
     if hint:
         query['login_hint'] = hint
     return AUTHORIZE_URL + '?' + urlencode(query)

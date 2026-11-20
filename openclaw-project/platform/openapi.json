@@ -1791,7 +1791,7 @@
   },
   "/v1/requests": {
    "get": {
-    "summary": "List the current account\u2019s saved requests",
+    "summary": "List the current account’s saved requests",
     "security": [
      {
       "sessionCookie": []
@@ -5165,7 +5165,7 @@
   },
   "/v1/account/mcp": {
    "get": {
-    "summary": "List this account\u2019s MCP connections, presets, enabled tool definitions and exact calls needing attention; never credentials",
+    "summary": "List this account’s MCP connections, presets, enabled tool definitions and exact calls needing attention; never credentials",
     "responses": {
      "200": {
       "description": "Successful account-scoped result; no stored credentials returned"
@@ -5866,7 +5866,7 @@
   },
   "/v1/location": {
    "get": {
-    "summary": "Read the signed-in account\u2019s pending device-location request (or null). Expired and cancelled requests are excluded.",
+    "summary": "Read the signed-in account’s pending device-location request (or null). Expired and cancelled requests are excluded.",
     "responses": {
      "200": {
       "description": "Account-scoped result; never returns coordinates"
@@ -5993,7 +5993,7 @@
   },
   "/v1/model-key/select": {
    "post": {
-    "summary": "Choose a host-catalog Lumina model or one of this account\u2019s saved key profiles. Applies to the next task without deleting keys. Refused while any work is pending.",
+    "summary": "Choose a host-catalog Lumina model or one of this account’s saved key profiles. Applies to the next task without deleting keys. Refused while any work is pending.",
     "requestBody": {
      "required": true,
      "content": {
@@ -8888,6 +8888,295 @@
   "/v1/hub/mail/attachment": {
    "post": {
     "summary": "Read an attachment of a message into the knowledge index: {\"connection_id\", \"message_id\", \"attachment_id\"}",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/events/create": {
+   "post": {
+    "summary": "Create an event in a connected calendar with the customer's own hand (their press is the approval); sent once through the action pipeline",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/events/cancel": {
+   "post": {
+    "summary": "Cancel an event the customer organizes, with their own hand; the people invited are told unless notify is false",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/actions/{action_id}/undo": {
+   "post": {
+    "summary": "Undo a finished change from the dashboard: its inverse, approved by this press",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": [
+     {
+      "name": "action_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/hub/actions/{action_id}/stop": {
+   "post": {
+    "summary": "Stop a change that is still waiting its few seconds (Undo send); nothing reaches the provider",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": [
+     {
+      "name": "action_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/hub/free": {
+   "get": {
+    "summary": "Free time between two days across the calendars that count, inside working hours (live free/busy where the provider has it)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": [
+     {
+      "name": "start",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "end",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "minutes",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/hub/conflicts": {
+   "post": {
+    "summary": "Clashes of a proposed time, or of each occurrence of a proposed repeat, with the calendars that count",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/availability": {
+   "get": {
+    "summary": "The customer's availability settings",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   },
+   "post": {
+    "summary": "Change the customer's availability settings (working hours, notice, buffer, which calendars count)",
     "security": [
      {
       "sessionCookie": []

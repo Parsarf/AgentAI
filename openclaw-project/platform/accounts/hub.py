@@ -84,7 +84,8 @@ def overview(request):
     def run():
         hub = wiring.hub_service()
         return {'accounts': hub.accounts(principal), 'providers': [{'provider': name, 'label': p['label']} for name, p in wiring.sign_in_providers().items()], 'settings': hub.settings(principal), 'counts': hub.counts(principal), 'calendars': hub.calendars(principal),
-                'labels': list(LIST_LABELS), 'colours': list(COLOURS), 'read_only': True}
+                'labels': list(LIST_LABELS), 'colours': list(COLOURS),
+                'read_only': not (wiring.switch_on('mail_calendar_writes') and wiring.hub_on(principal.account_id))}      # Phase 6: changes are possible only with the owner's writes switch
     return _run(run)
 
 
@@ -92,19 +93,25 @@ def _redirect_address():
     return django_settings.PUBLIC_ORIGIN + '/v1/hub/link/callback'
 
 
-@endpoint(['POST'], ['provider'], structured=True)
+@endpoint(['POST'], ['provider', 'connection', 'add'], structured=True)
 def link(request):
-    """Begin signing in. Nothing is connected by this: the customer is sent to the provider, which shows what is asked for (reading only) and sends them back."""
+    """Begin signing in. Nothing is connected by this: the customer is sent to the provider, which shows what is asked for (reading only) and sends them back.
+    With `connection` and `add` (names of the provider's grants, roadmap Phase 6) it asks for more on an account already connected: finishing changes that connection in place."""
     principal, stop = _enter(request, 'hub.link', 20)
     if stop:
         return stop
     provider = wiring.sign_in_providers().get(request.input.get('provider') if isinstance(request.input.get('provider'), str) else '')
     if provider is None:
         return JsonResponse({'error': 'connector_not_configured'}, status=503)
+    upgrade, add = request.input.get('connection'), request.input.get('add') or []
+    if (upgrade is None) != (not add) or (upgrade is not None and not isinstance(upgrade, str)) or not isinstance(add, list) or len(add) > 5 \
+            or any(not isinstance(a, str) or a not in provider['grants'] for a in add):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
 
     def run():
-        started = wiring.connector_service().start_link(principal, request.input['provider'], _redirect_address())
-        return {'authorize_url': provider['address'](_redirect_address(), started['state'], started['challenge']), 'expires_in': started['expires_in']}
+        started = wiring.connector_service().start_link(principal, request.input['provider'], _redirect_address(), upgrade=upgrade)
+        return {'authorize_url': provider['address'](_redirect_address(), started['state'], started['challenge'], hint=started.get('identity'), add=tuple(add)),
+                'expires_in': started['expires_in']}
     return _run(run)
 
 
@@ -139,8 +146,11 @@ def link_finish(request):
     provider = wiring.sign_in_providers().get(connectors.link_service(principal, state) or '')
     if provider is None:
         return JsonResponse({'error': 'link_failed'}, status=409)
+    from agentai_platform.connectors import WrongAccount
     try:
         connection = connectors.finish_link(principal, state, code, _redirect_address(), provider['exchange'], needs_any=provider['needs_any'])
+    except WrongAccount:
+        return JsonResponse({'error': 'different_account'}, status=409)          # adding permissions: the customer signed in as another account; nothing changed
     except (ConnectorError, NotPermitted):
         return JsonResponse({'error': 'link_failed'}, status=409)
     audit(request.user.pk, request.account_id, connection, 'hub.link', 'completed', request.request_id)
@@ -343,3 +353,125 @@ def attachment(request):
         wiring.hub_service().message(principal, given.get('connection_id', ''), given.get('message_id', ''))      # the message must be open for its attachments to be known
         return {'source': service.add(principal, 'attachment', ref, system=True)}
     return _run(run)
+
+
+# -- managing calendars from the dashboard (roadmap Phase 6, #59 to #61, #63, #D7) ------------------------------------------------------------------------------
+def _writes(request, principal, connection_id):
+    """The customer's own change: the writes switch must be on for this provider. -> None or the response to give."""
+    service = wiring.connector_service().service_of(principal.account_id, connection_id) if isinstance(connection_id, str) else None
+    if service is None:
+        return JsonResponse({'error': 'unavailable'}, status=404)
+    if not wiring.writes_on(principal.account_id, service):
+        return _off()
+    return None
+
+
+def _zone(principal):
+    from zoneinfo import ZoneInfo
+    name = wiring.hub_service().settings(principal)['timezone'] or 'UTC'
+    try:
+        return name, ZoneInfo(name)
+    except Exception:
+        return 'UTC', ZoneInfo('UTC')
+
+
+EVENT_FIELDS = ('calendar', 'title', 'start', 'end', 'all_day', 'attendees', 'place', 'description', 'notify')
+
+
+@endpoint(['POST'], ['connection', 'calendar', 'title', 'start', 'end', 'timezone', 'all_day', 'attendees', 'place', 'description', 'repeat', 'notify'], structured=True)
+def event_create(request):
+    """The customer creates an event themselves: their press is the approval (recorded as theirs, from the Calendar). Sent at once through the action pipeline."""
+    principal, stop = _enter(request, 'hub.write', 120)
+    if stop:
+        return stop
+    given = request.input
+    stop = _writes(request, principal, given.get('connection'))
+    if stop:
+        return stop
+    payload = {k: given[k] for k in EVENT_FIELDS if k in given and given[k] not in (None, '', [])}
+    if not payload.get('all_day'):
+        payload['timezone'] = given.get('timezone') or _zone(principal)[0]
+    if given.get('repeat'):
+        payload['recurrence'] = [given['repeat']]
+    _, _, actions, _ = wiring.action_services()
+    return _run(lambda: {'action': actions.direct(principal, given['connection'], 'event.create', payload, screen='calendar')})
+
+
+@endpoint(['POST'], ['connection', 'calendar', 'event', 'notify'], structured=True)
+def event_cancel(request):
+    principal, stop = _enter(request, 'hub.write', 120)
+    if stop:
+        return stop
+    given = request.input
+    stop = _writes(request, principal, given.get('connection'))
+    if stop:
+        return stop
+    if not all(isinstance(given.get(k), str) and given[k] for k in ('calendar', 'event')):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    payload = {'event': f"{given['calendar']}|{given['event']}", 'notify': bool(given.get('notify', True))}
+    _, _, actions, _ = wiring.action_services()
+    return _run(lambda: {'action': actions.direct(principal, given['connection'], 'event.delete', payload, screen='calendar')})
+
+
+@endpoint(['POST'], ['screen'], structured=True)
+def action_undo(request, action_id):
+    """The customer pressed Undo on a change in the Inbox or the Calendar: its inverse, approved by that press."""
+    principal, stop = _enter(request, 'hub.write', 120)
+    if stop:
+        return stop
+    screen = request.input.get('screen') or 'calendar'
+    _, _, actions, _ = wiring.action_services()
+    return _run(lambda: {'action': actions.undo_direct(principal, action_id, screen=screen)})
+
+
+@endpoint(['POST'])
+def action_stop(request, action_id):
+    """Stop a change that is still waiting its few seconds ("Undo send"). Nothing reaches the provider."""
+    principal, stop = _enter(request, 'hub.write', 120)
+    if stop:
+        return stop
+    _, _, actions, _ = wiring.action_services()
+    return _run(lambda: {'action': actions.cancel(principal, action_id)})
+
+
+@endpoint(['GET'])
+def free(request):
+    """Free time between two days (YYYY-MM-DD, at most 62), in the customer's timezone, for the Calendar's "find a time"."""
+    principal, stop = _enter(request, 'hub.read', 600)
+    if stop:
+        return stop
+    from datetime import datetime, timedelta
+    name, zone = _zone(principal)
+    try:
+        start = int(datetime.strptime(request.GET.get('start', ''), '%Y-%m-%d').replace(tzinfo=zone).timestamp())
+        end = int((datetime.strptime(request.GET.get('end', ''), '%Y-%m-%d').replace(tzinfo=zone) + timedelta(days=1)).timestamp())
+    except ValueError:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    minutes = _number(request, 'minutes') or 30
+
+    def run():
+        found = wiring.hub_service().free(principal, start, end, zone, minutes=minutes)
+        return {'timezone': name, 'free': [{'start_epoch': a, 'end_epoch': b} for a, b in found['free']], 'settings': found['settings'], 'sources': found['sources']}
+    return _run(run)
+
+
+@endpoint(['POST'], ['start', 'end', 'repeat'], structured=True)
+def conflicts(request):
+    principal, stop = _enter(request, 'hub.read', 600)
+    if stop:
+        return stop
+    given = request.input
+    if not all(isinstance(given.get(k), str) for k in ('start', 'end')) or (given.get('repeat') is not None and not isinstance(given['repeat'], str)):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    name, zone = _zone(principal)
+    return _run(lambda: {'timezone': name, **wiring.hub_service().conflicts(principal, given['start'], given['end'], zone, rule=given.get('repeat') or None)})
+
+
+@endpoint(['GET', 'POST'], ['hours', 'notice_minutes', 'buffer_minutes', 'busy_calendars', 'tentative_busy', 'all_day_busy'], structured=True)
+def availability(request):
+    principal, stop = _enter(request, 'hub.settings', 120)
+    if stop:
+        return stop
+    if request.method == 'GET':
+        return _run(lambda: {'availability': wiring.hub_service().availability(principal)})
+    return _run(lambda: {'availability': wiring.hub_service().set_availability(principal, request.input)})

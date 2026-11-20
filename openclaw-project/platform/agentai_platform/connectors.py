@@ -43,6 +43,10 @@ class ConnectorNotConfigured(ConnectorError):
     pass
 
 
+class WrongAccount(ConnectorError):
+    """A sign-in meant to add permissions to one account came back signed in as another: nothing changed."""
+
+
 class WriteDisabled(ConnectorError):
     pass
 
@@ -212,6 +216,12 @@ class ConnectorService:
     def declared(self, service):
         return self.registry.declaration(service) if self.registry is not None else None
 
+    def service_of(self, account_id, connection_id) -> str | None:
+        """Which service a connection of this account is to (None when there is no such connection): the owner switch that governs changes depends on it."""
+        with self.store.connect() as con:
+            row = con.execute("SELECT service FROM connector_connections WHERE account_id=? AND id=? AND state!='revoked'", (account_id, str(connection_id or ''))).fetchone()
+        return row['service'] if row else None
+
     # ---------- listing ----------
 
     def overview(self, principal: Principal) -> list[dict]:
@@ -325,9 +335,10 @@ class ConnectorService:
 
     # ---------- linking a connector built on the contract (its provider module builds the sign-in address and does the exchange) ----------
 
-    def start_link(self, principal: Principal, service: str, redirect_uri: str) -> dict:
+    def start_link(self, principal: Principal, service: str, redirect_uri: str, *, upgrade: str | None = None) -> dict:
         """Begin signing in to a declared provider. -> {'state', 'challenge', 'expires_in'}: the provider's module puts these in its sign-in address. The state is single
-        use, bound to this person, and expires; the PKCE verifier waits in custody, never in a row a view reads."""
+        use, bound to this person, and expires; the PKCE verifier waits in custody, never in a row a view reads. `upgrade` is a connection of this person to `service` that
+        the sign-in adds permissions to (finish_link then changes it in place); -> also {'identity'}, the address to sign in as."""
         from .security import require
         if self.declared(service) is None:
             raise ConnectorNotConfigured('connector not configured')
@@ -339,13 +350,24 @@ class ConnectorService:
             from . import organizations
             if not organizations.connector_allowed(con, principal.account_id, service):
                 raise ConnectorError('your organization does not allow this service')
+            identity = None
+            if upgrade is not None:
+                target = con.execute("SELECT identity_label FROM connector_connections WHERE account_id=? AND id=? AND service=? AND state!='revoked'",
+                                     (principal.account_id, str(upgrade), service)).fetchone()
+                if target is None:
+                    raise ConnectorError('link failed')
+                require(principal, 'connection.use', con=con)
+                identity = target['identity_label']
             verifier_ref = custody_put(self.custody, con, principal.account_id, 'pkce', verifier.encode())
             con.execute('DELETE FROM connector_link_states WHERE expires_epoch<?', (now,))
-            con.execute("""INSERT INTO connector_link_states(account_id,state_hash,actor_id,service,redirect_uri,verifier_ref,selected_resources,expires_epoch)
-                VALUES (?,?,?,?,?,?,'[]',?)""", (principal.account_id, hashlib.sha256(state.encode()).hexdigest(), principal.actor_id, service, redirect_uri, verifier_ref,
-                                                 now + LINK_TTL_SECONDS))
-            self.coordinator._audit(con, principal.account_id, principal.actor_id, service, 'connector.link.begin', 'completed')
-        return {'state': state, 'challenge': _b64(hashlib.sha256(verifier.encode()).digest()), 'expires_in': LINK_TTL_SECONDS}
+            con.execute("""INSERT INTO connector_link_states(account_id,state_hash,actor_id,service,redirect_uri,verifier_ref,selected_resources,expires_epoch,upgrade_connection_id)
+                VALUES (?,?,?,?,?,?,'[]',?,?)""", (principal.account_id, hashlib.sha256(state.encode()).hexdigest(), principal.actor_id, service, redirect_uri, verifier_ref,
+                                                   now + LINK_TTL_SECONDS, str(upgrade) if upgrade is not None else None))
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, upgrade or service, 'connector.link.begin', 'completed')
+        out = {'state': state, 'challenge': _b64(hashlib.sha256(verifier.encode()).digest()), 'expires_in': LINK_TTL_SECONDS}
+        if identity is not None:
+            out['identity'] = identity
+        return out
 
     def link_service(self, principal: Principal, state: str) -> str | None:
         """Which provider a sign-in that is still open belongs to (None when there is none for this person): the callback asks before it finishes, so the right exchange is used."""
@@ -365,7 +387,7 @@ class ConnectorService:
             if con.execute("""UPDATE connector_link_states SET used_epoch=? WHERE state_hash=? AND account_id=? AND actor_id=? AND used_epoch IS NULL AND expires_epoch>=?""",
                            (now, digest, principal.account_id, principal.actor_id, now)).rowcount != 1:
                 raise ConnectorError('link failed')
-            row = dict(con.execute('SELECT service,redirect_uri,verifier_ref FROM connector_link_states WHERE state_hash=?', (digest,)).fetchone())
+            row = dict(con.execute('SELECT service,redirect_uri,verifier_ref,upgrade_connection_id FROM connector_link_states WHERE state_hash=?', (digest,)).fetchone())
         verifier = self.custody.get(principal.account_id, row['verifier_ref']).decode()
         self.custody.delete(principal.account_id, row['verifier_ref'])
         declared = self.declared(row['service'])
@@ -379,8 +401,29 @@ class ConnectorService:
         if not result.identity or len(result.identity) > 320 or not granted <= set(declared.scopes) or (needs_any and not granted & set(needs_any)):
             raise ConnectorError('the account could not be verified, or it gave none of the access that was asked for')
         expires = result.tokens.get('expires_in') if isinstance(result.tokens, dict) else None
-        return self.connect_declared(principal, row['service'], result.identity, tokens=result.tokens, scopes=sorted(granted),
-                                     expires_in=int(expires) if isinstance(expires, (int, float)) and expires > 0 else None)
+        expires = int(expires) if isinstance(expires, (int, float)) and expires > 0 else None
+        if row['upgrade_connection_id']:
+            return self._upgrade(principal, row['service'], row['upgrade_connection_id'], result.identity, result.tokens, sorted(granted), expires)
+        return self.connect_declared(principal, row['service'], result.identity, tokens=result.tokens, scopes=sorted(granted), expires_in=expires)
+
+    def _upgrade(self, principal, service, connection_id, identity, tokens, scopes, expires_in) -> str:
+        """A sign-in that added permissions to an existing connection: the same account (or it is refused, and nothing changes), its tokens replaced in custody and its
+        permissions set to what the provider now says, in place. Its grants, its synced copy and its id stay. -> the connection id."""
+        now = int(self.clock())
+        with self.coordinator.transaction() as con:
+            self.store._authorize(con, principal)
+            old = con.execute("SELECT secret_ref,identity_label FROM connector_connections WHERE account_id=? AND id=? AND service=? AND state!='revoked'",
+                              (principal.account_id, connection_id, service)).fetchone()
+            if old is None or str(identity).lower() != str(old['identity_label']).lower():
+                raise WrongAccount('signed in as a different account')
+            secret_ref = custody_put(self.custody, con, principal.account_id, service, json.dumps(tokens).encode()) if tokens else old['secret_ref']
+            con.execute("""UPDATE connector_connections SET state='connected',needs_reason=NULL,needs_notified_epoch=NULL,granted_scopes=?,secret_ref=?,updated_epoch=?,
+                expires_epoch=?,refresh_after_epoch=NULL WHERE account_id=? AND id=?""",
+                        (json.dumps(sorted(scopes)), secret_ref, now, now + expires_in if expires_in else None, principal.account_id, connection_id))
+            if old['secret_ref'] and old['secret_ref'] != secret_ref:
+                custody_delete(self.custody, con, principal.account_id, old['secret_ref'])
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, connection_id, 'connector.link.upgrade', 'completed')
+        return connection_id
 
     # ---------- read gating ----------
 

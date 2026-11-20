@@ -29,6 +29,7 @@ class FakeGoogle:
         self.events, self.sync_tokens, self.event_version = {}, {}, 0
         self.access, self.refresh, self.scope = 'at-1', 'rt-1', SCOPES
         self.calls, self.fail, self.gone = [], [], False
+        self.lose_answer, self.updates = False, []                   # changes (Phase 6): drop the next write's answer after doing it; sendUpdates of each write
 
     # -- filling ------------------------------------------------------------------------------------------------------------------------------
     def mail(self, n, *, thread=None, labels=('INBOX', 'UNREAD'), age_days=1, subject=None, sender='Ann Lee <ann@x.test>', files=()):
@@ -88,6 +89,52 @@ class FakeGoogle:
             return self._ok({'history': [h for h in self.history if int(h['id']) > start], 'historyId': str(self.history_id)})
         if path.endswith('/users/me/calendarList'):
             return self._ok({'items': self.calendars})
+        if path.endswith('/freeBusy') and method == 'POST':
+            asked = json.loads(data)
+            low, high = asked['timeMin'], asked['timeMax']
+            out = {}
+            for item in asked['items']:
+                if item['id'] not in [c['id'] for c in self.calendars]:
+                    out[item['id']] = {'errors': [{'domain': 'global', 'reason': 'notFound'}], 'busy': []}
+                    continue
+                busy = []
+                for e in self.events.get(item['id'], {}).values():
+                    if e['status'] == 'cancelled' or e.get('transparency') == 'transparent' or 'dateTime' not in (e.get('start') or {}):
+                        continue
+                    if e['start']['dateTime'] < high and e['end']['dateTime'] > low:
+                        busy.append({'start': e['start']['dateTime'], 'end': e['end']['dateTime']})
+                out[item['id']] = {'busy': sorted(busy, key=lambda b: b['start'])}
+            return self._ok({'calendars': out})
+        if '/events' in path and method in ('POST', 'DELETE') or (method == 'GET' and '/events/' in path):
+            from urllib.parse import unquote
+            calendar = unquote(path.split('/calendars/')[1].split('/events')[0])
+            if calendar not in [c['id'] for c in self.calendars]:
+                return self._error(404, 'notFound')
+            if method == 'GET':
+                found = self.events.get(calendar, {}).get(unquote(path.rsplit('/', 1)[1]))
+                return self._ok({k: v for k, v in found.items() if k != '_v'}) if found else self._error(404, 'notFound')
+            self.updates.append(one('sendUpdates'))
+            if method == 'POST':
+                body = json.loads(data)
+                old = self.events.get(calendar, {}).get(body.get('id'))
+                if old is not None:
+                    return self._error(409, 'duplicate')
+                raw = self.event(body.pop('id'), calendar, **body)
+                answer = self._ok({k: v for k, v in raw.items() if k != '_v'})
+            else:
+                eid = unquote(path.rsplit('/', 1)[1])
+                found = self.events.get(calendar, {}).get(eid)
+                if found is None or found['status'] == 'cancelled':
+                    return self._error(410, 'deleted')
+                if headers.get('If-Match') and headers['If-Match'] != found['etag']:
+                    return self._error(412, 'conditionNotMet')
+                self.event_version += 1
+                found.update(status='cancelled', etag=f'"{self.event_version}"', _v=self.event_version)
+                answer = (204, {}, b'')
+            if self.lose_answer:
+                self.lose_answer = False
+                raise ProviderError(0, 'unreachable')                       # it happened at Google; the answer was lost on the way back
+            return answer
         if path.endswith('/events'):
             calendar = path.split('/calendars/')[1].rsplit('/', 1)[0].replace('%40', '@')
             if calendar not in [c['id'] for c in self.calendars]:
@@ -194,13 +241,17 @@ class Conversion(unittest.TestCase):
         self.assertEqual(to_calendar({'id': 'c', 'accessRole': 'freeBusyReader'})['access'], 'busy')
 
 
-class Connected(HubBase):
-    """The whole path with the real engine and service, a fake Google and (always) a second, different provider beside it."""
+class GoogleBase(HubBase):
+    """The real engine and service with a fake Google (and, always, a second, different provider beside it). No tests of its own: other modules build on it."""
     def setUp(self):
         super().setUp()
         self.g = FakeGoogle(now=self.now)
         google_hub.register(self.registry, self.g)
-        self.connectors.catalog['google'] = None                      # the service built its catalogue before this provider was registered; `declared` reads the registry
+        # The service built its catalogue before this provider was registered: give it Google's entry the way its constructor does for a registered declaration.
+        from agentai_platform.connectors import Service
+        d = google_hub.DECLARATION
+        self.connectors.catalog['google'] = Service('google', d.label, 'researcher', frozenset(d.scopes), needs_selection=False,
+                                                    writable_kinds=frozenset(w.name for w in d.write_kinds), disclosure=d.disclosure)
         self.exchange = google_hub.exchanger('client-1', 'secret-1', self.g)
         self.redirect = 'https://app.test/v1/hub/link/callback'
 
@@ -212,6 +263,11 @@ class Connected(HubBase):
         if grants:
             self.connectors.set_grants(who, connection, [{'kind': k, 'id': i} for k, i in grants])
         return connection, url
+
+
+
+class Connected(GoogleBase):
+    """The whole path with the real engine and service, a fake Google and (always) a second, different provider beside it."""
 
     def test_signing_in_asks_only_to_read_and_records_which_account_it_is(self):
         connection, url = self.sign_in(grants=())
@@ -246,6 +302,51 @@ class Connected(HubBase):
         with self.assertRaises(ConnectorError):
             self.connectors.finish_link(self.a, wide['state'], 'good-code', self.redirect, self.exchange)
         self.assertEqual(self.rows('SELECT 1 FROM connector_connections'), [])
+
+    def test_adding_a_permission_changes_the_connection_in_place_and_keeps_its_copy(self):
+        # Roadmap Phase 6: a permission to change things is asked for only when it is first used, on the account already connected. A second sign-in to the same
+        # account used to revoke the connection and delete its whole copy; adding a permission keeps the connection, its grants and everything synced.
+        connection, _ = self.sign_in()
+        for n in range(1, 4):
+            self.g.mail(n, age_days=n)
+        self.run_sync()
+        before = self.rows('SELECT count(*) AS n FROM hub_messages')[0]['n']
+        secret = self.rows('SELECT secret_ref FROM connector_connections WHERE id=?', (connection,))[0]['secret_ref']
+        self.assertGreater(before, 0)
+        offered = {g['name']: g for g in next(a for a in self.hub.accounts(self.a) if a['id'] == connection)['grants']}
+        self.assertEqual(sorted(offered), ['calendar_write', 'organize', 'send'])
+        self.assertNotIn('scope', offered['send'])                                              # the provider's own scope names stay on the server
+        started = self.connectors.start_link(self.a, 'google', self.redirect, upgrade=connection)
+        self.assertEqual(started['identity'], 'dana@gmail.test')
+        asked = parse_qs(urlsplit(google_hub.authorize_url('client-1', self.redirect, started['state'], started['challenge'], hint=started['identity'], add=('calendar_write',))).query)
+        self.assertIn(google_hub.EVENTS_SCOPE, asked['scope'][0].split())
+        self.assertNotIn(google_hub.SEND_SCOPE, asked['scope'][0].split())
+        self.assertEqual((asked['include_granted_scopes'], asked['login_hint']), (['true'], ['dana@gmail.test']))
+        self.g.scope = SCOPES + ' ' + google_hub.EVENTS_SCOPE
+        again = self.connectors.finish_link(self.a, started['state'], 'good-code', self.redirect, self.exchange, needs_any=(google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE))
+        self.assertEqual(again, connection)
+        row = self.rows('SELECT state,granted_scopes,secret_ref FROM connector_connections WHERE id=?', (connection,))[0]
+        self.assertEqual(row['state'], 'connected')
+        self.assertIn(google_hub.EVENTS_SCOPE, json.loads(row['granted_scopes']))
+        self.assertNotEqual(row['secret_ref'], secret)                                          # the new tokens replaced the old ones in custody
+        self.assertEqual(self.rows('SELECT count(*) AS n FROM hub_messages')[0]['n'], before)   # nothing of the copy was lost
+        self.assertEqual(len(self.rows('SELECT 1 FROM connector_grants WHERE connection_id=?', (connection,))), 2)
+        self.assertEqual(len(self.rows("SELECT 1 FROM connector_connections WHERE state!='revoked'")), 1)
+
+    def test_adding_a_permission_signed_in_as_another_account_or_for_someone_else_changes_nothing(self):
+        from agentai_platform.connectors import WrongAccount
+        connection, _ = self.sign_in()
+        scopes = self.rows('SELECT granted_scopes FROM connector_connections WHERE id=?', (connection,))[0]['granted_scopes']
+        started = self.connectors.start_link(self.a, 'google', self.redirect, upgrade=connection)
+        self.g.email, self.g.scope = 'someone.else@gmail.test', SCOPES + ' ' + google_hub.SEND_SCOPE
+        with self.assertRaises(WrongAccount):
+            self.connectors.finish_link(self.a, started['state'], 'good-code', self.redirect, self.exchange)
+        self.assertEqual(self.rows('SELECT granted_scopes FROM connector_connections WHERE id=?', (connection,))[0]['granted_scopes'], scopes)
+        self.assertEqual(self.rows("SELECT count(*) AS n FROM connector_connections WHERE state!='revoked'")[0]['n'], 1)
+        with self.assertRaises(ConnectorError):                                                 # another customer cannot upgrade this connection
+            self.connectors.start_link(self.b, 'google', self.redirect, upgrade=connection)
+        with self.assertRaises(ValueError):
+            google_hub.authorize_url('client-1', self.redirect, 's', 'c', add=('delete_everything',))
 
     def test_the_picker_offers_all_mail_the_customers_labels_and_each_calendar(self):
         connection, _ = self.sign_in(grants=())
@@ -398,9 +499,10 @@ class Connected(HubBase):
         methods = {(method, where) for method, where in self.g.calls if method != 'GET'}
         self.assertEqual(methods, {('POST', 'oauth2.googleapis.com/token')})                       # the only POST is the sign-in itself
         self.assertEqual(self.g.messages['18c00001']['labelIds'], ['INBOX', 'UNREAD'])             # opening it did not mark it read at Google
-        self.assertEqual(google_hub.DECLARATION.write_kinds, ())
-        caps = google_hub.DECLARATION.hub
-        self.assertFalse(caps.send or caps.organize or caps.mark_read or caps.event_write or caps.respond)
+        # Phase 6: Google declares changes, but a connection signed in to read has none of them until its customer gives that permission (re-consent on first use).
+        caps = next(a for a in self.hub.accounts(self.a) if a['id'] == connection)['capabilities']
+        self.assertFalse(caps['send'] or caps['organize'] or caps['mark_read'] or caps['event_write'] or caps['respond'])
+        self.assertEqual(caps['missing'], {'event_write': 'calendar_write'})
 
 
 if __name__ == '__main__':

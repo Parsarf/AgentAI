@@ -4,10 +4,14 @@ import { api, ApiError } from './api';
 
 export interface Person { name: string; address: string }
 export interface HubCaps { mail: boolean; calendar: boolean; mail_search: boolean; incremental: boolean; push: boolean; labels: 'labels' | 'folders' | 'none'; subjects: boolean;
-  send: boolean; organize: boolean; mark_read: boolean; event_write: boolean; respond: boolean; attachments?: boolean; compose_link?: boolean }
+  send: boolean; organize: boolean; mark_read: boolean; event_write: boolean; respond: boolean; attachments?: boolean; compose_link?: boolean; free_busy?: boolean;
+  /** capability -> the permission to ask for (Phase 6): the provider can, this account has not allowed it yet */
+  missing?: Record<string, string> }
+/** A permission to change things, asked for on first use (Phase 6): the same names for every provider. */
+export interface HubGrant { name: string; capabilities: string[]; words: string }
 export interface SyncPart { synced_epoch: number | null; filled: boolean; items: number; error: string | null; paused: boolean }
 export interface HubAccount { id: string; provider: string; provider_label: string; identity: string; state: 'working' | 'needs_you'; needs_reason: string | null;
-  capabilities: HubCaps; granted: { mail: boolean; calendar: boolean }; mail: SyncPart | null; calendar: SyncPart | null }
+  capabilities: HubCaps; grants?: HubGrant[]; granted: { mail: boolean; calendar: boolean }; mail: SyncPart | null; calendar: SyncPart | null }
 export interface ProviderLabel { id: string; name: string }
 export interface Thread { connection_id: string; id: string; subject: string; snippet: string; people: Person[]; last_epoch: number; message_count: number; unread: boolean;
   starred: boolean; has_attachments: boolean; labels: string[]; provider_labels: ProviderLabel[] }
@@ -23,6 +27,10 @@ export interface HubEvent { connection_id: string; calendar_id: string; id: stri
   description?: string; organizer?: Person | null; attendees?: (Person & { response: string; self: boolean; optional: boolean })[]; provider_url?: string | null; synced_epoch?: number | null }
 export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[] }; counts: { unread: number; by_account: Record<string, number> };
   calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean }
+/** A change in a connected account, as the action pipeline reports it (Phase 6). `direct` is the screen when the customer made it with their own hand. */
+export interface HubAction { id: string; kind: string; state: string; preview: { title: string; summary: string; destination: string; changes: { field: string; before: unknown; after: unknown }[]; can_undo: boolean };
+  verified: boolean | null; can_undo: boolean; undo_until_epoch: number | null; direct: string | null; ended_words: string }
+export interface NewEvent { connection: string; calendar: string; title: string; start: string; end: string; all_day?: boolean; attendees?: string[]; place?: string; description?: string; notify?: boolean }
 /** A mail draft kept in Lumina (#57): never in the mailbox. The customer sends it themselves from their mail service. */
 export interface Draft { id: string; account: string; thread: string | null; to: string[]; cc: string[]; subject: string; body: string; origin: 'customer' | 'assistant';
   created_epoch: number; updated_epoch: number }
@@ -56,6 +64,11 @@ export const hub = {
   saveDraft: (change: DraftChange) => api<{ draft: Draft }>('POST', '/v1/hub/drafts', change),
   discardDraft: (id: string) => api<{ discarded: string }>('POST', `/v1/hub/drafts/${encodeURIComponent(id)}/discard`, {}),
   composeLink: (id: string) => api<{ draft: Draft; link: string | null }>('GET', `/v1/hub/drafts/${encodeURIComponent(id)}/compose`),
+  // Phase 6: changing calendars. The customer's own press is the approval; each call goes through the action pipeline once.
+  allow: (account: HubAccount, add: string[]) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider: account.provider, connection: account.id, add }),
+  createEvent: (e: NewEvent) => api<{ action: HubAction }>('POST', '/v1/hub/events/create', e),
+  cancelEvent: (connection: string, calendar: string, event: string, notify = true) => api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify }),
+  undo: (action: string, screen = 'calendar') => api<{ action: HubAction }>('POST', `/v1/hub/actions/${encodeURIComponent(action)}/undo`, { screen }),
 };
 
 /** Addresses typed in one box, split on commas, semicolons and spaces. */

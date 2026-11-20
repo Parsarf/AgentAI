@@ -26,6 +26,7 @@ A real attachment from the owner's mailbox (a 4-page PDF) was read through the s
 | Every page with no text went unread: the reader asked the model for `temperature: 0`, which `claude-sonnet-5-5` does not accept (the proxy answered 400) | No temperature in the request (#63); `ops/probe_models.py` had the same parameter |
 | The embedding server was killed by its 1.5 GB cap on the first request of 32 long passages (ten restarts on 2026-11-19); a real PDF waited "to try again" | `--max-batch-tokens 4096` and 2.5 GB, the container labelled with its settings and replaced when they change (#64). Production: 8 requests of 32 long passages, 5.1 s each, no restart |
 | A deploy restarted neither the render service nor the knowledge worker, so both kept the previous release's code | Both are optional units of `agentai-deploy`, restarted on a deploy and a rollback (#63; seen working on the `b0a5dd7` deploy) |
+| **The assistant itself could not use any document, commitment, draft or brief tool**: the relay refused them for every real cell ("does not belong to an admitted live task"), because the bridge's origin check and the cell plugin held a fixed list of 13 older tools. The exit gates above call the services directly, so they passed regardless; found by Phase 5's assistant-panel gate | Both accept every `lumina_<name>` the relay serves; a blocking test ties them to all 42 relay tool names (#66, deployed `cddeb4c`) |
 
 ## Feature table
 

@@ -168,4 +168,38 @@ describe('Calendar', () => {
     expect(screen.getByText('Not available yet')).toBeTruthy();
     expect(calls.length).toBe(0);
   });
+
+  it('lets the customer cancel an event they organize, says who is told, and undoes it (Phase 6)', async () => {
+    const writable = account({ capabilities: caps({ event_write: true }) });
+    const done = (id: string, kind: string) => ({ action: { id, kind, state: 'done', preview: { title: '', summary: '', destination: '', changes: [], can_undo: true }, verified: true, can_undo: true,
+      undo_until_epoch: null, direct: 'calendar', ended_words: '' } });
+    server(base({ '/v1/hub': overview({ accounts: [writable, second], read_only: false }), 'POST /v1/hub/refresh': { requested: 1 },
+      '/v1/hub/event': () => ({ event: { ...EVENTS[0], organizer: { name: 'Me', address: 'me@first.test' }, attendees: [{ name: 'Me', address: 'me@first.test', response: 'accepted', self: true, optional: false },
+        { name: 'Ann', address: 'ann@x.test', response: 'tentative', self: false, optional: false }], synced_epoch: NOW / 1000 - 300 } }),
+      'POST /v1/hub/events/cancel': done('a1', 'event.delete'), 'POST /v1/hub/actions/a1/undo': done('a2', 'event.recreate') }));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Standup, 9:00 AM' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel event' }));
+    expect(screen.getByRole('alertdialog', { name: 'Cancel this event?' }).textContent).toContain('1 person is told it is cancelled.');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel it' }));
+    await screen.findByText('"Standup" was cancelled.');
+    expect(asked('/v1/hub/events/cancel').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'e1', notify: true }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await screen.findByText('Undone.');
+    expect(asked('/v1/hub/actions/a1/undo').map(c => c.body)).toEqual([{ screen: 'calendar' }]);
+  });
+
+  it('shows no control that changes anything while changes are off, and asks for the permission where it is missing', async () => {
+    server(base()); show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Standup, 9:00 AM' }));
+    await screen.findByText('Daily sync');
+    expect(screen.queryByRole('button', { name: 'Cancel event' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New event' })).toBeNull();
+    cleanup();
+    const asking = account({ capabilities: caps({ missing: { event_write: 'calendar_write' } }), grants: [{ name: 'calendar_write', capabilities: ['event_write'], words: 'Create and change events when you approve.' }] });
+    server(base({ '/v1/hub': overview({ accounts: [asking, second], read_only: false }) })); show();
+    fireEvent.click(await screen.findByRole('button', { name: 'New event' }));
+    expect(await screen.findByRole('button', { name: 'Allow changes for me@first.test' })).toBeTruthy();
+    expect(screen.queryByRole('form', { name: 'New event' })).toBeNull();
+  });
 });

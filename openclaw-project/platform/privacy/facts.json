@@ -113,8 +113,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "603c7a4060510dc63865032e9a65a66a07d01be970b99244d9b8000dce814e36",
-  "schema_columns": 1119,
+  "schema_sha256": "173125a09bd019b982544ee8fb2c21ae3431617fbe8a291ffb902614ff27aca6",
+  "schema_columns": 1122,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -438,6 +438,11 @@
    "date": "2026-11-19",
    "by": "Claude Code on the owner's instruction of 2026-11-19 (\"publish as prepared\"), finishing roadmap Phase 4-5",
    "note": "Published the text prepared on 2026-11-16 (platform/privacy/proposed/), dated 19 November 2026. It now describes what was already live or is switched on with it: (1) Mail and Calendar (switch mail_calendar_dashboard, on for every account since 2026-11-16): Google sign-in with read-only scopes (gmail.readonly, calendar.readonly, openid email); the copy kept on our server (headers, previews and labels of the chosen mail until the account is removed; every past event and two years ahead; message text only once opened, kept 90 days after it was last opened, swept by the retention timer; drafts kept in Lumina only); Google named as a recipient of our requests (hosts accounts.google.com, oauth2.googleapis.com, gmail.googleapis.com, www.googleapis.com, and mail.google.com for the compose link opened by the customer's own browser). (2) Files and the document index (switches customer_uploads and customer_knowledge, turned on with this release): uploads up to 10 MB, a per-account index of passages and search vectors made on our own server by a self-hosted model (no new company), pages with no text and possible charts read by Anthropic at Lumina's cost; commitments; what the assistant checked (90 days, swept); memory corrections keep history. file_uploads leaves features_off_so_policy_is_silent_on_them, and check_server.py now fails a feature only while the record says the policy is silent on it. Migrations 0048 to 0050 (923 to 1119 columns): hub_* (the mail and calendar copy), file folders and places, knowledge_* (sources, passages, checks), commitments, organization groups, memory history, mail drafts; every one has a retention row and a deletion step. Retention table gains task_checks 90 and mail_bodies 90 (both swept). Every statement was checked against retention.py, google_hub.py, files.py, hub_sync.py and knowledge_tools.py."
+  },
+  {
+   "date": "2026-11-20",
+   "by": "Claude Code, roadmap Phase 6 (calendar changes) on the owner's instruction of 2026-11-20",
+   "note": "Migration 0052 (1119 to 1122 columns): connector_link_states.upgrade_connection_id (which of the customer's own connections a sign-in adds a permission to: an id), hub_settings.availability_json (the customer's own working hours, notice, buffer and which calendars count), actions.direct_screen (which screen a change the customer made with their own hand came from: a fixed word). No new kind of personal data, no new recipient, no new retention time. Changing mail and calendars is built behind the owner switch mail_calendar_writes, which is OFF: the published policy's statement that Lumina cannot send, change or delete anything stays true until the owner approves the policy text for changes and turns the switch on. Judged not to need a wording change now."
   }
  ],
  "assistant_recipients": {

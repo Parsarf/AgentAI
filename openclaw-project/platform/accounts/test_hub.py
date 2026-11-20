@@ -275,7 +275,8 @@ class SignIn(Base):
         self.g = FakeGoogle()
         http = self.g
         providers = {'google': {'label': 'Google', 'register': lambda registry: google_hub.register(registry, http),
-                                'address': lambda redirect, state, challenge: google_hub.authorize_url('client-1', redirect, state, challenge),
+                                'address': lambda redirect, state, challenge, hint=None, add=(): google_hub.authorize_url('client-1', redirect, state, challenge, hint=hint, add=add),
+                                'grants': tuple(g.name for g in google_hub.GRANTS),
                                 'exchange': google_hub.exchanger('client-1', 'secret-1', http), 'refresh': google_hub.refresher('client-1', 'secret-1', http),
                                 'needs_any': (google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE)}}
         offered = patch.object(wiring, 'sign_in_providers', lambda: providers); offered.start(); self.addCleanup(offered.stop)
@@ -286,6 +287,49 @@ class SignIn(Base):
             return google_hub.register(made, http)
         fake = patch.object(wiring, 'connector_registry', registry); fake.start(); self.addCleanup(fake.stop)
         origin = override_settings(PUBLIC_ORIGIN='https://app.test'); origin.enable(); self.addCleanup(origin.disable)
+
+    def connect(self, scope=None):
+        """Sign in through the routes and choose all mail and the primary calendar. -> the connection id."""
+        from urllib.parse import parse_qs, urlsplit
+        asked = parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google'}).json()['authorize_url']).query)
+        connection = self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'}).json()['connection_id']
+        self.post(self.a, f'/v1/integrations/{connection}/grants', {'grants': [{'kind': 'mailbox', 'id': '*'}, {'kind': 'calendar', 'id': 'dana@gmail.test'}]})
+        sync = wiring.hub_services()[2]
+        for _ in range(3):
+            sync.tick(limit=50)
+        return connection
+
+    def test_changing_the_calendar_from_the_dashboard_asks_the_permission_once_then_goes_through_the_pipeline(self):
+        from urllib.parse import parse_qs, urlsplit
+        from agentai_platform import google_hub
+        connection = self.connect()
+        event = {'connection': connection, 'calendar': 'dana@gmail.test', 'title': 'Planning', 'start': '2033-05-20T10:00', 'end': '2033-05-20T11:00', 'timezone': 'America/New_York'}
+        self.assertEqual(self.post(self.a, '/v1/hub/events/create', event).status_code, 503)                 # the owner's writes switch is off
+        self.ON = {'mail_calendar_dashboard', 'mail_calendar_writes'}
+        refused = self.post(self.a, '/v1/hub/events/create', event)
+        self.assertEqual(refused.status_code, 403, refused.content)                                           # no calendar permission yet: refused, nothing sent
+        account = next(x for x in self.a.get('/v1/hub', secure=True).json()['accounts'] if x['id'] == connection)
+        self.assertEqual(account['capabilities']['missing'].get('event_write'), 'calendar_write')
+        self.assertEqual(self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection}).status_code, 400)          # what to add must be said
+        begun = self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection, 'add': ['calendar_write']})
+        asked = parse_qs(urlsplit(begun.json()['authorize_url']).query)
+        self.assertEqual((asked['login_hint'], asked['include_granted_scopes']), (['dana@gmail.test'], ['true']))
+        self.g.scope += ' ' + google_hub.EVENTS_SCOPE
+        done = self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'})
+        self.assertEqual((done.status_code, done.json()['connection_id']), (201, connection))                # the same connection, changed in place
+        self.assertEqual(self.post(self.b, '/v1/hub/events/create', event).status_code, 404)                 # another customer: it does not exist for them
+        made = self.post(self.a, '/v1/hub/events/create', event)
+        self.assertEqual(made.status_code, 200, made.content)
+        action = made.json()['action']
+        self.assertEqual((action['state'], action['direct'], action['verified']), ('done', 'calendar', True))
+        undone = self.post(self.a, f"/v1/hub/actions/{action['id']}/undo", {'screen': 'calendar'})
+        self.assertEqual((undone.status_code, undone.json()['action']['state']), (200, 'done'))
+        free = self.a.get('/v1/hub/free?start=2033-05-20&end=2033-05-20&minutes=30', secure=True)
+        self.assertEqual(free.status_code, 200, free.content)
+        clash = self.post(self.a, '/v1/hub/conflicts', {'start': '2033-05-20T10:00', 'end': '2033-05-20T11:00'})
+        self.assertEqual((clash.status_code, clash.json()['clashing']), (200, 0))                             # the event was undone: nothing in the way
+        self.assertEqual(self.post(self.a, '/v1/hub/availability', {'buffer_minutes': 10}).json()['availability']['buffer_minutes'], 10)
+        self.assertEqual(self.post(self.a, '/v1/hub/availability', {'buffer_minutes': -5}).status_code, 400)
 
     def test_sign_in_connects_the_account_with_nothing_chosen_then_the_customer_chooses(self):
         from urllib.parse import parse_qs, urlsplit

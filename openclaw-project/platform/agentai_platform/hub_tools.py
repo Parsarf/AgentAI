@@ -33,6 +33,9 @@ from .security import NotFound, Principal
 
 ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH = ('lumina_mail_accounts', 'lumina_mail_search', 'lumina_mail_thread', 'lumina_mail_older', 'lumina_calendar_events',
                                                                'lumina_calendar_event', 'lumina_calendar_search')
+# Roadmap Phase 6: free time and clashes (reading), and changes the assistant PREPARES for the customer's approval (never sends: the action pipeline does, once approved).
+FREE, CONFLICTS, CREATE, CANCEL = 'lumina_calendar_free', 'lumina_calendar_conflicts', 'lumina_calendar_create', 'lumina_calendar_cancel'
+WRITES = frozenset({CREATE, CANCEL})
 MAX_TEXT = 14000
 MAX_BODY = 4000
 MAX_MESSAGES = 8
@@ -69,6 +72,25 @@ TOOLS = [
      'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400)), 'required': ['account', 'calendar', 'event']}},
     {'name': EVENT_SEARCH, 'description': 'Find calendar events (every past one, and up to two years ahead) whose title, people, place or notes contain every word given.',
      'inputSchema': {**_S(query=_STR(200), account=_STR(64)), 'required': ['query']}},
+    {'name': FREE, 'description': 'The customer\'s free time between two days (at most 62), across every calendar that counts, inside their working hours, with their notice and buffer. '
+     'Live from the provider where it can say; the result names which calendars were live and which came from the copy. Use it before proposing a time.',
+     'inputSchema': {**_S(start=_STR(10, _DAY), end=_STR(10, _DAY), minutes={'type': 'integer', 'minimum': 5, 'maximum': 1440, 'description': 'Shortest slot wanted (default 30).'}),
+                     'required': ['start', 'end']}},
+    {'name': CONFLICTS, 'description': 'Does a proposed time clash with what is in the customer\'s calendars? For a repeating proposal (repeat, an RRULE line such as RRULE:FREQ=WEEKLY;COUNT=6) '
+     'every occurrence is checked and the clashing dates are listed. Times are the customer\'s local wall time, YYYY-MM-DDTHH:MM.',
+     'inputSchema': {**_S(start=_STR(16), end=_STR(16), repeat=_STR(200)), 'required': ['start', 'end']}},
+]
+WRITE_TOOLS = [
+    {'name': CREATE, 'description': 'PREPARE a new calendar event for the customer to approve. Nothing is created until they approve exactly this; then Lumina creates it once and '
+     'checks it. Give the account and calendar (from lumina_mail_accounts and lumina_calendar_events), a title, the start and end in the customer\'s local time (YYYY-MM-DDTHH:MM, or '
+     'YYYY-MM-DD with all_day), and optionally attendees (addresses), place, description, repeat (one RRULE line) and notify (send invitations; default yes when there are attendees). '
+     'Check lumina_calendar_conflicts first. After preparing it, tell the customer in one sentence and END YOUR TURN.',
+     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), title=_STR(500), start=_STR(16), end=_STR(16), all_day={'type': 'boolean'},
+                         attendees={'type': 'array', 'items': {'type': 'string', 'maxLength': 320}, 'maxItems': 50}, place=_STR(500), description=_STR(8000), repeat=_STR(200),
+                         notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'title', 'start', 'end']}},
+    {'name': CANCEL, 'description': 'PREPARE cancelling one event the customer organizes, for them to approve (the people invited are told, unless notify is false). Nothing is cancelled '
+     'until they approve exactly this. After preparing it, tell the customer in one sentence and END YOUR TURN.',
+     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'event']}},
 ]
 
 
@@ -111,10 +133,20 @@ def _people(items):
 
 
 class HubTools:
-    names = frozenset({ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH})
+    names = frozenset({ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH, FREE, CONFLICTS}) | WRITES
 
-    def __init__(self, store, hub, *, clock=time.time, enabled=lambda account: False):
+    def __init__(self, store, hub, *, clock=time.time, enabled=lambda account: False, actions=None, writes_on=lambda account: False):
         self.store, self.hub, self.clock, self._enabled = store, hub, clock, enabled
+        self.actions, self._writes_on = actions, writes_on
+
+    def writes(self, account):
+        try:
+            return self.actions is not None and bool(self._writes_on(account))
+        except Exception:
+            return False
+
+    def specs_for(self, account):
+        return copy.deepcopy(TOOLS + (WRITE_TOOLS if self.writes(account) else []))
 
     def enabled(self, account):
         try:
@@ -144,7 +176,12 @@ class HubTools:
                 return 'This call does not belong to a running task. Nothing was read.', True
             if not isinstance(arguments, dict):
                 return 'Invalid arguments. Nothing was read.', True
-            handler = {ACCOUNTS: self._accounts, SEARCH: self._search, THREAD: self._thread, OLDER: self._older, EVENTS: self._events, EVENT: self._event, EVENT_SEARCH: self._event_search}[name]
+            if name in WRITES:
+                if not self.writes(account):
+                    return 'Changing calendars is not switched on. Nothing was prepared. Tell the customer what you would have done.', True
+                return self._prepare(principal, name, arguments, request_id)
+            handler = {ACCOUNTS: self._accounts, SEARCH: self._search, THREAD: self._thread, OLDER: self._older, EVENTS: self._events, EVENT: self._event, EVENT_SEARCH: self._event_search,
+                       FREE: self._free, CONFLICTS: self._conflicts}[name]
             return self._out(handler(principal, arguments)), False
         except ConnectorFault as fault:
             return fault.words, True
@@ -280,6 +317,65 @@ class HubTools:
                         'people': [{'who': _people([p])[0], 'answer': p['response'], 'is_the_customer': p['self'], 'optional': p['optional']} for p in (e.get('attendees') or [])[:60]],
                         **({'call_link': e['conference_url']} if e.get('conference_url') else {})})
         return {'timezone': zone_name, 'untrusted_event': out, 'note': NOTE}
+
+    # -- free time, clashes, and changes prepared for approval (roadmap Phase 6) ---------------------------------------------------------------------
+    def _local(self, epoch, zone) -> str:
+        return datetime.fromtimestamp(int(epoch), zone).strftime('%a %Y-%m-%d %H:%M')
+
+    def _free(self, principal, a):
+        zone_name, zone = self._zone(principal)
+        start, end = self._day(a['start'], zone), self._day(a['end'], zone, end=True)
+        found = self.hub.free(principal, start, end, zone, minutes=int(a.get('minutes') or 30))
+        live = [s for s in found['sources'] if s['live']]
+        return {'timezone': zone_name, 'free': [{'from': self._local(x, zone), 'to': self._local(y, zone)} for x, y in found['free']][:80],
+                'working_hours': found['settings']['hours'], 'notice_minutes': found['settings']['notice_minutes'], 'buffer_minutes': found['settings']['buffer_minutes'],
+                'live_calendars': len(live), 'from_the_copy': len(found['sources']) - len(live),
+                'note': 'Free means no event in the calendars that count, inside the customer\'s working hours. Calendars marked from the copy reflect the last sync.'}
+
+    def _conflicts(self, principal, a):
+        zone_name, zone = self._zone(principal)
+        found = self.hub.conflicts(principal, str(a['start']), str(a['end']), zone, rule=a.get('repeat') or None)
+        out = []
+        for o in found['occurrences']:
+            out.append({'when': self._local(o['start_epoch'], zone), 'clashes': [{'with': neutralize(_safe(c['title'], 200)), 'from': self._local(c['start_epoch'], zone),
+                                                                                 'to': self._local(c['end_epoch'], zone), 'tentative': c['tentative'],
+                                                                                 'only_the_buffer': c['buffer_only'], 'all_day': bool(c.get('all_day')),
+                                                                                 **({'open': event_link(c['account'], c['calendar'], c['event'])} if c.get('event') else {})}
+                                                                                for c in o['conflicts']]})
+        return {'timezone': zone_name, 'occurrences': len(out), 'clashing': found['clashing'], 'checked': out[:60], 'note': NOTE}
+
+    def _prepare(self, principal, name, a, request_id):
+        """A change for the customer to approve. The payload is built here from the arguments; the action pipeline checks it, previews it from the payload alone and sends
+        nothing until the customer approves exactly it."""
+        zone_name, _ = self._zone(principal)
+        if name == CREATE:
+            payload = {'calendar': str(a['calendar']), 'title': str(a['title']), 'start': str(a['start']), 'end': str(a['end'])}
+            if a.get('all_day'):
+                payload['all_day'] = True
+            else:
+                payload['timezone'] = zone_name
+            for key in ('attendees', 'place', 'description'):
+                if a.get(key):
+                    payload[key] = a[key]
+            if a.get('repeat'):
+                payload['recurrence'] = [str(a['repeat'])]
+            if 'notify' in a:
+                payload['notify'] = bool(a['notify'])
+            kind = 'event.create'
+        else:
+            payload, kind = {'event': f"{a['calendar']}|{a['event']}", 'notify': bool(a.get('notify', True))}, 'event.delete'
+        try:
+            action = self.actions.propose(principal, str(a['account']), kind, payload, request_id=request_id)
+        except ConnectorFault as fault:
+            missing = next((acc['capabilities']['missing'].get('event_write') for acc in self.hub.accounts(principal) if acc['id'] == a.get('account')), None)
+            if fault.kind == 'refused' and missing:
+                return ('This account has not given Lumina permission to change its calendar yet. Nothing was prepared. Tell the customer they can allow it in the Calendar '
+                        'page ("Allow changes"), then ask again.'), True
+            return fault.words + ' Nothing was prepared.', True
+        preview = action['preview']
+        return self._out({'prepared': preview['summary'], 'details': [f"{c['field']}: {c['after'] if c['after'] is not None else c['before']}" for c in preview['changes']],
+                          'can_be_undone': preview['can_undo'], 'state': 'NOT DONE. Waiting for the customer\'s approval of exactly this. Tell them in one sentence what you '
+                          'prepared, then END YOUR TURN. You will be given the outcome. Do not prepare it again.'}), False
 
     def _event_search(self, principal, a):
         zone_name, zone = self._zone(principal)

@@ -8,8 +8,10 @@ import { useSelection, type Action, type Looking } from '../components/frame/Ass
 import { useCommands } from '../components/frame/CommandBar';
 import { usePulse } from '../components/hub/usePulse';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
+import AllowChanges from '../components/hub/AllowChanges';
+import EventEditor from '../components/hub/EventEditor';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
-  validZone, zonedEpoch, type HubAccount, type HubCalendar, type HubEvent, type Overview } from '../lib/hub';
+  validZone, zonedEpoch, type HubAccount, type HubAction, type HubCalendar, type HubEvent, type Overview } from '../lib/hub';
 import { useData } from '../state/data';
 import '../styles/hub.css';
 
@@ -40,7 +42,13 @@ function EventChip({ event, zone, current, onOpen, block, style }: { event: HubE
 
 /** What the inspector shows for one event: when (in the customer's timezone, and the event's own when that differs), where, who and their answers, the notes, which account
  *  and calendar it is from, and how fresh it is. An event that is only visible as busy shows nothing else. Nothing here changes the event. */
-function Inspector({ event, zone, account, calendar, now }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number }) {
+function Inspector({ event, zone, account, calendar, now, writes, onCancel }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number;
+  writes: boolean; onCancel(e: HubEvent, notify: boolean): Promise<void> }) {
+  const [asking, setAsking] = useState(false); const [busy, setBusy] = useState(false);
+  // Cancelling (#63) is offered for an event the customer organizes, in a calendar this account may change, when changes are allowed for it. Others are told how many.
+  const mine = !!account && (!event.organizer || event.organizer.address === account.identity || !!event.attendees?.find(a => a.self && a.address === event.organizer?.address));
+  const changeable = writes && !!account?.capabilities.event_write && (calendar?.access === 'owner' || calendar?.access === 'write') && !event.busy_only && !event.cancelled && !event.series_id && mine;
+  const others = (event.attendees ?? []).filter(a => !a.self).length;
   return (
     <section className={`hub-inspector cal-${event.colour}`} aria-label="Event details">
       <header><h2>{titleOf(event)}</h2></header>
@@ -57,7 +65,12 @@ function Inspector({ event, zone, account, calendar, now }: { event: HubEvent; z
       {!!event.attendees?.length && <section aria-label="People"><h3 className="hub-side-title">People ({event.attendees.length})</h3>
         <ul>{event.attendees.map((a, i) => <li key={a.address || i} className="small">{personName(a)}{a.self ? ' (you)' : ''} <span className="faint">· {RESPONSE[a.response] ?? a.response}{a.optional ? ' · optional' : ''}</span></li>)}</ul></section>}
       {event.description && <section aria-label="Notes"><h3 className="hub-side-title">Notes</h3><p className="hub-notes">{event.description}</p></section>}
-      <p className="faint small">{calendar ? ACCESS[calendar.access] : 'Read only'} · Updated {ago(event.synced_epoch, now)}.
+      {changeable && (!asking ? <p><button type="button" className="btn small" onClick={() => setAsking(true)}>Cancel event</button></p>
+        : <div className="notice" role="alertdialog" aria-label="Cancel this event?"><p className="small">{others ? `${others} ${others === 1 ? 'person is' : 'people are'} told it is cancelled.` : 'Nobody else is invited.'} You can undo it afterwards.</p>
+          <button type="button" className="btn small" disabled={busy} onClick={async () => { setBusy(true); try { await onCancel(event, true); } finally { setBusy(false); setAsking(false); } }}>Cancel it</button>
+          <button type="button" className="btn small tertiary" disabled={busy} onClick={() => setAsking(false)}>Keep it</button></div>)}
+      {writes && account && !account.capabilities.event_write && <AllowChanges account={account} capability="event_write" />}
+      <p className="faint small">{calendar ? (changeable || (writes && account?.capabilities.event_write && (calendar.access === 'owner' || calendar.access === 'write')) ? 'You can change this calendar' : ACCESS[calendar.access]) : 'Read only'} · Updated {ago(event.synced_epoch, now)}.
         {event.provider_url && account && <> <a href={event.provider_url} target="_blank" rel="noopener noreferrer">Open in {account.provider_label}</a></>}</p>
     </section>);
 }
@@ -85,6 +98,7 @@ export default function CalendarPage() {
   const [view, setView] = useState<View>(() => (typeof window !== 'undefined' && window.innerWidth < 600 ? 'day' : 'week')); const [anchor, setAnchor] = useState<string | null>(null);   // a phone opens on one day
   const [chosen, setChosen] = useState<Set<string> | null>(null); const [events, setEvents] = useState<HubEvent[] | null>(null); const [partial, setPartial] = useState(false);
   const [selected, setSelected] = useState<string | null>(null); const [detail, setDetail] = useState<HubEvent | null>(null);
+  const [creating, setCreating] = useState(false); const [done, setDone] = useState<{ action: HubAction; words: string } | null>(null);
   const [typed, setTyped] = useState(''); const [found, setFound] = useState<{ query: string; events: HubEvent[]; complete: boolean } | null>(null);
   const [zoneEdit, setZoneEdit] = useState<string | null>(null); const [colouring, setColouring] = useState<string | null>(null);
   const request = useRef(0); const grid = useRef<HTMLDivElement>(null);
@@ -142,6 +156,18 @@ export default function CalendarPage() {
   const close = () => { setSelected(null); setDetail(null); };
   const step = (n: number) => setAnchor(view === 'month' ? addMonths(day, n) : addDays(day, n * (view === 'week' ? 7 : view === 'agenda' ? 30 : 1)));
   const refresh = async () => { try { await hub.refresh(); } catch (e) { setErr(failed(e)); } window.setTimeout(() => { void loadInfo(); void load(); }, 1500); };
+  // Phase 6: the customer's own changes. Each is one action through the pipeline; the result says so, with Undo, and the calendar is read again.
+  const writes = !!info && !info.read_only;
+  const changed = (action: HubAction, words: string) => { setDone({ action, words }); setCreating(false); void refresh(); };
+  const cancelEvent = async (e: HubEvent, notify: boolean) => {
+    try { const r = await hub.cancelEvent(e.connection_id, e.calendar_id, e.id, notify); if (r.action.state === 'done') { changed(r.action, `"${titleOf(e)}" was cancelled.`); close(); } else setErr(r.action.ended_words || 'The event was not cancelled.'); }
+    catch (error) { setErr(failed(error)); }
+  };
+  const undo = async () => {
+    if (!done) return;
+    try { const r = await hub.undo(done.action.id); setDone(r.action.state === 'done' ? { action: r.action, words: 'Undone.' } : null); if (r.action.state !== 'done') setErr(r.action.ended_words || 'It could not be undone.'); void refresh(); }
+    catch (error) { setErr(failed(error)); }
+  };
   const toggleAccount = (id: string) => setChosen(prev => { const base = new Set(prev ?? accounts.map(a => a.id)); if (base.has(id)) base.delete(id); else base.add(id); return base; });
   const setCalendar = async (c: HubCalendar, change: { selected?: boolean; colour?: string }) => {
     try { const r = await hub.setCalendar(c.connection_id, c.id, change); setInfo(v => (v ? { ...v, calendars: r.calendars } : v)); }
@@ -263,14 +289,15 @@ export default function CalendarPage() {
     <form className="hub-search" role="search" onSubmit={e => { e.preventDefault(); void search(); }}>
       <I.Search width={16} height={16} /><input className="input" type="search" placeholder="Search events" aria-label="Search events" value={typed} onChange={e => { setTyped(e.target.value); if (!e.target.value) setFound(null); }} /></form>
     <button type="button" className="iconbtn small ghost" aria-label="Refresh" title="Refresh" onClick={refresh}><I.Retry width={16} height={16} /></button>
+    {writes && accounts.some(a => a.capabilities.event_write || a.capabilities.missing?.event_write) && <button type="button" className="btn small" onClick={() => { setDone(null); setCreating(true); }}>New event</button>}
   </>;
 
   return (
     <Workspace title={<h1 className="wsp-title" aria-live="polite">{found ? `Events matching “${found.query}”` : heading}</h1>} tools={tools} fill context={context} contextLabel="Calendars"
-      inspector={detail ? <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} /> : null} inspectorLabel="Event" onInspectorClose={close} className="hub-calendar">
+      inspector={detail ? <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} writes={writes} onCancel={cancelEvent} /> : null} inspectorLabel="Event" onInspectorClose={close} className="hub-calendar">
       <div className="wsp-body">
         <div className="hub-cal-zone faint small">
-          {zoneEdit === null ? <><span>Times are shown in {zone.replace(/_/g, ' ')}{info?.settings.timezone ? '' : " (this device's timezone)"}. Read only for now.</span>
+          {zoneEdit === null ? <><span>Times are shown in {zone.replace(/_/g, ' ')}{info?.settings.timezone ? '' : " (this device's timezone)"}.{writes ? '' : ' Read only for now.'}</span>
             <button type="button" className="btn small tertiary" onClick={() => setZoneEdit(zone)}>Change timezone</button></>
             : <><input className="input" list="hub-zones" aria-label="Timezone" value={zoneEdit} onChange={e => setZoneEdit(e.target.value)} />
               <datalist id="hub-zones">{((Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.('timeZone') ?? []).map(z => <option key={z} value={z} />)}</datalist>
@@ -280,6 +307,10 @@ export default function CalendarPage() {
           {days && <span className="hub-range" role="status">Chosen: {rangeWords(days)} <button type="button" className="btn small tertiary" onClick={() => setDays(null)}>Clear</button></span>}
         </div>
         {err && <p className="notice warning" role="alert">{err}</p>}
+        {done && <p className="notice" role="status">{done.words}{done.action.can_undo && done.words !== 'Undone.' && <> <button type="button" className="btn small tertiary" onClick={undo}>Undo</button></>}</p>}
+        {creating && (accounts.some(a => a.capabilities.event_write)
+          ? <EventEditor accounts={accounts} calendars={calendars} day={day} onDone={a => changed(a, 'The event was created.')} onCancel={() => setCreating(false)} />
+          : accounts.filter(a => a.capabilities.missing?.event_write).map(a => <AllowChanges key={a.id} account={a} capability="event_write" />))}
         {connectNote && <p className="notice warning" role="status">{connectNote}</p>}
         {choosingAccount && <ChooseAccess account={choosingAccount} onDone={doneChoosing} onCancel={() => { setChoosing(null); setParams({}, { replace: true }); }} />}
         {needing.map(a => <p key={a.id} className="notice warning" role="status">{a.identity} needs you. What was loaded before is still shown. <Link to="/settings?tab=access">Open Access</Link></p>)}
