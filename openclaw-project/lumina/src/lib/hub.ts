@@ -27,7 +27,11 @@ export interface HubEvent { connection_id: string; calendar_id: string; id: stri
   all_day: boolean; start_date: string | null; end_date: string | null; timezone: string | null; place: string; conference_url: string | null; my_response: string | null;
   exception: boolean; cancelled: boolean; visibility: string; colour: string;
   description?: string; organizer?: Person | null; attendees?: (Person & { response: string; self: boolean; optional: boolean })[]; provider_url?: string | null; synced_epoch?: number | null }
-export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[] }; counts: { unread: number; by_account: Record<string, number> };
+/** The customer's own mail settings (#D6, #66): Undo send's wait, marking read at the provider on open, and their own sending limits (allowed: what applies now). */
+export interface MailSettings { undo_send_seconds: number; mark_read_on_open: boolean; limits: { recipients?: number; per_hour?: number }; allowed: { recipients: number; per_hour: number };
+  platform: { recipients: number; per_hour: number } }
+export type OrganizeOp = 'archive' | 'inbox' | 'star' | 'unstar' | 'read' | 'unread' | 'label' | 'unlabel' | 'move' | 'trash' | 'untrash';
+export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[]; mail?: MailSettings }; counts: { unread: number; by_account: Record<string, number> };
   calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean }
 /** A change in a connected account, as the action pipeline reports it (Phase 6). `direct` is the screen when the customer made it with their own hand. */
 export interface HubAction { id: string; kind: string; state: string; preview: { title: string; summary: string; destination: string; changes: { field: string; before: unknown; after: unknown }[]; can_undo: boolean };
@@ -67,7 +71,13 @@ export const hub = {
   event: (connection: string, calendar: string, id: string) => api<{ event: HubEvent }>('GET', '/v1/hub/event' + query({ connection, calendar, id })),
   searchEvents: (q: string) => api<{ events: HubEvent[]; complete: boolean }>('GET', '/v1/hub/events/search' + query({ q })),
   setCalendar: (connection_id: string, calendar_id: string, change: { selected?: boolean; colour?: string }) => api<{ calendars: HubCalendar[] }>('POST', '/v1/hub/calendars', { connection_id, calendar_id, ...change }),
-  setSettings: (change: { timezone?: string | null; allow_images_from?: string; block_images_from?: string }) => api<{ settings: Overview['settings'] }>('POST', '/v1/hub/settings', change),
+  setSettings: (change: { timezone?: string | null; allow_images_from?: string; block_images_from?: string; mail?: Partial<Pick<MailSettings, 'undo_send_seconds' | 'mark_read_on_open'>> & { limits?: MailSettings['limits'] | null } }) =>
+    api<{ settings: Overview['settings'] }>('POST', '/v1/hub/settings', change),
+  sendDraft: (draft: string) => api<{ action: HubAction; undo_send_seconds: number }>('POST', '/v1/hub/mail/send', { draft }),
+  checkDraft: (draft: string) => api<{ notes: string[]; limit?: string }>('GET', `/v1/hub/mail/check${query({ draft })}`),
+  organize: (connection: string, threads: string[], op: OrganizeOp, label?: string) => api<{ action: HubAction }>('POST', '/v1/hub/mail/organize', { connection, threads, op, ...(label ? { label } : {}) }),
+  stop: (action: string) => api<{ action: HubAction }>('POST', `/v1/hub/actions/${encodeURIComponent(action)}/stop`, {}),
+  action: (action: string) => api<{ action: HubAction }>('GET', `/v1/actions/${encodeURIComponent(action)}`),
   refresh: (connection_id?: string) => api<{ requested: number }>('POST', '/v1/hub/refresh', connection_id ? { connection_id } : {}),
   drafts: (thread?: string) => api<{ drafts: Draft[] }>('GET', '/v1/hub/drafts' + query({ thread })),
   saveDraft: (change: DraftChange) => api<{ draft: Draft }>('POST', '/v1/hub/drafts', change),

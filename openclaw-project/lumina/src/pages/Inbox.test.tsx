@@ -55,7 +55,7 @@ describe('Inbox drafts and links', () => {
     show('/inbox?connection=c1&thread=t-1');
     expect(await screen.findByRole('region', { name: 'Draft by your assistant' })).toBeTruthy();
     expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('Thanks, Ann.');
-    fireEvent.click(screen.getByRole('button', { name: 'Write a reply' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
     const mine = screen.getByRole('region', { name: 'Your draft' });
     expect((within(mine).getByLabelText('To') as HTMLInputElement).value).toBe('ann@x.test');
     expect((within(mine).getByLabelText('Subject') as HTMLInputElement).value).toBe('Re: Quarterly numbers');
@@ -328,5 +328,67 @@ describe('no provider is named in the dashboard', () => {
     const names = /\b(google|gmail|microsoft|outlook|office365|yahoo|icloud|imap|exchange)\b/i;
     expect(Object.keys(sources).length).toBeGreaterThanOrEqual(6);
     for (const [file, text] of Object.entries(sources)) expect(text.split('\n').filter(line => names.test(line)), file).toEqual([]);
+  });
+});
+
+
+describe('Managing mail from the Inbox (Phase 6, #66, #67, #D6)', () => {
+  const able = account({ capabilities: caps({ send: true, organize: true, mark_read: true }) });
+  const mail = { undo_send_seconds: 10, mark_read_on_open: false, limits: {}, allowed: { recipients: 50, per_hour: 30 }, platform: { recipients: 50, per_hour: 30 } };
+  const action = (id: string, kind: string, state = 'done') => ({ action: { id, kind, state, preview: { title: '', summary: '', destination: '', changes: [], can_undo: kind !== 'mail.send' },
+    verified: true, can_undo: kind !== 'mail.send', undo_until_epoch: null, direct: 'inbox', ended_words: '' } });
+  const routes = (over: Routes = {}) => base({ '/v1/hub': overview({ accounts: [able, second], read_only: false, settings: { timezone: 'UTC', image_senders: [], mail } }), ...over });
+
+  it('archives the chosen conversations at once, says so, and undoes it in one step', async () => {
+    server(routes({ 'POST /v1/hub/mail/organize': action('a1', 'mail.organize'), 'POST /v1/hub/actions/a1/undo': action('a2', 'mail.organize') }));
+    show();
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select the thread from Ann' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Organize the selected conversations' })).getByRole('button', { name: 'Archive' }));
+    await screen.findByText('Archived 1 conversation.');
+    expect(calls.filter(c => c.url === '/v1/hub/mail/organize').map(c => c.body)).toEqual([{ connection: 'c1', threads: ['t-1'], op: 'archive' }]);
+    expect(screen.queryByRole('checkbox', { name: 'Select the thread from Ann' })).toBeNull();           // it left the inbox at once
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await screen.findByText('Undone.');
+    expect(calls.filter(c => c.url === '/v1/hub/actions/a1/undo').map(c => c.body)).toEqual([{ screen: 'inbox' }]);
+  });
+
+  it('a change the mailbox refused goes back with a sentence, never silently', async () => {
+    server(routes({ 'POST /v1/hub/mail/organize': { action: { ...action('a1', 'mail.organize', 'failed').action, ended_words: 'The connected service did not accept this request.' } } }));
+    show();
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select the thread from Ann' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Organize the selected conversations' })).getByRole('button', { name: 'Archive' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('The connected service did not accept this request.');
+    expect(await screen.findByRole('checkbox', { name: 'Select the thread from Ann' })).toBeTruthy();       // back in the list as it really is
+  });
+
+  it('sends a reply after showing who it goes to, with Undo send while it waits', async () => {
+    const saved = { id: 'd9', account: 'c1', thread: 't-1', to: ['ann@x.test'], cc: [], subject: 'Re: Quarterly numbers', body: 'Thanks!', origin: 'customer', created_epoch: NOW, updated_epoch: NOW };
+    server(routes({ '/v1/hub/drafts': { drafts: [] }, 'POST /v1/hub/drafts': { draft: saved }, '/v1/hub/mail/check': { notes: ['You have not written to ann@x.test before (in the mail Lumina can see).'] },
+      'POST /v1/hub/mail/send': { ...action('s1', 'mail.send', 'approved'), undo_send_seconds: 10 }, 'POST /v1/hub/actions/s1/stop': action('s1', 'mail.send', 'declined') }));
+    show('/inbox?connection=c1&thread=t-1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Reply all' }));
+    const mine = screen.getByRole('region', { name: 'Your draft' });
+    fireEvent.change(within(mine).getByLabelText('Message'), { target: { value: 'Thanks!' } });
+    fireEvent.click(within(mine).getByRole('button', { name: 'Send' }));
+    const before = await within(mine).findByRole('alertdialog', { name: 'Before you send' });
+    expect(before.textContent).toContain('You have not written to ann@x.test before');
+    expect(calls.some(c => c.url === '/v1/hub/mail/send')).toBe(false);                                       // nothing is sent before the customer has seen it
+    fireEvent.click(within(before).getByRole('button', { name: 'Send' }));
+    await within(mine).findByText(/Sending from me@first.test in 10 s/);
+    expect(calls.filter(c => c.url === '/v1/hub/mail/send').map(c => c.body)).toEqual([{ draft: 'd9' }]);
+    fireEvent.click(within(mine).getByRole('button', { name: 'Undo send' }));
+    await within(mine).findByText('Not sent. The draft is still here.');
+    expect(calls.filter(c => c.url === '/v1/hub/actions/s1/stop')).toHaveLength(1);
+  });
+
+  it('forwards the last message quoted, to nobody yet, from the account that received it', async () => {
+    server(routes({ '/v1/hub/drafts': { drafts: [] } }));
+    show('/inbox?connection=c1&thread=t-1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Forward' }));
+    const mine = screen.getByRole('region', { name: 'Your draft' });
+    expect((within(mine).getByLabelText('To') as HTMLInputElement).value).toBe('');
+    expect((within(mine).getByLabelText('Subject') as HTMLInputElement).value).toBe('Fwd: Quarterly numbers');
+    expect((within(mine).getByLabelText('Message') as HTMLTextAreaElement).value).toContain('---------- Forwarded message ----------');
+    expect((within(mine).getByLabelText('Message') as HTMLTextAreaElement).value).toContain('Here are the numbers');
   });
 });

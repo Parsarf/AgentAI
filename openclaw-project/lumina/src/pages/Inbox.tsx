@@ -11,10 +11,11 @@ import { useSettings } from '../state/settings';
 import { useCommands } from '../components/frame/CommandBar';
 import MessageBody from '../components/hub/MessageBody';
 import DraftEditor, { type DraftStart } from '../components/hub/DraftEditor';
+import AllowChanges from '../components/hub/AllowChanges';
 import { usePulse } from '../components/hub/usePulse';
 import { api } from '../lib/api';
 import { browserZone, failed, fileSize, fullTime, hub, LABEL_WORDS, LIST_ORDER, listTime, people, personName, problemWords, threadKey, validZone,
-  replySubject, type Draft, type HubAccount, type Message, type Overview, type Thread } from '../lib/hub';
+  replySubject, type Draft, type HubAccount, type HubAction, type Message, type OrganizeOp, type Overview, type Thread } from '../lib/hub';
 import { useData } from '../state/data';
 import '../styles/hub.css';
 
@@ -57,11 +58,24 @@ function MessageItem({ connection, message, zone, initiallyOpen, onSender }: { c
     </article>);
 }
 
-/** A reply to a thread: to whoever wrote its last message that was not from this account, with "Re:" once. */
-function replyTo(opened: Opened, own: string | undefined): DraftStart {
+/** A reply to a thread: to whoever wrote its last message that was not from this account, with "Re:" once. "Reply all" adds everyone else on that message (never this
+ *  account). The reply is sent from the account that received the thread. */
+function replyTo(opened: Opened, own: string | undefined, all = false): DraftStart {
   const mine = (own ?? '').toLowerCase();
   const last = [...opened.messages].reverse().find(m => m.sender.address && m.sender.address.toLowerCase() !== mine) ?? opened.messages[opened.messages.length - 1];
-  return { account: opened.thread.connection_id, thread: opened.thread.id, to: last?.sender.address ? [last.sender.address] : [], subject: replySubject(opened.thread.subject || last?.subject || '') };
+  const to = last?.sender.address ? [last.sender.address] : [];
+  const others = all && last ? [...last.to, ...last.cc].map(p => p.address).filter(a => a && a.toLowerCase() !== mine && !to.some(t => t.toLowerCase() === a.toLowerCase())) : [];
+  return { account: opened.thread.connection_id, thread: opened.thread.id, to, cc: [...new Set(others)], subject: replySubject(opened.thread.subject || last?.subject || '') };
+}
+
+/** A forward of the thread's last message: to nobody yet, "Fwd:" once, with that message quoted below the customer's own words. A new conversation. */
+function forwardOf(opened: Opened, zone: string): DraftStart {
+  const last = opened.messages[opened.messages.length - 1];
+  const subject = (opened.thread.subject || last?.subject || '').trim();
+  const head = last ? [`---------- Forwarded message ----------`, `From: ${personName(last.sender)}${last.sender.name ? ` <${last.sender.address}>` : ''}`, `Date: ${fullTime(last.sent_epoch, zone)}`,
+    `Subject: ${last.subject}`, `To: ${last.to.map(p => p.address).join(', ')}`].join('\n') : '';
+  const text = last?.body?.text || last?.snippet || '';
+  return { account: opened.thread.connection_id, thread: null, to: [], subject: /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`, body: `\n\n${head}\n\n${text}` };
 }
 
 /** The Inbox: the mail of every connected account in one list. Context: accounts, mailboxes and filters. Canvas: the threads, newest first (only the rows in view are drawn,
@@ -82,6 +96,7 @@ export default function Inbox() {
   const [older, setOlder] = useState<Older | null>(null);
   // Drafts kept in Lumina (#57): those of the open thread, the "Written in Lumina" list, and one opened on its own (a new message, not a reply).
   const [threadDrafts, setThreadDrafts] = useState<Draft[]>([]); const [replying, setReplying] = useState<DraftStart | null>(null);
+  const [replyingId, setReplyingId] = useState<string | null>(null);     // the reply being written, once saved: it stays in its editor (not listed twice) until sent or discarded
   const [luminaDrafts, setLuminaDrafts] = useState<Draft[] | null>(null); const [openDraft, setOpenDraft] = useState<Draft | DraftStart | null>(null);
   const wantedDraft = useRef<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(() => new Set()); const anchor = useRef<number | null>(null);
@@ -154,7 +169,7 @@ export default function Inbox() {
     try { const r = await hub.drafts(id); if (shownThread.current === k) setThreadDrafts(r.drafts.filter(d => d.account === connection)); } catch { /* the thread still shows */ }
   }, []);
   const open = useCallback(async (t: Thread) => {
-    const k = threadKey(t); shownThread.current = k; setSelected(k); setOpenErr(''); setOpenDraft(null); setReplying(null); setThreadDrafts([]); void loadThreadDrafts();
+    const k = threadKey(t); shownThread.current = k; setSelected(k); setOpenErr(''); setOpenDraft(null); setReplying(null); setReplyingId(null); setThreadDrafts([]); void loadThreadDrafts();
     setOpened(cache.current.get(k) ?? null);                             // known already (fetched ahead): shown at once, from its headers if nothing else
     let r: Opened;
     try { r = await fetchThread(t); } catch (e) { if (shownThread.current === k) setOpenErr(failed(e)); return; }
@@ -164,7 +179,7 @@ export default function Inbox() {
     const list = listRef.current ?? []; const at = list.findIndex(x => threadKey(x) === k);
     if (at > -1 && list[at + 1]) void fetchThread(list[at + 1]).catch(() => undefined);
   }, [fetchThread, loadThreadDrafts]);
-  const close = () => { shownThread.current = null; setSelected(null); setOpened(null); setOpenErr(''); setOpenDraft(null); setReplying(null); setThreadDrafts([]); };
+  const close = () => { shownThread.current = null; setSelected(null); setOpened(null); setOpenErr(''); setOpenDraft(null); setReplying(null); setReplyingId(null); setThreadDrafts([]); };
 
   const refresh = async () => { try { await hub.refresh(); } catch (e) { setErr(failed(e)); } window.setTimeout(() => { void loadOverview(); void load(); }, 1500); };
   const toggle = (id: string) => setChosen(prev => { const base = new Set(prev ?? accounts.map(a => a.id)); if (base.has(id)) base.delete(id); else base.add(id); return base; });
@@ -186,6 +201,53 @@ export default function Inbox() {
       return next;
     });
     anchor.current = index;
+  };
+
+  // Phase 6 (#67, #D6): the customer's own changes to their mail. Each goes through the action pipeline at once, shows at once (pending), is final when the provider
+  // confirms it, goes back with a sentence when it fails, and can be undone in one step.
+  const writes = !!view && !view.read_only;
+  const canOrganize = (connection: string, op: OrganizeOp) => writes && !!byId[connection]?.capabilities[op === 'read' || op === 'unread' ? 'mark_read' : 'organize'];
+  const [changed, setChanged] = useState<{ actions: HubAction[]; words: string } | null>(null);
+  const OP_WORDS: Record<string, string> = { archive: 'Archived', inbox: 'Moved back to the inbox', star: 'Starred', unstar: 'Took the star off', read: 'Marked as read', unread: 'Marked as unread',
+    label: 'Labelled', unlabel: 'Took the label off', move: 'Moved', trash: 'Moved to the bin', untrash: 'Took out of the bin' };
+  const organize = async (items: Thread[], op: OrganizeOp, labelId?: string) => {
+    const chosen = items.filter(t => canOrganize(t.connection_id, op)); if (!chosen.length) return;
+    const keys = new Set(chosen.map(threadKey)); const before = threads;
+    const leaves = op === 'trash' || (op === 'archive' && label === 'inbox') || (op === 'move' && label === 'inbox');
+    setThreads(list => list && (leaves ? list.filter(t => !keys.has(threadKey(t))) : list.map(t => !keys.has(threadKey(t)) ? t
+      : { ...t, unread: op === 'read' ? false : op === 'unread' ? true : t.unread, starred: op === 'star' ? true : op === 'unstar' ? false : t.starred })));
+    setPicked(new Set()); setErr(''); setChanged(null);
+    if (leaves && selected && keys.has(selected)) close();
+    const groups = new Map<string, string[]>(); for (const t of chosen) groups.set(t.connection_id, [...(groups.get(t.connection_id) ?? []), t.id]);
+    const done: HubAction[] = []; let problem = '';
+    for (const [connection, ids] of groups) {
+      try { const r = await hub.organize(connection, ids, op, labelId); if (r.action.state === 'done') done.push(r.action); else problem = r.action.ended_words || 'That could not be done in your mailbox.'; }
+      catch (e) { problem = failed(e); }
+    }
+    if (problem) { setThreads(before); setErr(`${problem} Nothing was left half done in the list: it shows your mailbox as it is.`); }
+    if (done.length) setChanged({ actions: done, words: `${OP_WORDS[op]} ${chosen.length} ${chosen.length === 1 ? 'conversation' : 'conversations'}.` });
+    window.setTimeout(() => { void load(); }, 1500);
+  };
+  const undoChange = async () => {
+    if (!changed) return;
+    try { for (const a of changed.actions) await hub.undo(a.id, 'inbox'); setChanged({ actions: [], words: 'Undone.' }); } catch (e) { setErr(failed(e)); }
+    window.setTimeout(() => { void load(); }, 1200);
+  };
+  const pickedThreads = (threads ?? []).filter(t => picked.has(threadKey(t)));
+  const mail = view?.settings.mail;
+  const saveMail = async (change: Parameters<typeof hub.setSettings>[0]['mail']) => {
+    try { const r = await hub.setSettings({ mail: change }); setView(v => (v ? { ...v, settings: r.settings } : v)); } catch (e) { setErr(failed(e)); }
+  };
+  // Opening a message marks it read in the mailbox only when the customer turned that on (default off: reading in Lumina does not change the mailbox silently).
+  const marked = useRef('');
+  useEffect(() => {
+    const t = opened?.thread; if (!t || !t.unread || !mail?.mark_read_on_open || !canOrganize(t.connection_id, 'read') || marked.current === threadKey(t)) return;
+    marked.current = threadKey(t);
+    hub.organize(t.connection_id, [t.id], 'read').then(() => setThreads(list => list && list.map(x => (threadKey(x) === threadKey(t) ? { ...x, unread: false } : x)))).catch(() => undefined);
+  }, [opened?.thread.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const sent = (where: 'thread' | 'draft') => (draftId: string) => {
+    if (where === 'thread') setThreadDrafts(list => list.filter(x => x.id !== draftId)); else { close(); void loadDrafts(); }
+    setChanged({ actions: [], words: 'Sent.' }); window.setTimeout(() => { void load(); }, 2000);
   };
 
   // Keyboard: j and k move through the list, Enter opens, Escape closes, x selects, "/" goes to search.
@@ -252,6 +314,16 @@ export default function Inbox() {
       <label><input type="checkbox" checked={unread} onChange={e => setUnread(e.target.checked)} /> Unread only</label>
       <label><input type="checkbox" checked={attachments} onChange={e => setAttachments(e.target.checked)} /> Has an attachment</label>
     </div>
+    {writes && mail && accounts.some(a => a.capabilities.send || a.capabilities.mark_read) && <details className="hub-own" aria-label="Mail settings">
+      <summary>Mail settings</summary>
+      <label className="small">Undo send waits <select className="input" value={mail.undo_send_seconds} onChange={e => saveMail({ undo_send_seconds: Number(e.target.value) })}>
+        {[0, 5, 10, 20, 30].map(n => <option key={n} value={n}>{n ? `${n} seconds` : 'no wait'}</option>)}</select></label>
+      <label className="small"><input type="checkbox" checked={mail.mark_read_on_open} onChange={e => saveMail({ mark_read_on_open: e.target.checked })} /> Opening a message marks it read in my mailbox</label>
+      <label className="small">At most <input className="input" type="number" min={1} max={mail.platform.recipients} value={mail.limits.recipients ?? mail.allowed.recipients}
+        onChange={e => saveMail({ limits: { ...mail.limits, recipients: Number(e.target.value) } })} aria-label="People a message may go to" /> people a message</label>
+      <label className="small">At most <input className="input" type="number" min={1} max={mail.platform.per_hour} value={mail.limits.per_hour ?? mail.allowed.per_hour}
+        onChange={e => saveMail({ limits: { ...mail.limits, per_hour: Number(e.target.value) } })} aria-label="Messages an hour" /> messages an hour</label>
+    </details>}
     {own.filter(o => shownAccounts.includes(o.connection_id) && o.labels.length).map(o => (
       <details key={o.connection_id} className="hub-own">
         <summary>{byId[o.connection_id]?.capabilities.labels === 'folders' ? 'Folders' : 'Labels'} in {byId[o.connection_id]?.identity ?? 'this account'}</summary>
@@ -265,6 +337,11 @@ export default function Inbox() {
       <button type="button" className="iconbtn small ghost hub-back" aria-label="Back to the list" onClick={close}><I.Chevron width={16} height={16} /></button>
       <div><h2>{(openThread?.thread ?? summaryOf)?.subject || '(no subject)'}</h2>
         <p className="faint small">{byId[(openThread?.thread ?? summaryOf)?.connection_id ?? '']?.identity}{openThread?.thread.provider_labels.length ? ` · ${openThread.thread.provider_labels.map(l => l.name).join(', ')}` : ''}</p></div>
+      {openThread && canOrganize(openThread.thread.connection_id, 'archive') && <div className="hub-organize" role="group" aria-label="Organize this conversation">
+        {openThread.thread.labels.includes('inbox') && <button type="button" className="btn small" onClick={() => organize([openThread.thread], 'archive')}>Archive</button>}
+        <button type="button" className="btn small" onClick={() => organize([openThread.thread], openThread.thread.starred ? 'unstar' : 'star')}>{openThread.thread.starred ? 'Unstar' : 'Star'}</button>
+        {canOrganize(openThread.thread.connection_id, 'unread') && <button type="button" className="btn small" onClick={() => organize([openThread.thread], 'unread')}>Mark unread</button>}
+        <button type="button" className="btn small" onClick={() => organize([openThread.thread], 'trash')}>Bin</button></div>}
     </header>
     {openErr ? <p className="notice warning" role="alert">{openErr}</p>
       : !openThread ? <div className="hub-opening" role="status">{summaryOf && <p className="hub-opening-who"><b>{people(summaryOf.people, byId[summaryOf.connection_id]?.identity)}</b> <span className="faint small">{listTime(summaryOf.last_epoch, zone, now)}</span></p>}
@@ -274,12 +351,18 @@ export default function Inbox() {
         <div className="hub-messages">{openThread.messages.map((m, i) => <MessageItem key={m.id} connection={openThread.thread.connection_id} message={m} zone={zone}
           initiallyOpen={i === openThread.messages.length - 1} onSender={allowSender} />)}</div>
         <div className="hub-drafts" aria-label="Drafts for this thread">
-          {threadDrafts.map(d => <DraftEditor key={d.id} draft={d} accountLabel={byId[d.account]?.identity ?? 'this account'} canOpenInService={!!byId[d.account]?.capabilities.compose_link}
+          {threadDrafts.filter(d => d.id !== replyingId).map(d => <DraftEditor key={d.id} draft={d} accountLabel={byId[d.account]?.identity ?? 'this account'} canOpenInService={!!byId[d.account]?.capabilities.compose_link}
+            canSend={writes && !!byId[d.account]?.capabilities.send} onSent={sent('thread')}
             autoFocus={wantedDraft.current === d.id} onSaved={saved => setThreadDrafts(list => list.map(x => (x.id === saved.id ? saved : x)))}
             onDiscarded={gone => setThreadDrafts(list => list.filter(x => x.id !== gone))} />)}
           {replying && <DraftEditor start={replying} accountLabel={byId[replying.account]?.identity ?? 'this account'} canOpenInService={!!byId[replying.account]?.capabilities.compose_link} autoFocus
-            onSaved={saved => { setReplying(null); setThreadDrafts(list => [saved, ...list.filter(x => x.id !== saved.id)]); }} onDiscarded={() => setReplying(null)} />}
-          {!replying && <button type="button" className="btn small" onClick={() => setReplying(replyTo(openThread, byId[openThread.thread.connection_id]?.identity))}>Write a reply</button>}
+            canSend={writes && !!byId[replying.account]?.capabilities.send} onSent={id => { setReplying(null); setReplyingId(null); sent('thread')(id); }}
+            onSaved={saved => setReplyingId(saved.id)} onDiscarded={() => { setReplying(null); setReplyingId(null); }} />}
+          {!replying && <div className="row">
+            <button type="button" className="btn small" onClick={() => setReplying(replyTo(openThread, byId[openThread.thread.connection_id]?.identity))}>Reply</button>
+            <button type="button" className="btn small" onClick={() => setReplying(replyTo(openThread, byId[openThread.thread.connection_id]?.identity, true))}>Reply all</button>
+            <button type="button" className="btn small" onClick={() => setReplying(forwardOf(openThread, zone))}>Forward</button></div>}
+          {writes && byId[openThread.thread.connection_id]?.capabilities.missing?.send && <AllowChanges account={byId[openThread.thread.connection_id]} capability="send" />}
         </div>
       </>}
   </section>;
@@ -291,10 +374,11 @@ export default function Inbox() {
     </header>
     <DraftEditor key={'id' in openDraft ? openDraft.id : 'new'} draft={'id' in openDraft ? openDraft : undefined} start={'id' in openDraft ? undefined : openDraft}
       accountLabel={byId[openDraft.account]?.identity ?? 'this account'} canOpenInService={!!byId[openDraft.account]?.capabilities.compose_link} autoFocus
+      canSend={writes && !!byId[openDraft.account]?.capabilities.send} onSent={sent('draft')}
       onSaved={saved => { setOpenDraft(saved); setSelected('draft:' + saved.id); void loadDrafts(); }} onDiscarded={() => { close(); void loadDrafts(); }} />
   </section>;
   const draftList = label === LUMINA && <div className="hub-pad">
-    <p className="faint small">Drafts you or your assistant wrote in Lumina. They are not in your mailbox: open one to edit it, copy it or open it in your mail service.</p>
+    <p className="faint small">Drafts you or your assistant wrote in Lumina. They are not in your mailbox until they are sent: open one to edit it, send it, copy it or open it in your mail service.</p>
     {accounts.length > 0 && <button type="button" className="btn small" onClick={() => { close(); setOpenDraft({ account: accounts[0].id, thread: null, to: [], subject: '' }); setSelected('draft:new'); }}>New message</button>}
     {luminaDrafts === null ? <div className="skeleton" style={{ height: 48 }} /> : !luminaDrafts.length ? <EmptyState>No drafts yet. Ask your assistant to draft a reply, or write one here.</EmptyState>
       : <ul className="hub-threads" aria-label="Drafts">{luminaDrafts.map(d => <li key={d.id}>
@@ -309,15 +393,29 @@ export default function Inbox() {
   </div>;
 
   const notices = <div className="hub-notices">
-    <p className="hub-readonly faint small">Read only for now: nothing here changes your mailbox, and opening a message does not mark it as read there.</p>
+    {!accounts.some(a => writes && (a.capabilities.send || a.capabilities.organize)) && <p className="hub-readonly faint small">Read only for now: nothing here changes your mailbox, and opening a message does not mark it as read there.</p>}
     {err && <p className="notice warning" role="alert">{err}</p>}
+    {changed && <p className="notice" role="status">{changed.words}{changed.actions.length > 0 && changed.actions.every(a => a.can_undo) && <> <button type="button" className="btn small tertiary" onClick={undoChange}>Undo</button></>}</p>}
     {(linkNote || connectNote) && <p className={`notice${linkNote.endsWith('…') ? '' : ' warning'}`} role="status">{linkNote || connectNote}</p>}
     {choosingAccount && <ChooseAccess account={choosingAccount} onDone={doneChoosing} onCancel={() => { setChoosing(null); setParams({}, { replace: true }); }} />}
     {needing.map(a => <p key={a.id} className="notice warning" role="status">{a.identity} needs you. What was loaded before is still shown. <Link to="/settings?tab=access">Open Access</Link></p>)}
     {filling.length > 0 && <p className="notice" role="status">Loading all mail from {filling.map(a => `${a.identity} (${a.mail?.items ?? 0} so far)`).join(', ')}. Newest first; this list fills in as it arrives.</p>}
     {fresh && <p className="notice" role="status">There is new mail. <button type="button" className="btn small" onClick={() => { void load(); }}>Show it</button></p>}
-    {picked.size > 0 && <p className="hub-picked" role="status"><b>{picked.size} selected</b><span className="faint small">Managing mail from here comes later; for now you can ask your assistant about them.</span>
-      <button type="button" className="btn small tertiary" onClick={() => setPicked(new Set())}>Clear</button></p>}
+    {picked.size > 0 && <div className="hub-picked" role="status"><b>{picked.size} selected</b>
+      {pickedThreads.some(t => canOrganize(t.connection_id, 'archive')) ? <span className="hub-organize" role="group" aria-label="Organize the selected conversations">
+        {label === 'inbox' && <button type="button" className="btn small" onClick={() => organize(pickedThreads, 'archive')}>Archive</button>}
+        {label === 'archive' && <button type="button" className="btn small" onClick={() => organize(pickedThreads, 'inbox')}>Move to the inbox</button>}
+        <button type="button" className="btn small" onClick={() => organize(pickedThreads, 'read')}>Mark read</button>
+        <button type="button" className="btn small" onClick={() => organize(pickedThreads, 'unread')}>Mark unread</button>
+        <button type="button" className="btn small" onClick={() => organize(pickedThreads, 'star')}>Star</button>
+        {label === 'trash' ? <button type="button" className="btn small" onClick={() => organize(pickedThreads, 'untrash')}>Take out of the bin</button>
+          : <button type="button" className="btn small" onClick={() => organize(pickedThreads, 'trash')}>Bin</button>}
+        {new Set(pickedThreads.map(t => t.connection_id)).size === 1 && (own.find(o => o.connection_id === pickedThreads[0]?.connection_id)?.labels.length ?? 0) > 0 &&
+          <select className="input" aria-label="Add a label" value="" onChange={e => { if (e.target.value) void organize(pickedThreads, 'label', e.target.value); }}>
+            <option value="">Add a label…</option>{own.find(o => o.connection_id === pickedThreads[0].connection_id)!.labels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>}
+      </span> : <span className="faint small">You can ask your assistant about them.</span>}
+      {writes && accounts.filter(a => a.capabilities.missing?.organize && pickedThreads.some(t => t.connection_id === a.id)).map(a => <AllowChanges key={a.id} account={a} capability="organize" />)}
+      <button type="button" className="btn small tertiary" onClick={() => setPicked(new Set())}>Clear</button></div>}
   </div>;
 
   const olderPart = query && threads && !next && searchable.length > 0 && <div className="hub-older">

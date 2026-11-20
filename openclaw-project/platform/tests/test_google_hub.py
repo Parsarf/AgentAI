@@ -31,7 +31,8 @@ class FakeGoogle:
         self.access, self.refresh, self.scope = 'at-1', 'rt-1', SCOPES
         self.calls, self.fail, self.gone = [], [], False
         self.lose_answer, self.updates = False, []                   # changes (Phase 6): drop the next write's answer after doing it; sendUpdates of each write
-        self.shared_busy = {}                                          # #65: other people's free/busy this account may see (same organization): address -> [(start, end) ISO]
+        self.shared_busy = {}
+        self.outbox, self.modified = [], []                                    # #66, #67: what was really sent, and each conversation change                                          # #65: other people's free/busy this account may see (same organization): address -> [(start, end) ISO]
 
     # -- filling ------------------------------------------------------------------------------------------------------------------------------
     def mail(self, n, *, thread=None, labels=('INBOX', 'UNREAD'), age_days=1, subject=None, sender='Ann Lee <ann@x.test>', files=()):
@@ -73,6 +74,44 @@ class FakeGoogle:
             return self._ok({'emailAddress': self.email, 'historyId': str(self.history_id)})
         if path.endswith('/users/me/labels'):
             return self._ok({'labels': self.labels})
+        if path.endswith('/users/me/messages/send') and method == 'POST':          # Phase 6, #66: a sent message keeps the headers it was sent with
+            import email
+            from email import policy as email_policy
+            body = json.loads(data)
+            parsed = email.message_from_bytes(base64.urlsafe_b64decode(body['raw'] + '=='), policy=email_policy.default)
+            self.sent_count = getattr(self, 'sent_count', 0) + 1
+            mid = f'sent{self.sent_count:04d}'
+            heads = [{'name': k, 'value': str(v)} for k, v in parsed.items()]
+            self.messages[mid] = {'id': mid, 'threadId': body.get('threadId') or mid, 'labelIds': ['SENT'], 'snippet': parsed.get_content()[:80],
+                                  'internalDate': str(self.now * 1000), 'payload': {'mimeType': 'text/plain', 'headers': heads, 'parts': []}}
+            self.outbox.append({'id': mid, 'thread': body.get('threadId'), 'headers': dict(parsed.items()), 'body': parsed.get_content()})
+            if self.lose_answer:
+                self.lose_answer = False
+                raise ProviderError(0, 'unreachable')
+            return self._ok({'id': mid, 'threadId': self.messages[mid]['threadId'], 'labelIds': ['SENT']})
+        if '/users/me/threads/' in path:                                            # #67: a conversation, and changes to all its messages at once
+            parts_ = path.split('/users/me/threads/')[1].split('/')
+            tid, verb = parts_[0], (parts_[1] if len(parts_) > 1 else None)
+            members = [m for m in self.messages.values() if m['threadId'] == tid]
+            if not members:
+                return self._error(404, 'notFound')
+            if method == 'GET':
+                wanted = {h.lower() for h in query.get('metadataHeaders', [])}
+                return self._ok({'id': tid, 'messages': [{'id': m['id'], 'labelIds': list(m['labelIds']), 'payload': {'headers': [h for h in m['payload']['headers'] if h['name'].lower() in wanted]}}
+                                                         for m in members]})
+            change = json.loads(data) if data else {}
+            for m in members:
+                if verb == 'modify':
+                    m['labelIds'] = [l for l in m['labelIds'] if l not in change.get('removeLabelIds', [])] + [l for l in change.get('addLabelIds', []) if l not in m['labelIds']]
+                elif verb == 'trash' and 'TRASH' not in m['labelIds']:
+                    m['labelIds'].append('TRASH')
+                elif verb == 'untrash':
+                    m['labelIds'] = [l for l in m['labelIds'] if l != 'TRASH']
+            self.modified.append((verb, tid))
+            if self.lose_answer:
+                self.lose_answer = False
+                raise ProviderError(0, 'unreachable')
+            return self._ok({'id': tid})
         if path.endswith('/users/me/messages'):
             return self._list(one('q', ''), query.get('labelIds', []), int(one('maxResults', 100)), one('pageToken'))
         if '/users/me/messages/' in path:
@@ -180,6 +219,13 @@ class FakeGoogle:
 
     def _list(self, q, labels, size, token):
         found = sorted(self.messages.values(), key=lambda m: m['id'])
+        header = lambda m, name: next((h['value'] for h in m['payload']['headers'] if h['name'].lower() == name), '')
+        if q.startswith('rfc822msgid:'):
+            wanted = q.split(':', 1)[1].strip()
+            return self._ok({'messages': [{'id': m['id'], 'threadId': m['threadId']} for m in found if header(m, 'message-id').strip('<>') == wanted]})
+        if q.startswith('in:sent'):
+            subject = q.split('subject:"', 1)[1].rstrip('"') if 'subject:"' in q else None
+            return self._ok({'messages': [{'id': m['id'], 'threadId': m['threadId']} for m in found if 'SENT' in m['labelIds'] and (subject is None or header(m, 'subject') == subject)]})
         if q.startswith('{after:'):
             after = int(q.split('after:')[1].split()[0])
             found = [m for m in found if int(m['internalDate']) // 1000 >= after or 'STARRED' in m['labelIds']]

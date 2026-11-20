@@ -21,6 +21,9 @@ from .connector_kit import ConnectorFault
 from .hub_model import COMMON_LABELS, hub_caps
 from .security import NotFound, require
 
+# A draft whose send has started and was not stopped or failed (#66): it is no longer a draft, and it is never sent twice.
+SENDING = "(SELECT 1 FROM actions a WHERE a.account_id=hub_drafts.account_id AND a.id=hub_drafts.sent_action_id AND a.state NOT IN ('failed','declined','expired'))"
+
 
 def datetime_day(epoch, zone) -> str:
     from datetime import datetime
@@ -169,7 +172,31 @@ class HubService:
         with self.store.connect() as con:
             self._enter(con, principal)
             row = con.execute('SELECT timezone,image_senders_json FROM hub_settings WHERE account_id=?', (principal.account_id,)).fetchone()
-        return {'timezone': row['timezone'] if row else None, 'image_senders': json.loads(row['image_senders_json']) if row else []}
+            from . import mail_limits
+            mail = {**mail_limits.mail_settings(con, principal.account_id), 'allowed': mail_limits.limits(con, principal.account_id), 'platform': dict(mail_limits.PLATFORM)}
+        return {'timezone': row['timezone'] if row else None, 'image_senders': json.loads(row['image_senders_json']) if row else [], 'mail': mail}
+
+    def set_mail_settings(self, principal, change: dict) -> dict:
+        """The customer's own mail settings (#D6, #66): Undo send's wait (0 to 30 seconds), marking read on open, and their own sending limits (only lower)."""
+        from . import mail_limits
+        from .lifecycle.coordinator import Coordinator
+        if not isinstance(change, dict) or set(change) - {'undo_send_seconds', 'mark_read_on_open', 'limits'}:
+            raise ValueError('invalid settings')
+        if 'undo_send_seconds' in change and (type(change['undo_send_seconds']) is not int or not 0 <= change['undo_send_seconds'] <= 30):
+            raise ValueError('Undo send waits 0 to 30 seconds')
+        if 'mark_read_on_open' in change and not isinstance(change['mark_read_on_open'], bool):
+            raise ValueError('invalid settings')
+        limits = mail_limits.clean(change['limits']) if 'limits' in change and change['limits'] is not None else None
+        now = int(self.clock())
+        with Coordinator(self.store).transaction() as con:
+            self._enter(con, principal, 'connection.use')
+            con.execute('INSERT INTO hub_settings(account_id,updated_epoch) VALUES (?,?) ON CONFLICT(account_id) DO NOTHING', (principal.account_id, now))
+            own = json.loads(con.execute('SELECT mail_json FROM hub_settings WHERE account_id=?', (principal.account_id,)).fetchone()[0] or '{}')
+            own.update({k: change[k] for k in ('undo_send_seconds', 'mark_read_on_open') if k in change})
+            if 'limits' in change:
+                own['limits'] = limits or {}
+            con.execute('UPDATE hub_settings SET mail_json=?,updated_epoch=? WHERE account_id=?', (json.dumps(own), now, principal.account_id))
+        return self.settings(principal)
 
     def set_settings(self, principal, *, timezone=..., allow_images_from=None, block_images_from=None) -> dict:
         if timezone is not ... and timezone is not None:
@@ -515,6 +542,79 @@ class HubService:
         free = free_intervals(start_epoch, end_epoch, busy, settings, zone, now=int(self.clock()), minutes=int(minutes))
         return {'free': free, 'busy': busy, 'settings': settings, 'sources': sources}
 
+    # -- mail changes from the dashboard and the assistant (#66, #67, #D6) ----------------------------------------------------------------------------------------
+    ORGANIZE = {'archive': ('mail.organize', [], ['inbox']), 'inbox': ('mail.organize', ['inbox'], []), 'star': ('mail.organize', ['starred'], []),
+                'unstar': ('mail.organize', [], ['starred']), 'read': ('mail.mark', [], ['unread']), 'unread': ('mail.mark', ['unread'], [])}
+
+    def send_payload(self, principal, draft_id) -> tuple:
+        """The send of one draft (#66): from the account the draft belongs to, to exactly its people, and what the customer should know before it goes (people never written
+        to, a large audience, people outside their organization). -> (connection id, payload). Raises NotFound, or ValueError with a sentence."""
+        from . import mail_limits
+        with self.store.connect() as con:
+            self._enter(con, principal, 'connection.use')
+            draft = con.execute(f"SELECT * FROM hub_drafts WHERE account_id=? AND id=? AND state='draft' AND NOT EXISTS {SENDING}", (principal.account_id, str(draft_id))).fetchone()
+            if draft is None:
+                raise NotFound()
+            conn = con.execute("SELECT identity_label FROM connector_connections WHERE account_id=? AND id=? AND state='connected'", (principal.account_id, draft['connection_id'])).fetchone()
+            if conn is None or not conn['identity_label']:
+                raise NotFound()
+            to, cc = json.loads(draft['to_json']), json.loads(draft['cc_json'])
+            people = [a.strip().lower() for a in to + cc]
+            reason = mail_limits.refusal(con, principal.account_id, len(people), including_this=False, clock=self.clock)
+            if reason:
+                raise ValueError(reason)
+            payload = {'draft': draft['id'], 'from': conn['identity_label'], 'to': to, 'cc': cc, 'subject': draft['subject'], 'body': draft['body']}
+            notes = []
+            if draft['thread_id']:
+                last = con.execute('SELECT id FROM hub_messages WHERE account_id=? AND connection_id=? AND thread_id=? ORDER BY sent_epoch DESC LIMIT 1',
+                                   (principal.account_id, draft['connection_id'], draft['thread_id'])).fetchone()
+                payload['thread'] = draft['thread_id']
+                if last:
+                    payload['reply_to'] = last['id']
+            new = [a for a in people if not con.execute("""SELECT 1 FROM hub_messages WHERE account_id=? AND connection_id=? AND labels_json LIKE '%"sent"%' AND people_text LIKE ? LIMIT 1""",
+                                                        (principal.account_id, draft['connection_id'], '%' + a + '%')).fetchone()]
+        if new:
+            notes.append(f'You have not written to {", ".join(new[:5])}{" and others" if len(new) > 5 else ""} before (in the mail Lumina can see).')
+        if len(people) >= 10:
+            notes.append(f'This goes to {len(people)} people.')
+        own = conn['identity_label'].rsplit('@', 1)[-1].lower()
+        outside = [a for a in people if own not in mail_limits.PUBLIC_MAIL_DOMAINS and a.rsplit('@', 1)[-1] != own]
+        if outside:
+            notes.append(f'{", ".join(outside[:5])}{" and others" if len(outside) > 5 else ""} {"is" if len(outside) == 1 else "are"} outside your organization.')
+        if notes:
+            payload['notes'] = notes
+        return draft['connection_id'], payload
+
+    def mark_sending(self, principal, draft_id, action_id):
+        """The draft is being sent by this change: it stops being listed as a draft (and comes back if the send is stopped or fails)."""
+        with self.store.connect() as con:
+            con.execute('UPDATE hub_drafts SET sent_action_id=?,updated_epoch=? WHERE account_id=? AND id=?', (str(action_id), int(self.clock()), principal.account_id, str(draft_id)))
+
+    def organize_payload(self, principal, connection_id, threads, op, *, label=None) -> tuple:
+        """An organizing change on conversations of the customer's copy (only what they let Lumina read can be touched). -> (kind, payload)."""
+        threads = [str(t) for t in threads or []]
+        if not 1 <= len(threads) <= 100 or len(set(threads)) != len(threads):
+            raise ValueError('choose 1 to 100 conversations')
+        with self.store.connect() as con:
+            self._enter(con, principal, 'connection.use')
+            marks = ','.join('?' for _ in threads)
+            found = {r[0] for r in con.execute(f'SELECT id FROM hub_threads WHERE account_id=? AND connection_id=? AND id IN ({marks})', (principal.account_id, connection_id, *threads))}
+        if found != set(threads):
+            raise NotFound()
+        if op in ('trash', 'untrash'):
+            return ('mail.trash' if op == 'trash' else 'mail.untrash'), {'threads': threads}
+        if op in ('label', 'unlabel', 'move'):
+            if not isinstance(label, str) or not label or len(label) > 200:
+                raise ValueError('choose a label')
+            word = 'label:' + label
+            add, remove = ([word], []) if op == 'label' else ([], [word]) if op == 'unlabel' else ([word], ['inbox'])
+        elif op in self.ORGANIZE:
+            kind, add, remove = self.ORGANIZE[op]
+            return kind, {'changes': [{'thread': t, **({'add': add} if add else {}), **({'remove': remove} if remove else {})} for t in threads]}
+        else:
+            raise ValueError('unknown change')
+        return 'mail.organize', {'changes': [{'thread': t, **({'add': add} if add else {}), **({'remove': remove} if remove else {})} for t in threads]}
+
     # -- meeting scheduling (#65) ------------------------------------------------------------------------------------------------------------------
     MAX_PEOPLE = 20
 
@@ -722,7 +822,8 @@ class HubService:
                 return []
             marks = ','.join('?' for _ in ids)
             extra, args = ('', []) if thread_id is None else (' AND thread_id=?', [str(thread_id)])
-            rows = con.execute(f"SELECT * FROM hub_drafts WHERE account_id=? AND state='draft' AND connection_id IN ({marks}){extra} ORDER BY updated_epoch DESC,id LIMIT 200",
+            # A draft whose send has started (or is waiting out Undo send) is not a draft any more; if that send was stopped or failed, it is one again.
+            rows = con.execute(f"SELECT * FROM hub_drafts WHERE account_id=? AND state='draft' AND NOT EXISTS {SENDING} AND connection_id IN ({marks}){extra} ORDER BY updated_epoch DESC,id LIMIT 200",
                                (principal.account_id, *ids, *args)).fetchall()
         return [self._draft(r) for r in rows]
 
