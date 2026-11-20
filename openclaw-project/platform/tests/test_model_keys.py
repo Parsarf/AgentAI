@@ -145,7 +145,7 @@ class StoreChecks(unittest.TestCase):
         self.assertNotIn('sk-first-0000000000', self.path.read_text())                       # replaced, not kept alongside
         self.assertTrue(self.store.delete('a')); self.assertFalse(self.store.delete('a')); self.assertIsNone(self.store.public('a'))
         with self.assertRaises(ModelKeyError): self.store.open('a')
-        self.assertNotIn('m2', self.path.read_text()); self.assertEqual(self.store.open('b')['model'], 'm3')
+        self.assertNotIn('"m2"', self.path.read_text()); self.assertEqual(self.store.open('b')['model'], 'm3')   # the model as stored; a random nonce may hold the letters m2
 
     def test_a_copied_or_tampered_record_does_not_open(self):
         self.store.put('a', self.ep, 'm', 'sk-aaaaaaaaaaaaaaaa'); self.store.put('b', self.ep, 'm', 'sk-bbbbbbbbbbbbbbbb')

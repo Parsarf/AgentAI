@@ -32,7 +32,7 @@ export interface MailSettings { undo_send_seconds: number; mark_read_on_open: bo
   platform: { recipients: number; per_hour: number } }
 export type OrganizeOp = 'archive' | 'inbox' | 'star' | 'unstar' | 'read' | 'unread' | 'label' | 'unlabel' | 'move' | 'trash' | 'untrash';
 export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[]; mail?: MailSettings }; counts: { unread: number; by_account: Record<string, number> };
-  calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean }
+  calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean; feeds?: boolean }
 /** A change in a connected account, as the action pipeline reports it (Phase 6). `direct` is the screen when the customer made it with their own hand. */
 export interface HubAction { id: string; kind: string; state: string; preview: { title: string; summary: string; destination: string; changes: { field: string; before: unknown; after: unknown }[]; can_undo: boolean };
   verified: boolean | null; can_undo: boolean; undo_until_epoch: number | null; direct: string | null; ended_words: string }
@@ -88,6 +88,7 @@ export const hub = {
   createEvent: (e: NewEvent) => api<{ action: HubAction }>('POST', '/v1/hub/events/create', e),
   cancelEvent: (connection: string, calendar: string, event: string, notify = true, scope?: Scope, series?: string | null) =>
     api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify, ...(scope && series ? { scope, series } : {}) }),
+  addFeed: (address: string, name?: string) => api<{ connection_id: string }>('POST', '/v1/hub/feeds', { address, ...(name ? { name } : {}) }),
   proposals: (start: number, end: number) => api<{ proposals: MeetingProposal[] }>('GET', `/v1/hub/proposals${query({ start, end })}`),
   closeProposal: (id: string, state: 'picked' | 'dismissed') => api<{ proposal: { id: string; state: string } }>('POST', `/v1/hub/proposals/${encodeURIComponent(id)}/close`, { state }),
   changeEvent: (change: EventChange) => api<{ action: HubAction }>('POST', '/v1/hub/events/change', { ...change, series: change.series || undefined, scope: change.series ? change.scope : undefined }),

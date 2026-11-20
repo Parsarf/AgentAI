@@ -86,7 +86,8 @@ def overview(request):
         hub = wiring.hub_service()
         return {'accounts': hub.accounts(principal), 'providers': [{'provider': name, 'label': p['label']} for name, p in wiring.sign_in_providers().items()], 'settings': hub.settings(principal), 'counts': hub.counts(principal), 'calendars': hub.calendars(principal),
                 'labels': list(LIST_LABELS), 'colours': list(COLOURS),
-                'read_only': not (wiring.switch_on('mail_calendar_writes') and wiring.hub_on(principal.account_id))}      # Phase 6: changes are possible only with the owner's writes switch
+                'read_only': not (wiring.switch_on('mail_calendar_writes') and wiring.hub_on(principal.account_id)),
+                'feeds': _feeds_on()}      # Phase 6: changes are possible only with the owner's writes switch
     return _run(run)
 
 
@@ -129,6 +130,42 @@ def link_callback(request):
     if not state or not code or len(state) > 200 or len(code) > 2000:
         return HttpResponseRedirect('/app/inbox?connect=failed')
     return HttpResponseRedirect('/app/inbox#link-state=' + quote(state, safe='') + '&link-code=' + quote(code, safe=''))
+
+
+def _feeds_on():
+    from agentai_platform.ics_feed import feeds_on
+    return feeds_on()
+
+
+@endpoint(['POST'], ['address', 'name'], structured=True)
+def feed_add(request):
+    """Add a calendar feed by its address (#D9): read only, shown on the Calendar with no controls. The address is read once to check it is a calendar, then kept like a
+    password (it can carry a secret): it is never shown again in full. -> the new connection's id; its first read starts at once."""
+    principal, stop = _enter(request, 'hub.link', 20)
+    if stop:
+        return stop
+    if not _feeds_on():
+        return _off()
+    from agentai_platform.ics_feed import FeedError
+    from agentai_platform.connector_kit import ProviderError
+    from agentai_platform.permissions import NotPermitted
+    given = request.input
+    try:
+        connection = wiring.connector_service().add_feed(principal, given.get('address') or '', given.get('name') or '')
+    except FeedError as reason:
+        return JsonResponse({'error': 'not_a_feed', 'detail': str(reason)[:300]}, status=409)
+    except ProviderError:
+        return JsonResponse({'error': 'not_a_feed', 'detail': 'That address could not be read right now. Check it, or try again later.'}, status=409)
+    except NotPermitted:
+        return JsonResponse({'error': 'not_permitted'}, status=403)
+    sync = wiring.hub_services()[2]
+    try:
+        sync.ensure(principal.account_id, connection)
+        sync.request(principal.account_id, connection)
+    except Exception:
+        pass                                                                # the sync service sets it up on its next pass anyway
+    audit(request.user.pk, request.account_id, connection, 'hub.feed.add', 'completed', request.request_id)
+    return JsonResponse({'connection_id': connection}, status=201)
 
 
 @endpoint(['POST'], ['state', 'code'], structured=True)

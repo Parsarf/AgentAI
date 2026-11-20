@@ -156,7 +156,7 @@ replaced in custody, grants and the synced copy kept). `HubCaps.effective(scopes
 
 | Grant | Google scope | Unlocks |
 |---|---|---|
-| `calendar_write` | `calendar.events` (sensitive) | `event_write`, `respond` |
+| `calendar_write` | `calendar.events` (sensitive) | `event_write`, `respond`, `event_change`, `event_series` |
 | `send` | `gmail.send` (sensitive) | `send` |
 | `organize` | `gmail.modify` (restricted) | `organize`, `mark_read` |
 
@@ -172,10 +172,48 @@ and for a calendar an access role that allows changing it (`owner` or `write`; a
 | `event.delete` | Google | `event_write` | `event.recreate` from the event as it was | the event being gone | `If-Match` ETag (412: `conflict`) | read back: gone or cancelled |
 | `event.recreate` | Google | `event_write` | `event.delete` | as `event.create` | n/a | as `event.create` |
 | `event.respond` | Google | `respond` | `event.respond` back to the previous answer | the answer being what was sent (read back) | `If-Match` ETag | read back: the account's own answer |
+| `event.update` | Google | `event_change` | `event.update` with the values before (a whole series: its own first occurrence) | the fields being what was sent | `If-Match` ETag | read back: the changed fields |
+| `event.update_rest` | Google | `event_series` | `event.unsplit` | the new series' id from the key; the original ending just before the occurrence | `If-Match` on the series | read back: the new series |
+| `event.cancel_one` | Google | `event_series` | `event.restore` | the occurrence being cancelled | `If-Match` ETag | read back: cancelled |
+| `event.end_series` | Google | `event_series` | `event.update` restoring the repeat rule | the series ending there | `If-Match` on the series | read back: an `UNTIL` |
+| `mail.send` | Google | `send` | none (a sent message cannot be taken back); compensation: a correction to the same people | the draft's `X-Lumina-Draft` header, looked for in Sent before any send and after a lost answer (Gmail replaces the Message-ID) | n/a | read back: in Sent, to exactly those people |
+| `mail.organize` | Google | `organize` | `mail.organize` with each conversation's labels before | idempotent at Gmail; settled by reading the conversations back | n/a | read back: every conversation shows the change |
+| `mail.mark` | Google | `mark_read` | `mail.mark` back | as `mail.organize` | n/a | as `mail.organize` |
+| `mail.trash` / `mail.untrash` | Google | `organize` | each other; taking out of the bin puts back the labels each had (Gmail's untrash does not bring back the Inbox) | as `mail.organize` | n/a | read back: in or out of the bin, labels back |
+
+A new kind ships in `HubCaps.proving`: off for every customer (no control, refused by the pipeline) until `deploy/phase6_live.py` passes on the real provider and the owner
+has approved the privacy policy text that describes it; the live proof turns it on in its own process only (`hub_model.PROVING_IN_THIS_PROCESS`).
+
+Sending limits (`mail_limits.py`): at most 50 people a message and 30 messages an hour per account, lower when the customer (mail settings) or their organization (policy
+`mail_limits`) says so. Checked when a send is prepared and again when it runs.
 
 A change the customer makes with their own hand (`ActionService.direct`, routes `/v1/hub/events/create`, `/v1/hub/events/cancel`, `/v1/hub/actions/<id>/undo`) is the same write
 kind through the same pipeline; their press is the approval and the screen is recorded (`actions.direct_screen`). A change the assistant prepared (`lumina_calendar_create`,
 `lumina_calendar_cancel`) is never recorded as direct, whatever screen approves it.
+
+### Calendar feeds by address (`ics_feed.py`, #D9)
+
+A read-only provider with no sign-in: the customer pastes an ICS address (`POST /v1/hub/feeds`). It is read once to check it is a calendar, then kept in custody like a token
+(an address can carry a secret) and never shown again in full: the connection is named by the customer, the feed's own `X-WR-CALNAME`, or its host. Each read goes through
+the destination guard (`ssrf.check_url` for the address and every redirect: https, port 443, public addresses only), at most 5 MB, on the sync timer. A feed has no change
+cursor: each read is the whole feed and replaces the copy (`Changes.complete`). Repeating events are expanded with python-dateutil, with `EXDATE` and `RECURRENCE-ID`.
+
+### Accounts by password: IMAP and SMTP mail, CalDAV calendars (not built; the owner decided "later", 2026-11-20)
+
+These would be adapters on the same hub interface, but they differ from every provider above in what Lumina would have to hold: the customer's **password** (or an app
+password) instead of a revocable grant. Before building them the owner decides the custody and privacy question. What each would need:
+
+* **Custody.** The password sealed in custody like a token, never in a row a view reads; an app password where the provider offers one (Google, Microsoft, iCloud and
+  Yahoo require it with two-step sign-in), and a sentence telling the customer how to revoke it at the provider, since Lumina cannot.
+* **No push and no change feed.** IMAP: `CONDSTORE`/`QRESYNC` where the server has them (a modification sequence as the cursor), otherwise compare message ids per folder on
+  each sync (`Changes.complete` per folder). CalDAV: a `sync-token` (RFC 6578) where offered, else ETags per event.
+* **Folders, not labels.** IMAP folders map to the common set by their special-use flags (`\Inbox`, `\Sent`, `\Drafts`, `\Archive`, `\Junk`, `\Trash`, RFC 6154); a message is
+  in one folder (`HubCaps.labels='folders'`); the customer's own folders keep their names.
+* **Sending.** SMTP submission (port 587, STARTTLS, or 465) with the same marker header; no Sent copy is made by the server, so the adapter appends one to `\Sent` (IMAP
+  `APPEND`) and the lookup reads it there.
+* **Writes.** Moving between folders and flags (`\Seen`, `\Flagged`) through IMAP `UID MOVE`/`STORE`; CalDAV `PUT` with `If-Match` for events, `If-None-Match: *` for a create
+  (the event's UID from the key).
+* **The destination guard** for the customer's own server name and port (993, 587, 465, 443), public addresses only.
 
 The web app and the tools read these values; a control appears only where its capability is true. Adding Microsoft (Phase 6, #D8) is: a declaration, an adapter with the
 hub interface and its pure conversion functions with a fixture per case (a plain message, a long thread, HTML only, inline images, an invitation, all-day, a recurring

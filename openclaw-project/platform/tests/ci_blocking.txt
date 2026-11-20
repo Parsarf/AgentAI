@@ -62,3 +62,7 @@ test_knowledge
 test_knowledge_eval
 test_privacy_policy
 test_calendar_writes
+test_meetings
+test_mail_writes
+test_ics_feed
+test_write_routes

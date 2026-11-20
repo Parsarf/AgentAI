@@ -117,6 +117,7 @@ class Changes:
     removed: list = field(default_factory=list)    # provider ids that no longer exist (or left what was granted)
     cursor: str | None = None                      # where the next call starts
     more: bool = False                             # call again now: there is another page
+    complete: bool = False                         # `items` is everything there is (a provider without a change cursor, such as a calendar feed): anything else in the copy goes
 
 
 def _text(value, most) -> str:

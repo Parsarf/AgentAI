@@ -26,6 +26,7 @@ of them before it ends. `mail_calendar_writes` counts as on INSIDE THIS PROCESS 
                 the draft's marker, never sent again (#66)
   M-UNDO-SEND   a send stopped inside "Undo send" leaves nothing at Google (#D6)
   M-ORGANIZE    three conversations archived and put back in one step; one starred and put back; one marked unread and back; one binned and taken out (#67)
+  F-FEED        a public calendar feed (US holidays) added by its address: read whole, read only, its address not shown; removed again with its events (#D9)
   CLEANUP       nothing this run made is left in the calendar; the messages it sent to itself are in the bin
 
 Prints one line per case; the last line is JSON with numbers and booleans only.
@@ -54,7 +55,7 @@ TITLE = 'Lumina live check (safe to delete)'
 _real = wiring.switch_on
 wiring.switch_on = lambda name: name == 'mail_calendar_writes' or _real(name)          # this process only
 from agentai_platform import hub_model  # noqa: E402
-hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series', 'meetings', 'send', 'organize', 'mark_read'})           # the kinds being proven: on in this process only, never for a customer
+hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series', 'meetings', 'send', 'organize', 'mark_read', 'feeds'})           # the kinds being proven: on in this process only, never for a customer
 
 
 def record(case, title, ok, detail=None):
@@ -334,6 +335,22 @@ def main():
                len(inbox) == 3 and archived['state'] == 'done' and archived['verified'] is True and gone and back['state'] == 'done' and restored
                and all(s[1] == 'done' and s[2] is True and s[3] == 'done' and s[4] for s in steps),
                {'conversations': len(inbox), 'archived': archived['state'], 'put_back': restored, 'steps': [list(s) for s in steps]})
+        # -- F-FEED -----------------------------------------------------------------------------------------------------------------------------------------
+        public = 'https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics'
+        feed_conn = connectors.add_feed(p, public, 'US holidays (live check)')
+        sync = wiring.hub_services()[2]
+        sync.ensure(account, feed_conn)
+        sync.request(account, feed_conn)
+        for _ in range(4):
+            sync.tick(limit=20)
+        feed_events = sql('SELECT count(*) FROM hub_events WHERE account_id=%s AND connection_id=%s', [account, feed_conn])[0][0]
+        feed_account = next((x for x in hub.accounts(p) if x['id'] == feed_conn), {})
+        read_only = not any((feed_account.get('capabilities') or {}).get(k) for k in ('event_write', 'event_change', 'respond'))
+        hidden = 'holiday%40group' not in json.dumps(hub.accounts(p))
+        connectors.disconnect(p, feed_conn)
+        left_after = sql('SELECT count(*) FROM hub_events WHERE account_id=%s AND connection_id=%s', [account, feed_conn])[0][0]
+        record('F-FEED', 'A public feed is read whole, read only, its address not shown, and removed with its events',
+               feed_events > 0 and read_only and hidden and left_after == 0, {'events': feed_events, 'read_only': read_only, 'address_hidden': hidden, 'left_after_removal': left_after})
     finally:
         # -- CLEANUP: every event this run made goes, whatever happened above ------------------------------------------------------------------------------
         left = 0
