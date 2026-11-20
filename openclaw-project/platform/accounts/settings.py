@@ -75,6 +75,8 @@ if os.environ.get('AGENTAI_MAIL_ENABLED') == '1':
     validate_email(DEFAULT_FROM_EMAIL)
     if not EMAIL_HOST or DEFAULT_FROM_EMAIL.endswith('@localhost'):
         raise ImproperlyConfigured('Configured SMTP host and sender domain are required before mail activation')
+MICROSOFT_CLIENT_ID = os.environ.get('AGENTAI_MICROSOFT_CLIENT_ID', '')
+MICROSOFT_CLIENT_SECRET_FILE = os.environ.get('AGENTAI_MICROSOFT_CLIENT_SECRET_FILE', '')     # a file, never the secret itself in the environment
 TELEGRAM_BOT_TOKEN = os.environ.get('AGENTAI_TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_WEBHOOK_SECRET = os.environ.get('AGENTAI_TELEGRAM_WEBHOOK_SECRET', '')
 TELEGRAM_BOT_USERNAME = os.environ.get('AGENTAI_TELEGRAM_BOT_USERNAME', '').lstrip('@')
