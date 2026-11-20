@@ -478,7 +478,7 @@
   },
   {
    "date": "2026-11-20",
-   "by": "prepared for owner approval (roadmap Phase 6: mail, meetings, feeds, event changes)",
+   "by": "Claude Code, roadmap Phase 6, approved by the owner on 2026-11-20 (\"Approve and publish\")",
    "note": "Sending (gmail.send) and organizing (gmail.modify), each asked separately on first use; sent only on the customer's press or their approval of exactly what the assistant prepared; first-time, large-audience and outside-organization notes before Send; Undo send (10 s default); at most 50 people a message and 30 messages an hour (lower by customer or organization); never a permanent deletion (bin furthest); record of each change incl. a sent message's recipients and text kept 180 days (connector_records); a sent draft removed 30 days after sending (retention rule sent_drafts); meeting times with attendee addresses kept 30 days (meeting_proposals); calendar feeds: address encrypted in custody, copy of events until removed, the feed host receives only our request; event changes and series scope; mail settings. Published together with switching these kinds on (HubCaps.proving emptied, MEETINGS_LIVE, FEEDS_LIVE), all proven live 2026-11-20 (deploy/phase6_live.py, 17 of 17)."
   }
  ],
