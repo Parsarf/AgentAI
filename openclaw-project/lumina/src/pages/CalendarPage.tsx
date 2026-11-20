@@ -42,13 +42,15 @@ function EventChip({ event, zone, current, onOpen, block, style }: { event: HubE
 
 /** What the inspector shows for one event: when (in the customer's timezone, and the event's own when that differs), where, who and their answers, the notes, which account
  *  and calendar it is from, and how fresh it is. An event that is only visible as busy shows nothing else. Nothing here changes the event. */
-function Inspector({ event, zone, account, calendar, now, writes, onCancel }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number;
-  writes: boolean; onCancel(e: HubEvent, notify: boolean): Promise<void> }) {
+function Inspector({ event, zone, account, calendar, now, writes, onCancel, onRespond }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number;
+  writes: boolean; onCancel(e: HubEvent, notify: boolean): Promise<void>; onRespond(e: HubEvent, response: 'accepted' | 'tentative' | 'declined'): Promise<void> }) {
   const [asking, setAsking] = useState(false); const [busy, setBusy] = useState(false);
   // Cancelling (#63) is offered for an event the customer organizes, in a calendar this account may change, when changes are allowed for it. Others are told how many.
   const mine = !!account && (!event.organizer || event.organizer.address === account.identity || !!event.attendees?.find(a => a.self && a.address === event.organizer?.address));
   const changeable = writes && !!account?.capabilities.event_write && (calendar?.access === 'owner' || calendar?.access === 'write') && !event.busy_only && !event.cancelled && !event.series_id && mine;
   const others = (event.attendees ?? []).filter(a => !a.self).length;
+  // An invitation from someone else is answered, never cancelled (#63, #64): Going, Maybe, Not going. The organizer is told.
+  const invited = writes && !!account?.capabilities.respond && !mine && !!event.attendees?.some(a => a.self) && !event.cancelled && !event.busy_only;
   return (
     <section className={`hub-inspector cal-${event.colour}`} aria-label="Event details">
       <header><h2>{titleOf(event)}</h2></header>
@@ -69,6 +71,9 @@ function Inspector({ event, zone, account, calendar, now, writes, onCancel }: { 
         : <div className="notice" role="alertdialog" aria-label="Cancel this event?"><p className="small">{others ? `${others} ${others === 1 ? 'person is' : 'people are'} told it is cancelled.` : 'Nobody else is invited.'} You can undo it afterwards.</p>
           <button type="button" className="btn small" disabled={busy} onClick={async () => { setBusy(true); try { await onCancel(event, true); } finally { setBusy(false); setAsking(false); } }}>Cancel it</button>
           <button type="button" className="btn small tertiary" disabled={busy} onClick={() => setAsking(false)}>Keep it</button></div>)}
+      {invited && <div className="seg" role="group" aria-label="Your answer">{(['accepted', 'tentative', 'declined'] as const).map(r =>
+        <button key={r} type="button" className="seg-item" aria-pressed={event.my_response === r} disabled={busy}
+          onClick={async () => { setBusy(true); try { await onRespond(event, r); } finally { setBusy(false); } }}>{RESPONSE[r]}</button>)}</div>}
       {writes && account && !account.capabilities.event_write && <AllowChanges account={account} capability="event_write" />}
       <p className="faint small">{calendar ? (changeable || (writes && account?.capabilities.event_write && (calendar.access === 'owner' || calendar.access === 'write')) ? 'You can change this calendar' : ACCESS[calendar.access]) : 'Read only'} · Updated {ago(event.synced_epoch, now)}.
         {event.provider_url && account && <> <a href={event.provider_url} target="_blank" rel="noopener noreferrer">Open in {account.provider_label}</a></>}</p>
@@ -161,6 +166,10 @@ export default function CalendarPage() {
   const changed = (action: HubAction, words: string) => { setDone({ action, words }); setCreating(false); void refresh(); };
   const cancelEvent = async (e: HubEvent, notify: boolean) => {
     try { const r = await hub.cancelEvent(e.connection_id, e.calendar_id, e.id, notify); if (r.action.state === 'done') { changed(r.action, `"${titleOf(e)}" was cancelled.`); close(); } else setErr(r.action.ended_words || 'The event was not cancelled.'); }
+    catch (error) { setErr(failed(error)); }
+  };
+  const respond = async (e: HubEvent, response: 'accepted' | 'tentative' | 'declined') => {
+    try { const r = await hub.respondEvent(e.connection_id, e.calendar_id, e.id, response); if (r.action.state === 'done') { changed(r.action, `You answered "${RESPONSE[response]}" to "${titleOf(e)}".`); setDetail(d => d && eventKey(d) === eventKey(e) ? { ...d, my_response: response } : d); } else setErr(r.action.ended_words || 'Your answer was not sent.'); }
     catch (error) { setErr(failed(error)); }
   };
   const undo = async () => {
@@ -294,7 +303,7 @@ export default function CalendarPage() {
 
   return (
     <Workspace title={<h1 className="wsp-title" aria-live="polite">{found ? `Events matching “${found.query}”` : heading}</h1>} tools={tools} fill context={context} contextLabel="Calendars"
-      inspector={detail ? <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} writes={writes} onCancel={cancelEvent} /> : null} inspectorLabel="Event" onInspectorClose={close} className="hub-calendar">
+      inspector={detail ? <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} writes={writes} onCancel={cancelEvent} onRespond={respond} /> : null} inspectorLabel="Event" onInspectorClose={close} className="hub-calendar">
       <div className="wsp-body">
         <div className="hub-cal-zone faint small">
           {zoneEdit === null ? <><span>Times are shown in {zone.replace(/_/g, ' ')}{info?.settings.timezone ? '' : " (this device's timezone)"}.{writes ? '' : ' Read only for now.'}</span>

@@ -69,6 +69,7 @@ export const hub = {
   createEvent: (e: NewEvent) => api<{ action: HubAction }>('POST', '/v1/hub/events/create', e),
   cancelEvent: (connection: string, calendar: string, event: string, notify = true) => api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify }),
   undo: (action: string, screen = 'calendar') => api<{ action: HubAction }>('POST', `/v1/hub/actions/${encodeURIComponent(action)}/undo`, { screen }),
+  respondEvent: (connection: string, calendar: string, event: string, response: 'accepted' | 'tentative' | 'declined') => api<{ action: HubAction }>('POST', '/v1/hub/events/respond', { connection, calendar, event, response }),
 };
 
 /** Addresses typed in one box, split on commas, semicolons and spaces. */

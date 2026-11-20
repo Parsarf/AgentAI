@@ -32,7 +32,10 @@ WRITE_KINDS = (
     WriteKind('event.create', 'Create an event', policy_kind='invite', undo='event.delete', capability='event_write', undo_seconds=7 * 86400),
     WriteKind('event.delete', 'Cancel an event', policy_kind='delete', undo='event.recreate', capability='event_write', needs_version=True, undo_seconds=7 * 86400),
     WriteKind('event.recreate', 'Put a cancelled event back', policy_kind='invite', undo='event.delete', capability='event_write', undo_seconds=7 * 86400),
+    WriteKind('event.respond', 'Answer an invitation', policy_kind='write', undo='event.respond', capability='respond', needs_version=True, undo_seconds=7 * 86400),
 )
+RESPONSES = {'accepted': 'accepted', 'declined': 'declined', 'tentative': 'tentative', 'needs_action': 'needsAction'}
+RESPONSE_WORDS = {'accepted': 'Going', 'declined': 'Not going', 'tentative': 'Maybe', 'needs_action': 'Not answered'}
 KINDS = {k.name for k in WRITE_KINDS}
 
 
@@ -104,6 +107,12 @@ def check(kind, payload):
             raise ValueError('invalid request for this kind of change')
         split_id(payload['event'])
         return
+    if kind == 'event.respond':
+        if set(payload) - {'event', 'response', 'note', 'notify'} or not text('event', 1400) or payload.get('response') not in RESPONSES \
+                or ('note' in payload and not text('note', 500, 0)) or not isinstance(payload.get('notify', True), bool):
+            raise ValueError('an answer is accepted, tentative, declined (or needs_action to undo one), with an optional short note')
+        split_id(payload['event'])
+        return
     raise ValueError('invalid request for this kind of change')
 
 
@@ -135,6 +144,18 @@ def preview(kind, payload, before):
         verb = 'Put back' if kind == 'event.recreate' else 'Create'
         return {'destination': f'Calendar {payload["calendar"]}', 'summary': f'{verb} the event "{payload["title"]}" on {_human(payload)}', 'affected': 1, 'changes': changes}
     data = (before or {}).get('data') or {}
+    if kind == 'event.respond':
+        was, now = data.get('my_response'), payload['response']
+        changes = [{'field': 'your answer', 'before': RESPONSE_WORDS.get(was, was), 'after': RESPONSE_WORDS[now]}]
+        if payload.get('note'):
+            changes.append({'field': 'note to the organizer', 'before': None, 'after': payload['note']})
+        changes.append({'field': 'organizer', 'before': None, 'after': 'The organizer is told' if payload.get('notify', True) else 'The organizer is not told by email'})
+        if data.get('series_id') is None and data.get('recurring'):
+            changes.append({'field': 'series', 'before': None, 'after': 'Every occurrence of the series'})
+        elif data.get('series_id'):
+            changes.append({'field': 'series', 'before': None, 'after': 'Only this occurrence'})
+        return {'destination': f'Calendar {split_id(payload["event"])[0]}', 'summary': f'Answer "{RESPONSE_WORDS[now]}" to "{data.get("title") or "(no title)"}"', 'affected': 1,
+                'changes': changes}
     people = [a for a in data.get('attendee_addresses') or [] if a]
     told = payload.get('notify', True) and people
     changes = [{'field': 'event', 'before': data.get('title') or '(no title)', 'after': None}]
@@ -155,6 +176,9 @@ def undo_payload(kind, payload, before):
         data = (before or {}).get('data') or {}
         again = data.get('recreate')
         return dict(again) if isinstance(again, dict) else None
+    if kind == 'event.respond':
+        was = ((before or {}).get('data') or {}).get('my_response')
+        return {'event': payload['event'], 'response': was if was in RESPONSES else 'needs_action', 'notify': bool(payload.get('notify', True))}
     return None
 
 
@@ -176,6 +200,9 @@ def verify(kind, payload, found):
     if found is None:
         return False, 'the event is not there'
     data = found.get('data') or {}
+    if kind == 'event.respond':
+        same = data.get('my_response') == payload['response']
+        return same, 'your answer is recorded' if same else 'your answer there is different'
     sent = to_google(payload, None)
     same = (data.get('title') == payload['title'] and data.get('start_raw') == sent['start'] and data.get('end_raw') == sent['end']
             and sorted(data.get('attendee_addresses') or []) == sorted(a.strip().lower() for a in payload.get('attendees') or []))
@@ -242,7 +269,9 @@ def to_record(calendar_id, raw) -> dict:
                 again = None                                   # one occurrence of a series is put back through the series itself (#62), not as a new single event
         except (ValueError, KeyError, TypeError):
             again = None
+    mine = next((a.get('responseStatus') for a in raw.get('attendees') or [] if isinstance(a, dict) and a.get('self')), None)
     data = {'title': raw.get('summary', ''), 'start_raw': _raw_when(start), 'end_raw': _raw_when(end), 'attendee_addresses': people, 'cancelled': raw.get('status') == 'cancelled',
+            'my_response': {v: k for k, v in RESPONSES.items()}.get(mine), 'recurring': bool(raw.get('recurrence')),
             'series_id': raw.get('recurringEventId'), 'organizer_is_me': bool((raw.get('organizer') or {}).get('self')), 'recreate': again}
     return record('event', f'{calendar_id}|{raw["id"]}', container=('calendar', calendar_id), version=raw.get('etag'), title=raw.get('summary', ''), data=data)
 
@@ -312,13 +341,13 @@ class CalendarWrites:
     def container_of(self, credential, kind, payload):
         if kind in ('event.create', 'event.recreate'):
             return ('calendar', str(payload.get('calendar', '')))
-        if kind == 'event.delete':
+        if kind in ('event.delete', 'event.respond'):
             return ('calendar', split_id(payload['event'])[0])
         return None
 
     @staticmethod
     def target_of(kind, payload):
-        return ('event', str(payload['event'])) if kind == 'event.delete' else None
+        return ('event', str(payload['event'])) if kind in ('event.delete', 'event.respond') else None
 
     def read(self, credential, record_kind, record_id):
         if record_kind != 'event':
@@ -355,6 +384,29 @@ class CalendarWrites:
                 from .google_hub import _failure
                 raise _failure(status, answer_headers, raw)
             return {'receipt': f'google-event-{event_id}-cancelled', 'record': record('event', payload['event'], container=('calendar', calendar_id), data={'cancelled': True})}
+        if kind == 'event.respond':
+            # Only the customer's own attendee entry changes; the list is sent whole (the API replaces it), read just now under the same version (If-Match).
+            calendar_id, event_id = split_id(payload['event'])
+            raw = self._read_event(credential, calendar_id, event_id)
+            if raw is None:
+                raise ProviderError(404, 'notFound')
+            people = [dict(a) for a in raw.get('attendees') or [] if isinstance(a, dict)]
+            mine = next((a for a in people if a.get('self')), None)
+            if mine is None:
+                raise ProviderError(400, 'invalid')                # not invited: there is nothing to answer
+            mine['responseStatus'] = RESPONSES[payload['response']]
+            if payload.get('note'):
+                mine['comment'] = payload['note']
+            headers = {'If-Match': str(precondition)} if precondition else {}
+            notify = 'all' if payload.get('notify', True) else 'none'
+            status, answer_headers, answer = self._send(credential, 'PATCH', self._event_url(calendar_id, event_id) + '?sendUpdates=' + notify, {'attendees': people}, headers=headers)
+            if status == 412:
+                raise ProviderError(412, 'conditionNotMet')
+            if status != 200:
+                from .google_hub import _failure
+                raise _failure(status, answer_headers, answer)
+            changed = json.loads(answer or b'{}')
+            return {'receipt': f'google-event-{event_id}-{payload["response"]}', 'record': to_record(calendar_id, changed)}
         raise ProviderError(400, 'invalid')
 
     def find_effect(self, credential, kind, payload, idempotency_key):
@@ -367,6 +419,13 @@ class CalendarWrites:
             found = self._read_event(credential, calendar_id, event_id)
             gone = found is None or found.get('status') == 'cancelled'
             return {'receipt': f'google-event-{event_id}-cancelled', 'record': record('event', payload['event'], container=('calendar', calendar_id), data={'cancelled': True})} if gone else None
+        if kind == 'event.respond':
+            calendar_id, event_id = split_id(payload['event'])
+            found = self._read_event(credential, calendar_id, event_id)
+            if found is None:
+                return None
+            now = to_record(calendar_id, found)
+            return {'receipt': f'google-event-{event_id}-{payload["response"]}', 'record': now} if now['data']['my_response'] == payload['response'] else None
         return None
 
     check = staticmethod(check)

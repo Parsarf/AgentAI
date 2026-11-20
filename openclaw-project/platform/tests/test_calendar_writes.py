@@ -161,6 +161,32 @@ class CalendarWrites(GoogleBase):
         self.assertEqual(json.loads(tools.call('a', ask, name='lumina_calendar_create', request_id='req-a')[0])['prepared'], json.loads(text)['prepared'])
         self.assertEqual(len(self.rows('SELECT 1 FROM actions')), 1)                                      # asked twice in one task: one change
 
+    def test_answering_an_invitation_changes_only_the_customers_own_answer_and_undo_puts_the_old_one_back(self):
+        self.allow()
+        self.g.event('inv', start={'dateTime': '2033-05-21T15:00:00Z'}, end={'dateTime': '2033-05-21T16:00:00Z'}, summary='Quarterly review',
+                     organizer={'email': 'ann@x.test'}, attendees=[{'email': 'ann@x.test', 'organizer': True, 'responseStatus': 'accepted'},
+                                                                  {'email': 'dana@gmail.test', 'self': True, 'responseStatus': 'needsAction'},
+                                                                  {'email': 'bo@y.test', 'responseStatus': 'tentative'}])
+        answer = self.actions.propose(self.a, self.connection, 'event.respond', {'event': 'dana@gmail.test|inv', 'response': 'declined', 'note': 'Travelling that week'})
+        self.assertIn('Answer "Not going" to "Quarterly review"', answer['preview']['summary'])
+        self.assertIn({'field': 'your answer', 'before': 'Not answered', 'after': 'Not going'}, answer['preview']['changes'])
+        self.assertEqual(self.approve_and_run(answer), 'done')
+        people = {a['email']: (a['responseStatus'], a.get('comment')) for a in self.g.events['dana@gmail.test']['inv']['attendees']}
+        self.assertEqual(people, {'ann@x.test': ('accepted', None), 'dana@gmail.test': ('declined', 'Travelling that week'), 'bo@y.test': ('tentative', None)})
+        self.assertTrue(self.actions.get(self.a, answer['id'])['verified'])
+        undo = self.actions.undo(self.a, answer['id'])
+        self.assertEqual(self.approve_and_run(undo), 'done')
+        self.assertEqual(next(a for a in self.g.events['dana@gmail.test']['inv']['attendees'] if a.get('self'))['responseStatus'], 'needsAction')
+        # an event changed meanwhile is not answered over the change; an event the customer is not invited to cannot be answered
+        again = self.actions.propose(self.a, self.connection, 'event.respond', {'event': 'dana@gmail.test|inv', 'response': 'accepted'})
+        self.g.event_version += 1
+        self.g.events['dana@gmail.test']['inv'].update(summary='Quarterly review (moved)', etag=f'"{self.g.event_version}"', _v=self.g.event_version)
+        self.assertEqual(self.approve_and_run(again), 'failed')
+        self.assertEqual(self.actions.get(self.a, again['id'])['ended_reason'], 'conflict')
+        self.g.event('mine', start={'dateTime': '2033-05-22T15:00:00Z'}, end={'dateTime': '2033-05-22T16:00:00Z'}, summary='Solo')
+        solo = self.actions.propose(self.a, self.connection, 'event.respond', {'event': 'dana@gmail.test|mine', 'response': 'accepted'})
+        self.assertNotEqual(self.approve_and_run(solo), 'done')
+
     def test_a_time_that_does_not_exist_or_an_end_before_the_start_is_refused_before_anything_is_stored(self):
         self.allow()
         for bad in ({**EVENT, 'start': '2033-03-13T02:30', 'end': '2033-03-13T03:30'},        # New York skips 02:00 to 03:00 that night

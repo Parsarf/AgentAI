@@ -34,8 +34,8 @@ from .security import NotFound, Principal
 ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH = ('lumina_mail_accounts', 'lumina_mail_search', 'lumina_mail_thread', 'lumina_mail_older', 'lumina_calendar_events',
                                                                'lumina_calendar_event', 'lumina_calendar_search')
 # Roadmap Phase 6: free time and clashes (reading), and changes the assistant PREPARES for the customer's approval (never sends: the action pipeline does, once approved).
-FREE, CONFLICTS, CREATE, CANCEL = 'lumina_calendar_free', 'lumina_calendar_conflicts', 'lumina_calendar_create', 'lumina_calendar_cancel'
-WRITES = frozenset({CREATE, CANCEL})
+FREE, CONFLICTS, CREATE, CANCEL, RESPOND = 'lumina_calendar_free', 'lumina_calendar_conflicts', 'lumina_calendar_create', 'lumina_calendar_cancel', 'lumina_calendar_respond'
+WRITES = frozenset({CREATE, CANCEL, RESPOND})
 MAX_TEXT = 14000
 MAX_BODY = 4000
 MAX_MESSAGES = 8
@@ -91,6 +91,11 @@ WRITE_TOOLS = [
     {'name': CANCEL, 'description': 'PREPARE cancelling one event the customer organizes, for them to approve (the people invited are told, unless notify is false). Nothing is cancelled '
      'until they approve exactly this. After preparing it, tell the customer in one sentence and END YOUR TURN.',
      'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'event']}},
+    {'name': RESPOND, 'description': 'PREPARE the customer\'s answer to an invitation (accepted, tentative or declined, with an optional short note to the organizer), for them to approve. '
+     'Use it instead of cancelling an event the customer does not organize. Nothing is answered until they approve exactly this. After preparing it, tell the customer in one '
+     'sentence and END YOUR TURN.',
+     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), response={'type': 'string', 'enum': ['accepted', 'tentative', 'declined']}, note=_STR(500),
+                         notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'event', 'response']}},
 ]
 
 
@@ -362,12 +367,16 @@ class HubTools:
             if 'notify' in a:
                 payload['notify'] = bool(a['notify'])
             kind = 'event.create'
+        elif name == RESPOND:
+            payload, kind = {'event': f"{a['calendar']}|{a['event']}", 'response': str(a['response']), 'notify': bool(a.get('notify', True))}, 'event.respond'
+            if a.get('note'):
+                payload['note'] = str(a['note'])
         else:
             payload, kind = {'event': f"{a['calendar']}|{a['event']}", 'notify': bool(a.get('notify', True))}, 'event.delete'
         try:
             action = self.actions.propose(principal, str(a['account']), kind, payload, request_id=request_id)
         except ConnectorFault as fault:
-            missing = next((acc['capabilities']['missing'].get('event_write') for acc in self.hub.accounts(principal) if acc['id'] == a.get('account')), None)
+            missing = next((acc['capabilities']['missing'].get('respond' if name == RESPOND else 'event_write') for acc in self.hub.accounts(principal) if acc['id'] == a.get('account')), None)
             if fault.kind == 'refused' and missing:
                 return ('This account has not given Lumina permission to change its calendar yet. Nothing was prepared. Tell the customer they can allow it in the Calendar '
                         'page ("Allow changes"), then ask again.'), True
