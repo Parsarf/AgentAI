@@ -449,8 +449,8 @@
   },
   {
    "date": "2026-11-20",
-   "by": "prepared for owner approval (roadmap Phase 6)",
-   "note": "Calendar changes: the calendar.events permission asked only through \"Allow changes\"; create, cancel and answer only on the customer's own press or approval of a change the assistant prepared; who is told said before confirming; Google sends the invitations; records of changes kept 180 days (retention rule connector_records, table actions). Mail stays read only (no sending or organizing until a later policy change). Owner switch mail_calendar_writes stays off until this is published."
+   "by": "Claude Code, roadmap Phase 6, approved by the owner on 2026-11-20 (\"approve\")",
+   "note": "Calendar changes: the calendar.events permission asked only through \"Allow changes\"; create, cancel and answer only on the customer's own press or approval of a change the assistant prepared; who is told said before confirming; Google sends the invitations; records of changes kept 180 days (retention rule connector_records, table actions). Mail stays read only (no sending or organizing until a later policy change). Published by merging to main (Vercel rebuilds getlumina.pro/privacy); then the owner switch mail_calendar_writes was turned on for every account. Mail sending and organizing are not built yet: this text does not cover them, and the policy is changed again before they ship."
   }
  ],
  "assistant_recipients": {

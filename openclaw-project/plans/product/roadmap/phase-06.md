@@ -73,6 +73,14 @@ Google scopes `gmail.send`, `gmail.modify`, `calendar.events`, each asked on fir
 - **Google:** in the Cloud console, OAuth consent screen > Data access: add `.../auth/gmail.send`, `.../auth/gmail.modify`, `.../auth/calendar.events`. Keep the app in Testing (test users only) until Google's verification; start the verification (restricted scopes: OAuth verification plus the CASA assessment, yearly).
 - **Microsoft:** Entra admin center > App registrations > New: name "Lumina", supported accounts "Any organizational directory and personal Microsoft accounts", redirect `https://getlumina.pro/v1/hub/link/callback` (Web). API permissions (delegated): `offline_access`, `openid`, `email`, `User.Read`, `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`. Certificates & secrets: a client secret (give it to me as a file on the server, not in chat). Then publisher verification (Branding & properties, a verified Microsoft AI Cloud Partner Program ID). Test accounts: one outlook.com and one work account (a Microsoft 365 developer tenant).
 
+## The writes switch is on: what that means for the next write kinds
+
+`mail_calendar_writes` is on for every account since 2026-11-20 (owner's answer: on once each write kind passes its live write cycle; the policy for calendar changes
+published the same day). It covers every hub write kind the code declares, so a NEW kind (event changes, mail sending, organizing) is live the moment its release deploys.
+Therefore a new write kind is merged only after (1) its live write cycle passed on the real provider, run in-process before the merge as `deploy/phase6_live.py` does, and
+(2) the policy describes it, approved by the owner. Mail sending and organizing additionally need the Google consent screen's `gmail.send`/`gmail.modify` (declared
+2026-11-20) and a policy change, since today's text says mail stays read only.
+
 ## Slack skipped (owner, 2026-11-20)
 
 The owner skipped Slack (#68's Slack part and #69) after weighing what it adds. The real gain would be work context (briefs and answers citing Slack threads). Reaching the
