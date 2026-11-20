@@ -202,4 +202,18 @@ describe('Calendar', () => {
     expect(await screen.findByRole('button', { name: 'Allow changes for me@first.test' })).toBeTruthy();
     expect(screen.queryByRole('form', { name: 'New event' })).toBeNull();
   });
+
+  it('answers an invitation from someone else instead of offering to cancel it (Phase 6, #64)', async () => {
+    const writable = account({ capabilities: caps({ event_write: true, respond: true }) });
+    server(base({ '/v1/hub': overview({ accounts: [writable, second], read_only: false }), 'POST /v1/hub/refresh': { requested: 1 },
+      'POST /v1/hub/events/respond': { action: { id: 'r1', kind: 'event.respond', state: 'done', preview: { title: '', summary: '', destination: '', changes: [], can_undo: true }, verified: true,
+        can_undo: true, undo_until_epoch: null, direct: 'calendar', ended_words: '' } } }));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Standup, 9:00 AM' }));
+    const answers = await screen.findByRole('group', { name: 'Your answer' });
+    expect(screen.queryByRole('button', { name: 'Cancel event' })).toBeNull();            // Ann organizes it: it can be answered, not cancelled
+    fireEvent.click(within(answers).getByRole('button', { name: 'Not going' }));
+    await screen.findByText('You answered "Not going" to "Standup".');
+    expect(asked('/v1/hub/events/respond').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'e1', response: 'declined' }]);
+  });
 });

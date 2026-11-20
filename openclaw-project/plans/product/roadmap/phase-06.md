@@ -4,7 +4,15 @@
 #63 for Google calendars, behind `mail_calendar_writes` (off). Next: the live write cycle on the owner's test account (needs the `calendar.events` scope on the consent
 screen), then #62, #64, #65 and mail. (Not a final state: see the completion contract.)
 
-## Built (release on branch `phase-6-calendar`)
+## Live write cycle on the real provider (2026-11-20)
+
+`deploy/phase6_live.py` on the owner's test account (`parsaaraouf@…`, calendar permission given through "Allow changes" from the Calendar, in place): W-FREE, W-CREATE, W-RETRY
+(running again sends nothing, a second approval refused, the same request again makes no second event), W-UNKNOWN (an unknown outcome read back), W-UNDO (cancel with its
+version, then put back), W-CONFLICT (an event changed at Google is not cancelled) and CLEANUP (0 of 4 events left): **all PASS** for `event.create`, `event.delete`,
+`event.recreate`. Nobody was invited or told (no attendees). Google console: the five Gmail and Calendar scopes and `openid`/`email` are declared on the consent screen
+(Data Access), done 2026-11-20.
+
+## Built (PR #67, deployed `48a0dde`)
 
 | Part | What | Tests |
 |---|---|---|
@@ -18,6 +26,7 @@ screen), then #62, #64, #65 and mail. (Not a final state: see the completion con
 | #61 event creation | `event.create`: event id from the idempotency key (a retry answers 409 and is read back), invitations said in the preview, read-back verification, undo = cancel | `test_the_write_cycle_one_event_under_retry_double_approval_and_a_lost_answer_then_undo` |
 | #63 cancellation (organizer, single event) | `event.delete` with `If-Match` (412 = conflict, nothing cancelled over someone's change), "N people are told", undo = `event.recreate` | same, and `test_an_event_changed_elsewhere...` |
 | Assistant tools | `lumina_calendar_free`, `lumina_calendar_conflicts`; `lumina_calendar_create` and `lumina_calendar_cancel` only PREPARE (listed only while writes are on) | `test_the_assistant_only_prepares...`, `tests/test_hub.py` |
+| #64 invitation responses (next release) | `event.respond`: only the account's own attendee entry changes (the list is read just now under the same ETag), optional note, undo = the previous answer; the Calendar shows Going / Maybe / Not going for an invitation from someone else instead of Cancel | `test_answering_an_invitation...`, `CalendarPage.test.tsx` |
 | Calendar page | "New event" (only calendars that can be changed), "Cancel event" for events the customer organizes with who is told, Undo, "Allow changes" where the permission is missing | `CalendarPage.test.tsx`, `EventEditor.test.tsx`, `AllowChanges.test.tsx` |
 
 

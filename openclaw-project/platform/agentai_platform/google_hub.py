@@ -74,7 +74,7 @@ DECLARATION = Declaration(
     implementation='first_party', reason='The dashboard needs incremental sync (a history id for mail, a sync token for calendars), which only the REST APIs offer.',
     hosts=HOSTS, freshness_seconds={'mailbox': 900, 'calendar': 900}, caps=Caps(pages=4, items=100, bytes=2_000_000, seconds=25.0),
     disclosure='Reads your mail and calendars. It cannot send, change or delete anything.',
-    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True, free_busy=True, event_write=True, grants=GRANTS), several_accounts=True)
+    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True, free_busy=True, event_write=True, respond=True, grants=GRANTS), several_accounts=True)
 
 # Gmail's system labels in the common set. Everything else is the customer's own label and is kept by its name.
 SYSTEM_LABELS = {'INBOX': 'inbox', 'SENT': 'sent', 'DRAFT': 'drafts', 'SPAM': 'spam', 'TRASH': 'trash', 'STARRED': 'starred', 'UNREAD': 'unread'}

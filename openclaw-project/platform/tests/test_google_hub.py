@@ -105,7 +105,7 @@ class FakeGoogle:
                         busy.append({'start': e['start']['dateTime'], 'end': e['end']['dateTime']})
                 out[item['id']] = {'busy': sorted(busy, key=lambda b: b['start'])}
             return self._ok({'calendars': out})
-        if '/events' in path and method in ('POST', 'DELETE') or (method == 'GET' and '/events/' in path):
+        if '/events' in path and method in ('POST', 'DELETE', 'PATCH') or (method == 'GET' and '/events/' in path):
             from urllib.parse import unquote
             calendar = unquote(path.split('/calendars/')[1].split('/events')[0])
             if calendar not in [c['id'] for c in self.calendars]:
@@ -121,6 +121,15 @@ class FakeGoogle:
                     return self._error(409, 'duplicate')
                 raw = self.event(body.pop('id'), calendar, **body)
                 answer = self._ok({k: v for k, v in raw.items() if k != '_v'})
+            elif method == 'PATCH':
+                found = self.events.get(calendar, {}).get(unquote(path.rsplit('/', 1)[1]))
+                if found is None or found['status'] == 'cancelled':
+                    return self._error(404, 'notFound')
+                if headers.get('If-Match') and headers['If-Match'] != found['etag']:
+                    return self._error(412, 'conditionNotMet')
+                self.event_version += 1
+                found.update(json.loads(data), etag=f'"{self.event_version}"', _v=self.event_version)
+                answer = self._ok({k: v for k, v in found.items() if k != '_v'})
             else:
                 eid = unquote(path.rsplit('/', 1)[1])
                 found = self.events.get(calendar, {}).get(eid)
@@ -502,7 +511,7 @@ class Connected(GoogleBase):
         # Phase 6: Google declares changes, but a connection signed in to read has none of them until its customer gives that permission (re-consent on first use).
         caps = next(a for a in self.hub.accounts(self.a) if a['id'] == connection)['capabilities']
         self.assertFalse(caps['send'] or caps['organize'] or caps['mark_read'] or caps['event_write'] or caps['respond'])
-        self.assertEqual(caps['missing'], {'event_write': 'calendar_write'})
+        self.assertEqual(caps['missing'], {'event_write': 'calendar_write', 'respond': 'calendar_write'})
 
 
 if __name__ == '__main__':

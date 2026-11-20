@@ -171,6 +171,7 @@ and for a calendar an access role that allows changing it (`owner` or `write`; a
 | `event.create` | Google | `event_write` | `event.delete` (7 days) | event id derived from the key (`google_calendar_writes.event_id_for`); a repeat answers 409 and is read back | n/a | read back: title, start, end, attendees |
 | `event.delete` | Google | `event_write` | `event.recreate` from the event as it was | the event being gone | `If-Match` ETag (412: `conflict`) | read back: gone or cancelled |
 | `event.recreate` | Google | `event_write` | `event.delete` | as `event.create` | n/a | as `event.create` |
+| `event.respond` | Google | `respond` | `event.respond` back to the previous answer | the answer being what was sent (read back) | `If-Match` ETag | read back: the account's own answer |
 
 A change the customer makes with their own hand (`ActionService.direct`, routes `/v1/hub/events/create`, `/v1/hub/events/cancel`, `/v1/hub/actions/<id>/undo`) is the same write
 kind through the same pipeline; their press is the approval and the screen is recorded (`actions.direct_screen`). A change the assistant prepared (`lumina_calendar_create`,

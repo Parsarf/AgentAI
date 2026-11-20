@@ -9204,6 +9204,37 @@
     },
     "parameters": []
    }
+  },
+  "/v1/hub/events/respond": {
+   "post": {
+    "summary": "Answer an invitation with the customer's own hand (Going, Maybe, Not going); the organizer is told unless notify is false",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
   }
  },
  "components": {

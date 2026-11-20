@@ -413,6 +413,25 @@ def event_cancel(request):
     return _run(lambda: {'action': actions.direct(principal, given['connection'], 'event.delete', payload, screen='calendar')})
 
 
+@endpoint(['POST'], ['connection', 'calendar', 'event', 'response', 'note', 'notify'], structured=True)
+def event_respond(request):
+    """The customer answers an invitation themselves (Going, Maybe, Not going): their press is the approval. The organizer is told unless notify is false."""
+    principal, stop = _enter(request, 'hub.write', 120)
+    if stop:
+        return stop
+    given = request.input
+    stop = _writes(request, principal, given.get('connection'))
+    if stop:
+        return stop
+    if not all(isinstance(given.get(k), str) and given[k] for k in ('calendar', 'event', 'response')):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    payload = {'event': f"{given['calendar']}|{given['event']}", 'response': given['response'], 'notify': bool(given.get('notify', True))}
+    if isinstance(given.get('note'), str) and given['note'].strip():
+        payload['note'] = given['note'].strip()
+    _, _, actions, _ = wiring.action_services()
+    return _run(lambda: {'action': actions.direct(principal, given['connection'], 'event.respond', payload, screen='calendar')})
+
+
 @endpoint(['POST'], ['screen'], structured=True)
 def action_undo(request, action_id):
     """The customer pressed Undo on a change in the Inbox or the Calendar: its inverse, approved by that press."""
