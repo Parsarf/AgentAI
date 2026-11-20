@@ -5,6 +5,8 @@ import { api, ApiError } from './api';
 export interface Person { name: string; address: string }
 export interface HubCaps { mail: boolean; calendar: boolean; mail_search: boolean; incremental: boolean; push: boolean; labels: 'labels' | 'folders' | 'none'; subjects: boolean;
   send: boolean; organize: boolean; mark_read: boolean; event_write: boolean; respond: boolean; attachments?: boolean; compose_link?: boolean; free_busy?: boolean;
+  /** change an event (time, title, place, notes, people); change or cancel part of a repeating series (Phase 6, #62) */
+  event_change?: boolean; event_series?: boolean;
   /** capability -> the permission to ask for (Phase 6): the provider can, this account has not allowed it yet */
   missing?: Record<string, string> }
 /** A permission to change things, asked for on first use (Phase 6): the same names for every provider. */
@@ -30,6 +32,10 @@ export interface Overview { accounts: HubAccount[]; providers?: { provider: stri
 /** A change in a connected account, as the action pipeline reports it (Phase 6). `direct` is the screen when the customer made it with their own hand. */
 export interface HubAction { id: string; kind: string; state: string; preview: { title: string; summary: string; destination: string; changes: { field: string; before: unknown; after: unknown }[]; can_undo: boolean };
   verified: boolean | null; can_undo: boolean; undo_until_epoch: number | null; direct: string | null; ended_words: string }
+/** How much of a repeating series a change touches (#62): always chosen by the customer, never guessed. */
+export type Scope = 'this' | 'following' | 'all';
+export interface EventChange { connection: string; calendar: string; event: string; series?: string | null; scope?: Scope; title?: string; start?: string; end?: string; all_day?: boolean;
+  timezone?: string; place?: string; description?: string; attendees?: string[]; notify?: boolean }
 export interface NewEvent { connection: string; calendar: string; title: string; start: string; end: string; all_day?: boolean; attendees?: string[]; place?: string; description?: string; notify?: boolean }
 /** A mail draft kept in Lumina (#57): never in the mailbox. The customer sends it themselves from their mail service. */
 export interface Draft { id: string; account: string; thread: string | null; to: string[]; cc: string[]; subject: string; body: string; origin: 'customer' | 'assistant';
@@ -67,9 +73,12 @@ export const hub = {
   // Phase 6: changing calendars. The customer's own press is the approval; each call goes through the action pipeline once.
   allow: (account: HubAccount, add: string[]) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider: account.provider, connection: account.id, add }),
   createEvent: (e: NewEvent) => api<{ action: HubAction }>('POST', '/v1/hub/events/create', e),
-  cancelEvent: (connection: string, calendar: string, event: string, notify = true) => api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify }),
+  cancelEvent: (connection: string, calendar: string, event: string, notify = true, scope?: Scope, series?: string | null) =>
+    api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify, ...(scope && series ? { scope, series } : {}) }),
+  changeEvent: (change: EventChange) => api<{ action: HubAction }>('POST', '/v1/hub/events/change', { ...change, series: change.series || undefined, scope: change.series ? change.scope : undefined }),
   undo: (action: string, screen = 'calendar') => api<{ action: HubAction }>('POST', `/v1/hub/actions/${encodeURIComponent(action)}/undo`, { screen }),
-  respondEvent: (connection: string, calendar: string, event: string, response: 'accepted' | 'tentative' | 'declined') => api<{ action: HubAction }>('POST', '/v1/hub/events/respond', { connection, calendar, event, response }),
+  respondEvent: (connection: string, calendar: string, event: string, response: 'accepted' | 'tentative' | 'declined', scope?: 'this' | 'all', series?: string | null) =>
+    api<{ action: HubAction }>('POST', '/v1/hub/events/respond', { connection, calendar, event, response, ...(scope && series ? { scope, series } : {}) }),
 };
 
 /** Addresses typed in one box, split on commas, semicolons and spaces. */
@@ -133,6 +142,8 @@ const key = (p: { year: number; month: number; day: number }) => `${p.year}-${pa
 export const dayKey = (epoch: number, zone: string) => key(parts(epoch, zone));
 /** Minutes since that day's midnight, in the timezone. */
 export const minuteOfDay = (epoch: number, zone: string) => { const p = parts(epoch, zone); return p.hour * 60 + p.minute; };
+/** A moment as a time field holds it in this timezone: YYYY-MM-DDTHH:MM. */
+export const localTime = (epoch: number, zone: string) => { const m = minuteOfDay(epoch, zone); return `${dayKey(epoch, zone)}T${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
 /** The instant a wall-clock time happens in a timezone (the first one, where a clock change makes it happen twice; the next valid one, where it does not exist). */
 export function zonedEpoch(day: string, minutes: number, zone: string): number {
   const [y, m, d] = day.split('-').map(Number);

@@ -157,6 +157,6 @@ urlpatterns += [
  path('v1/longterm-memory/<str:entry_id>/correct', kn.memory_correct), path('v1/longterm-memory/<str:entry_id>/history', kn.memory_history),
  path('v1/hub/drafts', hubv.drafts), path('v1/hub/drafts/<str:draft_id>/discard', hubv.draft_discard), path('v1/hub/drafts/<str:draft_id>/compose', hubv.draft_compose),
  path('v1/hub/mail/attachment', hubv.attachment),
- path('v1/hub/events/create', hubv.event_create), path('v1/hub/events/cancel', hubv.event_cancel), path('v1/hub/events/respond', hubv.event_respond), path('v1/hub/actions/<str:action_id>/undo', hubv.action_undo),
+ path('v1/hub/events/create', hubv.event_create), path('v1/hub/events/cancel', hubv.event_cancel), path('v1/hub/events/change', hubv.event_change), path('v1/hub/events/respond', hubv.event_respond), path('v1/hub/actions/<str:action_id>/undo', hubv.action_undo),
  path('v1/hub/actions/<str:action_id>/stop', hubv.action_stop), path('v1/hub/free', hubv.free), path('v1/hub/conflicts', hubv.conflicts), path('v1/hub/availability', hubv.availability),
 ]

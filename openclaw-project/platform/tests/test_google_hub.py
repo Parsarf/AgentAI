@@ -3,6 +3,7 @@ conversion, the sign-in, the first fill, the incremental sync, the resync, the p
 import base64
 import json
 import unittest
+from datetime import datetime
 from urllib.parse import parse_qs, parse_qsl, urlsplit
 
 from agentai_platform import google_hub
@@ -110,6 +111,13 @@ class FakeGoogle:
             calendar = unquote(path.split('/calendars/')[1].split('/events')[0])
             if calendar not in [c['id'] for c in self.calendars]:
                 return self._error(404, 'notFound')
+            if method == 'GET' and path.endswith('/instances'):            # the occurrences of a series first scheduled before timeMax (cancelled ones too with showDeleted)
+                from agentai_platform.google_calendar_writes import original_start
+                series = unquote(path.rsplit('/', 2)[1])
+                high = datetime.fromisoformat(one('timeMax').replace('Z', '+00:00'))
+                items = [{k: v for k, v in e.items() if k != '_v'} for e in self.events.get(calendar, {}).values() if e.get('recurringEventId') == series
+                         and (one('showDeleted') == 'true' or e['status'] != 'cancelled') and isinstance(original_start(e['id']), datetime) and original_start(e['id']) < high]
+                return self._ok({'items': items})
             if method == 'GET':
                 found = self.events.get(calendar, {}).get(unquote(path.rsplit('/', 1)[1]))
                 return self._ok({k: v for k, v in found.items() if k != '_v'}) if found else self._error(404, 'notFound')
@@ -123,7 +131,8 @@ class FakeGoogle:
                 answer = self._ok({k: v for k, v in raw.items() if k != '_v'})
             elif method == 'PATCH':
                 found = self.events.get(calendar, {}).get(unquote(path.rsplit('/', 1)[1]))
-                if found is None or found['status'] == 'cancelled':
+                restoring = found is not None and found['status'] == 'cancelled' and found.get('recurringEventId') and json.loads(data) == {'status': 'confirmed'}
+                if found is None or (found['status'] == 'cancelled' and not restoring):          # a cancelled occurrence of a series can be put back
                     return self._error(404, 'notFound')
                 if headers.get('If-Match') and headers['If-Match'] != found['etag']:
                     return self._error(412, 'conditionNotMet')

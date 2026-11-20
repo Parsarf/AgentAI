@@ -8949,7 +8949,38 @@
   },
   "/v1/hub/events/cancel": {
    "post": {
-    "summary": "Cancel an event the customer organizes, with their own hand; the people invited are told unless notify is false",
+    "summary": "Cancel an event the customer organizes, with their own hand (one occurrence, this and later ones, or the whole series of a repeating event); the people invited are told unless notify is false",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/events/change": {
+   "post": {
+    "summary": "Change an event with the customer's own hand (the inspector or a drag): one occurrence, this and later ones, or the whole series, as they chose; who is told is said first",
     "security": [
      {
       "sessionCookie": []

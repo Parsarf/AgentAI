@@ -42,7 +42,7 @@ IDENTITY_SCOPES = ('openid', 'email', 'https://www.googleapis.com/auth/userinfo.
 EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events'          # Google: sensitive
 SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'                 # Google: sensitive
 MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify'             # Google: restricted (as gmail.readonly already is)
-GRANTS = (Grant('calendar_write', EVENTS_SCOPE, ('event_write', 'respond'),
+GRANTS = (Grant('calendar_write', EVENTS_SCOPE, ('event_write', 'respond', 'event_change', 'event_series'),
                 'Create, change and cancel events in your Google calendars and answer invitations: each time only when you do it yourself or approve what your assistant prepared.'),
           Grant('send', SEND_SCOPE, ('send',),
                 'Send mail from this Google account: only a message you send yourself or whose exact text you approved.'),
@@ -74,7 +74,8 @@ DECLARATION = Declaration(
     implementation='first_party', reason='The dashboard needs incremental sync (a history id for mail, a sync token for calendars), which only the REST APIs offer.',
     hosts=HOSTS, freshness_seconds={'mailbox': 900, 'calendar': 900}, caps=Caps(pages=4, items=100, bytes=2_000_000, seconds=25.0),
     disclosure='Reads your mail and calendars. It cannot send, change or delete anything.',
-    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True, free_busy=True, event_write=True, respond=True, grants=GRANTS), several_accounts=True)
+    hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True, free_busy=True, event_write=True, respond=True,
+                event_change=True, event_series=True, proving=('event_change', 'event_series'), grants=GRANTS), several_accounts=True)
 
 # Gmail's system labels in the common set. Everything else is the customer's own label and is kept by its name.
 SYSTEM_LABELS = {'INBOX': 'inbox', 'SENT': 'sent', 'DRAFT': 'drafts', 'SPAM': 'spam', 'TRASH': 'trash', 'STARRED': 'starred', 'UNREAD': 'unread'}

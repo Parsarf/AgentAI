@@ -379,6 +379,39 @@ class SignIn(Base):
         self.assertIn(stranger.post('/v1/hub/link/finish', '{}', content_type='application/json', secure=True).status_code, (401, 403))      # finishing needs the signed-in person
 
 
+    def test_changing_an_event_from_the_dashboard_asks_the_scope_of_a_series_and_stays_off_until_proven(self):
+        from urllib.parse import parse_qs, urlsplit
+        from agentai_platform import google_hub, hub_model
+        connection = self.connect()
+        self.ON = {'mail_calendar_dashboard', 'mail_calendar_writes'}
+        asked = parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection, 'add': ['calendar_write']}).json()['authorize_url']).query)
+        self.g.scope += ' ' + google_hub.EVENTS_SCOPE
+        self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'})
+        zone = {'timeZone': 'America/New_York'}
+        self.g.event('one', summary='Planning', start={'dateTime': '2033-05-20T10:00:00-04:00', **zone}, end={'dateTime': '2033-05-20T11:00:00-04:00', **zone})
+        self.g.event('wk', summary='Standup', recurrence=['RRULE:FREQ=WEEKLY;COUNT=3'], start={'dateTime': '2033-05-16T09:00:00-04:00', **zone},
+                     end={'dateTime': '2033-05-16T09:30:00-04:00', **zone})
+        self.g.event('wk_20330523T130000Z', summary='Standup', recurringEventId='wk', start={'dateTime': '2033-05-23T09:00:00-04:00', **zone},
+                     end={'dateTime': '2033-05-23T09:30:00-04:00', **zone})
+        change = {'connection': connection, 'calendar': 'dana@gmail.test', 'event': 'one', 'title': 'Planning (moved)', 'start': '2033-05-20T14:00', 'end': '2033-05-20T15:00'}
+        self.assertEqual(self.post(self.a, '/v1/hub/events/change', change).status_code, 403)                  # built, not yet proven live: refused, nothing sent
+        hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series'})
+        self.addCleanup(hub_model.PROVING_IN_THIS_PROCESS.clear)
+        done = self.post(self.a, '/v1/hub/events/change', change)
+        self.assertEqual(done.status_code, 200, done.content)
+        self.assertEqual((done.json()['action']['state'], done.json()['action']['direct'], self.g.events['dana@gmail.test']['one']['summary']), ('done', 'calendar', 'Planning (moved)'))
+        occurrence = {'connection': connection, 'calendar': 'dana@gmail.test', 'event': 'wk_20330523T130000Z', 'series': 'wk', 'title': 'Standup (demo)'}
+        self.assertEqual(self.post(self.a, '/v1/hub/events/change', occurrence).json()['error'], 'scope_required')       # never guessed
+        one = self.post(self.a, '/v1/hub/events/change', {**occurrence, 'scope': 'this'})
+        self.assertEqual(one.status_code, 200, one.content)
+        self.assertEqual((self.g.events['dana@gmail.test']['wk_20330523T130000Z']['summary'], self.g.events['dana@gmail.test']['wk']['summary']), ('Standup (demo)', 'Standup'))
+        rest = self.post(self.a, '/v1/hub/events/cancel', {'connection': connection, 'calendar': 'dana@gmail.test', 'event': 'wk_20330523T130000Z', 'series': 'wk',
+                                                           'scope': 'following', 'notify': False})
+        self.assertEqual(rest.status_code, 200, rest.content)
+        self.assertEqual(self.g.events['dana@gmail.test']['wk']['recurrence'], ['RRULE:FREQ=WEEKLY;UNTIL=20330523T125959Z'])
+        self.assertEqual(self.post(self.b, '/v1/hub/events/change', change).status_code, 404)                  # another customer reaches nothing
+
+
 class Off(Base):
     ON = set()
 
