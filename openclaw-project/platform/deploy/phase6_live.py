@@ -22,7 +22,11 @@ of them before it ends. `mail_calendar_writes` counts as on INSIDE THIS PROCESS 
   W-SERIES-ALL  the whole series moved from one occurrence moves by the same amount; undo moves it back (#62)
   W-MEETING     meeting times with another of the customer's accounts: options free for the customer, that person classed internal or external by what Google
                 answers, stored as a proposal the Calendar draws, then dismissed (#65)
-  CLEANUP       nothing this run made is left in the calendar
+  M-SEND        a draft to the account itself is sent once: running it again and a second change for the same draft send nothing; a lost answer is found in Sent by
+                the draft's marker, never sent again (#66)
+  M-UNDO-SEND   a send stopped inside "Undo send" leaves nothing at Google (#D6)
+  M-ORGANIZE    three conversations archived and put back in one step; one starred and put back; one marked unread and back; one binned and taken out (#67)
+  CLEANUP       nothing this run made is left in the calendar; the messages it sent to itself are in the bin
 
 Prints one line per case; the last line is JSON with numbers and booleans only.
 """
@@ -45,12 +49,12 @@ from agentai_platform.google_calendar_writes import event_id_for, split_id  # no
 from agentai_platform.lifecycle.types import Conflict  # noqa: E402
 from agentai_platform.security import Principal  # noqa: E402
 
-RESULTS, MADE = [], []
+RESULTS, MADE, SENT_THREADS = [], [], set()
 TITLE = 'Lumina live check (safe to delete)'
 _real = wiring.switch_on
 wiring.switch_on = lambda name: name == 'mail_calendar_writes' or _real(name)          # this process only
 from agentai_platform import hub_model  # noqa: E402
-hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series', 'meetings'})           # the kinds being proven: on in this process only, never for a customer
+hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series', 'meetings', 'send', 'organize', 'mark_read'})           # the kinds being proven: on in this process only, never for a customer
 
 
 def record(case, title, ok, detail=None):
@@ -262,6 +266,62 @@ def main():
                bool(found['options']) and found['proposal'] in drawn and len(found['internal']) + len(found['external']) == 1
                and found['proposal'] not in [x['id'] for x in hub.proposals(p, start, start + 3 * 86400)],
                {'options': len(found['options']), 'internal': len(found['internal']), 'external': len(found['external'])})
+        # -- M-SEND --------------------------------------------------------------------------------------------------------------------------------------
+        own = sql('SELECT identity_label FROM connector_connections WHERE id=%s', [connection_id])[0][0]
+        from agentai_platform.google_mail_writes import marker
+        stamp = uuid.uuid4().hex[:8]
+        draft = hub.save_draft(p, connection_id=connection_id, to=[own], subject=f'{TITLE} {stamp}', body='A message Lumina sent to this account to check sending. Safe to delete.',
+                               origin='customer')
+        conn_id, mail_payload = hub.send_payload(p, draft['id'])
+        sent_first = actions.propose(p, conn_id, 'mail.send', mail_payload)
+        hub.mark_sending(p, draft['id'], sent_first['id'])
+        actions.approve(p, sent_first['id'], sent_first['payload_hash'])
+        client.write(p, conn_id, 'mail.send', mail_payload, idempotency_key=sql('SELECT idempotency_key FROM actions WHERE id=%s', [sent_first['id']])[0][0])   # it reached Gmail...
+        sql("UPDATE actions SET state='uncertain' WHERE id=%s", [sent_first['id']])                                                                                 # ...the answer was lost
+        settled_send = actions.reconcile(account, sent_first['id'])
+        again_send = actions.execute(account, sent_first['id'])
+        second = actions.propose(p, conn_id, 'mail.send', mail_payload)
+        run(second)
+        in_sent = adapter._get(credential, 'https://gmail.googleapis.com/gmail/v1/users/me/messages', [('q', f'rfc822msgid:{marker(draft["id"])}'), ('includeSpamTrash', 'true')]).get('messages') or []
+        SENT_THREADS.update(m['threadId'] for m in in_sent)
+        record('M-SEND', 'A draft is sent once: a lost answer is found in Sent, a second change for it sends nothing',
+               settled_send == 'done' and again_send == 'done' and len({m['id'] for m in in_sent}) in (1, 2) and actions.get(p, sent_first['id'])['verified'] is True
+               and len([m for m in in_sent if 'SENT' in (adapter._get(credential, f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{m["id"]}', [('format', 'minimal')]).get('labelIds') or [])]) == 1,
+               {'settled': settled_send, 'run_again': again_send, 'copies_found': len(in_sent)})
+
+        # -- M-UNDO-SEND -----------------------------------------------------------------------------------------------------------------------------------
+        held_draft = hub.save_draft(p, connection_id=connection_id, to=[own], subject=f'{TITLE} {stamp} held', body='Never sent.', origin='customer')
+        conn_id, held_payload = hub.send_payload(p, held_draft['id'])
+        held = actions.direct(p, conn_id, 'mail.send', held_payload, screen='inbox', delay_seconds=10)
+        stopped = actions.cancel(p, held['id'])['state']
+        time.sleep(12)
+        leaked = adapter._get(credential, 'https://gmail.googleapis.com/gmail/v1/users/me/messages', [('q', f'rfc822msgid:{marker(held_draft["id"])}'), ('includeSpamTrash', 'true')]).get('messages') or []
+        hub.discard_draft(p, held_draft['id']) if hasattr(hub, 'discard_draft') else None
+        record('M-UNDO-SEND', 'A send stopped inside Undo send leaves nothing at Google', held['state'] == 'approved' and stopped == 'declined' and not leaked,
+               {'held': held['state'], 'stopped': stopped, 'at_provider': len(leaked)})
+
+        # -- M-ORGANIZE ------------------------------------------------------------------------------------------------------------------------------------
+        inbox = [r[0] for r in sql("SELECT id FROM hub_threads WHERE account_id=%s AND connection_id=%s AND labels_json LIKE %s ORDER BY last_epoch DESC LIMIT 3",
+                                   [account, connection_id, '%"inbox"%'])]
+        def labels_of(t):
+            return set((adapter._thread_state(credential, t) or {}).get('labels') or [])
+        before = {t: labels_of(t) for t in inbox}
+        kind, archive = hub.organize_payload(p, connection_id, inbox, 'archive')
+        archived = actions.direct(p, connection_id, kind, archive, screen='inbox')
+        gone = all('INBOX' not in labels_of(t) for t in inbox)
+        back = actions.undo_direct(p, archived['id'], screen='inbox')
+        restored = all(labels_of(t) == before[t] for t in inbox)
+        one = inbox[0]
+        steps = []
+        for op in ('star', 'unread' if 'UNREAD' not in before[one] else 'read', 'trash'):
+            kind, change = hub.organize_payload(p, connection_id, [one], op)
+            done = actions.direct(p, connection_id, kind, change, screen='inbox')
+            undone = actions.undo_direct(p, done['id'], screen='inbox')
+            steps.append((op, done['state'], done['verified'], undone['state'], labels_of(one) == before[one]))
+        record('M-ORGANIZE', 'Archived and put back in one step; starred, marked and binned, each put back exactly',
+               len(inbox) == 3 and archived['state'] == 'done' and archived['verified'] is True and gone and back['state'] == 'done' and restored
+               and all(s[1] == 'done' and s[2] is True and s[3] == 'done' and s[4] for s in steps),
+               {'conversations': len(inbox), 'archived': archived['state'], 'put_back': restored, 'steps': [list(s) for s in steps]})
     finally:
         # -- CLEANUP: every event this run made goes, whatever happened above ------------------------------------------------------------------------------
         left = 0
@@ -270,7 +330,13 @@ def main():
             if found and found.get('status') != 'cancelled':
                 adapter._send(credential, 'DELETE', adapter._event_url(calendar_id, event_id) + '?sendUpdates=none')
                 left += 1 if at_google(event_id) else 0
-        record('CLEANUP', 'Nothing this run made is left in the calendar', left == 0, {'events_made': len(MADE), 'left': left})
+        for thread in SENT_THREADS:                                                     # the messages it sent to itself go to the bin (Gmail empties it after 30 days)
+            try:
+                adapter._post(credential, f'https://gmail.googleapis.com/gmail/v1/users/me/threads/{thread}/trash')
+            except Exception:
+                left += 1
+        record('CLEANUP', 'Nothing this run made is left in the calendar; the messages sent to itself are in the bin', left == 0,
+               {'events_made': len(MADE), 'messages_binned': len(SENT_THREADS), 'left': left})
     failed = [r for r in RESULTS if not r['passed']]
     print(json.dumps({'passed': not failed, 'cases': RESULTS}), flush=True)
     return 1 if failed else 0

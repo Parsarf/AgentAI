@@ -25,6 +25,7 @@ from django.conf import settings as django_settings
 from django.http import HttpResponseRedirect, JsonResponse
 
 from agentai_platform.hub import COLOURS, LIST_LABELS
+from agentai_platform.security import NotFound
 from . import wiring
 from .access import guarded
 from .services import audit, rate
@@ -201,14 +202,20 @@ def refresh(request):
     return _run(lambda: wiring.hub_service().refresh(principal, request.input.get('connection_id')))
 
 
-@endpoint(['POST'], ['timezone', 'allow_images_from', 'block_images_from'], structured=True)
+@endpoint(['POST'], ['timezone', 'allow_images_from', 'block_images_from', 'mail'], structured=True)
 def settings(request):
     principal, stop = _enter(request, 'hub.settings', 120)
     if stop:
         return stop
     given = request.input
-    return _run(lambda: {'settings': wiring.hub_service().set_settings(principal, **({'timezone': given['timezone']} if 'timezone' in given else {}),
-                                                                      allow_images_from=given.get('allow_images_from'), block_images_from=given.get('block_images_from'))})
+
+    def run():
+        hub = wiring.hub_service()
+        if isinstance(given.get('mail'), dict):
+            hub.set_mail_settings(principal, given['mail'])          # Undo send's wait, marking read on open, the customer's own sending limits
+        return {'settings': hub.set_settings(principal, **({'timezone': given['timezone']} if 'timezone' in given else {}),
+                                             allow_images_from=given.get('allow_images_from'), block_images_from=given.get('block_images_from'))}
+    return _run(run)
 
 
 @endpoint(['GET'])
@@ -395,6 +402,79 @@ def event_create(request):
         payload['recurrence'] = [given['repeat']]
     _, _, actions, _ = wiring.action_services()
     return _run(lambda: {'action': actions.direct(principal, given['connection'], 'event.create', payload, screen='calendar')})
+
+
+# -- managing mail from the dashboard (roadmap Phase 6, #66, #67, #D6) ----------------------------------------------------------------------------------------------
+@endpoint(['POST'], ['draft'], structured=True)
+def mail_send(request):
+    """The customer pressed Send on a draft: their press is the approval. It waits out "Undo send" (their setting, 10 seconds by default; POST /v1/hub/actions/<id>/stop
+    stops it in that time), then is sent once. What they should know first (people never written to, a large audience, people outside their organization) was shown in
+    the editor and is in the change's preview."""
+    principal, stop = _enter(request, 'hub.write', 60)
+    if stop:
+        return stop
+    draft = request.input.get('draft')
+    if not isinstance(draft, str) or not draft:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    hub = wiring.hub_service()
+    try:
+        connection, payload = hub.send_payload(principal, draft)
+    except NotFound:
+        return JsonResponse({'error': 'not_found'}, status=404)
+    except ValueError as reason:                                               # over a sending limit: said in a sentence, nothing sent
+        return JsonResponse({'error': 'limit', 'detail': str(reason)[:300]}, status=409)
+    stop = _writes(request, principal, connection)
+    if stop:
+        return stop
+
+    def run():
+        _, _, actions, _ = wiring.action_services()
+        wait = int(hub.settings(principal)['mail']['undo_send_seconds'])
+        action = actions.direct(principal, connection, 'mail.send', payload, screen='inbox', delay_seconds=wait)
+        hub.mark_sending(principal, draft, action['id'])
+        return {'action': action, 'undo_send_seconds': wait}
+    return _run(run)
+
+
+@endpoint(['GET'])
+def mail_check(request):
+    """Before Send (#66): what the customer should know about this draft's people, for the editor to show. Nothing is sent."""
+    principal, stop = _enter(request, 'hub.read', 600)
+    if stop:
+        return stop
+    try:
+        return JsonResponse({'notes': wiring.hub_service().send_payload(principal, request.GET.get('draft', ''))[1].get('notes', [])})
+    except NotFound:
+        return JsonResponse({'error': 'not_found'}, status=404)
+    except ValueError as reason:
+        return JsonResponse({'notes': [], 'limit': str(reason)[:300]})
+
+
+@endpoint(['POST'], ['connection', 'threads', 'op', 'label'], structured=True)
+def mail_organize(request):
+    """The customer archived, starred, labelled, marked or binned conversations themselves: their press is the approval, sent at once, with Undo (the state of each
+    conversation before was recorded). Only conversations of their copy (what they let Lumina read) can be touched."""
+    principal, stop = _enter(request, 'hub.write', 240)
+    if stop:
+        return stop
+    given = request.input
+    stop = _writes(request, principal, given.get('connection'))
+    if stop:
+        return stop
+    if not isinstance(given.get('threads'), list) or not isinstance(given.get('op'), str):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    hub = wiring.hub_service()
+
+    def run():
+        kind, payload = hub.organize_payload(principal, given['connection'], given['threads'], given['op'], label=given.get('label'))
+        _, _, actions, _ = wiring.action_services()
+        action = actions.direct(principal, given['connection'], kind, payload, screen='inbox')
+        try:
+            hub.refresh(principal, given['connection'])                        # the copy catches up with the change at once
+        except Exception:
+            pass
+        return {'action': action}
+    return _run(run)
 
 
 SCOPES = ('this', 'following', 'all')

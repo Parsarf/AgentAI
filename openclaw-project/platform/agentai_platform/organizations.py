@@ -25,6 +25,7 @@ POLICIES = {
     'member_spend_limits': {'kind': 'limits', 'plain': 'Spending limits that apply to every member.'},
     'own_model_key': {'kind': 'flag', 'plain': 'Whether members may use their own model key.'},
     'knowledge_sources': {'kind': 'name_list', 'plain': 'Which connected sources may be added to the knowledge index.'},
+    'mail_limits': {'kind': 'mail_limits', 'plain': 'How many people a message from Lumina may go to, and how many messages an account may send in an hour (at most 50 and 30).'},
 }
 # What a tool the assistant can be given belongs to, for `tools_allowed` (a name no row covers belongs to no group and is not affected).
 TOOL_GROUP_OF = {'lumina_browser': 'browser', 'lumina_browser_step': 'browser', 'lumina_file_deliver': 'files', 'lumina_memory_*': 'memory', 'lumina_show': 'display',
@@ -70,6 +71,9 @@ def clean_policy(key, value):
             raise ValueError('invalid policy value')
         limits = spend_limits.clean({k: value.get(k) for k in spend_limits.FIELDS})
         return {**limits, 'locked': bool(value.get('locked', True))}
+    if kind == 'mail_limits':
+        from . import mail_limits
+        return mail_limits.clean(value)
     raise ValueError('unknown policy kind')
 
 

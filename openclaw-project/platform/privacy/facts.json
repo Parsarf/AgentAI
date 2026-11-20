@@ -115,8 +115,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "fc521ab02efab6f49f9fb028c839ec9fcfc9c5ed148f9c73cc9f380f8f3aa55b",
-  "schema_columns": 1138,
+  "schema_sha256": "b6fbc74e3e4a2d848d22ff2fe00e05cfa62a10b18219266cc4c6cdc7ed6d9c8f",
+  "schema_columns": 1140,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -458,6 +458,11 @@
    "date": "2026-11-20",
    "by": "Claude Code, roadmap Phase 6 (#65 meeting scheduling)",
    "note": "Migration 0053: meeting_proposals (who a meeting is with: addresses the customer or their assistant named; how long; the suggested times; which attendees' free time could be checked; open, picked or dismissed). Removed with its connection, exported in calendar/meeting_proposals.json, swept 30 days after its last change (retention rule meeting_proposals). Free/busy of the attendees is asked of the customer's own Google account (Google already receives our requests). NOT YET IN THE POLICY TEXT: the tools that store proposals stay hidden (hub_tools.MEETINGS_LIVE False) until the owner approves the policy wording that describes them."
+  },
+  {
+   "date": "2026-11-20",
+   "by": "Claude Code, roadmap Phase 6 (#66, #67, #D6 mail from the dashboard)",
+   "note": "Migration 0054: hub_settings.mail_json (the customer's own mail settings: Undo send's wait, marking read on open, their own sending limits) and hub_drafts.sent_action_id (which change sent a draft: an id). Sending (gmail.send) and organizing (gmail.modify) ship OFF for every customer (HubCaps.proving) until the owner approves the policy text that describes them; until then the published text (mail read only) stays true. Google receives the messages a customer sends and the label changes they make, only through their own account."
   }
  ],
  "assistant_recipients": {

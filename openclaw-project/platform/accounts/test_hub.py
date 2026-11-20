@@ -111,8 +111,12 @@ class Dashboard(Base):
         self.assertEqual((body['html'], body['blocked_images'], opened['problem']), ('<p>Hallo</p>', 1, None))
         shown = self.a.get('/v1/hub/mail/message', {'connection': self.cp, 'id': '1@postbox', 'images': '1'}, secure=True).json()['message']['body']
         self.assertIn('track.test', shown['html'])
-        self.assertEqual(self.post(self.a, '/v1/hub/settings', {'timezone': 'Europe/Berlin', 'allow_images_from': 'bernd@y.test'}).json()['settings'],
-                         {'timezone': 'Europe/Berlin', 'image_senders': ['bernd@y.test']})
+        saved = self.post(self.a, '/v1/hub/settings', {'timezone': 'Europe/Berlin', 'allow_images_from': 'bernd@y.test'}).json()['settings']
+        self.assertEqual({k: saved[k] for k in ('timezone', 'image_senders')}, {'timezone': 'Europe/Berlin', 'image_senders': ['bernd@y.test']})
+        self.assertEqual((saved['mail']['undo_send_seconds'], saved['mail']['mark_read_on_open'], saved['mail']['allowed']), (10, False, {'recipients': 50, 'per_hour': 30}))
+        mail = self.post(self.a, '/v1/hub/settings', {'mail': {'undo_send_seconds': 5, 'limits': {'per_hour': 3}}}).json()['settings']['mail']      # Phase 6: the customer's own
+        self.assertEqual((mail['undo_send_seconds'], mail['allowed']), (5, {'recipients': 50, 'per_hour': 3}))
+        self.assertEqual(self.post(self.a, '/v1/hub/settings', {'mail': {'limits': {'per_hour': 31}}}).status_code, 400)                          # never above the platform's
         self.assertEqual(self.post(self.a, '/v1/hub/settings', {'timezone': 'Mars/Olympus'}).status_code, 400)
 
     def test_another_account_gets_nothing_and_not_found(self):
@@ -410,6 +414,37 @@ class SignIn(Base):
         self.assertEqual(rest.status_code, 200, rest.content)
         self.assertEqual(self.g.events['dana@gmail.test']['wk']['recurrence'], ['RRULE:FREQ=WEEKLY;UNTIL=20330523T125959Z'])
         self.assertEqual(self.post(self.b, '/v1/hub/events/change', change).status_code, 404)                  # another customer reaches nothing
+
+    def test_send_waits_out_undo_send_says_a_limit_in_a_sentence_and_organize_goes_through_the_pipeline(self):
+        from urllib.parse import parse_qs, urlsplit
+        from agentai_platform import google_hub, hub_model
+        self.g.mail(1, subject='Hello there')
+        connection = self.connect()
+        self.ON = {'mail_calendar_dashboard', 'mail_calendar_writes'}
+        asked = parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection, 'add': ['send', 'organize']}).json()['authorize_url']).query)
+        self.g.scope += ' ' + google_hub.SEND_SCOPE + ' ' + google_hub.MODIFY_SCOPE
+        self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'})
+        draft = self.post(self.a, '/v1/hub/drafts', {'connection_id': connection, 'to': ['bo@y.test'], 'subject': 'Hi', 'body': 'Hello Bo'}).json()['draft']
+        self.assertEqual(self.post(self.a, '/v1/hub/mail/send', {'draft': draft['id']}).status_code, 403)          # not proven live yet: refused, nothing sent
+        hub_model.PROVING_IN_THIS_PROCESS.update({'send', 'organize', 'mark_read'})
+        self.addCleanup(hub_model.PROVING_IN_THIS_PROCESS.clear)
+        self.assertIn('You have not written to bo@y.test before', self.a.get('/v1/hub/mail/check', {'draft': draft['id']}, secure=True).json()['notes'][0])
+        held = self.post(self.a, '/v1/hub/mail/send', {'draft': draft['id']})
+        self.assertEqual(held.status_code, 200, held.content)
+        self.assertEqual((held.json()['action']['state'], held.json()['undo_send_seconds']), ('approved', 10))
+        self.assertEqual(self.post(self.a, f"/v1/hub/actions/{held.json()['action']['id']}/stop", {}).json()['action']['state'], 'declined')
+        self.assertEqual(self.g.outbox, [])
+        self.post(self.a, '/v1/hub/settings', {'mail': {'limits': {'recipients': 1}}})
+        many = self.post(self.a, '/v1/hub/drafts', {'connection_id': connection, 'to': ['bo@y.test', 'cy@z.test'], 'subject': 'Hi', 'body': 'Hello'}).json()['draft']
+        refused = self.post(self.a, '/v1/hub/mail/send', {'draft': many['id']})
+        self.assertEqual((refused.status_code, refused.json()['error']), (409, 'limit'))
+        self.assertIn('the limit is 1 a message', refused.json()['detail'])
+        thread = self.a.get('/v1/hub/mail/threads', secure=True).json()['threads'][0]['id']
+        archived = self.post(self.a, '/v1/hub/mail/organize', {'connection': connection, 'threads': [thread], 'op': 'archive'})
+        self.assertEqual(archived.status_code, 200, archived.content)
+        self.assertEqual((archived.json()['action']['state'], archived.json()['action']['direct']), ('done', 'inbox'))
+        self.assertEqual(self.post(self.b, '/v1/hub/mail/organize', {'connection': connection, 'threads': [thread], 'op': 'archive'}).status_code, 404)
+        self.assertEqual(self.post(self.a, '/v1/hub/mail/organize', {'connection': connection, 'threads': ['not-in-the-copy'], 'op': 'archive'}).status_code, 404)
 
 
 class Off(Base):

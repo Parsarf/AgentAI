@@ -388,7 +388,9 @@ class ConnectorClient:
             scopes = json.loads(row['granted_scopes'] or '[]')
         except ValueError:
             scopes = []
-        if not kind.capability or not caps.effective(scopes).get(kind.capability) or not self._granted(account, row['id'], container, 'read'):
+        if not kind.capability or not caps.effective(scopes).get(kind.capability):
+            return False
+        if kind.policy_kind != 'send' and not self._granted(account, row['id'], container, 'read'):   # sending needs the send permission, not the reading grant
             return False
         if container[0] == 'calendar':
             with self.store.connect() as con:
@@ -396,9 +398,24 @@ class ConnectorClient:
             return found is not None and found['access'] in ('owner', 'write')
         return True
 
+    def _send_limits(self, account, payload, *, including_this):
+        """No bulk sending (#66): a message goes to at most so many people, an account sends at most so many messages an hour (mail_limits). -> raises 'refused'."""
+        from . import mail_limits
+        people = len(list(payload.get('to') or []) + list(payload.get('cc') or []) + list(payload.get('bcc') or []))
+        with self.store.connect() as con:
+            reason = mail_limits.refusal(con, account, people, including_this=including_this, clock=self.clock)
+        if reason:
+            raise ConnectorFault('refused')
+
     def _granted(self, account, connection_id, container, access='read') -> bool:
         if not container:
             return False
+        if list(container) == ['mail', 'all']:
+            # Mail as a whole (organizing conversations, a sent message): the customer let Lumina read some of this account's mail. Which conversations is checked by
+            # the dashboard against its copy, which holds only what they chose.
+            with self.store.connect() as con:
+                return con.execute("SELECT 1 FROM connector_grants WHERE account_id=? AND connection_id=? AND resource_kind IN ('mailbox','label') LIMIT 1",
+                                   (account, connection_id)).fetchone() is not None
         with self.store.connect() as con:
             return self.connectors.granted(con, account, connection_id, container[0], container[1], access)
 
@@ -519,6 +536,8 @@ class ConnectorClient:
             raise ConnectorFault('not_found')
         if not self._may_write(principal.account_id, row, declaration, kind, container):
             raise ConnectorFault('refused')
+        if kind.policy_kind == 'send':
+            self._send_limits(principal.account_id, payload, including_this=False)
         target, before = adapter.target_of(kind_name, payload), None
         if target:
             before = self._call(principal.account_id, declaration, lambda: adapter.read(credential, *target))
@@ -545,6 +564,8 @@ class ConnectorClient:
                 current = self._call(principal.account_id, declaration, lambda: adapter.read(credential, *target)) if target else None
                 if current is None or str(current.get('version')) != str(base_version):
                     raise ConnectorFault('conflict')
+        if kind.policy_kind == 'send':
+            self._send_limits(principal.account_id, payload, including_this=True)
         result = self._call(principal.account_id, declaration, lambda: adapter.write(credential, kind_name, payload, idempotency_key=idempotency_key if declaration.idempotency_keys else None,
                                                                                      precondition=base_version if declaration.preconditions and kind.needs_version else None), where=(row['id'], *container))
         with self.store.connect() as con:

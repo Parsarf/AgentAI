@@ -308,6 +308,7 @@ class HubSync:
                     con.execute('DELETE FROM hub_messages WHERE account_id=? AND connection_id=? AND id=?', (account, connection, str(mid)))
             for thread in threads:
                 rebuild_thread(con, account, connection, thread)
+            meeting_replies(con, account, connection, threads, now)
             count = con.execute('SELECT count(*) FROM hub_messages WHERE account_id=? AND connection_id=?', (account, connection)).fetchone()[0]
             con.execute("UPDATE hub_sync SET cursor=?,filled=?,item_count=?,lease_epoch=? WHERE account_id=? AND connection_id=? AND domain='mail'",
                         (cursor, int(filled), count, now, account, connection))
@@ -375,6 +376,36 @@ class HubSync:
             con.execute("UPDATE hub_sync SET cursor=?,filled=?,item_count=?,lease_epoch=? WHERE account_id=? AND connection_id=? AND domain='calendar' AND resource_id=?",
                         (cursor, int(filled), count, now, account, connection, calendar_id))
         return changed
+
+
+def meeting_replies(con, account, connection, threads, now) -> int:
+    """Meeting scheduling (#65): the people offered times answered. A wait whose offer was sent from this account, in one of these conversations, ends: its question is
+    answered for the customer with who replied, and the work resumes as a new turn (action_runner) that reads the reply and prepares the event. -> waits ended."""
+    if not threads:
+        return 0
+    try:
+        rows = con.execute("""SELECT p.handoff_id, a.result_json, a.executed_epoch FROM meeting_proposals p
+            JOIN hub_drafts d ON d.account_id=p.account_id AND d.id=p.draft_id JOIN actions a ON a.account_id=d.account_id AND a.id=d.sent_action_id
+            JOIN handoffs h ON h.account_id=p.account_id AND h.id=p.handoff_id
+            WHERE p.account_id=? AND p.connection_id=? AND p.state='open' AND a.state='done' AND h.state='waiting'""", (account, connection)).fetchall()
+    except Exception as error:                                          # an older schema (the release before meeting proposals): nothing to do
+        if 'no such' in str(error):
+            return 0
+        raise
+    ended = 0
+    for r in rows:
+        thread = ((json.loads(r['result_json'] or '{}').get('record') or {}).get('data') or {}).get('thread')
+        if thread not in threads:
+            continue
+        reply = con.execute("""SELECT sender_json FROM hub_messages WHERE account_id=? AND connection_id=? AND thread_id=? AND sent_epoch>=? AND labels_json NOT LIKE '%"sent"%'
+            ORDER BY sent_epoch LIMIT 1""", (account, connection, thread, int(r['executed_epoch'] or 0))).fetchone()
+        if reply is None:
+            continue
+        who = (json.loads(reply['sender_json']) or {}).get('address') or 'one of the people'
+        words = f'A reply arrived from {who} in the conversation where the meeting times were offered. Read it, then prepare the event for the time they chose.'
+        ended += con.execute("UPDATE handoffs SET state='answered',answer_json=?,answered_epoch=? WHERE account_id=? AND id=? AND state='waiting'",
+                             (json.dumps({'answer': words}), now, account, r['handoff_id'])).rowcount
+    return ended
 
 
 def rebuild_thread(con, account, connection, thread_id) -> None:

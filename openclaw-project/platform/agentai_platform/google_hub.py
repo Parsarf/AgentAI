@@ -33,6 +33,8 @@ from urllib.parse import quote, urlencode, urlsplit
 from .connector_kit import Caps, Declaration, Page, ProviderError, Unanswered, WriteKind, record
 from .hub_model import Changes, Grant, HubCaps, ResyncRequired, body, calendar, event, message
 from .google_calendar_writes import WRITE_KINDS as CALENDAR_WRITE_KINDS, CalendarWrites
+from . import google_calendar_writes as calendar_writes, google_mail_writes as mail_writes
+from .google_mail_writes import WRITE_KINDS as MAIL_WRITE_KINDS, MailWrites
 
 PROVIDER = 'google'
 MAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
@@ -66,16 +68,17 @@ EVENT_PAGE = 250
 
 DECLARATION = Declaration(
     provider=PROVIDER, label='Google', auth='oauth', scopes=(MAIL_SCOPE, CALENDAR_SCOPE) + IDENTITY_SCOPES + WRITE_SCOPES,
-    resource_kinds=('mailbox', 'label', 'calendar'), record_kinds=('event',), read_operations=(), write_kinds=CALENDAR_WRITE_KINDS,
+    resource_kinds=('mailbox', 'label', 'calendar'), record_kinds=('event', 'message', 'threads'), read_operations=(), write_kinds=CALENDAR_WRITE_KINDS + MAIL_WRITE_KINDS,
     change_tokens=True, version_token='etag', preconditions=True, idempotency_keys=True, paging='page_token',
     error_map={'rateLimitExceeded': 'retry_later', 'userRateLimitExceeded': 'retry_later', 'quotaExceeded': 'retry_later', 'dailyLimitExceeded': 'retry_later',
                'insufficientPermissions': 'needs_customer', 'ACCESS_TOKEN_SCOPE_INSUFFICIENT': 'needs_customer', 'authError': 'needs_customer', 'invalid_grant': 'needs_customer',
                'conditionNotMet': 'conflict', 412: 'conflict', 403: 'refused'},
     implementation='first_party', reason='The dashboard needs incremental sync (a history id for mail, a sync token for calendars), which only the REST APIs offer.',
     hosts=HOSTS, freshness_seconds={'mailbox': 900, 'calendar': 900}, caps=Caps(pages=4, items=100, bytes=2_000_000, seconds=25.0),
-    disclosure='Reads your mail and calendars. It cannot send, change or delete anything.',
+    disclosure='Reads your mail and calendars. It changes them only when you allow each kind of change and then do it yourself or approve what your assistant prepared.',
     hub=HubCaps(mail=True, calendar=True, mail_search=True, incremental=True, push=False, labels='labels', attachments=True, compose_link=True, free_busy=True, event_write=True, respond=True,
-                event_change=True, event_series=True, proving=('event_change', 'event_series'), grants=GRANTS), several_accounts=True)
+                event_change=True, event_series=True, send=True, organize=True, mark_read=True,
+                proving=('event_change', 'event_series', 'send', 'organize', 'mark_read'), grants=GRANTS), several_accounts=True)
 
 # Gmail's system labels in the common set. Everything else is the customer's own label and is kept by its name.
 SYSTEM_LABELS = {'INBOX': 'inbox', 'SENT': 'sent', 'DRAFT': 'drafts', 'SPAM': 'spam', 'TRASH': 'trash', 'STARRED': 'starred', 'UNREAD': 'unread'}
@@ -344,10 +347,66 @@ _READS = Pace(READS_PER_SECOND)
 
 
 # -- the adapter -------------------------------------------------------------------------------------------------------------------------------------------
-class GoogleAdapter(CalendarWrites):
+class GoogleAdapter(MailWrites, CalendarWrites):
     def __init__(self, http=default_http, pace=None, sleep=time.sleep):
         self.http, self.sleep = http, sleep
         self.pace = pace if pace is not None else (_READS if http is default_http else None)      # the real network is paced; a test's fake is not
+
+    # -- changes (Phase 6): each contract method goes to the calendar or the mail half by the kind of change --------------------------------------
+    @staticmethod
+    def _half(kind):
+        return mail_writes if str(kind).startswith('mail.') else calendar_writes
+
+    @staticmethod
+    def check(kind, payload):
+        return GoogleAdapter._half(kind).check(kind, payload)
+
+    @staticmethod
+    def preview(kind, payload, before):
+        return GoogleAdapter._half(kind).preview(kind, payload, before)
+
+    @staticmethod
+    def undo_payload(kind, payload, before):
+        return GoogleAdapter._half(kind).undo_payload(kind, payload, before)
+
+    @staticmethod
+    def undo_after(kind, undo, result):
+        return GoogleAdapter._half(kind).undo_after(kind, undo, result)
+
+    @staticmethod
+    def compensation_payload(kind, compensation, payload, result):
+        return GoogleAdapter._half(kind).compensation_payload(kind, compensation, payload, result)
+
+    @staticmethod
+    def verify(kind, payload, found):
+        return GoogleAdapter._half(kind).verify(kind, payload, found)
+
+    @staticmethod
+    def target_of(kind, payload):
+        if str(kind).startswith('mail.'):
+            if kind == 'mail.send':
+                return None
+            ids = payload.get('threads') if kind in ('mail.trash', 'mail.untrash') else [c.get('thread') for c in payload.get('changes') or []]
+            return ('threads', ','.join(sorted(str(t) for t in ids or [])))
+        return CalendarWrites.target_of(kind, payload)
+
+    def container_of(self, credential, kind, payload):
+        return ('mail', 'all') if str(kind).startswith('mail.') else CalendarWrites.container_of(self, credential, kind, payload)
+
+    def read(self, credential, record_kind, record_id):
+        if record_kind in ('message', 'threads'):
+            return self._mail_read(credential, record_kind, record_id)
+        return CalendarWrites.read(self, credential, record_kind, record_id)
+
+    def write(self, credential, kind, payload, *, idempotency_key=None, precondition=None):
+        if str(kind).startswith('mail.'):
+            return self._mail_write(credential, kind, payload, idempotency_key=idempotency_key, precondition=precondition)
+        return CalendarWrites.write(self, credential, kind, payload, idempotency_key=idempotency_key, precondition=precondition)
+
+    def find_effect(self, credential, kind, payload, idempotency_key):
+        if str(kind).startswith('mail.'):
+            return self._mail_find(credential, kind, payload, idempotency_key)
+        return CalendarWrites.find_effect(self, credential, kind, payload, idempotency_key)
 
     def _get(self, credential, url, query=None):
         token = (credential or {}).get('access_token')
