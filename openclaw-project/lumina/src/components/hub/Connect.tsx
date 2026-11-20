@@ -19,7 +19,7 @@ export function AddAccount({ providers, primary }: { providers: Provider[]; prim
     <div className="hub-connect">
       {providers.map(p => <button key={p.provider} type="button" className={`btn small${primary ? ' primary' : ''}`} disabled={!!busy} aria-busy={busy === p.provider} onClick={() => start(p.provider)}>
         {busy === p.provider ? 'Opening…' : `Connect ${p.label}`}</button>)}
-      <p className="faint small">Lumina asks only to read. It cannot send, change or delete anything.</p>
+      <p className="faint small">Lumina asks only to read. Changing anything needs a separate permission, asked the first time you do it.</p>
       {err && <p className="notice warning" role="alert">{err}</p>}
     </div>);
 }

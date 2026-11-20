@@ -179,6 +179,7 @@ describe('Calendar', () => {
       'POST /v1/hub/events/cancel': done('a1', 'event.delete'), 'POST /v1/hub/actions/a1/undo': done('a2', 'event.recreate') }));
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Standup, 9:00 AM' }));
+    expect(screen.getByTitle('Work · You can change this calendar')).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel event' }));
     expect(screen.getByRole('alertdialog', { name: 'Cancel this event?' }).textContent).toContain('1 person is told it is cancelled.');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel it' }));
@@ -195,12 +196,14 @@ describe('Calendar', () => {
     await screen.findByText('Daily sync');
     expect(screen.queryByRole('button', { name: 'Cancel event' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'New event' })).toBeNull();
+    expect(screen.getByTitle('Work · Read only here')).toBeTruthy();                       // the calendar list says what may be done with each calendar
     cleanup();
     const asking = account({ capabilities: caps({ missing: { event_write: 'calendar_write' } }), grants: [{ name: 'calendar_write', capabilities: ['event_write'], words: 'Create and change events when you approve.' }] });
     server(base({ '/v1/hub': overview({ accounts: [asking, second], read_only: false }) })); show();
     fireEvent.click(await screen.findByRole('button', { name: 'New event' }));
     expect(await screen.findByRole('button', { name: 'Allow changes for me@first.test' })).toBeTruthy();
     expect(screen.queryByRole('form', { name: 'New event' })).toBeNull();
+    expect(screen.getByTitle('Work · Read only until you allow changes')).toBeTruthy();
   });
 
   it('answers an invitation from someone else instead of offering to cancel it (Phase 6, #64)', async () => {
