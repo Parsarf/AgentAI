@@ -125,6 +125,30 @@ class WorkerChecks(unittest.TestCase):
             con.execute("UPDATE customer_requests SET state='completed' WHERE id='r1'")
         self.assertEqual(worker.tick()['drained'], 1)
 
+    def test_a_stop_already_decided_waits_when_a_request_arrives_before_it_runs(self):
+        # The stop is decided in one tick and run in the next. A request that arrives between them (its task still 'queued', the request not yet claimed) must not
+        # have the cell stopped under it: 2026-11-20, the deploy's live acceptance.
+        self.start_cell()
+        worker = self.worker(idle_after=10**12, stale=lambda account: True)
+        self.assertEqual(worker.tick()['drained'], 1)
+        with self.store.connect() as con:
+            con.execute("INSERT INTO projects(account_id,id,name) VALUES ('a','p','p')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) SELECT 'a','p','c',deployment_id FROM lifecycle_cells WHERE account_id='a'")
+            con.execute("INSERT INTO tasks(account_id,project_id,conversation_id,id,state,budget_microusd) VALUES ('a','p','c','r1','queued',1)")
+            con.execute("""INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)
+                VALUES ('a','r1','actor','p','c','k','h','m','waiting',1)""")
+        report = worker.tick()
+        self.assertEqual((report['ran'], report['denied']), (0, 1))
+        self.assertEqual(self.state(), 'running')
+        for request, task in (('starting', 'queued'), ('running', 'running')):
+            with self.store.connect() as con:
+                con.execute("UPDATE customer_requests SET state=? WHERE id='r1'", (request,)); con.execute("UPDATE tasks SET state=? WHERE id='r1'", (task,))
+            self.assertEqual(worker.tick()['ran'], 0, request)
+        with self.store.connect() as con:
+            con.execute("UPDATE customer_requests SET state='completed' WHERE id='r1'"); con.execute("UPDATE tasks SET state='completed' WHERE id='r1'")
+        self.assertEqual(worker.tick()['ran'], 1)                        # done: the stale cell is stopped now, and its next start sets it up again
+        self.assertEqual(self.state(), 'stopped')
+
     def test_active_or_recent_work_prevents_sleep(self):
         self.start_cell()
         with self.store.connect() as con:

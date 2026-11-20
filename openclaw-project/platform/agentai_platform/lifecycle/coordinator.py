@@ -11,6 +11,7 @@ import json
 import re
 import time
 import uuid
+from agentai_platform import request_states
 from agentai_platform.security import NotFound, Principal
 from agentai_platform.store import Store
 from agentai_platform.capacity import CapacityResult
@@ -262,6 +263,12 @@ class Coordinator:
             if kind in {'stop','upgrade','restore','backup','delete'} and con.execute(
                 "SELECT 1 FROM tasks WHERE account_id=? AND state IN ('running','waiting_for_approval','paused')",(account,)).fetchone():
                 raise Conflict('task must drain before maintenance')
+            # A cell is never stopped while a request of the account is waiting, queued or in flight. A request's task is 'queued' until the request worker has prepared
+            # it, so the check above missed it: on 2026-11-20 a stop decided a second before the deploy's live acceptance request ran under it (the request worker
+            # had claimed the request on the still-running cell). The claim side refuses while a stop runs (RequestQueue.claim); both sides take the write lock.
+            if kind=='stop' and (con.execute("SELECT 1 FROM tasks WHERE account_id=? AND state='queued'",(account,)).fetchone() or con.execute(
+                    f"SELECT 1 FROM customer_requests WHERE account_id=? AND state IN {request_states.sql_list(request_states.ACTIVE)}",(account,)).fetchone()):
+                raise Conflict('request must drain before the cell is stopped')
             allowed={'create':{'absent'},'start':{'stopped'},'stop':{'running','stopped'},
                      'backup':{'stopped'},'restore':{'stopped'},'upgrade':{'stopped','running'},'delete':{'stopped','absent'}}
             if state not in allowed[kind]: raise Conflict('operation requires a different observed state')
