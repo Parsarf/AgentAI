@@ -145,6 +145,10 @@ def send_deletion_report(account_id, report) -> str:
     lines = ['Your Lumina account has been deleted, as you asked.', '',
              'We checked every place your data was kept. ' + ('Nothing of yours is left in them.' if scan.get('clean') else 'Something could not be removed yet; we are looking at it and will write to you again.'),
              '', 'What remains, by design:'] + ['- ' + line for line in report.get('remains_by_design', [])] + ['', 'If you did not ask for this, reply to this message at once.']
+    from .delivery import deliverable
+    users = [u for u in users if deliverable(u.email)]
+    if not users:
+        return 'not_deliverable'                            # a reserved address (a live proof's disposable account): nothing is sent, nothing bounces
     sent = 0
     for user in users:
         try:

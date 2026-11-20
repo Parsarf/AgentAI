@@ -56,6 +56,10 @@ def token_for(user, purpose):
 def deliver(user, purpose, raw, request_id):
     identity = user.identity
     op = uuid.uuid4()
+    from .delivery import deliverable
+    if not deliverable(user.email):
+        audit('system', identity.account_id, user.pk, 'mail.'+purpose+'.undeliverable', 'denied', request_id, op)      # a reserved address can never receive it
+        return False
     audit('system', identity.account_id, user.pk, 'mail.'+purpose, 'pending', request_id, op)
     try:
         page = 'activate' if purpose == 'onboarding' else 'reset'

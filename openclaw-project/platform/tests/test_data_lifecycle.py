@@ -354,3 +354,15 @@ class Offboarding(Base):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ReservedAddresses(unittest.TestCase):
+    def test_mail_is_never_sent_to_a_name_that_cannot_receive_it(self):
+        # The live proofs' disposable accounts use @invalid.test: their "account deleted" mail bounced back into the owner's own mailbox (2026-11-20).
+        import os
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'accounts.settings')
+        from accounts.delivery import deliverable
+        for address in ('p45-live-1@invalid.test', 'a@b.example', 'x@foo.localhost', 'me@example.com', 'x@test', '', 'no-at-sign'):
+            self.assertFalse(deliverable(address), address)
+        for address in ('dana@gmail.com', 'ann@x.co.uk', 'bo@testing.io', 'cy@example.company'):
+            self.assertTrue(deliverable(address), address)
