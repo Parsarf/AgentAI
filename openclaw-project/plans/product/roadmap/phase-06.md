@@ -52,12 +52,12 @@ version, then put back), W-CONFLICT (an event changed at Google is not cancelled
 | D7 | Events from the dashboard | M: yes | Calendar page | Create, change, drag, cancel, answer; scope question for series; "N people will be told" |
 | D8 | Microsoft | M: yes | Provider-neutral model, capability table, a second fake provider in tests | Graph adapter (delta links, folders and categories), Entra app (owner), publisher verification (owner), admin-consent sentence |
 | D9 | Calendar feeds; password accounts | M: yes | `ssrf.py` destination guard | ICS feed connection (read only), the IMAP/SMTP/CalDAV note in `CONNECTORS.md` (owner: later) |
-| 68 | Messaging integration | P: yes | Telegram ingress, linking, outbox, record-only (`intake_chat_service`) | Telegram runs tasks (owner: yes); Slack connector (read, events, post) |
-| 69 | Messages to others | M: yes | - | A post write kind with an allow-list of destinations and audience size |
+| 68 | Messaging integration | P: yes | Telegram ingress, linking, outbox, record-only (`intake_chat_service`) | Telegram runs tasks (owner: yes). Slack: **skipped by the owner** (2026-11-20, see below) |
+| 69 | Messages to others | M: yes | - | **Skipped with Slack** (owner, 2026-11-20); sending mail to people is #66 |
 
 ## Owner's answers used (2026-11-20)
 
-Google scopes `gmail.send`, `gmail.modify`, `calendar.events`, each asked on first use; writes on for **every account** once each write kind passes its live write cycle; at most 50 recipients a message and 30 messages an hour per account; Telegram may run tasks (approvals as links to the web app); Microsoft personal and work accounts, a plain admin-consent sentence; Slack yes (the owner creates the app); opening a message does not mark it read; "Undo send" waits 10 s; $25 for the proofs; IMAP/SMTP/CalDAV later; GitHub Issues as the second board (Phase 7). Still to be shown to the owner before publishing: the switch wording and the privacy policy change for writes.
+Google scopes `gmail.send`, `gmail.modify`, `calendar.events`, each asked on first use; writes on for **every account** once each write kind passes its live write cycle; at most 50 recipients a message and 30 messages an hour per account; Telegram may run tasks (approvals as links to the web app); Microsoft personal and work accounts, a plain admin-consent sentence; Slack first yes, then **skipped** (2026-11-20); opening a message does not mark it read; "Undo send" waits 10 s; $25 for the proofs; IMAP/SMTP/CalDAV later; GitHub Issues as the second board (Phase 7). Still to be shown to the owner before publishing: the switch wording and the privacy policy change for writes.
 
 ## Plan
 
@@ -65,11 +65,19 @@ Google scopes `gmail.send`, `gmail.modify`, `calendar.events`, each asked on fir
 2. **Calendar:** #59, #60, then #61 completely (declaration row, adapter, tool, Calendar page control, tests, live write cycle), then #62 to #64, #65.
 3. **Mail:** #66, #67, #D6 (undo send as a 10-second delay on the approved action).
 4. **Microsoft (#D8)** once the owner's Entra app exists; ICS feeds (#D9).
-5. **Messaging:** Telegram tasks, Slack (#68, #69).
+5. **Messaging:** Telegram tasks (#68). Slack and #69 skipped by the owner.
 6. Privacy text and switch wording shown to the owner; write cycle on the real providers; exit gate.
 
 ## Needs the owner (real-world steps, can start now)
 
 - **Google:** in the Cloud console, OAuth consent screen > Data access: add `.../auth/gmail.send`, `.../auth/gmail.modify`, `.../auth/calendar.events`. Keep the app in Testing (test users only) until Google's verification; start the verification (restricted scopes: OAuth verification plus the CASA assessment, yearly).
 - **Microsoft:** Entra admin center > App registrations > New: name "Lumina", supported accounts "Any organizational directory and personal Microsoft accounts", redirect `https://getlumina.pro/v1/hub/link/callback` (Web). API permissions (delegated): `offline_access`, `openid`, `email`, `User.Read`, `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`. Certificates & secrets: a client secret (give it to me as a file on the server, not in chat). Then publisher verification (Branding & properties, a verified Microsoft AI Cloud Partner Program ID). Test accounts: one outlook.com and one work account (a Microsoft 365 developer tenant).
-- **Slack:** api.slack.com/apps > Create New App > From scratch, in a test workspace you control; OAuth redirect `https://getlumina.pro/v1/hub/link/callback`; user scopes `channels:history`, `channels:read`, `im:history`, `im:read`, `chat:write`, `users:read`; Event Subscriptions on (the request address is given when #76 exists). Give the client id, secret and signing secret as files on the server.
+
+## Slack skipped (owner, 2026-11-20)
+
+The owner skipped Slack (#68's Slack part and #69) after weighing what it adds. The real gain would be work context (briefs and answers citing Slack threads). Reaching the
+assistant from Slack adds little beside the web app, the Chrome side chat and Telegram, and posting for the customer adds little more. Against it: since 29 May 2025 Slack
+limits `conversations.history` and `conversations.replies` to 1 request a minute and 15 messages for apps installed in other workspaces without Marketplace approval
+(docs.slack.dev changelog 2025-05-29), so reading customers' Slack needs the Marketplace review first. Many company workspaces also let only an admin approve apps, and it means
+reading coworkers' messages (a policy change of its own). Revisit when there are customers whose work lives in Slack, and plan for the Marketplace review then. Phase 6 closes
+without it.
