@@ -668,7 +668,7 @@ class ConnectorService:
         also('schedules_paused', "UPDATE schedules SET state='paused',pause_reason='Its connection was removed.' WHERE account_id=? AND needs_connection_id=? AND state='active'", (account, connection_id))
         # The dashboard's copy of this connection's mail and calendars goes with it (#D2): headers, opened bodies, events, calendars and the sync state.
         for name, table in (('mail_messages_removed', 'hub_messages'), ('mail_threads_removed', 'hub_threads'), ('events_removed', 'hub_events'),
-                            ('calendars_removed', 'hub_calendars'), ('sync_removed', 'hub_sync')):
+                            ('calendars_removed', 'hub_calendars'), ('sync_removed', 'hub_sync'), ('meeting_proposals_removed', 'meeting_proposals')):
             also(name, f'DELETE FROM {table} WHERE account_id=? AND connection_id=?', (account, connection_id))
         try:
             con.execute('INSERT INTO connector_revocations(account_id,id,connection_id,source,stopped_json,created_epoch) VALUES (?,?,?,?,?,?)',

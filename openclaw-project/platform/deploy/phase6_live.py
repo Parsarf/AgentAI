@@ -20,6 +20,8 @@ of them before it ends. `mail_calendar_writes` counts as on INSIDE THIS PROCESS 
   W-SERIES-REST this and later occurrences: the series is split once (the original ends before it, a new series carries the change) and undo joins it again;
                 ending a series there and undoing it (#62, #63)
   W-SERIES-ALL  the whole series moved from one occurrence moves by the same amount; undo moves it back (#62)
+  W-MEETING     meeting times with another of the customer's accounts: options free for the customer, that person classed internal or external by what Google
+                answers, stored as a proposal the Calendar draws, then dismissed (#65)
   CLEANUP       nothing this run made is left in the calendar
 
 Prints one line per case; the last line is JSON with numbers and booleans only.
@@ -48,7 +50,7 @@ TITLE = 'Lumina live check (safe to delete)'
 _real = wiring.switch_on
 wiring.switch_on = lambda name: name == 'mail_calendar_writes' or _real(name)          # this process only
 from agentai_platform import hub_model  # noqa: E402
-hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series'})           # the kinds being proven: on in this process only, never for a customer
+hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series', 'meetings'})           # the kinds being proven: on in this process only, never for a customer
 
 
 def record(case, title, ok, detail=None):
@@ -248,6 +250,18 @@ def main():
         record('W-SERIES-ALL', 'The whole series moved from one occurrence moves by the same amount, and back',
                moved_state == 'done' and local(master_moved) == '13:30' and moved_back == 'done' and local(master_original) == '13:00',
                {'moved': moved_state, 'series_starts_at': local(master_moved), 'undo': moved_back, 'back_at': local(master_original)})
+        # -- W-MEETING ----------------------------------------------------------------------------------------------------------------------------------
+        others = [r[0] for r in sql("SELECT identity_label FROM connector_connections WHERE account_id=%s AND id<>%s AND state='connected' AND identity_label IS NOT NULL",
+                                    [account, connection_id])]
+        start = int(datetime.combine(day, datetime.min.time(), zone).timestamp())
+        found = hub.meeting_times(p, connection_id, others[:1] or ['nobody@example.invalid'], 30, start, start + 3 * 86400, zone_name, title=TITLE)
+        drawn = [x['id'] for x in hub.proposals(p, start, start + 3 * 86400)]
+        if found['proposal']:
+            hub.close_proposal(p, found['proposal'], 'dismissed')
+        record('W-MEETING', 'Meeting times: free for the customer, the other person classed by what Google answers, drawn, then dismissed',
+               bool(found['options']) and found['proposal'] in drawn and len(found['internal']) + len(found['external']) == 1
+               and found['proposal'] not in [x['id'] for x in hub.proposals(p, start, start + 3 * 86400)],
+               {'options': len(found['options']), 'internal': len(found['internal']), 'external': len(found['external'])})
     finally:
         # -- CLEANUP: every event this run made goes, whatever happened above ------------------------------------------------------------------------------
         left = 0

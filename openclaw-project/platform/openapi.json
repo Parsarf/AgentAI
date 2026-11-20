@@ -9145,6 +9145,93 @@
     ]
    }
   },
+  "/v1/hub/proposals": {
+   "get": {
+    "summary": "Meeting times the assistant found (#65), drawn on the Calendar as suggestions for the customer to pick",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": [
+     {
+      "name": "start",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "end",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "minutes",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/hub/proposals/{proposal_id}/close": {
+   "post": {
+    "summary": "The customer picked one of the suggested meeting times, or dismissed them; a wait for an answer ends",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
   "/v1/hub/conflicts": {
    "post": {
     "summary": "Clashes of a proposed time, or of each occurrence of a proposed repeat, with the calendars that count",

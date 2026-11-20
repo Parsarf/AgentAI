@@ -541,6 +541,30 @@ def free(request):
     return _run(run)
 
 
+@endpoint(['GET'])
+def proposals(request):
+    """Meeting times the assistant found (#65), for the Calendar to draw as suggestions in a range of days (start and end, epoch seconds)."""
+    principal, stop = _enter(request, 'hub.read', 600)
+    if stop:
+        return stop
+    start, end = _number(request, 'start'), _number(request, 'end')
+    if not start or not end or end <= start or end - start > 62 * 86400:
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    return _run(lambda: {'proposals': wiring.hub_service().proposals(principal, start, end)})
+
+
+@endpoint(['POST'], ['state'], structured=True)
+def proposal_close(request, proposal_id):
+    """The customer picked one of the times (and created the event), or dismissed the suggestion: it is no longer drawn, and a wait for an answer ends."""
+    principal, stop = _enter(request, 'hub.write', 120)
+    if stop:
+        return stop
+    state = request.input.get('state')
+    if state not in ('picked', 'dismissed'):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    return _run(lambda: {'proposal': wiring.hub_service().close_proposal(principal, proposal_id, state)})
+
+
 @endpoint(['POST'], ['start', 'end', 'repeat'], structured=True)
 def conflicts(request):
     principal, stop = _enter(request, 'hub.read', 600)

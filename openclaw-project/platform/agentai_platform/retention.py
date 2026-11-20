@@ -56,6 +56,8 @@ RULES: tuple[Rule, ...] = (
          'sweeper', ('knowledge_checks',), note='They hold ids and fixed words, never the text of a claim or a document.'),
     Rule('commitments', 'Decisions and commitments, and the ones suggested to you', None, 'until you delete them or your account', 'customer', ('commitments',),
          change='Close or drop them in Commitments.'),
+    Rule('meeting_proposals', 'Times your assistant found for a meeting (who it is with and the suggested times)', 30, 'from when it was last changed', 'sweeper',
+         ('meeting_proposals',), note='Removed at once when you remove the account it is for.'),
     Rule('mail_drafts', 'Mail drafts you or your assistant wrote in Lumina (never in your mailbox)', None, 'until you discard the draft, remove the account or delete your account',
          'customer', ('hub_drafts',), change='Discard a draft in Mail.'),
     Rule('connections', 'Connected services: what is connected, what it may reach, and how fresh its data is', None, 'until you remove the connection or delete your account', 'customer',
@@ -169,6 +171,7 @@ def sweep(store, *, now=None, storage=None) -> dict:
             done['schedule_runs'] = con.execute("DELETE FROM schedule_runs WHERE day<? AND state NOT IN ('firing','started')", (day,)).rowcount
             done['spend_marks'] = con.execute('DELETE FROM spend_marks WHERE epoch<?', (epoch(BY_KEY['spend_marks'].days),)).rowcount
             done['task_checks'] = con.execute('DELETE FROM knowledge_checks WHERE created_epoch<?', (epoch(BY_KEY['task_checks'].days),)).rowcount
+            done['meeting_proposals'] = con.execute('DELETE FROM meeting_proposals WHERE updated_epoch<?', (epoch(BY_KEY['meeting_proposals'].days),)).rowcount
             done['audit'] = _audit_delete(con, iso(BY_KEY['audit'].days))
             from . import hub_sync
             done.update(hub_sync.sweep(con, now))

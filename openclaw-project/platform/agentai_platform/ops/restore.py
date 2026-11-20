@@ -51,7 +51,7 @@ LIVE = ['accounts', 'accounts_identity', 'accounts_operatorgrant', 'memberships'
         # The knowledge index is DERIVED from the files and is rebuilt from them; a backup must never bring back a source the customer removed, or a share they took back.
         # What the assistant checked belongs to tasks that already ended. Groups are who may see what, like memberships: what stands now stands. A corrected memory note's
         # history and mail drafts follow their note and their connection, which are never restored either.
-        'knowledge_sources', 'knowledge_checks', 'organization_groups', 'organization_group_members', 'longterm_memory_history', 'hub_drafts']
+        'knowledge_sources', 'knowledge_checks', 'organization_groups', 'organization_group_members', 'longterm_memory_history', 'hub_drafts', 'meeting_proposals']
 SCOPE = {**{t: 'restore' for t in RESTORE}, **{t: 'merge' for t in MERGE}, **{t: 'ledger' for t in LEDGER}, **{t: 'live' for t in LIVE}}
 NON_TERMINAL_TASK = ('queued', 'running', 'waiting_for_approval', 'paused')
 NON_TERMINAL_REQUEST = request_states.ACTIVE

@@ -3,14 +3,17 @@ import { addresses, failed, hub, type HubAccount, type HubAction, type HubCalend
 
 /** A new event, made by the customer's own hand (roadmap Phase 6, #61 and #D7): pressing Create is their approval, and it goes through the action pipeline once (one event even
  *  if the press is repeated), with Undo afterwards. Only calendars this account may change are offered. What will happen to other people is said before Create. */
-export default function EventEditor({ accounts, calendars, day, onDone, onCancel }: {
+export default function EventEditor({ accounts, calendars, day, onDone, onCancel, initial }: {
   accounts: HubAccount[]; calendars: HubCalendar[]; day: string; onDone(action: HubAction): void; onCancel(): void;
+  /** A time the customer picked from the assistant's suggestions (#65): its account, title, people and time are filled in; the customer still presses Create. */
+  initial?: { connection: string; title: string; start: string; end: string; attendees: string[] };
 }) {
   const writable = calendars.filter(c => (c.access === 'owner' || c.access === 'write') && accounts.some(a => a.id === c.connection_id && a.capabilities.event_write));
-  const first = writable.find(c => c.primary) ?? writable[0];
+  const first = (initial && (writable.find(c => c.connection_id === initial.connection && c.primary) ?? writable.find(c => c.connection_id === initial.connection))) ?? writable.find(c => c.primary) ?? writable[0];
   const [where, setWhere] = useState(first ? `${first.connection_id}|${first.id}` : '');
-  const [title, setTitle] = useState(''); const [date, setDate] = useState(day); const [allDay, setAllDay] = useState(false);
-  const [from, setFrom] = useState('09:00'); const [to, setTo] = useState('10:00'); const [people, setPeople] = useState(''); const [place, setPlace] = useState('');
+  const [title, setTitle] = useState(initial?.title ?? ''); const [date, setDate] = useState(initial?.start.slice(0, 10) ?? day); const [allDay, setAllDay] = useState(false);
+  const [from, setFrom] = useState(initial?.start.slice(11, 16) ?? '09:00'); const [to, setTo] = useState(initial?.end.slice(11, 16) ?? '10:00');
+  const [people, setPeople] = useState(initial?.attendees.join(', ') ?? ''); const [place, setPlace] = useState('');
   const [notes, setNotes] = useState(''); const [notify, setNotify] = useState(true); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   if (!writable.length) return <p className="muted small">None of your calendars can be changed from here yet.</p>;
   const invited = addresses(people);

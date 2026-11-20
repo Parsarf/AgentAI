@@ -31,6 +31,7 @@ class FakeGoogle:
         self.access, self.refresh, self.scope = 'at-1', 'rt-1', SCOPES
         self.calls, self.fail, self.gone = [], [], False
         self.lose_answer, self.updates = False, []                   # changes (Phase 6): drop the next write's answer after doing it; sendUpdates of each write
+        self.shared_busy = {}                                          # #65: other people's free/busy this account may see (same organization): address -> [(start, end) ISO]
 
     # -- filling ------------------------------------------------------------------------------------------------------------------------------
     def mail(self, n, *, thread=None, labels=('INBOX', 'UNREAD'), age_days=1, subject=None, sender='Ann Lee <ann@x.test>', files=()):
@@ -95,6 +96,9 @@ class FakeGoogle:
             low, high = asked['timeMin'], asked['timeMax']
             out = {}
             for item in asked['items']:
+                if item['id'] in self.shared_busy:
+                    out[item['id']] = {'busy': [{'start': a, 'end': b} for a, b in self.shared_busy[item['id']] if a < high and b > low]}
+                    continue
                 if item['id'] not in [c['id'] for c in self.calendars]:
                     out[item['id']] = {'errors': [{'domain': 'global', 'reason': 'notFound'}], 'busy': []}
                     continue
