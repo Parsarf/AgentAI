@@ -265,6 +265,10 @@ class DataLifecycle(Base):
         self.assertEqual(self.a.get(f'/v1/conversations/{conversation}/messages', secure=True).status_code, 404)
 
     def test_closing_an_account_end_to_end_and_the_scan_finds_only_what_stays(self):
+        from django.contrib.auth.models import User
+        from accounts.models import Identity
+        # A deliverable address: mail to a reserved name (@example.invalid, the other tests' users) is never sent (accounts/delivery.py deliverable).
+        User.objects.filter(pk__in=Identity.objects.filter(account_id=self.account_ids[0]).values('user')).update(email='closing.customer@mailbox.lumina-tests.net')
         conversation = self.conversation()
         self.post(self.a, f'/v1/conversations/{conversation}/send', {'message': 'everything of mine', 'key': 'k-off'})
         with connection.cursor() as c:
