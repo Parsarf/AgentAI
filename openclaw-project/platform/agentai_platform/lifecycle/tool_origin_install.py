@@ -1,4 +1,5 @@
 """Install the pinned runtime hook outside the assistant's working directory."""
+import hashlib
 import os
 from pathlib import Path
 
@@ -43,3 +44,19 @@ def configure(config, path=CONTAINER_PATH):
     if 'allow' in plugins:
         plugins['allow'] = list(dict.fromkeys([*plugins['allow'], PLUGIN_ID]))
     return {**config, 'plugins': plugins}
+
+
+def release_digest() -> str:
+    """The hook this release installs (a short digest of its code)."""
+    return hashlib.sha256((Path(__file__).with_name('tool_origin_plugin') / 'index.mjs').read_bytes()).hexdigest()[:16]
+
+
+def installed_digest(root) -> str | None:
+    """The hook a cell runs: what its last start installed. None when it cannot be read (then nothing is concluded from it)."""
+    path = Path(root) / 'extensions' / PLUGIN_ID / 'index.mjs'
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    except OSError:
+        return None
