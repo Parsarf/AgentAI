@@ -551,6 +551,12 @@ class CellBridge:
                         status['primary'] = primary
                 except (OSError, ValueError, KeyError, TypeError):
                     pass
+                # Which tool-ownership hook the cell runs (it is installed at every start): an older one refuses the tools the relay gained since, so the lifecycle
+                # worker restarts the cell at its next quiet moment (2026-11-20: after #66 a running cell kept refusing every mail and calendar tool).
+                from .tool_origin_install import installed_digest
+                digest = installed_digest(Path(self.workspace_root) / tenant)
+                if digest:
+                    status['origin_plugin'] = digest
             return status
         if method in ('tools.origin', 'tools.active'):
             tenant = self.binding(account) if self.binding else None

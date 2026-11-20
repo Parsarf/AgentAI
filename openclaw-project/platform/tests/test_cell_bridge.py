@@ -290,6 +290,9 @@ class StatusChecks(unittest.TestCase):
             self.assertEqual(bridge(False).call('acct', 'cell.status', {}), {'running': False})
             (Path(root) / tenant / 'openclaw.json').write_text('not json')
             self.assertEqual(bridge(True).call('acct', 'cell.status', {}), {'running': True})
+            from agentai_platform.lifecycle.tool_origin_install import install, release_digest
+            install(Path(root) / tenant)                                          # the hook its last start installed: reported, so an older one can be told apart
+            self.assertEqual(bridge(True).call('acct', 'cell.status', {}), {'running': True, 'origin_plugin': release_digest()})
 
 
 class WorkspaceCollectChecks(unittest.TestCase):

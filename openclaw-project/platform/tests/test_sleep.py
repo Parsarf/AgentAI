@@ -27,3 +27,29 @@ class SleepChecks(unittest.TestCase):
     def test_two_running_cells_require_reconciliation(self):
         self.assertEqual(wake_plan(cell('c',state='stopped'),[cell('a'),cell('b')],0)[0],'wait')
 if __name__=='__main__': unittest.main()
+
+
+class OlderSetup(unittest.TestCase):
+    """A running cell set up by older code is restarted at its next quiet moment: a model it no longer routes through, or a tool-ownership hook older than this release's
+    (after #66, 2026-11-20, running cells kept the old hook and refused every mail and calendar tool until they happened to sleep)."""
+    def test_a_different_model_or_an_older_hook_makes_a_cell_stale_and_nothing_else_does(self):
+        from agentai_platform.lifecycle.sleep import configured_by_older_code as old
+        here = {'running': True, 'primary': 'selection/selected', 'origin_plugin': 'abc'}
+        self.assertFalse(old(here, expect_primary='selection/selected', origin_plugin='abc'))
+        self.assertTrue(old({**here, 'primary': 'litellm/old-model'}, expect_primary='selection/selected', origin_plugin='abc'))
+        self.assertFalse(old({**here, 'primary': 'byok/mine'}, expect_primary='selection/selected', origin_plugin='abc'))         # an own-model cell stays warm
+        self.assertTrue(old({**here, 'origin_plugin': 'older'}, expect_primary='selection/selected', origin_plugin='abc'))
+        self.assertFalse(old({**here, 'origin_plugin': None}, expect_primary='selection/selected', origin_plugin='abc'))         # unreadable: nothing is concluded
+        self.assertFalse(old({**here, 'running': False, 'origin_plugin': 'older'}, expect_primary=None, origin_plugin='abc'))
+        self.assertTrue(old({**here, 'origin_plugin': 'older'}, expect_primary=None, origin_plugin='abc'))                       # the model check switched off, the hook still counts
+
+    def test_the_digest_of_what_a_start_installed_matches_the_release_until_the_hook_changes(self):
+        import tempfile
+        from pathlib import Path
+        from agentai_platform.lifecycle.tool_origin_install import install, installed_digest, release_digest
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(installed_digest(tmp))
+            install(tmp)
+            self.assertEqual(installed_digest(tmp), release_digest())
+            (Path(tmp) / 'extensions/lumina-tool-origin/index.mjs').write_text('// an older hook')
+            self.assertNotEqual(installed_digest(tmp), release_digest())

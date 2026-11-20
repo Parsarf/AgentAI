@@ -43,3 +43,17 @@ def wake_plan(target: CellFacts, running: list, now: float, *, idle_after=IDLE_A
     if can_sleep(other, now, idle_after=idle_after):
         return ('stop', other.account_id, 'start')
     return ('wait', 'another account has active work')  # never discloses which
+
+
+def configured_by_older_code(status: dict, *, expect_primary: str | None, origin_plugin: str | None) -> bool:
+    """Was this running cell set up by older code, so that its next start should set it up again? Its model is not the one this release routes through, or its
+    tool-ownership hook is not this release's (an older hook refuses newer tools). The caller still waits for a safe drain point before stopping it."""
+    if not status.get('running'):
+        return False
+    primary = status.get('primary')
+    if expect_primary and isinstance(primary, str):
+        compatible = primary == expect_primary or (expect_primary == 'selection/selected' and primary.startswith('byok/'))
+        if not compatible:
+            return True
+    installed = status.get('origin_plugin')
+    return bool(origin_plugin and isinstance(installed, str) and installed != origin_plugin)

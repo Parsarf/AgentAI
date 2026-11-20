@@ -47,15 +47,15 @@ def main():
         except Exception:
             return None   # unknown is never treated as 'gone'
 
+    from agentai_platform.lifecycle.sleep import configured_by_older_code
+    from agentai_platform.lifecycle.tool_origin_install import release_digest
+    plugin = release_digest()
+
     def stale(account):
-        if not args.expect_primary:
-            return False
+        # Old BYOK cells enter the same live selection router through the compatibility URL (changing a model never stops those warm cells); a cell whose
+        # tool-ownership hook is older than this release's is restarted at its next quiet moment, so it stops refusing the tools the relay gained since.
         reply = BridgeRpc(account, args.bridge_socket, timeout=30)('cell.status', {})
-        primary = reply.get('primary')
-        # Old BYOK cells now enter the same live selection router through the
-        # compatibility URL; changing a model must never stop those warm cells.
-        compatible = primary == args.expect_primary or (args.expect_primary == 'selection/selected' and isinstance(primary, str) and primary.startswith('byok/'))
-        return bool(reply.get('running')) and isinstance(primary, str) and not compatible
+        return configured_by_older_code(reply, expect_primary=args.expect_primary or None, origin_plugin=plugin)
 
     switches = SwitchStore(args.switches_file or None, facts_path=args.switch_facts_file or None)
     db_store = Store(args.db)
