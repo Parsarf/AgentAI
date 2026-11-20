@@ -63,6 +63,7 @@ EXPORT = (
     ('calendar/calendars.json', 'Your connected calendars and how you set them up', 'hub_calendars'), ('calendar/events.json', 'The copy of your calendar events that Lumina holds', 'hub_events'),
     ('settings/mail_and_calendar.json', 'Your mail and calendar settings', 'hub_settings'),
     ('mail/drafts.json', 'Mail drafts written in Lumina', 'hub_drafts'),
+    ('calendar/meeting_proposals.json', 'Times your assistant found for meetings', 'meeting_proposals'),
     ('knowledge/sources.json', 'What is in your knowledge index: each source, where it came from and how it was read (the files themselves are in files/)', 'knowledge_sources'),
     ('knowledge/commitments.json', 'Your decisions and commitments, and the ones suggested to you', 'commitments'),
     ('memory/long_term_memory_history.json', 'What corrected memory notes said before', 'longterm_memory_history'),

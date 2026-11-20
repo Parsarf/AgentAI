@@ -45,7 +45,8 @@ class Handoffs:
         self.store, self.clock = store, clock
         self.coordinator = Coordinator(store, clock=clock)
 
-    def create(self, con, *, account_id, actor_id, kind, request_id=None, conversation_id=None, action_id=None, workflow_id=None, question='', options=(), evidence=None, resume=None) -> str:
+    def create(self, con, *, account_id, actor_id, kind, request_id=None, conversation_id=None, action_id=None, workflow_id=None, question='', options=(), evidence=None, resume=None,
+               seconds=None) -> str:
         """Inside the caller's transaction. -> the handoff id."""
         if kind not in KINDS:
             raise ValueError('unknown handoff kind')
@@ -56,7 +57,7 @@ class Handoffs:
         con.execute('''INSERT INTO handoffs(account_id,id,request_id,conversation_id,actor_id,kind,action_id,workflow_id,question,options_json,evidence_json,resume_json,state,created_epoch,expires_epoch)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?)''',
                     (account_id, handoff, request_id, conversation_id, actor_id, kind, action_id, workflow_id, str(question)[:1000], json.dumps(list(options)[:8]),
-                     json.dumps(evidence or {}), json.dumps(resume or {}), now, now + wait_seconds(kind)))
+                     json.dumps(evidence or {}), json.dumps(resume or {}), now, now + (min(int(seconds), 14 * 86400) if seconds else wait_seconds(kind))))
         return handoff
 
     @staticmethod

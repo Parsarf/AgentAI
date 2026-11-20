@@ -36,6 +36,16 @@ ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH = ('lumina_mail_acc
 # Roadmap Phase 6: free time and clashes (reading), and changes the assistant PREPARES for the customer's approval (never sends: the action pipeline does, once approved).
 FREE, CONFLICTS, CREATE, CANCEL, RESPOND = 'lumina_calendar_free', 'lumina_calendar_conflicts', 'lumina_calendar_create', 'lumina_calendar_cancel', 'lumina_calendar_respond'
 CHANGE = 'lumina_calendar_change'
+MEETING_TIMES, MEETING_WAIT = 'lumina_meeting_times', 'lumina_meeting_wait'            # #65: find times for a meeting with people; wait for external people's answer
+MEETINGS = frozenset({MEETING_TIMES, MEETING_WAIT})
+# The meeting tools store who a meeting is with and the suggested times (meeting_proposals): offered only once the privacy policy describes that (owner's approval), and
+# in a live proof (hub_model.PROVING_IN_THIS_PROCESS holds 'meetings').
+MEETINGS_LIVE = False
+
+
+def meetings_on() -> bool:
+    from .hub_model import PROVING_IN_THIS_PROCESS
+    return MEETINGS_LIVE or 'meetings' in PROVING_IN_THIS_PROCESS
 WRITES = frozenset({CREATE, CANCEL, RESPOND, CHANGE})
 SCOPE_WORDS = ('For an occurrence of a repeating event (it has "series"), give series and the scope the CUSTOMER chose: "this" (only this occurrence), "following" (this and '
                'every later one) or "all" (the whole series). If they did not say, ask them; never guess.')
@@ -79,6 +89,15 @@ TOOLS = [
      'Live from the provider where it can say; the result names which calendars were live and which came from the copy. Use it before proposing a time.',
      'inputSchema': {**_S(start=_STR(10, _DAY), end=_STR(10, _DAY), minutes={'type': 'integer', 'minimum': 5, 'maximum': 1440, 'description': 'Shortest slot wanted (default 30).'}),
                      'required': ['start', 'end']}},
+    {'name': MEETING_TIMES, 'description': 'Find two or three times for a meeting with people: free for the customer (their working hours, notice and buffer) and for every '
+     'attendee whose free time their account can see ("internal": same organization, or shared). Attendees whose free time cannot be seen are "external". The times are also '
+     'shown on the customer\'s Calendar to pick from. Then: offer the times to the customer and let them pick. With external people, write them a draft email offering '
+     'the times (lumina_mail_draft), then call lumina_meeting_wait. Once a time is chosen, the event with its attendees is prepared through lumina_calendar_create.',
+     'inputSchema': {**_S(account=_STR(64), attendees={'type': 'array', 'items': {'type': 'string', 'maxLength': 320}, 'maxItems': 20}, minutes={'type': 'integer', 'minimum': 5, 'maximum': 480},
+                         start=_STR(10, _DAY), end=_STR(10, _DAY), title=_STR(500)), 'required': ['account', 'attendees', 'minutes', 'start', 'end']}},
+    {'name': MEETING_WAIT, 'description': 'After the external people were offered the times (a draft email), wait for their answer: the task pauses, holding nothing, until the '
+     'customer says which time they answered or their answer arrives by mail (up to two weeks). Give the proposal from lumina_meeting_times and the draft. Then END YOUR TURN.',
+     'inputSchema': {**_S(proposal=_STR(64), draft=_STR(64)), 'required': ['proposal']}},
     {'name': CONFLICTS, 'description': 'Does a proposed time clash with what is in the customer\'s calendars? For a repeating proposal (repeat, an RRULE line such as RRULE:FREQ=WEEKLY;COUNT=6) '
      'every occurrence is checked and the clashing dates are listed. Times are the customer\'s local wall time, YYYY-MM-DDTHH:MM.',
      'inputSchema': {**_S(start=_STR(16), end=_STR(16), repeat=_STR(200)), 'required': ['start', 'end']}},
@@ -150,7 +169,7 @@ def _people(items):
 
 
 class HubTools:
-    names = frozenset({ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH, FREE, CONFLICTS}) | WRITES
+    names = frozenset({ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH, FREE, CONFLICTS, MEETING_TIMES, MEETING_WAIT}) | WRITES
 
     def __init__(self, store, hub, *, clock=time.time, enabled=lambda account: False, actions=None, writes_on=lambda account: False):
         self.store, self.hub, self.clock, self._enabled = store, hub, clock, enabled
@@ -163,8 +182,9 @@ class HubTools:
             return False
 
     def specs_for(self, account):
+        base = [t for t in TOOLS if t['name'] not in MEETINGS or meetings_on()]
         if not self.writes(account):
-            return copy.deepcopy(TOOLS)
+            return copy.deepcopy(base)
         able = self._capabilities(account)
         tools = [t for t in WRITE_TOOLS if t['name'] != CHANGE or able.get('event_change')]       # a change kind not yet proven live is not offered
         tools = copy.deepcopy(tools)
@@ -173,7 +193,7 @@ class HubTools:
                 props = t['inputSchema']['properties']
                 if 'scope' in props:
                     props['scope']['enum'] = [v for v in props['scope']['enum'] if v == 'all']    # without series parts: a repeating event is changed as a whole only
-        return copy.deepcopy(TOOLS) + tools
+        return copy.deepcopy(base) + tools
 
     def _capabilities(self, account) -> dict:
         """What any of this customer's connected accounts can change now (the union of their capabilities)."""
@@ -220,6 +240,14 @@ class HubTools:
                 if not self.writes(account):
                     return 'Changing calendars is not switched on. Nothing was prepared. Tell the customer what you would have done.', True
                 return self._prepare(principal, name, arguments, request_id)
+            if name in MEETINGS and not meetings_on():
+                return 'Finding meeting times is not switched on yet. Use lumina_calendar_free and offer times yourself. Nothing was stored.', True
+            if name == MEETING_TIMES:
+                return self._out(self._meeting_times(principal, arguments, request_id)), False
+            if name == MEETING_WAIT:
+                waited = self.hub.wait_for_reply(principal, str(arguments['proposal']), request_id=request_id, draft_id=arguments.get('draft') or None)
+                return self._out({'waiting': True, 'question_for_the_customer': waited['question'], 'state': 'Paused until the customer answers or a reply arrives. '
+                                  'Tell the customer in one sentence that you will wait for the answer, then END YOUR TURN.'}), False
             handler = {ACCOUNTS: self._accounts, SEARCH: self._search, THREAD: self._thread, OLDER: self._older, EVENTS: self._events, EVENT: self._event, EVENT_SEARCH: self._event_search,
                        FREE: self._free, CONFLICTS: self._conflicts}[name]
             return self._out(handler(principal, arguments)), False
@@ -371,6 +399,19 @@ class HubTools:
                 'working_hours': found['settings']['hours'], 'notice_minutes': found['settings']['notice_minutes'], 'buffer_minutes': found['settings']['buffer_minutes'],
                 'live_calendars': len(live), 'from_the_copy': len(found['sources']) - len(live),
                 'note': 'Free means no event in the calendars that count, inside the customer\'s working hours. Calendars marked from the copy reflect the last sync.'}
+
+    def _meeting_times(self, principal, a, request_id):
+        zone_name, zone = self._zone(principal)
+        start, end = self._day(a['start'], zone), self._day(a['end'], zone, end=True)
+        found = self.hub.meeting_times(principal, str(a['account']), list(a.get('attendees') or []), int(a['minutes']), start, end, zone_name,
+                                       title=str(a.get('title') or ''), request_id=request_id)
+        if not found['options']:
+            return {'options': [], 'internal': found['internal'], 'external': found['external'],
+                    'result': 'No time in these days is free for the customer and every internal attendee. Suggest a wider range of days or a shorter meeting.'}
+        return {'proposal': found['proposal'], 'timezone': zone_name, 'options': [{'choice': i + 1, 'start': o['start'], 'end': o['end']} for i, o in enumerate(found['options'])],
+                'internal_attendees_checked': found['internal'], 'external_attendees_not_checked': found['external'], 'settings_used': found['settings'],
+                'next': ('Offer these times to the customer; they can also pick one on the Calendar page. ' + ('Write the external attendees a draft email offering these times, then '
+                         'call lumina_meeting_wait. ' if found['external'] else '') + 'When a time is chosen, prepare it with lumina_calendar_create (one approval).')}
 
     def _conflicts(self, principal, a):
         zone_name, zone = self._zone(principal)

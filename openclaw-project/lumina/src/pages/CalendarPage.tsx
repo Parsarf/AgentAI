@@ -13,7 +13,7 @@ import EventEditor from '../components/hub/EventEditor';
 import ChangeEvent from '../components/hub/ChangeEvent';
 import SeriesScope from '../components/hub/SeriesScope';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
-  validZone, zonedEpoch, localTime, type HubAccount, type HubAction, type HubCalendar, type HubEvent, type Overview, type Scope } from '../lib/hub';
+  validZone, zonedEpoch, localTime, type HubAccount, type HubAction, type HubCalendar, type HubEvent, type MeetingProposal, type Overview, type Scope } from '../lib/hub';
 import { useData } from '../state/data';
 import '../styles/hub.css';
 
@@ -137,6 +137,8 @@ export default function CalendarPage() {
   const [chosen, setChosen] = useState<Set<string> | null>(null); const [events, setEvents] = useState<HubEvent[] | null>(null); const [partial, setPartial] = useState(false);
   const [selected, setSelected] = useState<string | null>(null); const [detail, setDetail] = useState<HubEvent | null>(null);
   const [creating, setCreating] = useState(false); const [done, setDone] = useState<{ action: HubAction; words: string } | null>(null);
+  // Times the assistant found for a meeting (#65): drawn as suggestions; picking one fills in the new event (the customer still presses Create).
+  const [proposals, setProposals] = useState<MeetingProposal[]>([]); const [picking, setPicking] = useState<{ proposal: MeetingProposal; option: MeetingProposal['options'][number] } | null>(null);
   const [typed, setTyped] = useState(''); const [found, setFound] = useState<{ query: string; events: HubEvent[]; complete: boolean } | null>(null);
   const [zoneEdit, setZoneEdit] = useState<string | null>(null); const [colouring, setColouring] = useState<string | null>(null);
   const request = useRef(0); const grid = useRef<HTMLDivElement>(null);
@@ -173,6 +175,7 @@ export default function CalendarPage() {
       const r = await hub.events(zonedEpoch(addDays(span.from, -1), 0, zone), zonedEpoch(addDays(span.to, 2), 0, zone), shownAccounts);
       if (mine !== request.current) return;
       setEvents(r.events); setPartial(!r.complete); setErr('');
+      hub.proposals(zonedEpoch(span.from, 0, zone), zonedEpoch(addDays(span.to, 1), 0, zone)).then(p => { if (mine === request.current) setProposals(p.proposals); }).catch(() => setProposals([]));
     } catch (e) { if (mine === request.current) { setErr(failed(e)); setEvents(prev => prev ?? []); } }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!info, span.from, span.to, zone, shownAccounts.join(','), selection]);
@@ -419,6 +422,15 @@ export default function CalendarPage() {
           <button type="button" className="btn small" disabled={!!pendingMove.event.series_id && !moveScope} onClick={() => applyMove(pendingMove.event, pendingMove.start, pendingMove.end, moveScope ?? undefined)}>Move it</button>
           <button type="button" className="btn small tertiary" onClick={() => { setPendingMove(null); setMoveScope(null); }}>Keep it</button></div>}
         {done && <p className="notice" role="status">{done.words}{done.action.can_undo && done.words !== 'Undone.' && <> <button type="button" className="btn small tertiary" onClick={undo}>Undo</button></>}</p>}
+        {proposals.map(p => <p key={p.id} className="notice" role="status">Suggested times for “{p.title || 'a meeting'}” with {p.attendees.join(', ')}: {p.options.map((o, i) =>
+          <button key={o.start} type="button" className="btn small tertiary" onClick={() => { setDone(null); setPicking({ proposal: p, option: o }); }}>{i ? ', ' : ''}{dayTitle(o.start.slice(0, 10), 'short')} {clock(o.start_epoch, zone)}</button>)}
+          {p.waiting && <span className="faint"> · Waiting for {p.external.join(', ')} to answer</span>}
+          {' '}<button type="button" className="btn small tertiary" onClick={async () => { try { await hub.closeProposal(p.id, 'dismissed'); setProposals(v => v.filter(x => x.id !== p.id)); } catch (e) { setErr(failed(e)); } }}>Dismiss</button></p>)}
+        {picking && (accounts.some(a => a.capabilities.event_write)
+          ? <EventEditor accounts={accounts} calendars={calendars} day={day} initial={{ connection: picking.proposal.connection_id, title: picking.proposal.title, start: picking.option.start, end: picking.option.end, attendees: picking.proposal.attendees }}
+              onDone={async a => { const id = picking.proposal.id; setPicking(null); setProposals(v => v.filter(x => x.id !== id)); try { await hub.closeProposal(id, 'picked'); } catch { /* the event exists; the suggestion is only drawn */ } changed(a, 'The event was created.'); }}
+              onCancel={() => setPicking(null)} />
+          : accounts.filter(a => a.capabilities.missing?.event_write).map(a => <AllowChanges key={a.id} account={a} capability="event_write" />))}
         {creating && (accounts.some(a => a.capabilities.event_write)
           ? <EventEditor accounts={accounts} calendars={calendars} day={day} onDone={a => changed(a, 'The event was created.')} onCancel={() => setCreating(false)} />
           : accounts.filter(a => a.capabilities.missing?.event_write).map(a => <AllowChanges key={a.id} account={a} capability="event_write" />))}
@@ -455,6 +467,10 @@ export default function CalendarPage() {
             <div className="hub-hours" aria-hidden="true">{HOURS.map(h => <span key={h} style={{ top: `calc(var(--hour) * ${h})` }}>{hourLabel(h)}</span>)}</div>
             {span.days.map(d => <div key={'c' + d} className={`hub-day-col${days && d >= days.start && d <= days.end ? ' chosen' : ''}`} aria-label={dayTitle(d)}>
               {d === today && <i className="hub-now" style={{ top: `calc(var(--hour) * ${minuteOfDay(now, zone) / 60})` }} aria-label="Now" role="img" />}
+              {proposals.flatMap(p => p.options.filter(o => dayKey(o.start_epoch, zone) === d).map(o => <button key={p.id + o.start} type="button" className="hub-suggestion"
+                aria-label={`Suggested time for ${p.title || 'a meeting'}, ${clock(o.start_epoch, zone)}`} onClick={() => { setDone(null); setPicking({ proposal: p, option: o }); }}
+                style={{ top: `calc(var(--hour) * ${minuteOfDay(o.start_epoch, zone) / 60})`, height: `calc(var(--hour) * ${(o.end_epoch - o.start_epoch) / 3600} - 2px)` }}>
+                <b>{p.title || 'Suggested time'}</b><span>{clock(o.start_epoch, zone)}</span></button>))}
               {layoutDay(byDay[d].timed, d, zone).map(p => <EventChip key={eventKey(p.event)} event={p.event} zone={zone} current={selected === eventKey(p.event)} onOpen={openUnlessDragged}
                 onPress={movable(p.event) ? onPress : undefined} shift={moving?.key === eventKey(p.event) ? moving : undefined}
                 style={{ top: `calc(var(--hour) * ${p.top / 60})`, height: `calc(var(--hour) * ${p.height / 60} - 2px)`, left: `calc(${(p.column / p.columns) * 100}% + 2px)`, width: `calc(${100 / p.columns}% - 4px)` }} />)}

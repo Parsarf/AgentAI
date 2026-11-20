@@ -256,6 +256,21 @@ describe('Calendar changes (Phase 6, #62, #D7)', () => {
     expect(asked('/v1/hub/events/cancel').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'r1_20260520T190000Z', notify: true, scope: 'following', series: 'r1' }]);
   });
 
+  it('draws the times the assistant found and a pick fills in the new event, which the customer still creates (#65)', async () => {
+    const proposal = { id: 'p1', connection_id: 'c1', title: 'Planning', minutes: 30, attendees: ['bo@y.test'], external: [], waiting: false,
+      options: [{ start: '2026-05-20T15:00', end: '2026-05-20T15:30', start_epoch: at('2026-05-20T19:00:00Z'), end_epoch: at('2026-05-20T19:30:00Z') }] };
+    server(routes({ '/v1/hub/proposals': { proposals: [proposal] }, 'POST /v1/hub/events/create': done('a3', 'event.create'), 'POST /v1/hub/proposals/p1/close': { proposal: { id: 'p1', state: 'picked' } } }));
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Suggested time for Planning, 3:00 PM' }));
+    const form = screen.getByRole('form', { name: 'New event' });
+    expect([(within(form).getByLabelText('Title') as HTMLInputElement).value, (within(form).getByLabelText('People') as HTMLInputElement).value]).toEqual(['Planning', 'bo@y.test']);
+    expect(asked('/v1/hub/events/create')).toEqual([]);                                                              // picking is not creating
+    fireEvent.click(within(form).getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(asked('/v1/hub/proposals/p1/close').map(c => c.body)).toEqual([{ state: 'picked' }]));
+    expect(asked('/v1/hub/events/create').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', title: 'Planning', start: '2026-05-20T15:00', end: '2026-05-20T15:30',
+      attendees: ['bo@y.test'], notify: true }]);
+  });
+
   it('moves an event by dragging it an hour later, but only after saying who is told', async () => {
     if (!(window as any).PointerEvent) (window as any).PointerEvent = MouseEvent;
     server(routes()); show();

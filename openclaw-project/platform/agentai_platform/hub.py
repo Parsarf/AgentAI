@@ -21,6 +21,16 @@ from .connector_kit import ConnectorFault
 from .hub_model import COMMON_LABELS, hub_caps
 from .security import NotFound, require
 
+
+def datetime_day(epoch, zone) -> str:
+    from datetime import datetime
+    return datetime.fromtimestamp(int(epoch), zone).strftime('%Y-%m-%d')
+
+
+def datetime_local(epoch, zone) -> str:
+    from datetime import datetime
+    return datetime.fromtimestamp(int(epoch), zone).strftime('%Y-%m-%dT%H:%M')
+
 LIST_LABELS = COMMON_LABELS + ('all',)
 HIDDEN_BY_DEFAULT = ('spam', 'trash')
 MAX_LIMIT = 100
@@ -504,6 +514,129 @@ class HubService:
         busy = merge(busy)
         free = free_intervals(start_epoch, end_epoch, busy, settings, zone, now=int(self.clock()), minutes=int(minutes))
         return {'free': free, 'busy': busy, 'settings': settings, 'sources': sources}
+
+    # -- meeting scheduling (#65) ------------------------------------------------------------------------------------------------------------------
+    MAX_PEOPLE = 20
+
+    def meeting_times(self, principal, connection_id, attendees, minutes, start_epoch, end_epoch, zone_name, *, title='', count=3, request_id=None) -> dict:
+        """Two or three times for a meeting: free for the customer (their availability settings, live free/busy) and for every attendee whose free time the provider
+        will tell this account (people in the same organization, or who share it): those are `internal`. The others are `external`: they are offered the times by a
+        draft email. The result is stored as a proposal, which the Calendar draws for the customer to pick. -> {'proposal', 'options', 'internal', 'external', ...}."""
+        import re
+        import uuid
+        from zoneinfo import ZoneInfo
+        from .connector_kit import Unanswered
+        from .hub_availability import merge
+        zone = ZoneInfo(zone_name)
+        people = []
+        for a in attendees or []:
+            a = str(a).strip().lower()
+            if not re.fullmatch(r'[^@\s<>"]{1,64}@[^@\s<>"]{1,255}', a):
+                raise ValueError('attendees are email addresses')
+            if a not in people:
+                people.append(a)
+        if len(people) > self.MAX_PEOPLE or not 5 <= int(minutes) <= 8 * 60 or not 1 <= int(count) <= 5 or len(str(title)) > 500:
+            raise ValueError('invalid request')
+        mine = self.free(principal, start_epoch, end_epoch, zone, minutes=int(minutes))
+        row, declaration, adapter, credential = self.client.open(principal, connection_id, 'connection.read')
+        caps = hub_caps(declaration)
+        own = {str(row['identity_label'] or '').lower()} if 'identity_label' in row.keys() else set()
+        others = [a for a in people if a not in own]
+        answers = {}
+        if others and caps is not None and caps.free_busy and hasattr(adapter, 'free_busy'):
+            try:
+                answers = self.client.call(principal.account_id, declaration, lambda: adapter.free_busy(credential, others, int(start_epoch), int(end_epoch)))
+            except (ConnectorFault, Unanswered):
+                answers = {}
+        internal = [a for a in others if answers.get(a) is not None]
+        external = [a for a in others if answers.get(a) is None]
+        busy = merge([span for a in internal for span in answers[a]])
+        length, step = int(minutes) * 60, 1800
+        candidates = []
+        for free_start, free_end in mine['free']:
+            t = -(-int(free_start) // step) * step                       # the next full or half hour
+            while t + length <= free_end:
+                if not any(b0 < t + length and b1 > t for b0, b1 in busy):
+                    candidates.append(t)
+                t += step
+        picked, days = [], set()
+        for t in candidates:                                                # one a day first, so the choice is real; then the earliest others
+            day = datetime_day(t, zone)
+            if day not in days:
+                picked.append(t); days.add(day)
+            if len(picked) == int(count):
+                break
+        for t in candidates:
+            if len(picked) >= int(count):
+                break
+            if t not in picked:
+                picked.append(t)
+        picked.sort()
+        local = lambda t: datetime_local(t, zone)
+        options = [{'start': local(t), 'end': local(t + length), 'start_epoch': t, 'end_epoch': t + length} for t in picked]
+        proposal = None
+        if options:
+            proposal = uuid.uuid4().hex
+            now = int(self.clock())
+            with self.store.connect() as con:
+                require(principal, 'connection.use', con=con)
+                con.execute('''INSERT INTO meeting_proposals(account_id,id,connection_id,title,minutes,attendees_json,internal_json,external_json,options_json,timezone,request_id,
+                    created_epoch,updated_epoch) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''', (principal.account_id, proposal, connection_id, str(title)[:500], int(minutes), json.dumps(people),
+                    json.dumps(internal), json.dumps(external), json.dumps(options), zone_name, request_id, now, now))
+        s = mine['settings']
+        return {'proposal': proposal, 'options': options, 'internal': internal, 'external': external, 'timezone': zone_name, 'minutes': int(minutes),
+                'settings': {'working_hours': s.get('hours'), 'notice_minutes': s['notice_minutes'], 'buffer_minutes': s['buffer_minutes']},
+                'sources': mine['sources']}
+
+    def proposals(self, principal, start_epoch, end_epoch) -> list:
+        """Open meeting proposals with a time in this range: what the Calendar draws as suggestions."""
+        with self.store.connect() as con:
+            require(principal, 'connection.read', con=con)
+            rows = con.execute("SELECT * FROM meeting_proposals WHERE account_id=? AND state='open' ORDER BY created_epoch DESC LIMIT 20", (principal.account_id,)).fetchall()
+        out = []
+        for r in rows:
+            options = [o for o in json.loads(r['options_json']) if o['end_epoch'] > int(start_epoch) and o['start_epoch'] < int(end_epoch)]
+            if options:
+                out.append({'id': r['id'], 'connection_id': r['connection_id'], 'title': r['title'], 'minutes': r['minutes'], 'attendees': json.loads(r['attendees_json']),
+                            'external': json.loads(r['external_json']), 'options': options, 'waiting': bool(r['handoff_id'])})
+        return out
+
+    def close_proposal(self, principal, proposal_id, state) -> dict:
+        if state not in ('picked', 'dismissed'):
+            raise ValueError('invalid state')
+        with self.store.connect() as con:
+            require(principal, 'connection.use', con=con)
+            changed = con.execute("UPDATE meeting_proposals SET state=?,updated_epoch=? WHERE account_id=? AND id=? AND state='open'",
+                                  (state, int(self.clock()), principal.account_id, str(proposal_id))).rowcount
+            row = con.execute('SELECT handoff_id FROM meeting_proposals WHERE account_id=? AND id=?', (principal.account_id, str(proposal_id))).fetchone()
+            if row is None:
+                raise NotFound()
+            if changed and row['handoff_id']:
+                con.execute("UPDATE handoffs SET state='expired',answered_epoch=? WHERE account_id=? AND id=? AND state='waiting'",
+                            (int(self.clock()), principal.account_id, row['handoff_id']))
+        return {'id': str(proposal_id), 'state': state}
+
+    def wait_for_reply(self, principal, proposal_id, *, request_id=None, draft_id=None) -> dict:
+        """The external people were offered the times (a draft email): the work waits, holding nothing, until the customer says which time they answered, or a reply
+        arrives. A question for the customer (a handoff) that waits up to two weeks."""
+        from .handoff import Handoffs
+        with self.store.connect() as con:
+            row = con.execute("SELECT * FROM meeting_proposals WHERE account_id=? AND id=? AND state='open'", (principal.account_id, str(proposal_id))).fetchone()
+        if row is None:
+            raise NotFound()
+        options = json.loads(row['options_json'])
+        who = ', '.join(json.loads(row['external_json'])) or 'the people invited'
+        question = f'Waiting for {who} to answer the times offered for "{row["title"] or "the meeting"}". When they answer, tell me which time works.'[:1000]
+        handoffs = Handoffs(self.store, clock=self.clock)
+        from .lifecycle.coordinator import Coordinator
+        with Coordinator(self.store, clock=self.clock).transaction() as con:
+            require(principal, 'connection.use', con=con)
+            handoff = handoffs.create(con, account_id=principal.account_id, actor_id=str(principal.actor_id), kind='question', request_id=request_id, question=question,
+                                      options=[f'{o["start"]} to {o["end"][11:]}' for o in options][:5] + ['None of these'],
+                                      resume={'meeting_proposal': row['id'], 'draft': draft_id}, seconds=14 * 86400)
+            con.execute('UPDATE meeting_proposals SET handoff_id=?,draft_id=coalesce(?,draft_id),updated_epoch=? WHERE account_id=? AND id=?',
+                        (handoff, draft_id, int(self.clock()), principal.account_id, row['id']))
+        return {'handoff': handoff, 'question': question}
 
     def conflicts(self, principal, start_local, end_local, zone, *, rule=None) -> dict:
         """Does a proposed time (or each occurrence of a proposed repeat) clash with what is in the calendars that count? Against the synced, expanded instances of every

@@ -36,6 +36,9 @@ export interface HubAction { id: string; kind: string; state: string; preview: {
 export type Scope = 'this' | 'following' | 'all';
 export interface EventChange { connection: string; calendar: string; event: string; series?: string | null; scope?: Scope; title?: string; start?: string; end?: string; all_day?: boolean;
   timezone?: string; place?: string; description?: string; attendees?: string[]; notify?: boolean }
+/** Times the assistant found for a meeting (#65), drawn on the Calendar for the customer to pick. */
+export interface MeetingProposal { id: string; connection_id: string; title: string; minutes: number; attendees: string[]; external: string[];
+  options: { start: string; end: string; start_epoch: number; end_epoch: number }[]; waiting: boolean }
 export interface NewEvent { connection: string; calendar: string; title: string; start: string; end: string; all_day?: boolean; attendees?: string[]; place?: string; description?: string; notify?: boolean }
 /** A mail draft kept in Lumina (#57): never in the mailbox. The customer sends it themselves from their mail service. */
 export interface Draft { id: string; account: string; thread: string | null; to: string[]; cc: string[]; subject: string; body: string; origin: 'customer' | 'assistant';
@@ -75,6 +78,8 @@ export const hub = {
   createEvent: (e: NewEvent) => api<{ action: HubAction }>('POST', '/v1/hub/events/create', e),
   cancelEvent: (connection: string, calendar: string, event: string, notify = true, scope?: Scope, series?: string | null) =>
     api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify, ...(scope && series ? { scope, series } : {}) }),
+  proposals: (start: number, end: number) => api<{ proposals: MeetingProposal[] }>('GET', `/v1/hub/proposals${query({ start, end })}`),
+  closeProposal: (id: string, state: 'picked' | 'dismissed') => api<{ proposal: { id: string; state: string } }>('POST', `/v1/hub/proposals/${encodeURIComponent(id)}/close`, { state }),
   changeEvent: (change: EventChange) => api<{ action: HubAction }>('POST', '/v1/hub/events/change', { ...change, series: change.series || undefined, scope: change.series ? change.scope : undefined }),
   undo: (action: string, screen = 'calendar') => api<{ action: HubAction }>('POST', `/v1/hub/actions/${encodeURIComponent(action)}/undo`, { screen }),
   respondEvent: (connection: string, calendar: string, event: string, response: 'accepted' | 'tentative' | 'declined', scope?: 'this' | 'all', series?: string | null) =>

@@ -102,7 +102,7 @@ ROUTES = {
     'v1/hub/mail/attachment': 'connection.use',
     # Phase 6: the customer's own change in the dashboard is their approval of it; reading free time and clashes is reading.
     'v1/hub/events/create': 'action.approve', 'v1/hub/events/cancel': 'action.approve', 'v1/hub/events/change': 'action.approve', 'v1/hub/events/respond': 'action.approve', 'v1/hub/actions/<str:action_id>/undo': 'action.approve',
-    'v1/hub/actions/<str:action_id>/stop': 'action.approve', 'v1/hub/free': 'connection.read', 'v1/hub/conflicts': 'connection.read',
+    'v1/hub/actions/<str:action_id>/stop': 'action.approve', 'v1/hub/free': 'connection.read', 'v1/hub/proposals': 'connection.read', 'v1/hub/proposals/<str:proposal_id>/close': 'connection.use', 'v1/hub/conflicts': 'connection.read',
     'v1/hub/availability': {R: 'connection.read', W: 'connection.use'},
     # -- kept disabled on purpose (they answer "disabled" to anyone signed in) ---------------------------------------------------------------------
     **{f'v1/{kind}{tail}': 'account.read' for kind in ('streams', 'memory', 'schedules') for tail in ('', '/<str:object_id>', '/<str:object_id>/<str:action>')},

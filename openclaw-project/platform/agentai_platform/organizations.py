@@ -30,7 +30,7 @@ POLICIES = {
 TOOL_GROUP_OF = {'lumina_browser': 'browser', 'lumina_browser_step': 'browser', 'lumina_file_deliver': 'files', 'lumina_memory_*': 'memory', 'lumina_show': 'display',
                  'lumina_request_location': 'location', 'lumina_mcp_*': 'remote_tools', 'mcp__*': 'remote_tools', 'lumina_connector_*': 'connectors',
                  'lumina_mail_*': 'connectors', 'lumina_calendar_*': 'connectors',       # the mail and calendar tools read through connected accounts too
-                 'lumina_meeting_brief': 'connectors', 'lumina_knowledge_*': 'knowledge', 'lumina_commitment_*': 'knowledge', 'lumina_commitments': 'knowledge'}
+                 'lumina_meeting_brief': 'connectors', 'lumina_meeting_times': 'connectors', 'lumina_meeting_wait': 'connectors', 'lumina_knowledge_*': 'knowledge', 'lumina_commitment_*': 'knowledge', 'lumina_commitments': 'knowledge'}
 
 
 def tool_group(name):
