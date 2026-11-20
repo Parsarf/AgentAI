@@ -104,7 +104,9 @@ class LocationChecks(Base):
         from pathlib import Path
         import agentai_platform.lifecycle.tool_origin as origin
         self.assertTrue(is_tool_name(NAME))
-        self.assertIn(NAME, Path(origin.__file__).with_name('tool_origin_plugin').joinpath('index.mjs').read_text())
+        import re
+        plugin = Path(origin.__file__).with_name('tool_origin_plugin').joinpath('index.mjs').read_text()
+        self.assertTrue(re.fullmatch(re.search(r'const NAME = /(.+)/;', plugin).group(1), 'lumina__' + NAME))      # the plugin stamps every relay tool by its pattern
         from agentai_platform.location import TOOL
         self.assertIn("customer's location", WORKSPACE_RULES); self.assertIn('near me', TOOL['description'])      # the rules say the ability exists; the tool says when to use it
         self.assertGreater(BROWSER_TOOL_TIMEOUT_MS, 120000)

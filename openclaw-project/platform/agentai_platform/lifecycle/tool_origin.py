@@ -13,9 +13,14 @@ import sqlite3
 import stat
 import time
 
-TOOLS = {'lumina_request_location', 'lumina_browser', 'lumina_browser_step', 'lumina_task_update', 'lumina_memory_recall', 'lumina_memory_remember', 'lumina_file_deliver', 'lumina_show'}
+# Every tool Lumina's relay serves is named lumina_<name> (tests/test_tool_origin.py checks every family the relay serves). Which tools exist is the relay's decision: it
+# refuses a name it does not serve before it asks for a proof, and a proof only verifies when the runtime's own hook recorded exactly that call. A fixed list here (and in
+# the plugin) fell behind the relay: the mail, calendar, document, commitment and connected-service tools were refused for every real cell until 2026-11-19.
+TOOL_NAME = re.compile(r'lumina_[a-z][a-z0-9_]{0,80}')
+
+
 def is_tool_name(name):
-    return isinstance(name, str) and (name in TOOLS or name in ('lumina_mcp_discover', 'lumina_mcp_call', 'lumina_mcp_search', 'lumina_mcp_setup', 'lumina_mcp_connections') or bool(re.fullmatch(r'lumina_mcp_[a-f0-9]{32}_[a-f0-9]{12}', name)))
+    return isinstance(name, str) and bool(TOOL_NAME.fullmatch(name))
 
 
 MAX_BYTES = 24_000

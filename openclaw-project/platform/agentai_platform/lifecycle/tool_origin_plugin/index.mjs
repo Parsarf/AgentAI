@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const NAMES = new Map(['lumina_request_location', 'lumina_browser', 'lumina_browser_step', 'lumina_task_update', 'lumina_mcp_discover', 'lumina_mcp_call', 'lumina_mcp_search', 'lumina_mcp_setup', 'lumina_mcp_connections', 'lumina_memory_recall', 'lumina_memory_remember', 'lumina_file_deliver', 'lumina_show'].map(n => ['lumina__' + n, n]));
+// Every tool of Lumina's relay ("lumina" MCP server, so lumina__<tool>) and only those. No `matcher`: OpenClaw's matcher takes exact names only, and a fixed list here fell
+// behind the relay (its mail, calendar, document and connected-service tools never got a proof until 2026-11-19). The relay decides which tools exist.
+const NAME = /^lumina__(lumina_[a-z][a-z0-9_]{0,80})$/;
+const luminaTool = toolName => { const match = typeof toolName === 'string' ? NAME.exec(toolName) : null; return match ? match[1] : null; };
 const MAX_BYTES = 24000;
 const MAX_PENDING = 64;
 const MAX_AGE_MS = 30 * 60 * 1000;
@@ -20,7 +23,7 @@ export default {
     fs.writeFileSync(path.join(directory, 'protocol.json'), '{"version":2}\n', { mode: 0o600, flag: 'w' });
 
     api.on('before_tool_call', (event, ctx) => {
-      const name = NAMES.get(event.toolName) || (/^lumina__lumina_mcp_[a-f0-9]{32}_[a-f0-9]{12}$/.test(event.toolName) ? event.toolName.slice('lumina__'.length) : null);
+      const name = luminaTool(event.toolName);
       if (!name) return;
       if (![ctx.sessionKey, ctx.runId, ctx.toolCallId].every(v => typeof v === 'string' && v.length > 0 && v.length < 512)) {
         return { block: true, blockReason: 'Lumina could not verify the runtime tool identity. Nothing was started.' };
@@ -49,15 +52,15 @@ export default {
       } catch {
         return { block: true, blockReason: 'Lumina could not register this tool call. Nothing was started.' };
       }
-    }, { matcher: [...NAMES.keys()], priority: -10000 });
+    }, { priority: -10000 });
 
     api.on('after_tool_call', (event, ctx) => {
-      if (!NAMES.has(event.toolName) || !ctx.toolCallId) return;
+      if (!luminaTool(event.toolName) || !ctx.toolCallId) return;
       const nonce = pending.get(ctx.toolCallId);
       pending.delete(ctx.toolCallId);
       if (!nonce) return;
       try { fs.unlinkSync(path.join(directory, fileName(nonce))); }
       catch (error) { if (error.code !== 'ENOENT') api.logger.warn('Lumina tool receipt cleanup failed'); }
-    }, { matcher: [...NAMES.keys()] });
+    });
   }
 };
