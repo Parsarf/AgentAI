@@ -85,6 +85,16 @@ def main():
     def payload(hour, title=TITLE):
         return {'calendar': calendar_id, 'title': title, 'start': f'{day}T{hour:02d}:00', 'end': f'{day}T{hour:02d}:30', 'timezone': zone_name, 'notify': False}
 
+    def sent_with_marker(subject, mark):
+        """Messages in Sent with this subject that carry this draft's X-Lumina-Draft header (Gmail replaces the Message-ID, so the header is what identifies a send)."""
+        listed = adapter._get(credential, 'https://gmail.googleapis.com/gmail/v1/users/me/messages', [('q', f'in:sent newer_than:1d subject:"{subject}"'), ('maxResults', '20')]).get('messages') or []
+        out = []
+        for m in listed:
+            raw = adapter._get(credential, f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{m["id"]}', [('format', 'metadata'), ('metadataHeaders', 'X-Lumina-Draft')])
+            if any(h.get('name', '').lower() == 'x-lumina-draft' and h.get('value') == mark for h in (raw.get('payload') or {}).get('headers') or []):
+                out.append(m)
+        return out
+
     def at_google(event_id):
         found = adapter._read_event(credential, calendar_id, event_id)
         return found if found and found.get('status') != 'cancelled' else None
@@ -282,12 +292,11 @@ def main():
         again_send = actions.execute(account, sent_first['id'])
         second = actions.propose(p, conn_id, 'mail.send', mail_payload)
         run(second)
-        in_sent = adapter._get(credential, 'https://gmail.googleapis.com/gmail/v1/users/me/messages', [('q', f'rfc822msgid:{marker(draft["id"])}'), ('includeSpamTrash', 'true')]).get('messages') or []
+        in_sent = sent_with_marker(f'{TITLE} {stamp}', marker(draft['id']))
         SENT_THREADS.update(m['threadId'] for m in in_sent)
         record('M-SEND', 'A draft is sent once: a lost answer is found in Sent, a second change for it sends nothing',
-               settled_send == 'done' and again_send == 'done' and len({m['id'] for m in in_sent}) in (1, 2) and actions.get(p, sent_first['id'])['verified'] is True
-               and len([m for m in in_sent if 'SENT' in (adapter._get(credential, f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{m["id"]}', [('format', 'minimal')]).get('labelIds') or [])]) == 1,
-               {'settled': settled_send, 'run_again': again_send, 'copies_found': len(in_sent)})
+               settled_send == 'done' and again_send == 'done' and len(in_sent) == 1 and actions.get(p, sent_first['id'])['verified'] is True,
+               {'settled': settled_send, 'run_again': again_send, 'copies_in_sent': len(in_sent)})
 
         # -- M-UNDO-SEND -----------------------------------------------------------------------------------------------------------------------------------
         held_draft = hub.save_draft(p, connection_id=connection_id, to=[own], subject=f'{TITLE} {stamp} held', body='Never sent.', origin='customer')
@@ -295,7 +304,7 @@ def main():
         held = actions.direct(p, conn_id, 'mail.send', held_payload, screen='inbox', delay_seconds=10)
         stopped = actions.cancel(p, held['id'])['state']
         time.sleep(12)
-        leaked = adapter._get(credential, 'https://gmail.googleapis.com/gmail/v1/users/me/messages', [('q', f'rfc822msgid:{marker(held_draft["id"])}'), ('includeSpamTrash', 'true')]).get('messages') or []
+        leaked = sent_with_marker(f'{TITLE} {stamp} held', marker(held_draft['id']))
         hub.discard_draft(p, held_draft['id']) if hasattr(hub, 'discard_draft') else None
         record('M-UNDO-SEND', 'A send stopped inside Undo send leaves nothing at Google', held['state'] == 'approved' and stopped == 'declined' and not leaked,
                {'held': held['state'], 'stopped': stopped, 'at_provider': len(leaked)})
@@ -318,6 +327,9 @@ def main():
             done = actions.direct(p, connection_id, kind, change, screen='inbox')
             undone = actions.undo_direct(p, done['id'], screen='inbox')
             steps.append((op, done['state'], done['verified'], undone['state'], labels_of(one) == before[one]))
+        for op, *_rest in steps:
+            if not _rest[3]:
+                print('  differs after', op, sorted(before[one] ^ labels_of(one)), flush=True)
         record('M-ORGANIZE', 'Archived and put back in one step; starred, marked and binned, each put back exactly',
                len(inbox) == 3 and archived['state'] == 'done' and archived['verified'] is True and gone and back['state'] == 'done' and restored
                and all(s[1] == 'done' and s[2] is True and s[3] == 'done' and s[4] for s in steps),
@@ -330,6 +342,13 @@ def main():
             if found and found.get('status') != 'cancelled':
                 adapter._send(credential, 'DELETE', adapter._event_url(calendar_id, event_id) + '?sendUpdates=none')
                 left += 1 if at_google(event_id) else 0
+        try:                                                                            # and any left by an earlier run (marked with the header)
+            for m in adapter._get(credential, 'https://gmail.googleapis.com/gmail/v1/users/me/messages', [('q', f'in:sent newer_than:3d subject:"{TITLE}"'), ('maxResults', '20')]).get('messages') or []:
+                raw = adapter._get(credential, f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{m["id"]}', [('format', 'metadata'), ('metadataHeaders', 'X-Lumina-Draft')])
+                if any(h.get('name', '').lower() == 'x-lumina-draft' for h in (raw.get('payload') or {}).get('headers') or []) and 'TRASH' not in (raw.get('labelIds') or []):
+                    SENT_THREADS.add(m['threadId'])
+        except Exception:
+            pass
         for thread in SENT_THREADS:                                                     # the messages it sent to itself go to the bin (Gmail empties it after 30 days)
             try:
                 adapter._post(credential, f'https://gmail.googleapis.com/gmail/v1/users/me/threads/{thread}/trash')

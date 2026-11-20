@@ -81,7 +81,7 @@ class FakeGoogle:
             parsed = email.message_from_bytes(base64.urlsafe_b64decode(body['raw'] + '=='), policy=email_policy.default)
             self.sent_count = getattr(self, 'sent_count', 0) + 1
             mid = f'sent{self.sent_count:04d}'
-            heads = [{'name': k, 'value': str(v)} for k, v in parsed.items()]
+            heads = [{'name': k, 'value': f'<fake-{mid}@mail.gmail.test>' if k.lower() == 'message-id' else str(v)} for k, v in parsed.items()]   # Gmail puts its own Message-ID
             self.messages[mid] = {'id': mid, 'threadId': body.get('threadId') or mid, 'labelIds': ['SENT'], 'snippet': parsed.get_content()[:80],
                                   'internalDate': str(self.now * 1000), 'payload': {'mimeType': 'text/plain', 'headers': heads, 'parts': []}}
             self.outbox.append({'id': mid, 'thread': body.get('threadId'), 'headers': dict(parsed.items()), 'body': parsed.get_content()})
@@ -104,7 +104,7 @@ class FakeGoogle:
                 if verb == 'modify':
                     m['labelIds'] = [l for l in m['labelIds'] if l not in change.get('removeLabelIds', [])] + [l for l in change.get('addLabelIds', []) if l not in m['labelIds']]
                 elif verb == 'trash' and 'TRASH' not in m['labelIds']:
-                    m['labelIds'].append('TRASH')
+                    m['labelIds'] = [l for l in m['labelIds'] if l != 'INBOX'] + ['TRASH']          # as Gmail does: the bin takes the Inbox away, untrash does not give it back
                 elif verb == 'untrash':
                     m['labelIds'] = [l for l in m['labelIds'] if l != 'TRASH']
             self.modified.append((verb, tid))

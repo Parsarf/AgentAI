@@ -1,8 +1,9 @@
 """Sending and organizing Gmail through the action pipeline (roadmap Phase 6, #66, #67, #D6). Nothing here is called by a model: an approved action (the customer's own
 press, or their approval of exactly what the assistant prepared) is executed by the action runner (actions.py), once.
 
-Sending (#66). Only a Lumina draft is sent, at most once. Its message carries a Message-ID made from the draft (and the same value in an `X-Lumina-Draft` header), so before
-anything is sent, and whenever an answer was lost, Sent is searched for it: a send that already happened is found, never repeated. A sent message cannot be taken back;
+Sending (#66). Only a Lumina draft is sent, at most once. Its message carries a marker made from the draft in an `X-Lumina-Draft` header (and as its Message-ID, which
+Gmail replaces with its own: proven live on 2026-11-20, so the header is what counts). Before anything is sent, and whenever an answer was lost, recent sent mail with the
+draft's subject is read for that header: a send that already happened is found, never repeated. A sent message cannot be taken back;
 the registered compensation is a correction to the same people, prepared and approved like any other change.
 
 Organizing (#67). Labels, archive, star, read or unread, and the bin (never a permanent deletion), on up to 100 conversations at once. What each conversation looked like
@@ -29,6 +30,8 @@ MAX_THREADS = 100                      # conversations one organizing change may
 ADDRESS = re.compile(r'[^@\s<>",;]{1,64}@[^@\s<>",;]{1,255}')
 WORDS = {'inbox': 'INBOX', 'starred': 'STARRED', 'unread': 'UNREAD'}
 LABEL = re.compile(r'label:[A-Za-z0-9_\-]{1,200}')
+# What taking a conversation out of the bin puts back exactly as it was before it went in (Gmail's untrash does not bring back the Inbox): system labels and the customer's own.
+RESTORABLE = re.compile(r'INBOX|STARRED|UNREAD|IMPORTANT|Label_[A-Za-z0-9_\-]{1,190}')
 WEEK = 7 * 86400
 
 WRITE_KINDS = (
@@ -102,9 +105,13 @@ def check(kind, payload):
         return
     if kind in ('mail.trash', 'mail.untrash'):
         threads = payload.get('threads')
-        if set(payload) - {'threads'} or not isinstance(threads, list) or not 1 <= len(threads) <= MAX_THREADS \
+        if set(payload) - {'threads', 'restore'} or not isinstance(threads, list) or not 1 <= len(threads) <= MAX_THREADS \
                 or any(not isinstance(t, str) or not 1 <= len(t) <= 300 for t in threads) or len(set(threads)) != len(threads):
             raise ValueError(f'the bin takes 1 to {MAX_THREADS} conversations at once')
+        restore = payload.get('restore', {})
+        if not isinstance(restore, dict) or kind != 'mail.untrash' and restore or any(t not in threads or not isinstance(v, list) or len(v) > 40
+                                                                                      or any(not isinstance(l, str) or not RESTORABLE.fullmatch(l) for l in v) for t, v in restore.items()):
+            raise ValueError('invalid request for this kind of change')
         return
     raise ValueError('invalid request for this kind of change')
 
@@ -169,7 +176,11 @@ def undo_payload(kind, payload, before):
     if kind in ('mail.trash', 'mail.untrash'):
         inside = lambda t: 'TRASH' in (data.get(t, {}).get('labels') or [])
         threads = [t for t in payload['threads'] if inside(t) == (kind == 'mail.untrash')]     # only those this change moves
-        return {'threads': threads} if threads else None
+        if not threads:
+            return None
+        if kind == 'mail.trash':                                                                 # out of the bin again, with the labels each had
+            return {'threads': threads, 'restore': {t: [l for l in data.get(t, {}).get('labels') or [] if RESTORABLE.fullmatch(l)] for t in threads}}
+        return {'threads': threads}
     changes = []
     for c in payload['changes']:
         had = set(data.get(c['thread'], {}).get('labels') or [])
@@ -213,7 +224,8 @@ def verify(kind, payload, found):
 
 def _applied(kind, payload, threads) -> bool:
     if kind in ('mail.trash', 'mail.untrash'):
-        return all(('TRASH' in (threads.get(t, {}).get('labels') or [])) == (kind == 'mail.trash') for t in payload['threads'])
+        moved = all(('TRASH' in (threads.get(t, {}).get('labels') or [])) == (kind == 'mail.trash') for t in payload['threads'])
+        return moved and all(set(want) <= set(threads.get(t, {}).get('labels') or []) for t, want in (payload.get('restore') or {}).items())
     for c in payload['changes']:
         labels = set(threads.get(c['thread'], {}).get('labels') or [])
         if any(provider_label(w) not in labels for w in c.get('add', [])) or any(provider_label(w) in labels for w in c.get('remove', [])):
@@ -269,7 +281,8 @@ class MailWrites:
         found = self._get(credential, f'{GMAIL}/messages', [('q', f'rfc822msgid:{mark}'), ('includeSpamTrash', 'true'), ('maxResults', '5')]).get('messages') or []
         candidates = [m['id'] for m in found if m.get('id')]
         if not candidates:
-            query = 'in:sent newer_than:7d' + (f' subject:"{subject[:80]}"' if subject.strip() and '"' not in subject else '')
+            words = re.sub(r'["\\\\]', ' ', subject or '').strip()[:80]           # inside a quoted phrase only a quote or a backslash would end or break it
+            query = 'in:sent newer_than:7d' + (f' subject:"{words}"' if words else '')
             candidates = [m['id'] for m in (self._get(credential, f'{GMAIL}/messages', [('q', query), ('maxResults', '20')]).get('messages') or []) if m.get('id')]
         for mid in candidates[:20]:
             raw = self._get(credential, f'{GMAIL}/messages/{quote(mid, safe="")}', [('format', 'metadata'), ('metadataHeaders', 'X-Lumina-Draft'), ('metadataHeaders', 'Message-ID'),
@@ -335,6 +348,10 @@ class MailWrites:
             verb = 'trash' if kind == 'mail.trash' else 'untrash'
             for t in payload['threads']:
                 self._post(credential, f'{GMAIL}/threads/{quote(t, safe="")}/{verb}')
+            for t, want in (payload.get('restore') or {}).items():
+                missing = sorted(set(want) - set((self._thread_state(credential, t) or {}).get('labels') or []))
+                if missing:
+                    self._post(credential, f'{GMAIL}/threads/{quote(t, safe="")}/modify', {'addLabelIds': missing, 'removeLabelIds': []})
             return {'receipt': f'gmail-threads-{len(payload["threads"])}-{verb}', 'record': record('threads', ','.join(sorted(payload['threads'])), container=('mail', 'all'))}
         raise ProviderError(400, 'invalid')
 
