@@ -106,6 +106,8 @@
    "cdn.jsdelivr.net",
    "getlumina.pro",
    "gmail.googleapis.com",
+   "graph.microsoft.com",
+   "login.microsoftonline.com",
    "mail.google.com",
    "mcp.asana.com",
    "mcp.vercel.com",
@@ -245,6 +247,18 @@
    "why": "Mail and Calendar: the calendar list, events and changes, free/busy times and the signed-in address; calendar events the customer creates, cancels or answers (only with the calendar change permission); also the switched-off connectors (Drive)",
    "customer_data": true,
    "in_policy": "Google"
+  },
+  "graph.microsoft.com": {
+   "who": "Microsoft",
+   "why": "Microsoft (Outlook mail and calendars, #D8): NOT configured on the live server (no Entra app yet, 2026-11-20). Its sign-in appears only when AGENTAI_MICROSOFT_CLIENT_ID and the secret file are set; the policy names Microsoft (owner approves) before that.",
+   "customer_data": false,
+   "in_policy": null
+  },
+  "login.microsoftonline.com": {
+   "who": "Microsoft",
+   "why": "Microsoft sign-in for Outlook. Microsoft (Outlook mail and calendars, #D8): NOT configured on the live server (no Entra app yet, 2026-11-20). Its sign-in appears only when AGENTAI_MICROSOFT_CLIENT_ID and the secret file are set; the policy names Microsoft (owner approves) before that.",
+   "customer_data": false,
+   "in_policy": null
   }
  },
  "recipients_not_visible_in_code": {
@@ -263,7 +277,8 @@
   "features_off_so_policy_is_silent_on_them": [
    "telegram_linking",
    "google_connectors",
-   "paid_billing"
+   "paid_billing",
+   "microsoft_mail_calendar"
   ],
   "model_providers": [
    "anthropic"
@@ -480,6 +495,11 @@
    "date": "2026-11-20",
    "by": "Claude Code, roadmap Phase 6, approved by the owner on 2026-11-20 (\"Approve and publish\")",
    "note": "Sending (gmail.send) and organizing (gmail.modify), each asked separately on first use; sent only on the customer's press or their approval of exactly what the assistant prepared; first-time, large-audience and outside-organization notes before Send; Undo send (10 s default); at most 50 people a message and 30 messages an hour (lower by customer or organization); never a permanent deletion (bin furthest); record of each change incl. a sent message's recipients and text kept 180 days (connector_records); a sent draft removed 30 days after sending (retention rule sent_drafts); meeting times with attendee addresses kept 30 days (meeting_proposals); calendar feeds: address encrypted in custody, copy of events until removed, the feed host receives only our request; event changes and series scope; mail settings. Published together with switching these kinds on (HubCaps.proving emptied, MEETINGS_LIVE, FEEDS_LIVE), all proven live 2026-11-20 (deploy/phase6_live.py, 17 of 17)."
+  },
+  {
+   "date": "2026-11-20",
+   "by": "Claude Code, roadmap Phase 6 (#D8)",
+   "note": "Outlook adapter built (microsoft_hub.py, microsoft_writes.py); hosts graph.microsoft.com and login.microsoftonline.com recorded as not configured on the live server. Before AGENTAI_MICROSOFT_CLIENT_ID is set: add Microsoft to the policy as a source and recipient (as Google), owner approves, then customer_data true and in_policy Microsoft here."
   }
  ],
  "assistant_recipients": {

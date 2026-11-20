@@ -191,6 +191,16 @@ A change the customer makes with their own hand (`ActionService.direct`, routes 
 kind through the same pipeline; their press is the approval and the screen is recorded (`actions.direct_screen`). A change the assistant prepared (`lumina_calendar_create`,
 `lumina_calendar_cancel`) is never recorded as direct, whatever screen approves it.
 
+### Microsoft (`microsoft_hub.py`, `microsoft_writes.py`, #D8)
+
+Outlook mail and calendars through Microsoft Graph on the same neutral model: Microsoft's common sign-in (personal and work accounts; an organization that lets only its
+administrator allow apps gets that sentence, from `AADSTS65001`/`consent_required`), folders mapped to the common set by their well-known names with Outlook categories as
+labels (`labels='folders'`), mail by delta links per folder, calendars by `calendarView` delta (occurrences already expanded, series masters left out). The same kinds of
+change by the same names; Graph's differences: a private extended property holds the change's key (looked for before a send or a create and after a lost answer), Outlook
+always tells invited people (a change asking otherwise is refused), organizing records each message's folder, flag, read state and categories for a one-step undo, and a
+cancelled occurrence cannot be brought back (`event.cancel_one` has no undo, and says why). Every capability is in `proving` until `deploy/phase6_microsoft_live.py` passes
+on a real account. Sign-in appears only when `AGENTAI_MICROSOFT_CLIENT_ID` and the secret file are configured.
+
 ### Calendar feeds by address (`ics_feed.py`, #D9)
 
 A read-only provider with no sign-in: the customer pastes an ICS address (`POST /v1/hub/feeds`). It is read once to check it is a calendar, then kept in custody like a token

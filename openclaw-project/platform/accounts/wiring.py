@@ -105,7 +105,25 @@ def sign_in_providers():
                                     'grants': tuple(g.name for g in google_hub.GRANTS),
                                     'exchange': google_hub.exchanger(cid, secret), 'refresh': google_hub.refresher(cid, secret),
                                     'needs_any': (google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE)}
+    secret = _microsoft_secret()
+    if settings.MICROSOFT_CLIENT_ID and secret:
+        from agentai_platform import microsoft_hub
+        mid = settings.MICROSOFT_CLIENT_ID
+        out[microsoft_hub.PROVIDER] = {'label': microsoft_hub.DECLARATION.label, 'register': microsoft_hub.register,
+                                       'address': lambda redirect, state, challenge, hint=None, add=(): microsoft_hub.authorize_url(mid, redirect, state, challenge, hint=hint, add=add),
+                                       'grants': tuple(g.name for g in microsoft_hub.GRANTS),
+                                       'exchange': microsoft_hub.exchanger(mid, secret), 'refresh': microsoft_hub.refresher(mid, secret),
+                                       'needs_any': (microsoft_hub.MAIL_SCOPE, microsoft_hub.CALENDAR_SCOPE)}
     return out
+
+
+def _microsoft_secret() -> str:
+    """The Entra app's client secret, from the file the owner put on the server (AGENTAI_MICROSOFT_CLIENT_SECRET_FILE). Empty when there is none."""
+    path = getattr(settings, 'MICROSOFT_CLIENT_SECRET_FILE', '')
+    try:
+        return open(path).read().strip() if path else ''
+    except OSError:
+        return ''
 
 
 def connector_custody(db=None):
