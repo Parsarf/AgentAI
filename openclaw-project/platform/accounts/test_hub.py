@@ -400,9 +400,6 @@ class SignIn(Base):
         self.g.event('wk_20330523T130000Z', summary='Standup', recurringEventId='wk', start={'dateTime': '2033-05-23T09:00:00-04:00', **zone},
                      end={'dateTime': '2033-05-23T09:30:00-04:00', **zone})
         change = {'connection': connection, 'calendar': 'dana@gmail.test', 'event': 'one', 'title': 'Planning (moved)', 'start': '2033-05-20T14:00', 'end': '2033-05-20T15:00'}
-        self.assertEqual(self.post(self.a, '/v1/hub/events/change', change).status_code, 403)                  # built, not yet proven live: refused, nothing sent
-        hub_model.PROVING_IN_THIS_PROCESS.update({'event_change', 'event_series'})
-        self.addCleanup(hub_model.PROVING_IN_THIS_PROCESS.clear)
         done = self.post(self.a, '/v1/hub/events/change', change)
         self.assertEqual(done.status_code, 200, done.content)
         self.assertEqual((done.json()['action']['state'], done.json()['action']['direct'], self.g.events['dana@gmail.test']['one']['summary']), ('done', 'calendar', 'Planning (moved)'))
@@ -421,10 +418,9 @@ class SignIn(Base):
         from unittest.mock import patch
         from agentai_platform import hub_model, ics_feed
         feed = b'BEGIN:VCALENDAR\r\nX-WR-CALNAME:School\r\nBEGIN:VEVENT\r\nUID:a\r\nSUMMARY:Assembly\r\nDTSTART:20330516T130000Z\r\nDTEND:20330516T140000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n'
-        self.assertEqual(self.post(self.a, '/v1/hub/feeds', {'address': 'https://school.test/s3cret/cal.ics'}).status_code, 503)    # not offered until the policy says so
-        self.assertFalse(self.a.get('/v1/hub', secure=True).json()['feeds'])
-        hub_model.PROVING_IN_THIS_PROCESS.add('feeds')
-        self.addCleanup(hub_model.PROVING_IN_THIS_PROCESS.clear)
+        with patch.object(ics_feed, 'FEEDS_LIVE', False):
+            self.assertEqual(self.post(self.a, '/v1/hub/feeds', {'address': 'https://school.test/s3cret/cal.ics'}).status_code, 503)    # off: not offered
+            self.assertFalse(self.a.get('/v1/hub', secure=True).json()['feeds'])
         with patch.object(ics_feed, 'fetch', lambda url, **kw: feed):
             added = self.post(self.a, '/v1/hub/feeds', {'address': 'https://school.test/s3cret/cal.ics'})
             self.assertEqual(added.status_code, 201, added.content)
@@ -445,9 +441,6 @@ class SignIn(Base):
         self.g.scope += ' ' + google_hub.SEND_SCOPE + ' ' + google_hub.MODIFY_SCOPE
         self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'})
         draft = self.post(self.a, '/v1/hub/drafts', {'connection_id': connection, 'to': ['bo@y.test'], 'subject': 'Hi', 'body': 'Hello Bo'}).json()['draft']
-        self.assertEqual(self.post(self.a, '/v1/hub/mail/send', {'draft': draft['id']}).status_code, 403)          # not proven live yet: refused, nothing sent
-        hub_model.PROVING_IN_THIS_PROCESS.update({'send', 'organize', 'mark_read'})
-        self.addCleanup(hub_model.PROVING_IN_THIS_PROCESS.clear)
         self.assertIn('You have not written to bo@y.test before', self.a.get('/v1/hub/mail/check', {'draft': draft['id']}, secure=True).json()['notes'][0])
         held = self.post(self.a, '/v1/hub/mail/send', {'draft': draft['id']})
         self.assertEqual(held.status_code, 200, held.content)

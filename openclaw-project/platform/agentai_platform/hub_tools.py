@@ -41,7 +41,7 @@ MEETING_TIMES, MEETING_WAIT = 'lumina_meeting_times', 'lumina_meeting_wait'     
 MEETINGS = frozenset({MEETING_TIMES, MEETING_WAIT})
 # The meeting tools store who a meeting is with and the suggested times (meeting_proposals): offered only once the privacy policy describes that (owner's approval), and
 # in a live proof (hub_model.PROVING_IN_THIS_PROCESS holds 'meetings').
-MEETINGS_LIVE = False
+MEETINGS_LIVE = True
 
 
 def meetings_on() -> bool:

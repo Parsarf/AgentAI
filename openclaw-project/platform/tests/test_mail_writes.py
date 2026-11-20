@@ -35,9 +35,10 @@ class MailBase(GoogleBase):
 
 class MailWrites(MailBase):
 
-    def test_off_until_proven_and_refused_without_the_permission(self):
+    def test_refused_without_the_permission(self):
         caps = next(a for a in self.hub.accounts(self.a) if a['id'] == self.connection)['capabilities']
-        self.assertEqual((caps['send'], caps['organize'], caps['mark_read']), (False, False, False))
+        self.assertEqual((caps['send'], caps['organize'], caps['mark_read']), (False, False, False))           # signed in to read: nothing until the customer allows it
+        self.assertEqual((caps['missing']['send'], caps['missing']['organize']), ('send', 'organize'))
         connection, payload = self.hub.send_payload(self.a, self.draft()['id'])
         with self.assertRaises(ConnectorFault) as refused:
             self.actions.propose(self.a, connection, 'mail.send', payload)

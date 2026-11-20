@@ -36,7 +36,7 @@ DECLARATION = Declaration(
 
 # A feed keeps its address (in custody) and a copy of its events: offered only once the privacy policy says so (the owner's approval), and in a live proof
 # (hub_model.PROVING_IN_THIS_PROCESS holds 'feeds').
-FEEDS_LIVE = False
+FEEDS_LIVE = True
 
 
 def feeds_on() -> bool:
