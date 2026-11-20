@@ -19,6 +19,13 @@ type View = 'day' | 'week' | 'month' | 'agenda';
 const VIEWS: { id: View; label: string }[] = [{ id: 'day', label: 'Day' }, { id: 'week', label: 'Week' }, { id: 'month', label: 'Month' }, { id: 'agenda', label: 'Agenda' }];
 const RESPONSE: Record<string, string> = { accepted: 'Going', declined: 'Not going', tentative: 'Maybe', needs_action: 'Not answered' };
 const ACCESS: Record<string, string> = { busy: 'Shows only when you are busy', read: 'Read only', write: 'Read only here', owner: 'Read only here' };
+/** What the customer may do with a calendar here (Phase 6): change it (changes are on and the account holds the permission), allow changes first, or only read it. */
+const accessWords = (c: HubCalendar, account: HubAccount | undefined, writes: boolean) => {
+  const theirs = writes && (c.access === 'owner' || c.access === 'write');
+  if (theirs && account?.capabilities.event_write) return 'You can change this calendar';
+  if (theirs && account?.capabilities.missing?.event_write) return 'Read only until you allow changes';
+  return ACCESS[c.access];
+};
 const HOURS = Array.from({ length: 23 }, (_, i) => i + 1);
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
@@ -282,7 +289,7 @@ export default function CalendarPage() {
         {mine.map(c => { const k = c.connection_id + c.id; return (
           <div key={k} className={`cal-${c.colour}`}>
             <label className="hub-calendar-row"><input type="checkbox" checked={c.selected} onChange={e => setCalendar(c, { selected: e.target.checked })} />
-              <span title={`${c.name} · ${ACCESS[c.access]}`}>{c.name}</span>
+              <span title={`${c.name} · ${accessWords(c, a, writes)}`}>{c.name}</span>
               <button type="button" className="hub-swatch" aria-label={`Colour of ${c.name}`} aria-expanded={colouring === k} onClick={e => { e.preventDefault(); setColouring(colouring === k ? null : k); }} /></label>
             {colouring === k && <div className="hub-swatches" role="group" aria-label={`Choose a colour for ${c.name}`}>{(info?.colours ?? []).map(colour => (
               <button key={colour} type="button" className={`hub-swatch cal-${colour}`} aria-label={colour} aria-pressed={c.colour === colour} onClick={() => { setColouring(null); void setCalendar(c, { colour }); }} />))}</div>}
