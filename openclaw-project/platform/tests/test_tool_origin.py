@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import threading
 import time
@@ -144,4 +145,38 @@ class McpSetupOriginChecks(unittest.TestCase):
                 path=directory/(nonce+'.json');path.write_text(json.dumps(proof));path.chmod(0o600)
                 self.assertEqual(inspect_origin(tmp,name,args,nonce)['status'],'verified')
                 self.assertNotEqual(inspect_origin(tmp,name,args,nonce)['status'],'verified')
-        self.assertFalse(is_tool_name('lumina_mcp_setup_forged'))
+        self.assertFalse(is_tool_name('lumina_mcp_setup forged'))
+
+
+class EveryRelayToolCanBeProven(unittest.TestCase):
+    """The relay refuses a tool call it cannot prove came from the runtime's own hook. The bridge's name check and the cell plugin's name pattern must therefore cover every
+    tool the relay serves. Until 2026-11-19 both held a fixed list that fell behind: the 28 mail, calendar, document, commitment, memory-correction and connected-service
+    tools were refused for every real cell ("does not belong to an admitted live task")."""
+
+    def served(self):
+        from agentai_platform import connector_tools, file_tools, hub_tools, knowledge_tools, location, longterm_memory, show_tool, tool_relay
+        from agentai_platform.mcp_connections import relay as remote
+        names = set(tool_relay.TOOLS) | {tool_relay.PROGRESS_NAME, location.NAME, show_tool.NAME}
+        names |= set(hub_tools.HubTools.names) | set(connector_tools.ConnectorTools.names) | set(file_tools.FileTools.names) | set(longterm_memory.MemoryTools.names)
+        names |= set(knowledge_tools.KNOWLEDGE_NAMES) | set(knowledge_tools.COMMITMENT_NAMES) | set(knowledge_tools.DASHBOARD_NAMES)
+        names |= {s['name'] for s in remote.GENERIC} | {'lumina_mcp_' + 'a' * 32 + '_' + 'b' * 12}
+        return names
+
+    def test_the_bridge_accepts_every_tool_the_relay_serves(self):
+        from agentai_platform.lifecycle.tool_origin import is_tool_name
+        names = self.served()
+        self.assertGreaterEqual(len(names), 40)          # 42 on 2026-11-19; a floor so an empty collection cannot pass
+        self.assertEqual(sorted(n for n in names if not is_tool_name(n)), [])
+
+    def test_the_plugin_stamps_every_tool_the_relay_serves_and_nothing_else(self):
+        source = (Path(__file__).resolve().parents[1] / 'agentai_platform/lifecycle/tool_origin_plugin/index.mjs').read_text()
+        pattern = re.compile(re.search(r'const NAME = /(.+)/;', source).group(1))
+        self.assertEqual(sorted(n for n in self.served() if not pattern.fullmatch('lumina__' + n)), [])
+        for other in ('web_fetch', 'exec', 'lumina_browser', 'other__lumina_browser', 'lumina__Lumina_x', 'lumina__lumina-x', 'lumina__lumina_' + 'x' * 90):
+            self.assertIsNone(pattern.fullmatch(other), other)
+        self.assertNotIn('matcher:', source)          # OpenClaw's matcher takes exact names only: a list there would fall behind again
+
+    def test_malformed_names_are_refused(self):
+        from agentai_platform.lifecycle.tool_origin import is_tool_name
+        for name in ('', 'browser', 'lumina_', 'lumina_Mail', 'lumina_mail-search', 'lumina__x', 'lumina_' + 'x' * 90, None, 7):
+            self.assertFalse(is_tool_name(name), name)

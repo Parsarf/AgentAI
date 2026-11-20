@@ -10,7 +10,7 @@ function setup(t) {
   const old = process.env.OPENCLAW_STATE_DIR;
   process.env.OPENCLAW_STATE_DIR = root;
   const hooks = {};
-  plugin.register({ on(name, fn) { hooks[name] = fn; }, logger: { warn() {} } });
+  plugin.register({ on(name, fn, options) { hooks[name] = fn; hooks[name + ':options'] = options; }, logger: { warn() {} } });
   t.after(() => { if (old === undefined) delete process.env.OPENCLAW_STATE_DIR; else process.env.OPENCLAW_STATE_DIR = old; fs.rmSync(root, { recursive: true }); });
   return { hooks, directory: path.join(root, 'tool-origins') };
 }
@@ -61,7 +61,7 @@ test('remote discovery, wrapper and namespaced tools receive the same one-use pr
     hooks.after_tool_call(event, ctx);
     assert.equal(hooks.before_tool_call(event, {}).block, true);
   }
-  assert.equal(hooks.before_tool_call({ toolName: 'lumina__lumina_mcp_forged', params: {} }, {}), undefined);
+  assert.equal(hooks.before_tool_call({ toolName: 'lumina__lumina_mcp forged', params: {} }, {}), undefined);      // not a tool name at all; which well-formed names exist is the relay's decision
 });
 
 test('expired claim markers are pruned, fresh ones kept, and markers never count toward capacity', t => {
@@ -80,4 +80,23 @@ test('expired claim markers are pruned, fresh ones kept, and markers never count
   assert.equal(fs.existsSync(old), false);
   assert.equal(fs.existsSync(fresh), true);
   assert.equal(fs.existsSync(other), true);
+});
+
+test('every tool of the relay gets a proof, with no exact-name matcher to fall behind', t => {
+  // The mail, calendar, document, commitment and connected-service tools had no proof until 2026-11-19: the relay refused every one of them for real cells.
+  const { hooks, directory } = setup(t);
+  assert.equal(hooks['before_tool_call:options'].matcher, undefined);
+  assert.equal((hooks['after_tool_call:options'] || {}).matcher, undefined);
+  for (const name of ['lumina_mail_search', 'lumina_calendar_events', 'lumina_knowledge_search', 'lumina_commitment_record', 'lumina_meeting_brief', 'lumina_mail_draft',
+                      'lumina_connector_propose', 'lumina_ask_customer', 'lumina_memory_correct', 'lumina_browser']) {
+    const event = { toolName: 'lumina__' + name, params: { query: 'fixture' } };
+    const result = hooks.before_tool_call(event, ctx);
+    const file = path.join(directory, result.params._lumina_origin + '.json');
+    assert.equal(JSON.parse(fs.readFileSync(file)).name, name);
+    hooks.after_tool_call(event, ctx);
+    assert.equal(fs.existsSync(file), false);
+  }
+  for (const other of ['web_fetch', 'exec', 'lumina_mail_search', 'other__lumina_mail_search', 'lumina__Lumina_mail', 'lumina__lumina-mail']) {
+    assert.equal(hooks.before_tool_call({ toolName: other, params: {} }, ctx), undefined, other);
+  }
 });
