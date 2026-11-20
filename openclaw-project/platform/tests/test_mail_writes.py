@@ -137,10 +137,11 @@ class MailWrites(MailBase):
         self.actions.undo_direct(self.a, done['id'], screen='inbox')
         self.assertEqual(('STARRED' in self.labels(starred), 'STARRED' in self.labels(plain)), (True, False))      # it was starred before: it stays starred
         kind, payload = self.hub.organize_payload(self.a, self.connection, [plain], 'trash')
+        had = self.labels(plain)
         binned = self.actions.direct(self.a, self.connection, kind, payload, screen='inbox')
         self.assertIn('TRASH', self.labels(plain))
-        self.actions.undo_direct(self.a, binned['id'], screen='inbox')
-        self.assertNotIn('TRASH', self.labels(plain))
+        back = self.actions.undo_direct(self.a, binned['id'], screen='inbox')
+        self.assertEqual((back['state'], back['verified'], self.labels(plain)), ('done', True, had))           # back in the Inbox, exactly as it was
         with self.assertRaises(Exception):                                                       # only conversations of the copy can be touched
             self.hub.organize_payload(self.a, self.connection, ['not-in-the-copy'], 'archive')
 
