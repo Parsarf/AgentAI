@@ -53,11 +53,16 @@ class LifecycleWorker:
                     UNION ALL SELECT strftime('%s',max(created_at)) FROM events WHERE account_id=?
                     UNION ALL SELECT strftime('%s',max(created_at)) FROM operations WHERE account_id=?)""", (a, a, a)).fetchone()[0]
                 busy_op = con.execute("SELECT 1 FROM operations WHERE account_id=? AND state IN ('pending','running','uncertain')", (a,)).fetchone()
+                # Chat requests live in the request queue, not in `tasks`: one that is waiting, starting, running or uncertain keeps the cell up. Without this a cell was
+                # stopped under a starting request (2026-11-20: a cell restarted for its older tool hook right as the deploy's live acceptance sent one).
+                from agentai_platform import request_states
+                requests = con.execute(f"SELECT count(*) FROM customer_requests WHERE account_id=? AND state IN {request_states.sql_list(request_states.ACTIVE)}",
+                                       (a,)).fetchone()[0]
                 # The browser a job uses can be the cell's own: while a browser job is live, or the customer still has the wheel in its hand-off window, the cell stays up under them.
                 now = self.clock()
                 browsing = con.execute("SELECT count(*) FROM browse_runs WHERE account_id=? AND status IN ('queued','running','handoff','paused','asking') "
                                        "AND (coalesce(takeover_until,0)>? OR updated_epoch>?)", (a, now, now - BROWSER_QUIET_SECONDS)).fetchone()[0]
-                out.append((CellFacts(a, 'running', float(last or 0), count('running'), count('queued'),
+                out.append((CellFacts(a, 'running', float(last or 0), count('running') + requests, count('queued'),
                                       count('waiting_for_approval') + count('paused') + browsing, bool(busy_op)), cell['generation']))
         return out
 

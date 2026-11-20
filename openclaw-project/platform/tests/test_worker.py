@@ -107,6 +107,24 @@ class WorkerChecks(unittest.TestCase):
             con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) SELECT 'a','p','c',deployment_id FROM lifecycle_cells WHERE account_id='a'")
             con.execute("INSERT INTO tasks(account_id,project_id,conversation_id,id,state,budget_microusd) VALUES ('a','p','c','t','running',1)")
         self.assertEqual(self.worker(idle_after=10**12,stale=lambda a:True).tick()['drained'],0)
+    def test_a_chat_request_in_the_queue_keeps_a_stale_cell_up_until_it_is_done(self):
+        # Chat requests live in customer_requests, not tasks. On 2026-11-20 a cell restarted for its older tool hook was stopped under the deploy's live acceptance
+        # request as it started: a waiting, starting, running or uncertain request must keep the cell up.
+        self.start_cell()
+        with self.store.connect() as con:
+            con.execute("INSERT INTO projects(account_id,id,name) VALUES ('a','p','p')")
+            con.execute("INSERT INTO conversations(account_id,project_id,id,deployment_id) SELECT 'a','p','c',deployment_id FROM lifecycle_cells WHERE account_id='a'")
+            con.execute("""INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch)
+                VALUES ('a','r1','actor','p','c','k','h','m','waiting',1)""")
+        worker = self.worker(idle_after=10**12, stale=lambda account: True)
+        for state in ('waiting', 'starting', 'running', 'uncertain'):
+            with self.store.connect() as con:
+                con.execute("UPDATE customer_requests SET state=? WHERE id='r1'", (state,))
+            self.assertEqual(worker.tick()['drained'], 0, state)
+        with self.store.connect() as con:
+            con.execute("UPDATE customer_requests SET state='completed' WHERE id='r1'")
+        self.assertEqual(worker.tick()['drained'], 1)
+
     def test_active_or_recent_work_prevents_sleep(self):
         self.start_cell()
         with self.store.connect() as con:

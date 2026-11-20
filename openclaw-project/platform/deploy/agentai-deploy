@@ -37,8 +37,8 @@ SUP = Path('/opt/agentai-supervisor')
 UI_PARENT = Path('/var/lib/agentai-platform')
 RELEASE_PY = 'deploy/release.py'
 UNITS = ['agentai-cell-bridge', 'agentai-browse', 'agentai-tool-relay', 'agentai-request-worker', 'agentai-lifecycle-worker']       # restarted after the trees switch (OPERATIONS.md: full release). The lifecycle worker is a
-# stateless loop over the database: an operation it was running is found uncertain and reconciled on its next tick. The supervisor itself (agentai-supervisor-native) is NOT restarted here: it holds the
-# control socket the cells' lifecycle depends on, so it picks up new code at its next restart (say so in PENDING_DEPLOY.md when a change needs it).
+# stateless loop over the database: an operation it was running is found uncertain and reconciled on its next tick. The supervisor itself (agentai-supervisor-native) is not in this list: it holds the
+# control socket the cells' lifecycle depends on, so it is restarted separately and only while no cell operation is in flight (restart_supervisor_when_idle).
 SELF = Path('/usr/local/sbin/agentai-deploy')
 MAX_BYTES = 400 * 1024 * 1024
 COMMAND = re.compile(r'^(deploy|deploy-dry|accept) ([0-9a-f]{40})$')
@@ -48,6 +48,35 @@ OPTIONAL_UNITS = ['agentai-hub-sync', 'agentai-render', 'agentai-knowledge']    
 APP_UNITS = ['agentai-platform-app', 'agentai-push']       # the services that run the app tree (restarted by a rollback)
 REQUIRED = ('accounts', 'agentai_platform', 'deploy', 'manage.py', 'migrations', 'requirements.lock')
 
+
+
+PLATFORM_DB = Path('/var/lib/agentai-platform/platform.sqlite3')
+
+
+def supervisor_idle(db=PLATFORM_DB) -> bool:
+    """No cell is being started, stopped, backed up or restored right now (no lifecycle operation pending, running or uncertain). Read only. Unreadable: not idle."""
+    import sqlite3
+    try:
+        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=5)
+        try:
+            return con.execute("SELECT 1 FROM operations WHERE state IN ('pending','running','uncertain') LIMIT 1").fetchone() is None
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return False
+
+
+def restart_supervisor_when_idle(idle=supervisor_idle, run=None) -> bool:
+    """agentai-supervisor-native starts every cell and sets it up: the tool hook, the configuration, the rules. It was never restarted by a deploy, so from 15 November
+    to 20 November 2026 every cell was set up by the code of 15 November and no cell-side change of roadmap Phases 2 to 6 reached a cell. It holds the control socket
+    the cells' lifecycle depends on, so it is restarted only while no cell operation is in flight (it brings the lifecycle worker back with it, which Requires it);
+    otherwise it is left as it is and the log says so. -> whether it was restarted."""
+    run = run or sh
+    if not idle():
+        say('the supervisor was NOT restarted: a cell operation is in flight. Run `systemctl restart agentai-supervisor-native` when it has finished, or the next deploy will')
+        return False
+    run(['systemctl', 'restart', 'agentai-supervisor-native'])
+    return True
 
 def say(message):
     print(message, flush=True)
@@ -328,6 +357,7 @@ def main(argv=None, stdin=None):
                 os.rename(public / 'scenes.new', public / 'scenes')
 
         # 4. restart what runs this code, and check it came back.
+        restart_supervisor_when_idle()                         # the cells' setup code (hook, configuration, rules) runs in the supervisor: it must run this release too
         sh(['systemctl', 'restart', *UNITS])
         sh(['systemctl', 'try-restart', *OPTIONAL_UNITS])      # only those that are running; one that is not installed is left alone and never fails a deploy
         time.sleep(3)

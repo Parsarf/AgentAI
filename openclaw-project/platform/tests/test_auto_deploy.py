@@ -119,6 +119,23 @@ class SelfInstall(unittest.TestCase):
         self.assertIn('agentai-lifecycle-worker', deploy.UNITS)
         self.assertNotIn('agentai-supervisor-native', deploy.UNITS)
 
+    def test_the_supervisor_runs_the_new_release_too_but_is_never_restarted_under_a_cell_operation(self):
+        # It sets up every cell (tool hook, configuration, rules). Never restarted by a deploy, it ran the code of 15 November until 2026-11-20.
+        ran = []
+        self.assertTrue(deploy.restart_supervisor_when_idle(idle=lambda: True, run=ran.append))
+        self.assertEqual(ran, [['systemctl', 'restart', 'agentai-supervisor-native']])
+        ran.clear()
+        self.assertFalse(deploy.restart_supervisor_when_idle(idle=lambda: False, run=ran.append))
+        self.assertEqual(ran, [])
+        import sqlite3, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / 'p.sqlite3'
+            con = sqlite3.connect(db); con.execute('CREATE TABLE operations (state TEXT)'); con.execute("INSERT INTO operations VALUES ('completed')"); con.commit()
+            self.assertTrue(deploy.supervisor_idle(db))
+            con.execute("INSERT INTO operations VALUES ('running')"); con.commit(); con.close()
+            self.assertFalse(deploy.supervisor_idle(db))
+            self.assertFalse(deploy.supervisor_idle(Path(tmp) / 'missing.sqlite3'))          # unreadable: not idle, so not restarted
+
 
 class Layout(unittest.TestCase):
     def test_the_required_paths_exist_in_the_repository(self):
