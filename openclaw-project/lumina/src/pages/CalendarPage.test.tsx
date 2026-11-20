@@ -220,3 +220,55 @@ describe('Calendar', () => {
     expect(asked('/v1/hub/events/respond').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'e1', response: 'declined' }]);
   });
 });
+
+describe('Calendar changes (Phase 6, #62, #D7)', () => {
+  const able = account({ capabilities: caps({ event_write: true, event_change: true, event_series: true }) });
+  const done = (id: string, kind: string) => ({ action: { id, kind, state: 'done', preview: { title: '', summary: '', destination: '', changes: [], can_undo: true }, verified: true, can_undo: true,
+    undo_until_epoch: null, direct: 'calendar', ended_words: '' } });
+  const mineDetail = (url: URL) => ({ event: { ...[...EVENTS, WEEKLY].find(e => e.id === url.searchParams.get('id'))!, organizer: { name: 'Me', address: 'me@first.test' },
+    attendees: [{ name: 'Me', address: 'me@first.test', response: 'accepted', self: true, optional: false }, { name: 'Ann', address: 'ann@x.test', response: 'tentative', self: false, optional: false }],
+    synced_epoch: NOW / 1000 - 300 } });
+  const WEEKLY = event({ id: 'r1_20260520T190000Z', series_id: 'r1', title: 'Weekly', start_epoch: at('2026-05-20T19:00:00Z'), end_epoch: at('2026-05-20T19:30:00Z'), place: '' });
+  const routes = (over: Routes = {}) => base({ '/v1/hub': overview({ accounts: [able, second], read_only: false }), '/v1/hub/events': { events: [...EVENTS, WEEKLY], complete: true },
+    '/v1/hub/event': mineDetail, 'POST /v1/hub/refresh': { requested: 1 }, 'POST /v1/hub/events/change': done('a1', 'event.update'), 'POST /v1/hub/events/cancel': done('a2', 'event.end_series'), ...over });
+
+  it('changes an event in the inspector, saying who is told, and sends only what changed', async () => {
+    server(routes()); show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Standup, 9:00 AM' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Change' }));
+    const form = screen.getByRole('form', { name: 'Change event' });
+    fireEvent.change(within(form).getByLabelText('Title'), { target: { value: 'Standup (new)' } });
+    expect(within(form).getByRole('status').textContent).toBe('1 person is told about the change.');
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await screen.findByText('"Standup (new)" was changed.');
+    expect(asked('/v1/hub/events/change').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'e1', title: 'Standup (new)', notify: true }]);
+  });
+
+  it('asks how much of a repeating series to cancel and sends the choice with the series', async () => {
+    server(routes()); show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Weekly, 3:00 PM' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel event' }));
+    const ask = screen.getByRole('alertdialog', { name: 'Cancel this event?' });
+    expect((within(ask).getByRole('button', { name: 'Cancel it' }) as HTMLButtonElement).disabled).toBe(true);        // never guessed
+    fireEvent.click(within(ask).getByLabelText('This and following events'));
+    fireEvent.click(within(ask).getByRole('button', { name: 'Cancel it' }));
+    await screen.findByText('"Weekly" was cancelled.');
+    expect(asked('/v1/hub/events/cancel').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'r1_20260520T190000Z', notify: true, scope: 'following', series: 'r1' }]);
+  });
+
+  it('moves an event by dragging it an hour later, but only after saying who is told', async () => {
+    if (!(window as any).PointerEvent) (window as any).PointerEvent = MouseEvent;
+    server(routes()); show();
+    const chip = await screen.findByRole('button', { name: 'Standup, 9:00 AM' });
+    fireEvent.pointerDown(chip, { button: 0, clientX: 10, clientY: 10 });
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 10, clientY: 54 }));
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 10, clientY: 54 }));
+    const ask = await screen.findByRole('alertdialog', { name: 'Move this event?' });
+    expect(ask.textContent).toContain('10:00 AM to 10:30 AM');
+    expect(ask.textContent).toContain('1 person is told.');
+    expect(asked('/v1/hub/events/change')).toEqual([]);                                                              // nothing is sent before the customer says so
+    fireEvent.click(within(ask).getByRole('button', { name: 'Move it' }));
+    await waitFor(() => expect(asked('/v1/hub/events/change').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', event: 'e1', start: '2026-05-20T10:00',
+      end: '2026-05-20T10:30', timezone: 'America/New_York', notify: true }]));
+  });
+});

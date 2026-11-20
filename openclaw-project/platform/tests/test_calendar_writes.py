@@ -251,3 +251,149 @@ class Availability(GoogleBase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+SERIES_ZONE = {'timeZone': 'America/New_York'}
+
+
+class SeriesChanges(GoogleBase):
+    """Changing an event and the parts of a repeating series (#62, #63): the customer chooses the scope, and nothing outside it changes; each has its own way back."""
+    def setUp(self):
+        super().setUp()
+        from agentai_platform import hub_model
+        self.actions = ActionService(self.store, self.connectors, self.client, clock=lambda: self.now)
+        self.connection, _ = self.sign_in()
+        self.run_sync()
+        started = self.connectors.start_link(self.a, 'google', self.redirect, upgrade=self.connection)
+        self.g.scope = SCOPES + ' ' + google_hub.EVENTS_SCOPE
+        self.connectors.finish_link(self.a, started['state'], 'good-code', self.redirect, self.exchange)
+        self.proving = hub_model.PROVING_IN_THIS_PROCESS
+        self.addCleanup(self.proving.clear)
+        me = {'email': 'dana@gmail.test', 'self': True, 'responseStatus': 'accepted'}
+        self.g.event('one', summary='Planning', start={'dateTime': '2033-05-20T10:00:00-04:00', **SERIES_ZONE}, end={'dateTime': '2033-05-20T11:00:00-04:00', **SERIES_ZONE},
+                     attendees=[me, {'email': 'bo@y.test', 'responseStatus': 'accepted'}], location='Room 1')
+        self.g.event('wk', summary='Standup', recurrence=['RRULE:FREQ=WEEKLY;COUNT=6'], start={'dateTime': '2033-05-16T09:00:00-04:00', **SERIES_ZONE},
+                     end={'dateTime': '2033-05-16T09:30:00-04:00', **SERIES_ZONE}, attendees=[me, {'email': 'bo@y.test'}])
+        for day in ('16', '23', '30'):
+            self.g.event(f'wk_203305{day}T130000Z', summary='Standup', recurringEventId='wk', start={'dateTime': f'2033-05-{day}T09:00:00-04:00', **SERIES_ZONE},
+                         end={'dateTime': f'2033-05-{day}T09:30:00-04:00', **SERIES_ZONE}, attendees=[me, {'email': 'bo@y.test'}])
+
+    def ev(self, eid):
+        return self.g.events['dana@gmail.test'][eid]
+
+    def do(self, kind, payload):
+        action = self.actions.propose(self.a, self.connection, kind, payload)
+        self.actions.approve(self.a, action['id'], action['payload_hash'])
+        return action, self.actions.execute('a', action['id'])
+
+    def undo(self, action):
+        back = self.actions.undo(self.a, action['id'])
+        self.actions.approve(self.a, back['id'], back['payload_hash'])
+        return back, self.actions.execute('a', back['id'])
+
+    def test_a_change_is_off_until_proven_then_one_event_changes_once_says_who_is_told_and_undoes(self):
+        caps = next(a for a in self.hub.accounts(self.a) if a['id'] == self.connection)['capabilities']
+        self.assertEqual((caps['event_write'], caps['event_change'], caps['event_series']), (True, False, False))   # built, not yet proven on the real provider
+        change = {'event': 'dana@gmail.test|one', 'title': 'Planning (moved)', 'start': '2033-05-20T14:00', 'end': '2033-05-20T15:00', 'timezone': 'America/New_York', 'notify': True}
+        with self.assertRaises(ConnectorFault) as refused:
+            self.actions.propose(self.a, self.connection, 'event.update', change)
+        self.assertEqual(refused.exception.kind, 'refused')
+        self.proving.update({'event_change', 'event_series'})
+        action = self.actions.propose(self.a, self.connection, 'event.update', change)
+        fields = {c['field']: c for c in action['preview']['changes']}
+        self.assertEqual((fields['title']['before'], fields['title']['after']), ('Planning', 'Planning (moved)'))
+        self.assertIn('10:00 to 11:00', fields['when']['before'])
+        self.assertIn('14:00 to 15:00', fields['when']['after'])
+        self.assertEqual(fields['invitations']['after'], '1 person is told about the change')
+        self.actions.approve(self.a, action['id'], action['payload_hash'])
+        self.assertEqual(self.actions.execute('a', action['id']), 'done')
+        self.assertEqual(self.actions.execute('a', action['id']), 'done')                       # running it again sends nothing
+        patches = [c for c in self.g.calls if c[0] == 'PATCH']
+        self.assertEqual(len(patches), 1)
+        self.assertEqual((self.ev('one')['summary'], self.ev('one')['start']['dateTime'][:16], self.ev('one')['location']), ('Planning (moved)', '2033-05-20T14:00', 'Room 1'))
+        self.assertEqual(self.actions.get(self.a, action['id'])['verified'], True)
+        self.assertEqual([a['email'] for a in self.ev('one')['attendees']], ['dana@gmail.test', 'bo@y.test'])          # people untouched
+        back, state = self.undo(action)
+        self.assertEqual(state, 'done')
+        self.assertEqual((self.ev('one')['summary'], self.ev('one')['start']['dateTime'][:16]), ('Planning', '2033-05-20T10:00'))
+        self.assertEqual(self.actions.get(self.a, back['id'])['verified'], True)
+
+    def test_a_change_made_elsewhere_after_it_was_read_stops_it(self):
+        self.proving.add('event_change')
+        action = self.actions.propose(self.a, self.connection, 'event.update', {'event': 'dana@gmail.test|one', 'title': 'Mine'})
+        self.ev('one').update(summary='Theirs', etag='"elsewhere"')                              # changed at Google after the preview
+        self.actions.approve(self.a, action['id'], action['payload_hash'])
+        self.assertEqual(self.actions.execute('a', action['id']), 'failed')
+        self.assertEqual(self.actions.get(self.a, action['id'])['ended_reason'], 'conflict')
+        self.assertEqual(self.ev('one')['summary'], 'Theirs')
+
+    def test_a_series_change_touches_only_the_chosen_scope(self):
+        self.proving.update({'event_change', 'event_series'})
+        # this occurrence only
+        one, state = self.do('event.update', {'event': 'dana@gmail.test|wk_20330523T130000Z', 'title': 'Standup (demo)', 'notify': False})
+        self.assertEqual(state, 'done')
+        self.assertEqual([self.ev(e)['summary'] for e in ('wk', 'wk_20330516T130000Z', 'wk_20330523T130000Z', 'wk_20330530T130000Z')],
+                         ['Standup', 'Standup', 'Standup (demo)', 'Standup'])
+        self.assertIn({'field': 'series', 'before': None, 'after': 'Only this occurrence'}, one['preview']['changes'])
+        # the whole series, moved one hour from one occurrence: the series itself moves the same way
+        whole, state = self.do('event.update', {'event': 'dana@gmail.test|wk', 'occurrence': 'dana@gmail.test|wk_20330523T130000Z', 'start': '2033-05-23T10:00',
+                                                 'end': '2033-05-23T10:30', 'timezone': 'America/New_York', 'notify': False})
+        self.assertEqual(state, 'done')
+        self.assertEqual((self.ev('wk')['start']['dateTime'][:16], self.ev('wk')['end']['dateTime'][:16]), ('2033-05-16T10:00', '2033-05-16T10:30'))
+        self.assertIn({'field': 'series', 'before': None, 'after': 'Every occurrence of the series'}, whole['preview']['changes'])
+        self.assertEqual(self.undo(whole)[1], 'done')
+        self.assertEqual(self.ev('wk')['start']['dateTime'][:16], '2033-05-16T09:00')
+
+    def test_this_and_later_occurrences_split_the_series_once_under_a_lost_answer_and_undo_puts_it_back(self):
+        self.proving.update({'event_change', 'event_series'})
+        action = self.actions.propose(self.a, self.connection, 'event.update_rest', {'event': 'dana@gmail.test|wk_20330530T130000Z', 'series': 'dana@gmail.test|wk',
+                                                                                          'title': 'Standup v2', 'notify': True})
+        self.assertIn({'field': 'series', 'before': None, 'after': 'This and every later occurrence; earlier ones stay as they are'}, action['preview']['changes'])
+        self.actions.approve(self.a, action['id'], action['payload_hash'])
+        self.g.lose_answer = True                                                              # the new series is made, the answer is lost
+        self.assertEqual(self.actions.execute('a', action['id']), 'uncertain')
+        self.assertIn(self.actions.reconcile('a', action['id']), ('done', 'approved'))
+        if self.actions.get(self.a, action['id'])['state'] == 'approved':
+            self.assertEqual(self.actions.execute('a', action['id']), 'done')                  # sent once more: the same id is answered by Google, no second series
+        key = self.rows('SELECT idempotency_key FROM actions WHERE id=?', (action['id'],))[0]['idempotency_key']
+        new = self.ev(event_id_for(key))
+        self.assertEqual((new['summary'], new['start']['dateTime'][:16], new['recurrence']), ('Standup v2', '2033-05-30T09:00', ['RRULE:FREQ=WEEKLY;COUNT=4']))
+        self.assertEqual(self.ev('wk')['recurrence'], ['RRULE:FREQ=WEEKLY;UNTIL=20330530T125959Z'])     # the original ends just before that occurrence
+        self.assertEqual(self.ev('wk')['summary'], 'Standup')
+        self.assertEqual(len([c for c in self.g.calls if c[0] == 'POST' and c[1].endswith('/events')]), 1)
+        self.assertEqual(self.undo(action)[1], 'done')
+        self.assertEqual((self.ev(event_id_for(key))['status'], self.ev('wk')['recurrence']), ('cancelled', ['RRULE:FREQ=WEEKLY;COUNT=6']))
+
+    def test_one_occurrence_or_the_rest_of_a_series_is_cancelled_and_put_back(self):
+        self.proving.update({'event_change', 'event_series'})
+        cancel, state = self.do('event.cancel_one', {'event': 'dana@gmail.test|wk_20330523T130000Z', 'notify': True})
+        self.assertEqual(state, 'done')
+        self.assertIn('1 person is told it is cancelled', json.dumps(cancel['preview']))
+        self.assertEqual([self.ev(e)['status'] for e in ('wk', 'wk_20330516T130000Z', 'wk_20330523T130000Z')], ['confirmed', 'confirmed', 'cancelled'])
+        self.assertEqual(self.undo(cancel)[1], 'done')
+        self.assertEqual(self.ev('wk_20330523T130000Z')['status'], 'confirmed')
+        ended, state = self.do('event.end_series', {'event': 'dana@gmail.test|wk_20330530T130000Z', 'series': 'dana@gmail.test|wk', 'notify': False})
+        self.assertEqual(state, 'done')
+        self.assertIn('from Mon 30 May 2033 on', ended['preview']['summary'])
+        self.assertEqual(self.ev('wk')['recurrence'], ['RRULE:FREQ=WEEKLY;UNTIL=20330530T125959Z'])
+        self.assertEqual(self.undo(ended)[1], 'done')
+        self.assertEqual(self.ev('wk')['recurrence'], ['RRULE:FREQ=WEEKLY;COUNT=6'])
+        whole = self.actions.propose(self.a, self.connection, 'event.delete', {'event': 'dana@gmail.test|wk', 'notify': False})
+        self.assertIn('All 6 occurrences of the series are cancelled', json.dumps(whole['preview']))
+
+    def test_a_series_part_names_an_occurrence_of_that_series(self):
+        self.proving.update({'event_change', 'event_series'})
+        for kind, payload in (('event.update_rest', {'event': 'dana@gmail.test|one', 'series': 'dana@gmail.test|wk', 'title': 'x'}),
+                              ('event.end_series', {'event': 'dana@gmail.test|wk_20330530T130000Z', 'series': 'dana@gmail.test|other'}),
+                              ('event.cancel_one', {'event': 'dana@gmail.test|one'}),
+                              ('event.update', {'event': 'dana@gmail.test|one'})):
+            with self.assertRaises((ValueError, ConnectorFault)):
+                self.actions.propose(self.a, self.connection, kind, payload)
+
+
+class KindNames(unittest.TestCase):
+    def test_every_declared_write_kind_fits_the_operation_record(self):
+        # connector_operations.kind holds at most 20 characters (a CHECK): a longer name failed every execution of that kind as "invalid" before anything was sent.
+        names = [k.name for k in google_hub.DECLARATION.write_kinds]
+        self.assertTrue(names)
+        self.assertEqual([n for n in names if not 1 <= len(n) <= 20], [])

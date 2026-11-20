@@ -50,7 +50,12 @@ class Grant:
     words: str                         # what the customer reads before being sent to the provider
 
 
-WRITE_CAPABILITIES = ('send', 'organize', 'mark_read', 'event_write', 'respond')
+WRITE_CAPABILITIES = ('send', 'organize', 'mark_read', 'event_write', 'respond', 'event_change', 'event_series')
+
+# Capabilities whose changes are being proven on the real provider right now, in THIS process only (deploy/phase6_live.py). A capability a provider lists in `proving` is
+# off for every customer until its live write cycle has passed and a release takes it out of `proving`: with the owner switch on for everyone, a new kind of change would
+# otherwise reach customers the moment its release deploys.
+PROVING_IN_THIS_PROCESS: set = set()
 
 
 @dataclass(frozen=True)
@@ -72,11 +77,15 @@ class HubCaps:
     mark_read: bool = False
     event_write: bool = False          # create, change, cancel
     respond: bool = False              # answer an invitation
+    event_change: bool = False         # change an event (time, title, place, notes, people)
+    event_series: bool = False         # change or cancel part of a repeating series (one occurrence, or this and later ones)
     grants: tuple = ()                 # Grant rows: the permissions behind the write capabilities
+    proving: tuple = ()                # capabilities built but not yet proven on the real provider: off for customers (PROVING_IN_THIS_PROCESS)
 
     def public(self) -> dict:
         out = asdict(self)
         out['grants'] = [{'name': g.name, 'capabilities': list(g.capabilities), 'words': g.words} for g in self.grants]      # the provider's scope names stay on the server
+        out.pop('proving', None)
         return out
 
     def grant_for(self, capability):
@@ -86,10 +95,13 @@ class HubCaps:
         """What this connection can do now: a write capability counts only when the provider declares it AND the connection holds the permission behind it. A screen shows a
         control only where this says True; where the provider can but the permission is missing, `missing` names the grant to ask for (re-consent)."""
         held = set(scopes or ())
-        out = {k: v for k, v in self.public().items() if k != 'grants'}
+        out = {k: v for k, v in self.public().items() if k not in ('grants', 'proving')}
         missing = {}
         for capability in WRITE_CAPABILITIES:
             grant = self.grant_for(capability)
+            if out[capability] and capability in self.proving and capability not in PROVING_IN_THIS_PROCESS:
+                out[capability] = False                # not proven on the real provider yet: no control, and no change is accepted
+                continue
             if out[capability] and (grant is None or grant.scope not in held):
                 out[capability] = False
                 if grant is not None:

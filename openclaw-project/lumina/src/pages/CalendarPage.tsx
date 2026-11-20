@@ -10,8 +10,10 @@ import { usePulse } from '../components/hub/usePulse';
 import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
 import AllowChanges from '../components/hub/AllowChanges';
 import EventEditor from '../components/hub/EventEditor';
+import ChangeEvent from '../components/hub/ChangeEvent';
+import SeriesScope from '../components/hub/SeriesScope';
 import { addDays, addMonths, ago, browserZone, clock, dayKey, dayTitle, eventDays, eventKey, eventTime, failed, hub, layoutDay, minuteOfDay, personName, rangeTitle, startOfMonth, startOfWeek,
-  validZone, zonedEpoch, type HubAccount, type HubAction, type HubCalendar, type HubEvent, type Overview } from '../lib/hub';
+  validZone, zonedEpoch, localTime, type HubAccount, type HubAction, type HubCalendar, type HubEvent, type Overview, type Scope } from '../lib/hub';
 import { useData } from '../state/data';
 import '../styles/hub.css';
 
@@ -38,26 +40,45 @@ function range(view: View, anchor: string): { from: string; to: string; days: st
   return { from, to: days[days.length - 1], days };
 }
 
-function EventChip({ event, zone, current, onOpen, block, style }: { event: HubEvent; zone: string; current: boolean; onOpen(e: HubEvent): void; block?: boolean; style?: React.CSSProperties }) {
+type Press = (e: React.PointerEvent, event: HubEvent, resize: boolean) => void;
+function EventChip({ event, zone, current, onOpen, block, style, onPress, shift }: { event: HubEvent; zone: string; current: boolean; onOpen(e: HubEvent): void; block?: boolean;
+  style?: React.CSSProperties; onPress?: Press; shift?: { minutes: number; days: number; resize: boolean; width: number } }) {
   const when = event.all_day ? 'all day' : clock(event.start_epoch, zone);
+  const moved = shift ? (shift.resize ? { height: `calc(${style?.height} + var(--hour) * ${shift.minutes / 60})` }
+    : { transform: `translate(${shift.days * shift.width}px, calc(var(--hour) * ${shift.minutes / 60}))`, zIndex: 3 }) : {};
   return (
-    <button type="button" className={`hub-event cal-${event.colour}${block ? ' block' : ''}${event.my_response === 'declined' ? ' declined' : ''}${event.my_response === 'tentative' ? ' tentative' : ''}`}
-      style={style} aria-current={current ? 'true' : undefined} aria-label={`${titleOf(event)}, ${when}`} title={`${titleOf(event)} · ${when}`} onClick={() => onOpen(event)}>
+    <button type="button" className={`hub-event cal-${event.colour}${block ? ' block' : ''}${event.my_response === 'declined' ? ' declined' : ''}${event.my_response === 'tentative' ? ' tentative' : ''}${onPress ? ' movable' : ''}${shift ? ' moving' : ''}`}
+      style={{ ...style, ...moved }} aria-current={current ? 'true' : undefined} aria-label={`${titleOf(event)}, ${when}`} title={`${titleOf(event)} · ${when}`} onClick={() => onOpen(event)}
+      onPointerDown={onPress ? e => onPress(e, event, false) : undefined}>
       <b>{titleOf(event)}</b>{!block && !event.all_day && <span>{clock(event.start_epoch, zone)}</span>}
+      {onPress && <span className="hub-resize" aria-hidden="true" onPointerDown={e => { e.stopPropagation(); onPress(e, event, true); }} />}
     </button>);
 }
 
 /** What the inspector shows for one event: when (in the customer's timezone, and the event's own when that differs), where, who and their answers, the notes, which account
- *  and calendar it is from, and how fresh it is. An event that is only visible as busy shows nothing else. Nothing here changes the event. */
-function Inspector({ event, zone, account, calendar, now, writes, onCancel, onRespond }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number;
-  writes: boolean; onCancel(e: HubEvent, notify: boolean): Promise<void>; onRespond(e: HubEvent, response: 'accepted' | 'tentative' | 'declined'): Promise<void> }) {
-  const [asking, setAsking] = useState(false); const [busy, setBusy] = useState(false);
-  // Cancelling (#63) is offered for an event the customer organizes, in a calendar this account may change, when changes are allowed for it. Others are told how many.
+ *  and calendar it is from, and how fresh it is. An event that is only visible as busy shows nothing else. With changes on (Phase 6): Change and Cancel for an event the
+ *  customer organizes, the answers for an invitation from someone else; a repeating event always asks how much of the series (#62). */
+function Inspector({ event, zone, account, calendar, now, writes, onCancel, onRespond, onChanged }: { event: HubEvent; zone: string; account?: HubAccount; calendar?: HubCalendar; now: number;
+  writes: boolean; onCancel(e: HubEvent, notify: boolean, scope?: Scope): Promise<void>; onRespond(e: HubEvent, response: 'accepted' | 'tentative' | 'declined', scope?: 'this' | 'all'): Promise<void>;
+  onChanged(action: HubAction, words: string): void }) {
+  const [asking, setAsking] = useState(false); const [busy, setBusy] = useState(false); const [editing, setEditing] = useState(false);
+  const [scope, setScope] = useState<Scope | null>(null); const [answerScope, setAnswerScope] = useState<Scope | null>(null);
+  useEffect(() => { setAsking(false); setEditing(false); setScope(null); setAnswerScope(null); }, [event.id]);
+  // An event the customer organizes, in a calendar this account may change, when changes are allowed for it. A repeating event needs the series permission too.
   const mine = !!account && (!event.organizer || event.organizer.address === account.identity || !!event.attendees?.find(a => a.self && a.address === event.organizer?.address));
-  const changeable = writes && !!account?.capabilities.event_write && (calendar?.access === 'owner' || calendar?.access === 'write') && !event.busy_only && !event.cancelled && !event.series_id && mine;
+  const writable = writes && (calendar?.access === 'owner' || calendar?.access === 'write') && !event.busy_only && !event.cancelled && mine;
+  const series = !!event.series_id; const seriesOk = !series || !!account?.capabilities.event_series;
+  const changeable = writable && !!account?.capabilities.event_write && seriesOk;
+  const editable = writable && !!account?.capabilities.event_change && seriesOk;
   const others = (event.attendees ?? []).filter(a => !a.self).length;
   // An invitation from someone else is answered, never cancelled (#63, #64): Going, Maybe, Not going. The organizer is told.
   const invited = writes && !!account?.capabilities.respond && !mine && !!event.attendees?.some(a => a.self) && !event.cancelled && !event.busy_only;
+  const askAnswerScope = invited && series && !!account?.capabilities.event_series;
+  if (editing && account) return (
+    <section className={`hub-inspector cal-${event.colour}`} aria-label="Event details">
+      <header><h2>Change “{titleOf(event)}”</h2></header>
+      <ChangeEvent event={event} account={account} zone={zone} onDone={(a, words) => { setEditing(false); onChanged(a, words); }} onCancel={() => setEditing(false)} />
+    </section>);
   return (
     <section className={`hub-inspector cal-${event.colour}`} aria-label="Event details">
       <header><h2>{titleOf(event)}</h2></header>
@@ -74,13 +95,18 @@ function Inspector({ event, zone, account, calendar, now, writes, onCancel, onRe
       {!!event.attendees?.length && <section aria-label="People"><h3 className="hub-side-title">People ({event.attendees.length})</h3>
         <ul>{event.attendees.map((a, i) => <li key={a.address || i} className="small">{personName(a)}{a.self ? ' (you)' : ''} <span className="faint">· {RESPONSE[a.response] ?? a.response}{a.optional ? ' · optional' : ''}</span></li>)}</ul></section>}
       {event.description && <section aria-label="Notes"><h3 className="hub-side-title">Notes</h3><p className="hub-notes">{event.description}</p></section>}
-      {changeable && (!asking ? <p><button type="button" className="btn small" onClick={() => setAsking(true)}>Cancel event</button></p>
-        : <div className="notice" role="alertdialog" aria-label="Cancel this event?"><p className="small">{others ? `${others} ${others === 1 ? 'person is' : 'people are'} told it is cancelled.` : 'Nobody else is invited.'} You can undo it afterwards.</p>
-          <button type="button" className="btn small" disabled={busy} onClick={async () => { setBusy(true); try { await onCancel(event, true); } finally { setBusy(false); setAsking(false); } }}>Cancel it</button>
-          <button type="button" className="btn small tertiary" disabled={busy} onClick={() => setAsking(false)}>Keep it</button></div>)}
+      {(editable || changeable) && !asking && <p className="row">
+        {editable && <button type="button" className="btn small" onClick={() => setEditing(true)}>Change</button>}
+        {changeable && <button type="button" className="btn small" onClick={() => setAsking(true)}>Cancel event</button>}</p>}
+      {changeable && asking && <div className="notice" role="alertdialog" aria-label="Cancel this event?">
+        {series && <SeriesScope name={`cancel-${event.id}`} value={scope} onChange={setScope} legend="This event repeats. Which events should be cancelled?" />}
+        <p className="small">{others ? `${others} ${others === 1 ? 'person is' : 'people are'} told it is cancelled.` : 'Nobody else is invited.'} You can undo it afterwards.</p>
+        <button type="button" className="btn small" disabled={busy || (series && !scope)} onClick={async () => { setBusy(true); try { await onCancel(event, true, scope ?? undefined); } finally { setBusy(false); setAsking(false); } }}>Cancel it</button>
+        <button type="button" className="btn small tertiary" disabled={busy} onClick={() => setAsking(false)}>Keep it</button></div>}
+      {askAnswerScope && <SeriesScope name={`answer-${event.id}`} value={answerScope} onChange={setAnswerScope} legend="This event repeats. Answer for" choices={['this', 'all']} />}
       {invited && <div className="seg" role="group" aria-label="Your answer">{(['accepted', 'tentative', 'declined'] as const).map(r =>
-        <button key={r} type="button" className="seg-item" aria-pressed={event.my_response === r} disabled={busy}
-          onClick={async () => { setBusy(true); try { await onRespond(event, r); } finally { setBusy(false); } }}>{RESPONSE[r]}</button>)}</div>}
+        <button key={r} type="button" className="seg-item" aria-pressed={event.my_response === r} disabled={busy || (askAnswerScope && !answerScope)}
+          onClick={async () => { setBusy(true); try { await onRespond(event, r, askAnswerScope ? (answerScope as 'this' | 'all') : undefined); } finally { setBusy(false); } }}>{RESPONSE[r]}</button>)}</div>}
       {writes && account && !account.capabilities.event_write && <AllowChanges account={account} capability="event_write" />}
       <p className="faint small">{calendar ? (changeable || (writes && account?.capabilities.event_write && (calendar.access === 'owner' || calendar.access === 'write')) ? 'You can change this calendar' : ACCESS[calendar.access]) : 'Read only'} · Updated {ago(event.synced_epoch, now)}.
         {event.provider_url && account && <> <a href={event.provider_url} target="_blank" rel="noopener noreferrer">Open in {account.provider_label}</a></>}</p>
@@ -171,12 +197,12 @@ export default function CalendarPage() {
   // Phase 6: the customer's own changes. Each is one action through the pipeline; the result says so, with Undo, and the calendar is read again.
   const writes = !!info && !info.read_only;
   const changed = (action: HubAction, words: string) => { setDone({ action, words }); setCreating(false); void refresh(); };
-  const cancelEvent = async (e: HubEvent, notify: boolean) => {
-    try { const r = await hub.cancelEvent(e.connection_id, e.calendar_id, e.id, notify); if (r.action.state === 'done') { changed(r.action, `"${titleOf(e)}" was cancelled.`); close(); } else setErr(r.action.ended_words || 'The event was not cancelled.'); }
+  const cancelEvent = async (e: HubEvent, notify: boolean, scope?: Scope) => {
+    try { const r = await hub.cancelEvent(e.connection_id, e.calendar_id, e.id, notify, scope, e.series_id); if (r.action.state === 'done') { changed(r.action, `"${titleOf(e)}" was cancelled.`); close(); } else setErr(r.action.ended_words || 'The event was not cancelled.'); }
     catch (error) { setErr(failed(error)); }
   };
-  const respond = async (e: HubEvent, response: 'accepted' | 'tentative' | 'declined') => {
-    try { const r = await hub.respondEvent(e.connection_id, e.calendar_id, e.id, response); if (r.action.state === 'done') { changed(r.action, `You answered "${RESPONSE[response]}" to "${titleOf(e)}".`); setDetail(d => d && eventKey(d) === eventKey(e) ? { ...d, my_response: response } : d); } else setErr(r.action.ended_words || 'Your answer was not sent.'); }
+  const respond = async (e: HubEvent, response: 'accepted' | 'tentative' | 'declined', scope?: 'this' | 'all') => {
+    try { const r = await hub.respondEvent(e.connection_id, e.calendar_id, e.id, response, scope, e.series_id); if (r.action.state === 'done') { changed(r.action, `You answered "${RESPONSE[response]}" to "${titleOf(e)}".`); setDetail(d => d && eventKey(d) === eventKey(e) ? { ...d, my_response: response } : d); } else setErr(r.action.ended_words || 'Your answer was not sent.'); }
     catch (error) { setErr(failed(error)); }
   };
   const undo = async () => {
@@ -184,6 +210,68 @@ export default function CalendarPage() {
     try { const r = await hub.undo(done.action.id); setDone(r.action.state === 'done' ? { action: r.action, words: 'Undone.' } : null); if (r.action.state !== 'done') setErr(r.action.ended_words || 'It could not be undone.'); void refresh(); }
     catch (error) { setErr(failed(error)); }
   };
+  // Moving or resizing an event on the grid (#D7). A drop is the customer's own change; when other people are invited or the event repeats, it asks first and says who is told.
+  const press = useRef<{ event: HubEvent; x: number; y: number; resize: boolean; width: number; hour: number; moved: boolean } | null>(null);
+  const swallowClick = useRef(false);
+  const [moving, setMoving] = useState<{ key: string; minutes: number; days: number; resize: boolean; width: number } | null>(null);
+  const [pendingMove, setPendingMove] = useState<{ event: HubEvent; start: number; end: number; others: number } | null>(null);
+  const [moveScope, setMoveScope] = useState<Scope | null>(null);
+  const movable = (e: HubEvent) => {
+    const account = byAccount[e.connection_id]; const cal = calendarOf(e);
+    return writes && !!account?.capabilities.event_change && (cal?.access === 'owner' || cal?.access === 'write') && !e.busy_only && !e.cancelled && !e.all_day
+      && (!e.series_id || !!account.capabilities.event_series);
+  };
+  const applyMove = async (e: HubEvent, start: number, end: number, scope?: Scope) => {
+    try {
+      const r = await hub.changeEvent({ connection: e.connection_id, calendar: e.calendar_id, event: e.id, series: e.series_id, scope, start: localTime(start, zone), end: localTime(end, zone), timezone: zone, notify: true });
+      if (r.action.state === 'done') changed(r.action, `"${titleOf(e)}" was moved to ${dayTitle(dayKey(start, zone), 'short')}, ${clock(start, zone)} to ${clock(end, zone)}.`);
+      else setErr(r.action.ended_words || 'The event was not moved.');
+    } catch (error) { setErr(failed(error)); }
+    setPendingMove(null); setMoveScope(null);
+  };
+  const dropped = async (e: HubEvent, start: number, end: number) => {
+    let full: HubEvent = e;
+    try { full = { ...e, ...(await hub.event(e.connection_id, e.calendar_id, e.id)).event }; } catch (error) { setErr(failed(error)); return; }
+    const account = byAccount[e.connection_id];
+    const mine = !full.organizer || full.organizer.address === account?.identity || !!full.attendees?.find(a => a.self && a.address === full.organizer?.address);
+    if (!mine) { setErr(`Only the organizer can move “${titleOf(e)}”. You can answer the invitation instead.`); return; }
+    const others = (full.attendees ?? []).filter(a => !a.self).length;
+    if (others || full.series_id) { setMoveScope(null); setPendingMove({ event: full, start, end, others }); return; }
+    await applyMove(full, start, end);
+  };
+  const onPress: Press = (e, event, resize) => {
+    if (e.button !== 0) return;
+    const col = (e.currentTarget as HTMLElement).closest('.hub-day-col');
+    const hour = parseFloat(getComputedStyle(grid.current ?? document.body).getPropertyValue('--hour')) || 44;
+    press.current = { event, x: e.clientX, y: e.clientY, resize, width: col?.getBoundingClientRect().width || 100, hour, moved: false };
+  };
+  useEffect(() => {
+    const step = (p: NonNullable<typeof press.current>, x: number, y: number) => ({
+      minutes: Math.round(((y - p.y) / p.hour) * 4) * 15, days: p.resize || view !== 'week' ? 0 : Math.round((x - p.x) / p.width) });
+    const move = (ev: PointerEvent) => {
+      const p = press.current; if (!p) return;
+      if (!p.moved && Math.abs(ev.clientX - p.x) < 5 && Math.abs(ev.clientY - p.y) < 5) return;
+      p.moved = true;
+      setMoving({ key: eventKey(p.event), ...step(p, ev.clientX, ev.clientY), resize: p.resize, width: p.width });
+    };
+    const up = (ev: PointerEvent) => {
+      const p = press.current; press.current = null; setMoving(null);
+      if (!p?.moved) return;
+      swallowClick.current = true; window.setTimeout(() => { swallowClick.current = false; }, 0);
+      const { minutes, days } = step(p, ev.clientX, ev.clientY);
+      if (!minutes && !days) return;
+      const e = p.event; const length = e.end_epoch - e.start_epoch;
+      const startMinute = minuteOfDay(e.start_epoch, zone);
+      if (p.resize) { const end = Math.max(e.start_epoch + 900, e.end_epoch + minutes * 60); void dropped(e, e.start_epoch, end); return; }
+      const minute = Math.min(24 * 60 - 15, Math.max(0, startMinute + minutes));
+      const start = zonedEpoch(addDays(dayKey(e.start_epoch, zone), days), minute, zone);
+      void dropped(e, start, start + length);
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zone, view, byAccount, calendars]);
+  const openUnlessDragged = (e: HubEvent) => { if (swallowClick.current) return; void open(e); };
   const toggleAccount = (id: string) => setChosen(prev => { const base = new Set(prev ?? accounts.map(a => a.id)); if (base.has(id)) base.delete(id); else base.add(id); return base; });
   const setCalendar = async (c: HubCalendar, change: { selected?: boolean; colour?: string }) => {
     try { const r = await hub.setCalendar(c.connection_id, c.id, change); setInfo(v => (v ? { ...v, calendars: r.calendars } : v)); }
@@ -310,7 +398,8 @@ export default function CalendarPage() {
 
   return (
     <Workspace title={<h1 className="wsp-title" aria-live="polite">{found ? `Events matching “${found.query}”` : heading}</h1>} tools={tools} fill context={context} contextLabel="Calendars"
-      inspector={detail ? <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} writes={writes} onCancel={cancelEvent} onRespond={respond} /> : null} inspectorLabel="Event" onInspectorClose={close} className="hub-calendar">
+      inspector={detail ? <Inspector event={detail} zone={zone} account={byAccount[detail.connection_id]} calendar={calendarOf(detail)} now={now} writes={writes} onCancel={cancelEvent} onRespond={respond}
+        onChanged={(a, words) => { changed(a, words); if (detail) void open(detail); }} /> : null} inspectorLabel="Event" onInspectorClose={close} className="hub-calendar">
       <div className="wsp-body">
         <div className="hub-cal-zone faint small">
           {zoneEdit === null ? <><span>Times are shown in {zone.replace(/_/g, ' ')}{info?.settings.timezone ? '' : " (this device's timezone)"}.{writes ? '' : ' Read only for now.'}</span>
@@ -323,6 +412,12 @@ export default function CalendarPage() {
           {days && <span className="hub-range" role="status">Chosen: {rangeWords(days)} <button type="button" className="btn small tertiary" onClick={() => setDays(null)}>Clear</button></span>}
         </div>
         {err && <p className="notice warning" role="alert">{err}</p>}
+        {pendingMove && <div className="notice" role="alertdialog" aria-label="Move this event?">
+          <p className="small">Move “{titleOf(pendingMove.event)}” to {dayTitle(dayKey(pendingMove.start, zone), 'short')}, {clock(pendingMove.start, zone)} to {clock(pendingMove.end, zone)}?
+            {pendingMove.others ? ` ${pendingMove.others} ${pendingMove.others === 1 ? 'person is' : 'people are'} told.` : ''}</p>
+          {pendingMove.event.series_id && <SeriesScope name="move-scope" value={moveScope} onChange={setMoveScope} legend="This event repeats. Which events should move?" />}
+          <button type="button" className="btn small" disabled={!!pendingMove.event.series_id && !moveScope} onClick={() => applyMove(pendingMove.event, pendingMove.start, pendingMove.end, moveScope ?? undefined)}>Move it</button>
+          <button type="button" className="btn small tertiary" onClick={() => { setPendingMove(null); setMoveScope(null); }}>Keep it</button></div>}
         {done && <p className="notice" role="status">{done.words}{done.action.can_undo && done.words !== 'Undone.' && <> <button type="button" className="btn small tertiary" onClick={undo}>Undo</button></>}</p>}
         {creating && (accounts.some(a => a.capabilities.event_write)
           ? <EventEditor accounts={accounts} calendars={calendars} day={day} onDone={a => changed(a, 'The event was created.')} onCancel={() => setCreating(false)} />
@@ -360,7 +455,8 @@ export default function CalendarPage() {
             <div className="hub-hours" aria-hidden="true">{HOURS.map(h => <span key={h} style={{ top: `calc(var(--hour) * ${h})` }}>{hourLabel(h)}</span>)}</div>
             {span.days.map(d => <div key={'c' + d} className={`hub-day-col${days && d >= days.start && d <= days.end ? ' chosen' : ''}`} aria-label={dayTitle(d)}>
               {d === today && <i className="hub-now" style={{ top: `calc(var(--hour) * ${minuteOfDay(now, zone) / 60})` }} aria-label="Now" role="img" />}
-              {layoutDay(byDay[d].timed, d, zone).map(p => <EventChip key={eventKey(p.event)} event={p.event} zone={zone} current={selected === eventKey(p.event)} onOpen={open}
+              {layoutDay(byDay[d].timed, d, zone).map(p => <EventChip key={eventKey(p.event)} event={p.event} zone={zone} current={selected === eventKey(p.event)} onOpen={openUnlessDragged}
+                onPress={movable(p.event) ? onPress : undefined} shift={moving?.key === eventKey(p.event) ? moving : undefined}
                 style={{ top: `calc(var(--hour) * ${p.top / 60})`, height: `calc(var(--hour) * ${p.height / 60} - 2px)`, left: `calc(${(p.column / p.columns) * 100}% + 2px)`, width: `calc(${100 / p.columns}% - 4px)` }} />)}
             </div>)}
           </div>)}

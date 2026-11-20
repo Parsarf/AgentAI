@@ -35,7 +35,10 @@ ACCOUNTS, SEARCH, THREAD, OLDER, EVENTS, EVENT, EVENT_SEARCH = ('lumina_mail_acc
                                                                'lumina_calendar_event', 'lumina_calendar_search')
 # Roadmap Phase 6: free time and clashes (reading), and changes the assistant PREPARES for the customer's approval (never sends: the action pipeline does, once approved).
 FREE, CONFLICTS, CREATE, CANCEL, RESPOND = 'lumina_calendar_free', 'lumina_calendar_conflicts', 'lumina_calendar_create', 'lumina_calendar_cancel', 'lumina_calendar_respond'
-WRITES = frozenset({CREATE, CANCEL, RESPOND})
+CHANGE = 'lumina_calendar_change'
+WRITES = frozenset({CREATE, CANCEL, RESPOND, CHANGE})
+SCOPE_WORDS = ('For an occurrence of a repeating event (it has "series"), give series and the scope the CUSTOMER chose: "this" (only this occurrence), "following" (this and '
+               'every later one) or "all" (the whole series). If they did not say, ask them; never guess.')
 MAX_TEXT = 14000
 MAX_BODY = 4000
 MAX_MESSAGES = 8
@@ -88,13 +91,22 @@ WRITE_TOOLS = [
      'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), title=_STR(500), start=_STR(16), end=_STR(16), all_day={'type': 'boolean'},
                          attendees={'type': 'array', 'items': {'type': 'string', 'maxLength': 320}, 'maxItems': 50}, place=_STR(500), description=_STR(8000), repeat=_STR(200),
                          notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'title', 'start', 'end']}},
-    {'name': CANCEL, 'description': 'PREPARE cancelling one event the customer organizes, for them to approve (the people invited are told, unless notify is false). Nothing is cancelled '
-     'until they approve exactly this. After preparing it, tell the customer in one sentence and END YOUR TURN.',
-     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'event']}},
+    {'name': CANCEL, 'description': 'PREPARE cancelling an event the customer organizes, for them to approve (the people invited are told, unless notify is false). Nothing is cancelled '
+     'until they approve exactly this. ' + SCOPE_WORDS + ' After preparing it, tell the customer in one sentence and END YOUR TURN.',
+     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), series=_STR(400), scope={'type': 'string', 'enum': ['this', 'following', 'all']},
+                         notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'event']}},
+    {'name': CHANGE, 'description': 'PREPARE a change to an event the customer organizes (title, start and end in their local time YYYY-MM-DDTHH:MM, place, description, attendees as the '
+     'whole new list), for them to approve. Only the fields you give change; the preview says who is told. Nothing changes until they approve exactly this. ' + SCOPE_WORDS
+     + ' Check lumina_calendar_conflicts before moving it. After preparing it, tell the customer in one sentence and END YOUR TURN.',
+     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), series=_STR(400), scope={'type': 'string', 'enum': ['this', 'following', 'all']},
+                         title=_STR(500), start=_STR(16), end=_STR(16), all_day={'type': 'boolean'}, place=_STR(500), description=_STR(8000),
+                         attendees={'type': 'array', 'items': {'type': 'string', 'maxLength': 320}, 'maxItems': 50}, notify={'type': 'boolean'}),
+                     'required': ['account', 'calendar', 'event']}},
     {'name': RESPOND, 'description': 'PREPARE the customer\'s answer to an invitation (accepted, tentative or declined, with an optional short note to the organizer), for them to approve. '
-     'Use it instead of cancelling an event the customer does not organize. Nothing is answered until they approve exactly this. After preparing it, tell the customer in one '
-     'sentence and END YOUR TURN.',
-     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), response={'type': 'string', 'enum': ['accepted', 'tentative', 'declined']}, note=_STR(500),
+     'Use it instead of cancelling an event the customer does not organize. Nothing is answered until they approve exactly this. For an occurrence of a repeating event give '
+     'series and scope "this" or "all", as the customer chose. After preparing it, tell the customer in one sentence and END YOUR TURN.',
+     'inputSchema': {**_S(account=_STR(64), calendar=_STR(300), event=_STR(400), series=_STR(400), scope={'type': 'string', 'enum': ['this', 'all']},
+                         response={'type': 'string', 'enum': ['accepted', 'tentative', 'declined']}, note=_STR(500),
                          notify={'type': 'boolean'}), 'required': ['account', 'calendar', 'event', 'response']}},
 ]
 
@@ -151,7 +163,30 @@ class HubTools:
             return False
 
     def specs_for(self, account):
-        return copy.deepcopy(TOOLS + (WRITE_TOOLS if self.writes(account) else []))
+        if not self.writes(account):
+            return copy.deepcopy(TOOLS)
+        able = self._capabilities(account)
+        tools = [t for t in WRITE_TOOLS if t['name'] != CHANGE or able.get('event_change')]       # a change kind not yet proven live is not offered
+        tools = copy.deepcopy(tools)
+        if not able.get('event_series'):
+            for t in tools:
+                props = t['inputSchema']['properties']
+                if 'scope' in props:
+                    props['scope']['enum'] = [v for v in props['scope']['enum'] if v == 'all']    # without series parts: a repeating event is changed as a whole only
+        return copy.deepcopy(TOOLS) + tools
+
+    def _capabilities(self, account) -> dict:
+        """What any of this customer's connected accounts can change now (the union of their capabilities)."""
+        try:
+            accounts = self.hub.accounts(self._principal(account, None))
+        except Exception:
+            return {}
+        out = {}
+        for acc in accounts:
+            for key, value in (acc.get('capabilities') or {}).items():
+                if value is True:
+                    out[key] = True
+        return out
 
     def enabled(self, account):
         try:
@@ -296,7 +331,7 @@ class HubTools:
                'calendar_name': names.get((e['connection_id'], e['calendar_id']), ''),
                'title': 'Busy (this calendar shares only that the time is taken)' if e['busy_only'] else _safe(e['title']), **when,
                **({'place': _safe(e['place'])} if e['place'] else {}), **({'my_answer': e['my_response']} if e['my_response'] else {}),
-               **({'repeats': True, 'changed_occurrence': e['exception']} if e['series_id'] else {}), **({'cancelled': True} if e['cancelled'] else {})}
+               **({'repeats': True, 'series': e['series_id'], 'changed_occurrence': e['exception']} if e['series_id'] else {}), **({'cancelled': True} if e['cancelled'] else {})}
         return out
 
     def _names(self, principal):
@@ -367,16 +402,43 @@ class HubTools:
             if 'notify' in a:
                 payload['notify'] = bool(a['notify'])
             kind = 'event.create'
-        elif name == RESPOND:
-            payload, kind = {'event': f"{a['calendar']}|{a['event']}", 'response': str(a['response']), 'notify': bool(a.get('notify', True))}, 'event.respond'
-            if a.get('note'):
-                payload['note'] = str(a['note'])
         else:
-            payload, kind = {'event': f"{a['calendar']}|{a['event']}", 'notify': bool(a.get('notify', True))}, 'event.delete'
+            series, scope = a.get('series'), a.get('scope')
+            if series and scope not in ('this', 'following', 'all'):
+                return ('This is an occurrence of a repeating event. Ask the customer whether they mean only this occurrence, this and every later one, or the whole series, '
+                        'then prepare it again with that scope. Nothing was prepared.'), True
+            cal, event, notify = str(a['calendar']), str(a['event']), bool(a.get('notify', True))
+            if name == RESPOND:
+                if scope == 'following':
+                    return 'An answer is for one occurrence or the whole series. Nothing was prepared.', True
+                payload, kind = {'event': f"{cal}|{series if scope == 'all' else event}", 'response': str(a['response']), 'notify': notify}, 'event.respond'
+                if a.get('note'):
+                    payload['note'] = str(a['note'])
+            elif name == CHANGE:
+                fields = {k: a[k] for k in ('title', 'start', 'end', 'place', 'description', 'attendees') if k in a}
+                if a.get('all_day'):
+                    fields['all_day'] = True
+                elif 'start' in fields:
+                    fields['timezone'] = zone_name
+                if scope == 'following':
+                    payload, kind = {'event': f'{cal}|{event}', 'series': f'{cal}|{series}', **fields, 'notify': notify}, 'event.update_rest'
+                elif scope == 'all':
+                    payload, kind = {'event': f'{cal}|{series}', **fields, 'notify': notify}, 'event.update'
+                    if 'start' in fields:
+                        payload['occurrence'] = f'{cal}|{event}'
+                else:
+                    payload, kind = {'event': f'{cal}|{event}', **fields, 'notify': notify}, 'event.update'
+            elif scope == 'this':
+                payload, kind = {'event': f'{cal}|{event}', 'notify': notify}, 'event.cancel_one'
+            elif scope == 'following':
+                payload, kind = {'event': f'{cal}|{event}', 'series': f'{cal}|{series}', 'notify': notify}, 'event.end_series'
+            else:
+                payload, kind = {'event': f"{cal}|{series if scope == 'all' else event}", 'notify': notify}, 'event.delete'
         try:
             action = self.actions.propose(principal, str(a['account']), kind, payload, request_id=request_id)
         except ConnectorFault as fault:
-            missing = next((acc['capabilities']['missing'].get('respond' if name == RESPOND else 'event_write') for acc in self.hub.accounts(principal) if acc['id'] == a.get('account')), None)
+            capability = {RESPOND: 'respond', CHANGE: 'event_change'}.get(name, 'event_write')
+            missing = next((acc['capabilities']['missing'].get(capability) for acc in self.hub.accounts(principal) if acc['id'] == a.get('account')), None)
             if fault.kind == 'refused' and missing:
                 return ('This account has not given Lumina permission to change its calendar yet. Nothing was prepared. Tell the customer they can allow it in the Calendar '
                         'page ("Allow changes"), then ask again.'), True

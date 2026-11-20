@@ -397,7 +397,58 @@ def event_create(request):
     return _run(lambda: {'action': actions.direct(principal, given['connection'], 'event.create', payload, screen='calendar')})
 
 
-@endpoint(['POST'], ['connection', 'calendar', 'event', 'notify'], structured=True)
+SCOPES = ('this', 'following', 'all')
+CHANGE_FIELDS = ('title', 'start', 'end', 'timezone', 'all_day', 'attendees', 'place', 'description')
+
+
+def _scoped(given):
+    """(calendar, event, series, scope) from a request about an event; series and scope are for an occurrence of a repeating event, where the scope is always chosen
+    by the customer (#62: never guessed). -> the tuple, or the error response."""
+    if not all(isinstance(given.get(k), str) and given[k] for k in ('calendar', 'event')):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    series, scope = given.get('series'), given.get('scope')
+    if series is not None and (not isinstance(series, str) or not series):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    if series and scope not in SCOPES:
+        return JsonResponse({'error': 'scope_required'}, status=400)
+    if scope is not None and (not series or scope not in SCOPES):
+        return JsonResponse({'error': 'invalid_request'}, status=400)
+    return given['calendar'], given['event'], series, scope
+
+
+@endpoint(['POST'], ['connection', 'calendar', 'event', 'series', 'scope', 'title', 'start', 'end', 'timezone', 'all_day', 'attendees', 'place', 'description', 'notify'],
+          structured=True)
+def event_change(request):
+    """The customer changes an event themselves (the inspector, or a drag on the grid): their press is the approval. Who is told is said on the screen before it is sent.
+    An occurrence of a repeating event names its series and the scope the customer chose: this one, this and later ones, or all of them."""
+    principal, stop = _enter(request, 'hub.write', 120)
+    if stop:
+        return stop
+    given = request.input
+    stop = _writes(request, principal, given.get('connection'))
+    if stop:
+        return stop
+    found = _scoped(given)
+    if isinstance(found, JsonResponse):
+        return found
+    calendar, event, series, scope = found
+    fields = {k: given[k] for k in CHANGE_FIELDS if k in given and given[k] is not None}
+    if 'start' in fields and not fields.get('all_day'):
+        fields['timezone'] = given.get('timezone') or _zone(principal)[0]
+    notify = bool(given.get('notify', True))
+    if scope == 'following':
+        kind, payload = 'event.update_rest', {'event': f'{calendar}|{event}', 'series': f'{calendar}|{series}', **fields, 'notify': notify}
+    elif scope == 'all':
+        kind, payload = 'event.update', {'event': f'{calendar}|{series}', **fields, 'notify': notify}
+        if 'start' in fields:
+            payload['occurrence'] = f'{calendar}|{event}'      # the times given are this occurrence's: the whole series moves by the same amount
+    else:
+        kind, payload = 'event.update', {'event': f'{calendar}|{event}', **fields, 'notify': notify}
+    _, _, actions, _ = wiring.action_services()
+    return _run(lambda: {'action': actions.direct(principal, given['connection'], kind, payload, screen='calendar')})
+
+
+@endpoint(['POST'], ['connection', 'calendar', 'event', 'series', 'scope', 'notify'], structured=True)
 def event_cancel(request):
     principal, stop = _enter(request, 'hub.write', 120)
     if stop:
@@ -406,14 +457,24 @@ def event_cancel(request):
     stop = _writes(request, principal, given.get('connection'))
     if stop:
         return stop
-    if not all(isinstance(given.get(k), str) and given[k] for k in ('calendar', 'event')):
-        return JsonResponse({'error': 'invalid_request'}, status=400)
-    payload = {'event': f"{given['calendar']}|{given['event']}", 'notify': bool(given.get('notify', True))}
+    found = _scoped(given)
+    if isinstance(found, JsonResponse):
+        return found
+    calendar, event, series, scope = found
+    notify = bool(given.get('notify', True))
+    if scope == 'this':
+        kind, payload = 'event.cancel_one', {'event': f'{calendar}|{event}', 'notify': notify}
+    elif scope == 'following':
+        kind, payload = 'event.end_series', {'event': f'{calendar}|{event}', 'series': f'{calendar}|{series}', 'notify': notify}
+    elif scope == 'all':
+        kind, payload = 'event.delete', {'event': f'{calendar}|{series}', 'notify': notify}
+    else:
+        kind, payload = 'event.delete', {'event': f'{calendar}|{event}', 'notify': notify}
     _, _, actions, _ = wiring.action_services()
-    return _run(lambda: {'action': actions.direct(principal, given['connection'], 'event.delete', payload, screen='calendar')})
+    return _run(lambda: {'action': actions.direct(principal, given['connection'], kind, payload, screen='calendar')})
 
 
-@endpoint(['POST'], ['connection', 'calendar', 'event', 'response', 'note', 'notify'], structured=True)
+@endpoint(['POST'], ['connection', 'calendar', 'event', 'series', 'scope', 'response', 'note', 'notify'], structured=True)
 def event_respond(request):
     """The customer answers an invitation themselves (Going, Maybe, Not going): their press is the approval. The organizer is told unless notify is false."""
     principal, stop = _enter(request, 'hub.write', 120)
@@ -423,9 +484,15 @@ def event_respond(request):
     stop = _writes(request, principal, given.get('connection'))
     if stop:
         return stop
-    if not all(isinstance(given.get(k), str) and given[k] for k in ('calendar', 'event', 'response')):
+    if not isinstance(given.get('response'), str):
         return JsonResponse({'error': 'invalid_request'}, status=400)
-    payload = {'event': f"{given['calendar']}|{given['event']}", 'response': given['response'], 'notify': bool(given.get('notify', True))}
+    found = _scoped(given)
+    if isinstance(found, JsonResponse):
+        return found
+    calendar, event, series, scope = found
+    if scope == 'following':
+        return JsonResponse({'error': 'invalid_request'}, status=400)           # an answer is for one occurrence or the whole series
+    payload = {'event': f"{calendar}|{series if scope == 'all' else event}", 'response': given['response'], 'notify': bool(given.get('notify', True))}
     if isinstance(given.get('note'), str) and given['note'].strip():
         payload['note'] = given['note'].strip()
     _, _, actions, _ = wiring.action_services()
