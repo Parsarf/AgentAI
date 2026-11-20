@@ -79,6 +79,7 @@ class WriteKind:
     compensations: tuple = ()          # follow-up write kinds defined in code that make up for it when it cannot be undone (#28)
     undo_seconds: int = 3600           # how long undo is offered
     needs_version: bool = False        # the write changes an existing record: it carries the version it was based on (#25)
+    capability: str = ''               # mail and calendar providers: the dashboard capability it belongs to (hub_model.WRITE_CAPABILITIES), i.e. the permission it needs
 
 
 @dataclass(frozen=True)
@@ -376,6 +377,25 @@ class ConnectorClient:
             credential = {'mcp_connection_id': row['mcp_connection_id'], 'account_id': account_id}
         return row, declaration, adapter, credential
 
+    def _may_write(self, account, row, declaration, kind, container) -> bool:
+        """May this change reach `container`? A mail or calendar provider of the dashboard (roadmap Phase 6) derives it: the customer chose to let Lumina see it (the read
+        grant), the connection holds the provider permission behind this kind of change (asked for on first use), and, for a calendar, the provider lets this account change
+        it (a subscribed or shared calendar it may only read gets no write). Every other connector needs a write grant on the resource."""
+        caps = getattr(declaration, 'hub', None)
+        if caps is None or not (getattr(caps, 'mail', False) or getattr(caps, 'calendar', False)):
+            return self._granted(account, row['id'], container, 'write')
+        try:
+            scopes = json.loads(row['granted_scopes'] or '[]')
+        except ValueError:
+            scopes = []
+        if not kind.capability or not caps.effective(scopes).get(kind.capability) or not self._granted(account, row['id'], container, 'read'):
+            return False
+        if container[0] == 'calendar':
+            with self.store.connect() as con:
+                found = con.execute('SELECT access FROM hub_calendars WHERE account_id=? AND connection_id=? AND id=?', (account, row['id'], str(container[1]))).fetchone()
+            return found is not None and found['access'] in ('owner', 'write')
+        return True
+
     def _granted(self, account, connection_id, container, access='read') -> bool:
         if not container:
             return False
@@ -497,7 +517,7 @@ class ConnectorClient:
         container = adapter.container_of(credential, kind_name, payload)
         if not container:
             raise ConnectorFault('not_found')
-        if not self._granted(principal.account_id, row['id'], container, 'write'):
+        if not self._may_write(principal.account_id, row, declaration, kind, container):
             raise ConnectorFault('refused')
         target, before = adapter.target_of(kind_name, payload), None
         if target:
@@ -515,7 +535,7 @@ class ConnectorClient:
         if kind is None:
             raise ConnectorFault('invalid')
         container = adapter.container_of(credential, kind_name, payload)
-        if not self._granted(principal.account_id, row['id'], container, 'write'):
+        if not container or not self._may_write(principal.account_id, row, declaration, kind, container):
             raise ConnectorFault('refused')
         if kind.needs_version:
             if base_version is None:

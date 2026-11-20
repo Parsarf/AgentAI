@@ -50,8 +50,18 @@ FAILED_WORDS = {
 }
 
 
+DIRECT_SCREENS = ('inbox', 'calendar', 'settings')
+
+
+def _direct(row):
+    try:
+        return row['direct_screen']
+    except (IndexError, KeyError):
+        return None                                # a database before migration 0052
+
+
 class ActionService:
-    def __init__(self, store, connectors, client, *, clock=time.time, writes_on=lambda account: True):
+    def __init__(self, store, connectors, client, *, clock=time.time, writes_on=lambda account, service=None: True):
         self.store, self.connectors, self.client, self.clock = store, connectors, client, clock
         self.writes_on = writes_on                # the owner switch for changes in connected services, asked per account
         self.coordinator = Coordinator(store, clock=clock)
@@ -68,7 +78,8 @@ class ActionService:
                 'approval_expires_epoch': row['approval_expires_epoch'], 'verified': None if row['verified'] is None else bool(row['verified']), 'verify_note': row['verify_note'],
                 'conflict': json.loads(row['conflict_json']) if row['conflict_json'] else None, 'ended_reason': row['ended_reason'],
                 'ended_words': FAILED_WORDS.get(row['ended_reason'], '') if row['ended_reason'] else '', 'workflow_id': row['workflow_id'],
-                'receipt': row['receipt'], 'created_epoch': row['created_epoch'], 'executed_epoch': row['executed_epoch']}
+                'receipt': row['receipt'], 'created_epoch': row['created_epoch'], 'executed_epoch': row['executed_epoch'],
+                'direct': _direct(row)}
 
     def _row(self, con, account_id, action_id):
         row = con.execute('SELECT * FROM actions WHERE account_id=? AND id=?', (account_id, str(action_id))).fetchone()
@@ -95,7 +106,7 @@ class ActionService:
 
         `workflow` is (workflow id, position): the workflow's own approval covers the step, so no separate handoff is made. `ask=False` likewise makes no handoff (a reversal
         the runner starts itself)."""
-        if not self.writes_on(principal.account_id):
+        if not self.writes_on(principal.account_id, self.connectors.service_of(principal.account_id, connection_id)):
             raise ConnectorFault('refused')
         if not isinstance(payload, dict) or len(json.dumps(payload, default=str)) > MAX_PAYLOAD_BYTES:
             raise ConnectorFault('invalid')
@@ -142,6 +153,41 @@ class ActionService:
                                      resume={'action': action_id})
             self.coordinator._audit(con, principal.account_id, principal.actor_id, action_id, 'action.propose', 'completed')
             return self.public(self._row(con, principal.account_id, action_id))
+
+    # -- the customer's own hand (roadmap Phase 6) ----------------------------------------------------------------------------------------------
+    def direct(self, principal: Principal, connection_id: str, kind: str, payload: dict, *, screen: str, base_version=None, delay_seconds: int = 0) -> dict:
+        """A change the customer made themselves in the Inbox or the Calendar (pressed Send, cancelled an event): the same write kind through the same pipeline, and their
+        press IS the approval, recorded with the screen it came from. Sent now, or after `delay_seconds` ("Undo send"; `cancel` stops it in that time). An organization
+        that asks for an admin as well still gets its admin: the change then waits like any other."""
+        return self._direct(principal, self.propose(principal, connection_id, kind, payload, base_version=base_version, key='direct-' + uuid.uuid4().hex, ask=False),
+                            screen, delay_seconds)
+
+    def undo_direct(self, principal: Principal, action_id: str, *, screen: str) -> dict:
+        """The customer pressed Undo on a finished change: its inverse, approved by that press."""
+        return self._direct(principal, self.undo(principal, action_id, ask=False), screen, 0)
+
+    def _direct(self, principal, action, screen, delay_seconds):
+        if screen not in DIRECT_SCREENS or type(delay_seconds) is not int or not 0 <= delay_seconds <= 60:
+            raise ValueError('invalid request')
+        approved = self.approve(principal, action['id'], action['payload_hash'])
+        now = int(self.clock())
+        with self.coordinator.transaction() as con:
+            con.execute('UPDATE actions SET direct_screen=?,retry_after_epoch=?,updated_epoch=? WHERE account_id=? AND id=?',
+                        (screen, now + delay_seconds if delay_seconds else None, now, principal.account_id, action['id']))
+        if approved['state'] == 'approved' and not delay_seconds:
+            self.execute(principal.account_id, action['id'])
+        return self.get(principal, action['id'])
+
+    def cancel(self, principal: Principal, action_id: str) -> dict:
+        """Stop an approved change that has not been sent yet (the customer's "Undo send" inside its wait). Nothing reaches the provider."""
+        with self.coordinator.transaction() as con:
+            require(principal, 'action.approve', con=con)
+            row = self._row(con, principal.account_id, action_id)
+            if row['state'] != 'approved' or not row['retry_after_epoch'] or row['retry_after_epoch'] <= self.clock():
+                raise Conflict('this change can no longer be stopped')
+            self._end(con, row, 'declined', 'cancelled_by_customer')
+            self.coordinator._audit(con, principal.account_id, principal.actor_id, action_id, 'action.cancel', 'completed')
+        return self.get(principal, action_id)
 
     # -- approving ---------------------------------------------------------------------------------------------------------------------------
     def approve(self, principal: Principal, action_id: str, approved_hash: str, *, member_account: str | None = None) -> dict:
@@ -237,7 +283,7 @@ class ActionService:
             payload = json.loads(row['payload_json'])
             if payload_hash(payload) != row['payload_hash']:
                 return self._end(con, row, 'failed', 'payload_changed')
-            if not self.writes_on(account_id):
+            if not self.writes_on(account_id, self.connectors.service_of(account_id, row['connection_id'])):
                 return self._end(con, row, 'failed', 'refused')          # the owner switched changes off after this was prepared: it does not go out
             if not row['workflow_id'] and (row['approval_expires_epoch'] or 0) < now:
                 return self._end(con, row, 'expired', 'approval_expired')

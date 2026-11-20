@@ -70,7 +70,7 @@ def as_data(items) -> list:
 class ConnectorTools:
     names = frozenset({LIST, READ, SEARCH, PROPOSE, WORKFLOW, ASK})
 
-    def __init__(self, store, connectors, client, actions, workflows, *, clock=time.time, enabled=lambda account: False, writes_on=lambda account: False):
+    def __init__(self, store, connectors, client, actions, workflows, *, clock=time.time, enabled=lambda account: False, writes_on=lambda account, service=None: False):
         self.store, self.connectors, self.client, self.actions, self.workflows, self.clock = store, connectors, client, actions, workflows, clock
         self._enabled, self._writes_on = enabled, writes_on
         self.coordinator = Coordinator(store, clock=clock)
@@ -147,7 +147,7 @@ class ConnectorTools:
 
     # -- proposing changes ---------------------------------------------------------------------------------------------------------------------
     def _propose(self, principal, a, request_id, conversation):
-        if not self._writes_on(principal.account_id):
+        if not self._writes_on(principal.account_id, self.connectors.service_of(principal.account_id, a.get('connection'))):
             return 'Changes in connected services are not switched on. Nothing was prepared. Tell the customer what you would have changed.', True
         action = self.actions.propose(principal, a['connection'], a['kind'], a['payload'], request_id=request_id)
         preview = action['preview']
@@ -160,7 +160,7 @@ class ConnectorTools:
                                    'You will be given the outcome when they have decided. Do not prepare it again.'}), False
 
     def _workflow(self, principal, a, request_id, conversation):
-        if not self._writes_on(principal.account_id):
+        if not all(self._writes_on(principal.account_id, self.connectors.service_of(principal.account_id, s.get('connection'))) for s in a.get('steps') or [{}] if isinstance(s, dict)):
             return 'Changes in connected services are not switched on. Nothing was prepared. Tell the customer what you would have changed.', True
         steps = [{'connection_id': s.get('connection'), 'kind': s.get('kind'), 'payload': s.get('payload')} for s in a.get('steps') or [] if isinstance(s, dict)]
         workflow = self.workflows.propose(principal, a.get('title', ''), steps, request_id=request_id)

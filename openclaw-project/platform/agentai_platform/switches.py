@@ -133,6 +133,17 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
                           ('policy_published', 'The privacy policy that describes this copy, where it comes from and how long it is kept is published.')),
            needs=(('connector_custody_ready', 'The connector key file is installed on the server (protected storage for the services\' tokens).'),
                   ('hub_sync_timer', 'The mail and calendar sync timer is installed and running on the server.'))),
+    Switch('mail_calendar_writes', 'Let customers manage their mail and calendars from Lumina: send, organize and change events, each change approved',
+           'In the Inbox and Calendar, customers can send and reply, organize mail (archive, labels, read, star, bin) and create, change, cancel or answer events in the accounts '
+           'they connected; their assistant can prepare the same changes. Each kind of change asks the customer for that permission at the provider the first time it is used.',
+           'Changes reach the customer\'s real mailbox and calendar. A change the assistant prepared happens only after the customer approves exactly it; the customer\'s own press '
+           'is their approval. Each change is sent at most once and checked afterwards; organizing and calendar changes can be undone, a sent message cannot be unsent '
+           '(a correction can be sent). At most 50 recipients a message and 30 messages an hour per account.',
+           'No direct cost. Preparing a change uses the customer\'s normal task budget.', 'high',
+           confirmations=(('writes_understood', 'I understand customers\' real mail and calendars will be changed when they do it themselves or approve what their assistant prepared.'),
+                          ('policy_published', 'The privacy policy that describes sending and changing on a customer\'s behalf, and the receipts kept, is published.')),
+           needs=(('connector_custody_ready', 'The connector key file is installed on the server (protected storage for the services\' tokens).'),
+                  ('hub_sync_timer', 'The mail and calendar sync service is installed and running on the server.'))),
     Switch('customer_knowledge', 'Let assistants search, read and cite customers\' own documents',
            'Every file a customer uploads, every file they add from Files and every attachment they open is read into a private knowledge index: the assistant can search it, '
            'read it section by section, compare two versions, check its claims against the text and cite the page. Customers see every source on the Sources page and can remove any.',

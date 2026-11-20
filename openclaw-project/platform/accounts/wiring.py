@@ -99,7 +99,8 @@ def sign_in_providers():
         from agentai_platform import google_hub
         cid, secret = settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET
         out[google_hub.PROVIDER] = {'label': google_hub.DECLARATION.label, 'register': google_hub.register,
-                                    'address': lambda redirect, state, challenge: google_hub.authorize_url(cid, redirect, state, challenge),
+                                    'address': lambda redirect, state, challenge, hint=None, add=(): google_hub.authorize_url(cid, redirect, state, challenge, hint=hint, add=add),
+                                    'grants': tuple(g.name for g in google_hub.GRANTS),
                                     'exchange': google_hub.exchanger(cid, secret), 'refresh': google_hub.refresher(cid, secret),
                                     'needs_any': (google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE)}
     return out
@@ -150,8 +151,22 @@ def connectors_on(account_id):
     return switch_on('connectors_linking') or switch_on('synthetic_connector') or switch_on('mail_calendar_dashboard')      # the dashboard's accounts are connections too: their picker and their grants
 
 
-def writes_on(account_id):
+def writes_on(account_id, service=None):
+    """May changes be sent through this account's connection to `service`? Mail and calendar providers (the dashboard's, roadmap Phase 6) have their own owner switch,
+    `mail_calendar_writes`, on top of the dashboard's; every other connected service has `connector_writes`. Without a service: whether any change at all is possible."""
+    if service is not None and _hub_provider(service):
+        return switch_on('mail_calendar_writes') and hub_on(account_id)
+    if service is None:
+        return switch_on('connector_writes') or (switch_on('mail_calendar_writes') and hub_on(account_id))
     return switch_on('connector_writes')
+
+
+def _hub_provider(service) -> bool:
+    try:
+        from agentai_platform.hub_model import hub_caps
+        return hub_caps(connector_registry().declaration(service)) is not None
+    except Exception:
+        return False
 
 
 def hub_on(account_id):
@@ -178,7 +193,8 @@ def hub_tools(db=None):
     """The assistant's mail and calendar tools: the same copy the dashboard shows, read only."""
     from agentai_platform.hub_tools import HubTools
     db = db or store()
-    return HubTools(db, hub_service(db), enabled=hub_on)
+    _c, _cl, actions, _w = action_services(db)
+    return HubTools(db, hub_service(db), enabled=hub_on, actions=actions, writes_on=lambda account: switch_on('mail_calendar_writes') and hub_on(account))
 
 
 def action_services(db=None):

@@ -550,10 +550,14 @@ class Tools(Both):
 
     def test_every_tool_only_reads_and_belongs_to_a_permission_and_a_policy_group(self):
         from agentai_platform import organizations, permissions
-        from agentai_platform.hub_tools import HubTools, TOOLS
-        self.assertEqual({t['name'] for t in TOOLS}, set(HubTools.names))
+        from agentai_platform.hub_tools import HubTools, TOOLS, WRITE_TOOLS
+        self.assertEqual({t['name'] for t in TOOLS + WRITE_TOOLS}, set(HubTools.names))
+        for t in TOOLS:
+            self.assertEqual(permissions.TOOL_ACTIONS.get(t['name']), 'connection.use', t['name'])
+        for t in WRITE_TOOLS:                                             # Phase 6: they only PREPARE a change; the customer's approval is what sends it
+            self.assertEqual(permissions.TOOL_ACTIONS.get(t['name']), 'action.propose', t['name'])
+            self.assertTrue(t['description'].startswith('PREPARE'), t['name'])
         for name in HubTools.names:
-            self.assertEqual(permissions.TOOL_ACTIONS.get(name), 'connection.use', name)
             self.assertEqual(organizations.tool_group(name), 'connectors', name)
         text = ' '.join(t['description'].lower() for t in TOOLS)
         for verb in ('send', 'delete', 'archive', 'reply', 'create'):

@@ -144,7 +144,37 @@ Deduplication is a uniqueness rule on (account, connection, provider id): a sync
 | `subjects` | threads have subjects | yes |
 | `attachments` | an attachment's bytes can be read (#55) | yes |
 | `compose_link` | a Lumina draft can open in the provider's compose screen (#57) | yes |
-| `send`, `organize`, `mark_read`, `event_write`, `respond` | managing from the dashboard (Phase 6); each needs registered write kinds with previews, approval and undo | no (all false) |
+| `free_busy` | answers a live free/busy question across calendars (#59); without it the synced copy is used, and the answer says so | yes (`freeBusy`) |
+| `send`, `organize`, `mark_read`, `event_write`, `respond` | managing from the dashboard (Phase 6); each needs registered write kinds with previews, approval and undo, AND the connection must hold the grant behind it (`HubCaps.effective(scopes)`) | `event_write` yes (grant `calendar_write`); the others not yet |
+
+### Grants: permissions to change things, asked on first use (Phase 6)
+
+A sign-in only ever asks to read. Each kind of change has a named grant (`hub_model.Grant`: the same names for every provider, the provider's own scope beside it), asked for only
+when the customer first uses what it allows, on the account already connected: `POST /v1/hub/link {provider, connection, add: [grant]}` sends them to the provider with
+`include_granted_scopes` and the account's address; finishing changes **that** connection in place (`ConnectorService._upgrade`: same identity or `WrongAccount`, tokens
+replaced in custody, grants and the synced copy kept). `HubCaps.effective(scopes)` gives each connection's real capabilities and, under `missing`, the grant to ask for.
+
+| Grant | Google scope | Unlocks |
+|---|---|---|
+| `calendar_write` | `calendar.events` (sensitive) | `event_write`, `respond` |
+| `send` | `gmail.send` (sensitive) | `send` |
+| `organize` | `gmail.modify` (restricted) | `organize`, `mark_read` |
+
+A write to a mail or calendar provider needs, in `ConnectorClient._may_write`: the customer's read grant on the resource, the grant behind the write kind's `capability`,
+and for a calendar an access role that allows changing it (`owner` or `write`; a shared or subscribed calendar it may only read gets no write). The owner switch is
+`mail_calendar_writes` (`accounts/wiring.py writes_on(account, service)`); every other connector stays under `connector_writes`.
+
+### The write-kind registry (mail and calendars)
+
+| Write kind | Provider | Capability | Undo | Idempotency | Version | Verified by |
+|---|---|---|---|---|---|---|
+| `event.create` | Google | `event_write` | `event.delete` (7 days) | event id derived from the key (`google_calendar_writes.event_id_for`); a repeat answers 409 and is read back | n/a | read back: title, start, end, attendees |
+| `event.delete` | Google | `event_write` | `event.recreate` from the event as it was | the event being gone | `If-Match` ETag (412: `conflict`) | read back: gone or cancelled |
+| `event.recreate` | Google | `event_write` | `event.delete` | as `event.create` | n/a | as `event.create` |
+
+A change the customer makes with their own hand (`ActionService.direct`, routes `/v1/hub/events/create`, `/v1/hub/events/cancel`, `/v1/hub/actions/<id>/undo`) is the same write
+kind through the same pipeline; their press is the approval and the screen is recorded (`actions.direct_screen`). A change the assistant prepared (`lumina_calendar_create`,
+`lumina_calendar_cancel`) is never recorded as direct, whatever screen approves it.
 
 The web app and the tools read these values; a control appears only where its capability is true. Adding Microsoft (Phase 6, #D8) is: a declaration, an adapter with the
 hub interface and its pure conversion functions with a fixture per case (a plain message, a long thread, HTML only, inline images, an invitation, all-day, a recurring

@@ -41,6 +41,19 @@ class ResyncRequired(Signal):
 
 
 @dataclass(frozen=True)
+class Grant:
+    """A permission to change things, asked for separately and only when the customer first uses what it allows (roadmap Phase 6). The name and the capabilities are the same
+    words for every provider; the scope is the provider's own."""
+    name: str                          # 'calendar_write' | 'send' | 'organize'
+    scope: str                         # what the provider calls it
+    capabilities: tuple                # which write capabilities of HubCaps it unlocks
+    words: str                         # what the customer reads before being sent to the provider
+
+
+WRITE_CAPABILITIES = ('send', 'organize', 'mark_read', 'event_write', 'respond')
+
+
+@dataclass(frozen=True)
 class HubCaps:
     """What a provider's adapter can do for the dashboard. The screens and the tools read this; it is the only place a difference between providers lives."""
     mail: bool = False                 # has mail at all
@@ -52,15 +65,37 @@ class HubCaps:
     subjects: bool = True              # threads have a subject (a chat does not)
     attachments: bool = False          # an attachment's bytes can be read (the knowledge pipeline reads it on demand, #55)
     compose_link: bool = False         # the provider has a compose screen a Lumina draft can open in (#57)
+    free_busy: bool = False            # the provider answers a live free/busy question across calendars (#59); without it the synced copy is used
     # Managing (Phase 6). All False until a provider's write kinds exist; the dashboard shows a control only where its capability is True.
     send: bool = False
     organize: bool = False             # archive, label or move, star, trash
     mark_read: bool = False
     event_write: bool = False          # create, change, cancel
     respond: bool = False              # answer an invitation
+    grants: tuple = ()                 # Grant rows: the permissions behind the write capabilities
 
     def public(self) -> dict:
-        return asdict(self)
+        out = asdict(self)
+        out['grants'] = [{'name': g.name, 'capabilities': list(g.capabilities), 'words': g.words} for g in self.grants]      # the provider's scope names stay on the server
+        return out
+
+    def grant_for(self, capability):
+        return next((g for g in self.grants if capability in g.capabilities), None)
+
+    def effective(self, scopes) -> dict:
+        """What this connection can do now: a write capability counts only when the provider declares it AND the connection holds the permission behind it. A screen shows a
+        control only where this says True; where the provider can but the permission is missing, `missing` names the grant to ask for (re-consent)."""
+        held = set(scopes or ())
+        out = {k: v for k, v in self.public().items() if k != 'grants'}
+        missing = {}
+        for capability in WRITE_CAPABILITIES:
+            grant = self.grant_for(capability)
+            if out[capability] and (grant is None or grant.scope not in held):
+                out[capability] = False
+                if grant is not None:
+                    missing[capability] = grant.name
+        out['missing'] = missing
+        return out
 
 
 @dataclass

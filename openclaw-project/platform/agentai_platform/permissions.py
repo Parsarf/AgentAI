@@ -79,6 +79,8 @@ TOOL_ACTIONS: dict[str, str] = {
     'mcp__*': 'connection.use',
     'lumina_mail_accounts': 'connection.use', 'lumina_mail_search': 'connection.use', 'lumina_mail_thread': 'connection.use', 'lumina_mail_older': 'connection.use',
     'lumina_calendar_events': 'connection.use', 'lumina_calendar_event': 'connection.use', 'lumina_calendar_search': 'connection.use',
+    'lumina_calendar_free': 'connection.use', 'lumina_calendar_conflicts': 'connection.use',
+    'lumina_calendar_create': 'action.propose', 'lumina_calendar_cancel': 'action.propose',       # Phase 6: they prepare a change for approval, never send one
     'lumina_connector_list': 'connection.use', 'lumina_connector_read': 'connection.use', 'lumina_connector_search': 'connection.use',
     'lumina_connector_propose': 'action.propose', 'lumina_connector_workflow': 'action.propose',
     'lumina_ask_customer': 'task.run',

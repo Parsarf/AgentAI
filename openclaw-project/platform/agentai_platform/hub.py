@@ -48,6 +48,14 @@ def _fragment(key, value) -> str:
     return json.dumps({key: value})[1:-1]
 
 
+
+def _scopes(raw) -> list:
+    try:
+        value = json.loads(raw or '[]')
+    except ValueError:
+        return []
+    return [s for s in value if isinstance(s, str)] if isinstance(value, list) else []
+
 class HubService:
     def __init__(self, store, connectors, client, sync, *, clock=time.time):
         self.store, self.connectors, self.client, self.sync, self.clock = store, connectors, client, sync, clock
@@ -61,7 +69,7 @@ class HubService:
         """Every connected mail or calendar account: who it is, whether it works, what it can do, and how fresh each part of it is."""
         with self.store.connect() as con:
             self._enter(con, principal)
-            rows = con.execute("SELECT id,service,state,identity_label,needs_reason FROM connector_connections WHERE account_id=? AND state!='revoked' ORDER BY created_epoch,rowid",
+            rows = con.execute("SELECT id,service,state,identity_label,needs_reason,granted_scopes FROM connector_connections WHERE account_id=? AND state!='revoked' ORDER BY created_epoch,rowid",
                                (principal.account_id,)).fetchall()
             sync = {}
             for r in con.execute('SELECT * FROM hub_sync WHERE account_id=?', (principal.account_id,)):
@@ -85,7 +93,10 @@ class HubService:
                             'error': errors[0] if errors else None, 'paused': any(p['state'] == 'paused' for p in mine)}
                 out.append({'id': row['id'], 'provider': row['service'], 'provider_label': declaration.label, 'identity': row['identity_label'],
                             'state': 'needs_you' if row['state'] != 'connected' else 'working', 'needs_reason': row['needs_reason'],
-                            'capabilities': caps.public(), 'granted': {'mail': any(s[0] in ('mailbox', 'label') for s in scope), 'calendar': any(s[0] == 'calendar' for s in scope)},
+                            # What it can do NOW: a write control shows only where the provider can and this connection holds the permission; `missing` names the
+                            # permission to ask for (roadmap Phase 6, re-consent), `grants` what each would allow, in words.
+                            'capabilities': caps.effective(_scopes(row['granted_scopes'])), 'grants': caps.public()['grants'],
+                            'granted': {'mail': any(s[0] in ('mailbox', 'label') for s in scope), 'calendar': any(s[0] == 'calendar' for s in scope)},
                             'mail': part('mail'), 'calendar': part('calendar')})
         return out
 
@@ -422,6 +433,91 @@ class HubService:
                         'attendees': json.loads(row['attendees_json']), 'provider_url': row['provider_url'], 'version': row['version']})
         out['synced_epoch'] = sync['last_sync_epoch'] if sync else None
         return out
+
+    # -- availability and conflicts (roadmap Phase 6, #59 and #60) --------------------------------------------------------------------------------
+    def availability(self, principal) -> dict:
+        """The customer's availability settings (working hours per weekday, notice, buffer, which calendars count, whether tentative and all-day events count)."""
+        from .hub_availability import clean_settings
+        with self.store.connect() as con:
+            self._enter(con, principal)
+            row = con.execute('SELECT availability_json FROM hub_settings WHERE account_id=?', (principal.account_id,)).fetchone()
+        try:
+            return clean_settings(json.loads(row['availability_json']) if row else {})
+        except ValueError:
+            return clean_settings({})
+
+    def set_availability(self, principal, raw) -> dict:
+        from .hub_availability import clean_settings
+        from .lifecycle.coordinator import Coordinator
+        settings = clean_settings(raw)
+        with Coordinator(self.store).transaction() as con:
+            self._enter(con, principal, 'connection.use')
+            con.execute('INSERT INTO hub_settings(account_id,updated_epoch) VALUES (?,?) ON CONFLICT(account_id) DO NOTHING', (principal.account_id, int(self.clock())))
+            con.execute('UPDATE hub_settings SET availability_json=?,updated_epoch=? WHERE account_id=?', (json.dumps(settings), int(self.clock()), principal.account_id))
+        return settings
+
+    def _counted(self, principal, settings) -> list:
+        """The calendars whose events make the customer busy: those chosen in the settings, else every calendar shown."""
+        calendars = self.calendars(principal)
+        if settings['busy_calendars'] is not None:
+            chosen = {tuple(p) for p in settings['busy_calendars']}
+            return [c for c in calendars if (c['connection_id'], c['id']) in chosen]
+        return [c for c in calendars if c['selected']]
+
+    def free(self, principal, start_epoch, end_epoch, zone, *, minutes=30) -> dict:
+        """Free time between start and end across every calendar that counts: the provider's live free/busy where it has one, the synced copy where it does not or could
+        not answer (and that is said), all-day events as busy when the settings say so. -> {'free', 'busy', 'settings', 'sources'}."""
+        from collections import defaultdict
+        from .connector_kit import Unanswered
+        from .hub_availability import all_day_busy, free_intervals, merge
+        start_epoch, end_epoch = int(start_epoch), int(end_epoch)
+        if end_epoch <= start_epoch or end_epoch - start_epoch > 62 * 86400 or not 5 <= int(minutes) <= 24 * 60:
+            raise ValueError('invalid range')
+        settings = self.availability(principal)
+        counted = self._counted(principal, settings)
+        by_connection = defaultdict(list)
+        for c in counted:
+            by_connection[c['connection_id']].append(c['id'])
+        events = [e for e in self.events(principal, start_epoch - 86400, end_epoch + 86400, only_selected=False)['events']
+                  if (e['connection_id'], e['calendar_id']) in {(c['connection_id'], c['id']) for c in counted}]
+        busy, sources = [], []
+        for connection, ids in by_connection.items():
+            live = None
+            try:
+                row, declaration, adapter, credential = self.client.open(principal, connection, 'connection.read')
+                caps = hub_caps(declaration)
+                if caps is not None and caps.free_busy and hasattr(adapter, 'free_busy'):
+                    live = self.client.call(principal.account_id, declaration, lambda: adapter.free_busy(credential, ids, start_epoch, end_epoch))
+            except (ConnectorFault, Unanswered):
+                live = None
+            for cid in ids:
+                spans = (live or {}).get(cid)
+                if spans is None:
+                    spans = [(e['start_epoch'], e['end_epoch']) for e in events if e['connection_id'] == connection and e['calendar_id'] == cid and not e['all_day']
+                             and e.get('my_response') != 'declined' and (settings['tentative_busy'] or e.get('my_response') != 'tentative')]
+                    sources.append({'account': connection, 'calendar': cid, 'live': False})
+                else:
+                    sources.append({'account': connection, 'calendar': cid, 'live': True})
+                busy += spans
+        if settings['all_day_busy']:
+            busy += all_day_busy(events, zone)
+        busy = merge(busy)
+        free = free_intervals(start_epoch, end_epoch, busy, settings, zone, now=int(self.clock()), minutes=int(minutes))
+        return {'free': free, 'busy': busy, 'settings': settings, 'sources': sources}
+
+    def conflicts(self, principal, start_local, end_local, zone, *, rule=None) -> dict:
+        """Does a proposed time (or each occurrence of a proposed repeat) clash with what is in the calendars that count? Against the synced, expanded instances of every
+        such calendar (never a recurrence rule worked out here), with the buffer. -> {'occurrences': [...], 'clashing': count}."""
+        from .hub_availability import conflicts, occurrences
+        settings = self.availability(principal)
+        proposed = occurrences(start_local, end_local, zone, rule)
+        low, high = min(p[0] for p in proposed) - 86400, max(p[1] for p in proposed) + 86400
+        counted = {(c['connection_id'], c['id']) for c in self._counted(principal, settings)}
+        events = []
+        for at in range(low, high, 390 * 86400):                 # a long series is read in slices the event query allows
+            events += [e for e in self.events(principal, at, min(high, at + 390 * 86400), only_selected=False)['events'] if (e['connection_id'], e['calendar_id']) in counted]
+        found = conflicts(proposed, events, settings, zone)
+        return {'occurrences': found, 'clashing': sum(1 for o in found if o['conflicts']), 'settings': settings}
 
     def search_events(self, principal, query, *, connections=None, limit=50) -> dict:
         """Events in the synced window whose title, people, place or notes contain every word of the query, soonest upcoming first, then the past."""
