@@ -120,5 +120,9 @@ Done on the server: `deploy/knowledge/install.sh` (knowledge database, embedding
 `uploads_host_ready` recorded; `customer_uploads` and `customer_knowledge` on (owner, 2026-11-19); `deploy/phase45_live.py` passed every gate. Since #63 the deploy program
 restarts the render service and the knowledge worker itself.
 
-**Still open:** Phase 5 gate 1: the owner connects a second Google account (test user on the consent screen, then Inbox > Add account) and asks the assistant panel about a
-thread of it; then run `deploy/phase5_live.py` (its docstring has the command).
+**Done 2026-11-20:** Phase 5 gate 1 passed (`deploy/phase5_live.py`, two Google accounts, all 9 checks, server `8e5b00b`).
+
+**Since #71 (2026-11-20) the deploy program restarts `agentai-supervisor-native`** after switching the trees, but only while no cell operation is in flight; otherwise it says
+so in the deploy log and the next deploy does it (or run `systemctl restart agentai-supervisor-native` once the operation has finished). Before this it was never restarted
+by a deploy, and every cell was set up (tool hook, configuration, rules) by the code of 15 November until 20 November. Running cells survive the restart. A running cell
+whose tool hook is older than the release is restarted by the lifecycle worker at its next quiet moment (#70).

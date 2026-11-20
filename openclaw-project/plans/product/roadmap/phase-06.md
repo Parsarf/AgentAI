@@ -33,7 +33,7 @@ version, then put back), W-CONFLICT (an event changed at Google is not cancelled
 ## Starting point (checked on the live stack, 2026-11-20)
 
 - Phase 3 exit gate: PASS (`roadmap/phase-03.md`). The action pipeline (`actions.py`, `workflows.py`, `handoff.py`) is live; only the test-only synthetic connector has write kinds.
-- Phase 5 exit gate: 8 of 9 gate-1 checks PASS with two real Google accounts (`deploy/phase5_live.py`, 2026-11-20). G1-ANSWER (the assistant panel answers through a real cell) found that the relay refused every Phase 3 to 5 tool for real cells; fixed in #66 (`cddeb4c`). It is re-run once the owner's cell has restarted with the new plugin.
+- Phase 5 exit gate: PASS (`roadmap/phase-05.md`): all 9 gate-1 checks with two real Google accounts on 2026-11-20, G1-ANSWER after the tool-origin fixes #66, #70, #71 and #72.
 
 ## Audit (one line per feature; label from the inventory)
 

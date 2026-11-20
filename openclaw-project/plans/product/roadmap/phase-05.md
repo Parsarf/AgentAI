@@ -1,9 +1,15 @@
 # Roadmap Phase 5 - the mail and calendar dashboard, read-only
 
-**Status (2026-11-19): LIVE; GATE 1 WAITS FOR THE SECOND GOOGLE ACCOUNT.** Everything in this phase is merged and live: the server runs `b0a5dd7` (read back from
-`/var/lib/agentai-deploy/last`, equal to `origin/main`), `mail_calendar_dashboard` is on for every account, and since 2026-11-19 attachments are read through the knowledge
-pipeline (Phase 4 is installed and on). The policy describing the copy is published (gate 7). Gate 1 needs a second real Google account connected beside the owner's:
-`deploy/phase5_live.py` runs it; on the owner's single account it already passes the draft and the meeting brief, and the rest only needs the second account.
+**Status (2026-11-20): PASS.** Every exit gate passed. Gate 1 passed live on 2026-11-20 with two real Google accounts (`deploy/phase5_live.py`, all 9
+checks, server `8e5b00b`). `mail_calendar_dashboard` is on for every account, attachments are read through the knowledge pipeline, and the policy describing the copy is
+published (gate 7).
+
+The first G1-ANSWER run found that the assistant panel could not answer about mail through a real cell: the relay refused every Phase 3 to 5 tool (`proof_missing`).
+Three faults were behind it, all fixed: the tool-ownership hook did not stamp the relay's newer tools (#66); a running cell kept its old hook until it happened to sleep
+(#70: a cell set up by older code is restarted at its next quiet moment); and `agentai-supervisor-native`, which installs the hook in every cell it starts, was never
+restarted by a deploy, so from 15 to 20 November every cell was set up by the code of 15 November (#71: the deploy restarts it while no cell operation is in flight). Two
+deploys on the way were rolled back automatically by the live acceptance: a cell stop and a chat request could pass each other. That is fixed in #72 (the stop waits for any
+waiting, queued or running request; no request is started while a stop runs).
 
 Read on the server on 2026-11-19 (read only): one Google connection, 69,226 messages and 300 events copied; the sync service 57-62 MB, no restart.
 
@@ -11,7 +17,7 @@ Read on the server on 2026-11-19 (read only): one Google connection, 69,226 mess
 
 | Gate | State |
 |---|---|
-| 1. The read-only suite on a real Google test account with **two** connected Google accounts | **Waits for the owner's second account.** `deploy/phase5_live.py` (G1-ACCOUNTS, -INBOX, -CALENDAR, -READ, -SEARCH, -ATTACHMENT, -DRAFT, -BRIEF, -ANSWER). Trial on the owner's single account, 2026-11-19: G1-DRAFT and G1-BRIEF PASS (9 citations, 3 "could not find" statements); a real 4-page PDF attachment read into the index (28 passages); the rest need the second account |
+| 1. The read-only suite on a real Google test account with **two** connected Google accounts | **PASS (2026-11-20, server `8e5b00b`).** `deploy/phase5_live.py`: G1-ACCOUNTS (2 accounts, both working), G1-INBOX (one list, threads of both), G1-CALENDAR (calendars of both), G1-READ, G1-SEARCH, G1-ATTACHMENT (28 passages, the email as source), G1-DRAFT, G1-BRIEF (14 citations, 2 "could not find" statements), G1-ANSWER (the assistant panel, asked "What is this about?" with a thread of the second account open, answered from that thread in one step, 41 s, and linked it). |
 | 2. The same suite with one Google account and the test-only second provider, with no provider name in any screen or tool condition | **Passes in tests**: `tests/hub_fixture.py` (two fake providers, `alpha` and `postbox`, that differ in ids, labels, paging, change feeds and calendars), `tests/test_hub.py` (`test_no_provider_is_named_in_the_model_the_engine_the_service_or_the_schema`), `Inbox.test.tsx` |
 | 3. No planted instruction in an email causes any action, including with that email open | **Passes in tests**: `test_reading_a_thread_fetches_its_text_and_an_instruction_inside_a_message_is_removed_not_obeyed`, `test_knowledge.py` `test_planted_instructions_in_mail_and_documents_stay_data`. Not run against a real model |
 | 4. Removing a connection removes tokens and every copied record | **Passes in tests**: `test_removing_an_account_removes_every_copy_of_it`, `test_only_the_chosen_labels_are_copied_and_narrowing_removes_the_rest` |
