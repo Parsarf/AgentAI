@@ -98,7 +98,7 @@ Google scopes `gmail.send`, `gmail.modify`, `calendar.events`, each asked on fir
 
 ## Needs the owner (real-world steps, can start now)
 
-- **Google:** in the Cloud console, OAuth consent screen > Data access: add `.../auth/gmail.send`, `.../auth/gmail.modify`, `.../auth/calendar.events`. Keep the app in Testing (test users only) until Google's verification; start the verification (restricted scopes: OAuth verification plus the CASA assessment, yearly).
+- **Google:** the scopes `.../auth/gmail.send`, `.../auth/gmail.modify` and `.../auth/calendar.events` were declared on the consent screen (Data access) on 2026-11-20 (done). Still open: Google's verification (restricted scopes: OAuth verification plus the CASA assessment, yearly). Keep the app in Testing (test users only) until it passes.
 - **Microsoft (pending, asked 2026-11-20):** entra.microsoft.com > App registrations > New registration: name "Lumina", accounts "Any organizational directory and personal Microsoft accounts", redirect (Web) `https://getlumina.pro/v1/hub/link/callback`. API permissions (Microsoft Graph, delegated): `offline_access`, `openid`, `email`, `User.Read`, `Mail.Read`, `Calendars.Read`, `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`. Certificates & secrets: a client secret, saved to a file on the owner's Mac (never in chat); Claude copies it to `/etc/agentai-platform/microsoft-client-secret` (root:agentai-platform 0640) and sets `AGENTAI_MICROSOFT_CLIENT_ID` and `AGENTAI_MICROSOFT_CLIENT_SECRET_FILE` in `accounts.env`. Test accounts: one outlook.com and one work account. Then: connect both in the Inbox, "Allow changes", run `deploy/phase6_microsoft_live.py <connection>`, and publish the policy line for Microsoft (owner approves) before customers can connect it.
 
 ## The writes switch is on: what that means for the next write kinds
@@ -106,8 +106,8 @@ Google scopes `gmail.send`, `gmail.modify`, `calendar.events`, each asked on fir
 `mail_calendar_writes` is on for every account since 2026-11-20 (owner's answer: on once each write kind passes its live write cycle; the policy for calendar changes
 published the same day). It covers every hub write kind the code declares, so a NEW kind (event changes, mail sending, organizing) is live the moment its release deploys.
 Therefore a new write kind is merged only after (1) its live write cycle passed on the real provider, run in-process before the merge as `deploy/phase6_live.py` does, and
-(2) the policy describes it, approved by the owner. Mail sending and organizing additionally need the Google consent screen's `gmail.send`/`gmail.modify` (declared
-2026-11-20) and a policy change, since today's text says mail stays read only.
+(2) the policy describes it, approved by the owner. For mail sending and organizing both were done on 2026-11-20: the consent screen declares `gmail.send`/`gmail.modify`,
+and the policy describing sending and organizing was approved and published (PR #81). The same two steps apply to Microsoft's write kinds (they stay in `proving` until then).
 
 ## Slack skipped (owner, 2026-11-20)
 
