@@ -4,7 +4,7 @@
  "contact_email": "raouparsa@gmail.com",
  "policy_file": "deploy/vercel/public/privacy.html",
  "policy_url": "https://getlumina.pro/privacy",
- "policy_updated": "2026-11-19",
+ "policy_updated": "2026-11-20",
  "derived": {
   "retention": {
    "browse_pictures_and_trace_hours": 24.0,
@@ -138,7 +138,7 @@
  "hosts_explained": {
   "accounts.google.com": {
    "who": "Google",
-   "why": "Mail and Calendar: the customer signs in at Google and grants read-only access",
+   "why": "Mail and Calendar: the customer signs in at Google and grants read-only access; calendar changes only if the customer presses \"Allow changes\"",
    "customer_data": true,
    "in_policy": "Google"
   },
@@ -238,7 +238,7 @@
   },
   "www.googleapis.com": {
    "who": "Google",
-   "why": "Mail and Calendar (read only): the calendar list, events and changes, and the signed-in address; also the switched-off connectors (Drive)",
+   "why": "Mail and Calendar: the calendar list, events and changes, free/busy times and the signed-in address; calendar events the customer creates, cancels or answers (only with the calendar change permission); also the switched-off connectors (Drive)",
    "customer_data": true,
    "in_policy": "Google"
   }
@@ -279,7 +279,7 @@
   "tabGroups",
   "storage",
   "wss://backend.getlumina.pro",
-  "19 November 2026",
+  "20 November 2026",
   "6,000",
   "80 controls",
   "until you ask us to delete",
@@ -329,7 +329,10 @@
   "Our document index runs on our own server",
   "What your assistant checked during a task",
   "Removing an account deletes its access tokens and everything Lumina copied from it",
-  "The Sources page"
+  "The Sources page",
+  "Calendar changes",
+  "only when you press the button yourself or approve a change your assistant prepared",
+  "Records of changes made to your connected calendars"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -443,6 +446,11 @@
    "date": "2026-11-20",
    "by": "Claude Code, roadmap Phase 6 (calendar changes) on the owner's instruction of 2026-11-20",
    "note": "Migration 0052 (1119 to 1122 columns): connector_link_states.upgrade_connection_id (which of the customer's own connections a sign-in adds a permission to: an id), hub_settings.availability_json (the customer's own working hours, notice, buffer and which calendars count), actions.direct_screen (which screen a change the customer made with their own hand came from: a fixed word). No new kind of personal data, no new recipient, no new retention time. Changing mail and calendars is built behind the owner switch mail_calendar_writes, which is OFF: the published policy's statement that Lumina cannot send, change or delete anything stays true until the owner approves the policy text for changes and turns the switch on. Judged not to need a wording change now."
+  },
+  {
+   "date": "2026-11-20",
+   "by": "prepared for owner approval (roadmap Phase 6)",
+   "note": "Calendar changes: the calendar.events permission asked only through \"Allow changes\"; create, cancel and answer only on the customer's own press or approval of a change the assistant prepared; who is told said before confirming; Google sends the invitations; records of changes kept 180 days (retention rule connector_records, table actions). Mail stays read only (no sending or organizing until a later policy change). Owner switch mail_calendar_writes stays off until this is published."
   }
  ],
  "assistant_recipients": {
