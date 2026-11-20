@@ -233,6 +233,8 @@ class RequestQueue:
             if not self.require_cell and capacity.admitted_slots<1:return None
             skip,held=set(exclude),set()
             while True:
+                # A cell operation in progress (a stop keeps the cell's slot 'active' until the cell is gone) holds the account's requests: none is started on a cell
+                # that is being stopped (2026-11-20, the deploy's live acceptance). The stop itself refuses while a request waits or runs (Coordinator.run).
                 # An account whose run is parked on a person has one execution already: its next request waits (same session lane, same cell). An account that already
                 # runs a task, or holds an uncertain one, waits for it.
                 # Two kinds of slot. A task in an ordinary conversation takes the account's one interactive slot. A phase of a running plan that can run beside another (it lives in a
@@ -251,6 +253,7 @@ class RequestQueue:
                         AND NOT EXISTS (SELECT 1 FROM request_slots s JOIN customer_requests q ON q.account_id=s.account_id AND q.id=s.request_id WHERE s.account_id=r.account_id AND q.conversation_id=r.conversation_id))
                     )
                     AND NOT EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state!='active')
+                    AND NOT EXISTS (SELECT 1 FROM operations o WHERE o.account_id=r.account_id AND o.state IN ('running','uncertain'))
                     AND (?=0 OR EXISTS (SELECT 1 FROM cell_slots k WHERE k.account_id=r.account_id AND k.state='active'))
                     ORDER BY coalesce((SELECT max(q.claimed_epoch) FROM customer_requests q WHERE q.account_id=r.account_id),0),r.sequence LIMIT 25""",(BACKGROUND_PER_ACCOUNT,1 if self.require_cell else 0)).fetchall()
                 row=next((r for r in rows if r['account_id'] not in skip and r['id'] not in held),None)

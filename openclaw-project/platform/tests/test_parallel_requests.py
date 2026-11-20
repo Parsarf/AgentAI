@@ -71,6 +71,18 @@ class ClaimChecks(Pool):
         self.assertIsNone(self.claim())
         self.assertEqual(self.rows('SELECT count(*) FROM request_slots')[0][0], 2)
 
+    def test_no_request_is_started_on_a_cell_that_is_being_stopped(self):
+        # A stop keeps the cell's slot 'active' until the cell is gone. On 2026-11-20 the deploy's live acceptance request was claimed on a cell whose stop was under way.
+        self.cell('a'); self.cell('b')
+        with self.store.connect() as con:
+            con.execute("INSERT INTO operations(account_id,id,deployment_id,kind,state,idempotency_key,request_hash,generation) VALUES ('a','stop-a','d-a','stop','running','s','h',1)")
+        self.send('a', 'ka'); self.send('b', 'kb')
+        self.assertEqual(self.claim().account_id, 'b')                    # the other account is not held up
+        self.assertIsNone(self.claim())
+        with self.store.connect() as con:
+            con.execute("UPDATE operations SET state='failed' WHERE id='stop-a'")      # the stop ended without stopping it (refused): the request goes ahead
+        self.assertEqual(self.claim().account_id, 'a')
+
     def test_one_task_per_account_even_across_conversations(self):
         self.cell('a')
         self.send('a', 'k1', 1); self.send('a', 'k2', 2)
