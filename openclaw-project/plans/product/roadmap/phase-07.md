@@ -7,10 +7,11 @@ apply unchanged: one batch of questions, then build, merge, deploy, and pass the
 ## Starting point (checked on the live stack, 2026-11-20)
 
 - **Release.** Server `/var/lib/agentai-deploy/last` = `origin/main` = `3bc1f30` (PR #82), deployed 09:46 UTC, live acceptance passed; Vercel built the same commit.
+  Since then (2026-11-21 00:55 UTC): `a7cd3cf` (PR #84, the policy naming Microsoft), live acceptance passed, and the Microsoft keys installed (`phase-06.md`).
   Every long-running `agentai-*` service is active; no error-level journal line from them since that deploy; disk 136 GB free, memory 9 GB available.
 - **Tests.** `ci/run.sh all` on `3bc1f30`: 8 of 8 blocking parts pass (130 s, local).
-- **Phase 6.** Built; Google proven live and on for every account; exit gate 8 (one Google and one Microsoft account) waits for the owner's Entra app
-  (`roadmap/phase-06.md`, "Needs the owner"). Phase 7 depends on it only for Microsoft's change notifications in #76 (question 1).
+- **Phase 6.** Built; Google proven live and on for every account; Microsoft configured and open for reading (2026-11-21); exit gate 8 (one Google and one
+  Microsoft account) waits for the owner's test run (`roadmap/phase-06.md`, "Needs the owner"). Phase 7 depends on it only for Microsoft's change notifications in #76 (question 1).
 - **Switches** (server, 2026-11-20): on: `customer_execution`, `browse_tasks`, `open_access`, `mail_calendar_dashboard`, `customer_uploads`, `customer_knowledge`,
   `mail_calendar_writes`. Off: `connector_writes`, `synthetic_connector`, `jev_routing`. `customer_schedules` has no entry (off) and is **locked in code**
   (`switches.py`: "Locked until the safety checks for unattended work have been run (Phase 15)"; the old `plans/product/phase-15.md` ended PARTIAL on 2026-10-13).
@@ -66,7 +67,7 @@ than seven days after its last part is live. New migrations start at `0055`; the
 
 ## Questions for the owner (one batch, before building; recommended default each)
 
-1. **Order.** Start Phase 7 while Phase 6 exit gate 8 waits for the Entra app? Recommended: **yes**; Microsoft's change notifications (#76) are added when gate 8 passes.
+1. **Order.** Start Phase 7 while Phase 6 exit gate 8 waits for the owner's Microsoft test run? Recommended: **yes**; Microsoft's change notifications (#76) are added when gate 8 passes.
 2. **Rollout.** Turn each Phase 7 switch (`customer_schedules` and the new ones) on for every account once its live proof passed and the policy is published, as in
    Phase 6? Recommended: **yes**.
 3. **Channels.** In-app and email are ready. Telegram needs a bot (BotFather: token, webhook secret, username). Browser push sends through the browser makers' push
@@ -79,6 +80,11 @@ than seven days after its last part is live. New migrations start at `0055`; the
 
 The policy text for notifications, webhook events, board data, schedules and triggers is prepared with the pull requests and shown to you as a diff before it is
 published (as for PRs #74 and #81).
+
+## Known before starting
+
+- The report-only CI part `browse` fails on every pull request (PR #82, PR #84): `ci/run.sh browse` runs `node --test test/`, and the Node in CI treats `test/`
+  as a file ("Cannot find module .../browse/test"). Use `node --test 'test/*.test.mjs'`. It blocks nothing today, but the browser tests are not being run in CI.
 
 ## Repository housekeeping (waiting for the owner's go-ahead; not needed to start)
 
