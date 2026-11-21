@@ -250,15 +250,15 @@
   },
   "graph.microsoft.com": {
    "who": "Microsoft",
-   "why": "Microsoft (Outlook mail and calendars, #D8): NOT configured on the live server (no Entra app yet, 2026-11-20). Its sign-in appears only when AGENTAI_MICROSOFT_CLIENT_ID and the secret file are set; the policy names Microsoft (owner approves) before that.",
-   "customer_data": false,
-   "in_policy": null
+   "why": "Mail and Calendar (Outlook, #D8): the chosen folders, message headers and previews, a message when it is opened, changes since the last sync (delta), older-mail search, calendars and events (calendarView); a message the customer sends, folder, category, flag and read changes, and events created, changed, cancelled or answered (only with the matching permission, on their own press or approval)",
+   "customer_data": true,
+   "in_policy": "Microsoft"
   },
   "login.microsoftonline.com": {
    "who": "Microsoft",
-   "why": "Microsoft sign-in for Outlook. Microsoft (Outlook mail and calendars, #D8): NOT configured on the live server (no Entra app yet, 2026-11-20). Its sign-in appears only when AGENTAI_MICROSOFT_CLIENT_ID and the secret file are set; the policy names Microsoft (owner approves) before that.",
-   "customer_data": false,
-   "in_policy": null
+   "why": "Mail and Calendar (Outlook): the customer signs in at Microsoft and grants read-only access; exchanging the sign-in code for tokens and renewing them; send, organize and calendar change permissions only if the customer presses \"Allow changes\"",
+   "customer_data": true,
+   "in_policy": "Microsoft"
   }
  },
  "recipients_not_visible_in_code": {
@@ -500,6 +500,11 @@
    "date": "2026-11-20",
    "by": "Claude Code, roadmap Phase 6 (#D8)",
    "note": "Outlook adapter built (microsoft_hub.py, microsoft_writes.py); hosts graph.microsoft.com and login.microsoftonline.com recorded as not configured on the live server. Before AGENTAI_MICROSOFT_CLIENT_ID is set: add Microsoft to the policy as a source and recipient (as Google), owner approves, then customer_data true and in_policy Microsoft here."
+  },
+  {
+   "date": "2026-11-20",
+   "by": "Claude Code, roadmap Phase 6 (#D8: Microsoft), approved by the owner on 2026-11-20 (\"do everything\")",
+   "note": "Microsoft (Outlook.com and work or school Microsoft 365 accounts) added to the policy as a source and recipient, the same way as Google: what is copied, sending, organizing (folders, categories, flags, Deleted Items), calendar changes, revoking access, and a recipients entry. graph.microsoft.com and login.microsoftonline.com now customer_data true, in_policy Microsoft. Meeting times stay Google-only (Microsoft has no live free/busy in the adapter). To be published before AGENTAI_MICROSOFT_CLIENT_ID is set on the server."
   }
  ],
  "assistant_recipients": {
