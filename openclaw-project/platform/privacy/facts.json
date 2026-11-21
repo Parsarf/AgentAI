@@ -503,7 +503,7 @@
   },
   {
    "date": "2026-11-20",
-   "by": "prepared for owner approval (roadmap Phase 6, #D8: Microsoft)",
+   "by": "Claude Code, roadmap Phase 6 (#D8: Microsoft), approved by the owner on 2026-11-20 (\"do everything\")",
    "note": "Microsoft (Outlook.com and work or school Microsoft 365 accounts) added to the policy as a source and recipient, the same way as Google: what is copied, sending, organizing (folders, categories, flags, Deleted Items), calendar changes, revoking access, and a recipients entry. graph.microsoft.com and login.microsoftonline.com now customer_data true, in_policy Microsoft. Meeting times stay Google-only (Microsoft has no live free/busy in the adapter). To be published before AGENTAI_MICROSOFT_CLIENT_ID is set on the server."
   }
  ],
