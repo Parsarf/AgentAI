@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
 import { startSite } from '../fixtures/site.mjs';
 import { Executor } from '../extension/src/executor.js';
+import { MAX_PAGE_TEXT } from '../extension/src/rules.js';
 import { PlaywrightHost } from '../extension/dev/playwright-host.mjs';
 
 const CHROME = process.env.BROWSE_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -153,6 +154,18 @@ test('takeover input: click at a point, type, key, scroll, address bar, back / f
   assert.equal(await ex.ev(() => document.querySelector('[aria-label="Delivery address"]').value), 'ab');
   assert.equal((await ex.handle({ cmd: 'xy', action: 'scroll', text: '1' })).ok, true);
   assert.equal((await ex.handle({ cmd: 'xy', action: 'dance' })).error, 'bad_action');
+  await stop();
+});
+
+test('a long page: no more of its words leave the browser than the privacy policy promises', async () => {
+  await start();
+  await ex.handle({ cmd: 'open', url: base + '/' });
+  await ex.ev(n => { for (let i = 0; i < n; i++) document.body.insertAdjacentHTML('beforeend', `<p>Paragraph ${i} of a very long page of words</p>`); }, 2000);
+  const s = await ex.handle({ cmd: 'snapshot' });
+  assert.equal(MAX_PAGE_TEXT, 6000);                                         // the published number (platform/privacy/facts.json); change the policy before this line
+  assert.equal(s.text.length, MAX_PAGE_TEXT); assert.ok(s.text.startsWith('Paddle Shop') || s.text.includes('Add to cart'));
+  assert.ok(!('full' in s) && !('full_at' in s));                            // the whole page's words are built in the page for the hosted browser only
+  assert.ok(JSON.stringify({ ...s, elements: undefined, snapshot: undefined }).length < MAX_PAGE_TEXT + 2000);
   await stop();
 });
 

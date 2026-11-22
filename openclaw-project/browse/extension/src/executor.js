@@ -11,7 +11,7 @@
 //   host.activate(tabId)         bring the tab to the front (a background tab may not paint, so a picture of it can stall)
 //   host.granted(grant)          -> tabId|null  a tab the customer allowed Lumina to use in their own window (attached on this call); `host.isGranted(tabId)` says whether a tab is one.
 //                                A granted tab is the customer's own: it keeps its size, is never closed by Lumina (closeTab only lets go of it), and tabs() lists it while it is in use.
-import { WIDTH, HEIGHT, MAX_ELEMENTS, MAX_VALUE, MAX_URL, KEYS, TAKEOVER_KEYS, SELECTOR, urlAllowed, pointOk } from './rules.js';
+import { WIDTH, HEIGHT, MAX_ELEMENTS, MAX_PAGE_TEXT, MAX_VALUE, MAX_URL, KEYS, TAKEOVER_KEYS, SELECTOR, urlAllowed, pointOk } from './rules.js';
 import { describe, hitAt, focusActive, fingerprint, ready, locate, chooseOption, focusForFill } from './page.js';
 
 const KEY_INFO = {
@@ -142,7 +142,7 @@ export class Executor {
     await this.settle();
     const d = await this.ev(describe, { sel: SELECTOR, max: MAX_ELEMENTS });
     const lines = d.elements.map(e => `[${e.ref}] <${e.tag}${e.type ? ' type=' + e.type : ''}> "${e.label}"`).join('\n');
-    return { ok: true, url: await this.url(), title: d.title, snapshot: lines, text: d.text, pages: this.host.tabs().length || 1, elements: d.elements, page_fp: await this.fp(), scroll: d.scroll, height: d.height, window: d.window, focus: d.focus };
+    return { ok: true, url: await this.url(), title: d.title, snapshot: lines, text: (d.text || '').slice(0, MAX_PAGE_TEXT), pages: this.host.tabs().length || 1, elements: d.elements, page_fp: await this.fp(), scroll: d.scroll, height: d.height, window: d.window, focus: d.focus };   // the page script also builds the whole page's words (d.full): they stay in the browser, the policy's limit is MAX_PAGE_TEXT
   }
 
   async act(msg) {

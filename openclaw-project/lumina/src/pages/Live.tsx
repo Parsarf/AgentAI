@@ -8,6 +8,7 @@ import { isOpen, needLine, verdict, type Approval, type TaskView } from '../lib/
 import { useData } from '../state/data';
 import { useTask, useWork } from '../state/work';
 import LiveScreen from '../components/LiveScreen';
+import BrowserQuestion from '../components/BrowserQuestion';
 import Permission from '../components/work/Permission';
 import TaskActions from '../components/work/TaskActions';
 import TaskDetail from '../components/work/TaskDetail';
@@ -34,7 +35,7 @@ function BrowserStage({ task }: { task: TaskView }) {
 
   runStatus.current = run?.status;
   const browseLive = !!run && LIVE_STATES.includes(run.status) && taskLive;
-  useEffect(() => { if (!browseLive) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' ? 800 : 2000); return () => clearInterval(t); }, [browseLive, load, run?.pausing, run?.status]);
+  useEffect(() => { if (!browseLive) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' || run?.status === 'asking' ? 800 : 2000); return () => clearInterval(t); }, [browseLive, load, run?.pausing, run?.status]);
   useEffect(() => () => clearTimeout(flushTimer.current), []);
 
   const send = useCallback((body: Record<string, unknown>) => {
@@ -52,7 +53,8 @@ function BrowserStage({ task }: { task: TaskView }) {
     await load();
   };
   const flush = useCallback(() => { clearTimeout(flushTimer.current); const t = buffer.current; buffer.current = ''; return t ? send({ action: 'type', text: t.slice(0, 500) }) : controlQueue.current; }, [send]);
-  const driving = browseLive && !!run?.takeover && (run.status === 'paused' || run.status === 'handoff');
+  const asking = browseLive && run?.status === 'asking' && !!run.question;
+  const driving = browseLive && !!run?.takeover && (run.status === 'paused' || run.status === 'handoff' || run.status === 'asking');      // while a question waits the customer may also choose on the page itself
   const onKey = (e: React.KeyboardEvent) => {
     if (!driving || (e.target as HTMLElement).tagName === 'INPUT') return;
     const a = keyAction(e); if (!a) return; e.preventDefault();
@@ -68,7 +70,8 @@ function BrowserStage({ task }: { task: TaskView }) {
         <div className="ws-bar">{run.pausing
           ? <span className="muted" role="status">Pausing after Lumina’s current step…</span>
           : <><button className="btn" onClick={() => act('pause')}><I.Hand width={16} height={16} /> Take control</button><span className="faint">Lumina pauses, and you use the browser yourself.</span></>}</div>)}
-      {run && driving && (
+      {run && asking && run.question && <BrowserQuestion key={run.question.id} id={id} question={run.question} onAnswered={() => void load()} />}
+      {run && driving && run.status !== 'asking' && (
         <div className="ws-bar col" role="region" aria-label="You are in control of the browser">
           <h3>{run.needs_you || run.status !== 'paused' ? 'Lumina needs your help' : 'You are in control'}</h3>
           <p className="muted">{run.needs_you

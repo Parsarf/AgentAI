@@ -203,8 +203,8 @@ class ServiceChecks(unittest.TestCase):
         from agentai_platform.browse.ladder import JevChooser
         from tests.test_browse import ScriptedJev
         jev = ScriptedJev('oops', {'operation': 'type', 'type_target': 'c1', 'type_text': 't0'}, {'operation': 'click', 'click_target': 'c2'}, {'operation': 'click', 'click_target': 'c1'})
-        s = ScriptedService(spawn=lambda j, o: self.transports.append(FakeTransport(o)) or self.transports[-1], llm_for=llm_for(['{"action":"scroll"}']), root=self.tmp.name,
-                              jev_for=lambda account: JevChooser('https://x', 'jev-1.13.0', 'k', jev), jev_mode='live', takeover_seconds=5)
+        s = ScriptedService(spawn=lambda j, o: self.transports.append(FakeTransport(o)) or self.transports[-1], llm_for=llm_for(['{"action":"click","ref":1}']), root=self.tmp.name,
+                              jev_for=lambda account: JevChooser('https://x', 'jev-1.13.0', 'k', jev), jev_mode='live', takeover_seconds=5)      # the assistant, asked about JEV's pick of Checkout, picks it too: the customer's
         s.start('acct', RID, 'buy a paddle at https://shop.example/')
         p = wait(s, ('handoff',))
         stats = p['jev']

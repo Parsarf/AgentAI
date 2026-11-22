@@ -224,6 +224,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .live-show-text input { width: auto; }
 
 .live-show-text input[type="checkbox"] { flex: none; padding: 0; }
+.live-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; font-size: 12px; color: var(--ink-2); }      /* a detail a form needs, asked in the browser's question panel */
 
 /* Emoji shown as OpenMoji pictures (src/lib/emojify.ts). The alt text is the emoji, so copying and screen readers still get the character. */
 .emoji { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -.26em; margin: 0 .03em; user-select: all; }

@@ -37,6 +37,7 @@ test_shared_rules
 test_browse_reference
 test_browse_job_states
 test_browse_tabs
+test_browse_reliability
 test_mcp_setup
 test_acceptance
 test_rate_limits

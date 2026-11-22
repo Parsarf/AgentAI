@@ -2,9 +2,11 @@
 // test/extension-parity.test.mjs checks the verdicts against runner.mjs so the three cannot drift apart silently.
 export const WIDTH = 1280, HEIGHT = 800;
 export const MAX_ELEMENTS = 80, MAX_VALUE = 500, MAX_URL = 2048, MAX_PAGES = 3;
+// The privacy policy promises this number for a customer's own browser (platform/privacy/facts.json, page_text_limit_chars): raising it means changing the published policy first.
+export const MAX_PAGE_TEXT = 6000;
 export const KEYS = new Set(['Enter', 'Tab', 'Escape']);
 export const TAKEOVER_KEYS = new Set(['Backspace', 'Delete', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp']);
-export const SELECTOR = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [onclick]';
+export const SELECTOR = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=combobox], [role=option], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=switch], [onclick]';
 
 /** An address (not a name) in a private, loopback, link-local or otherwise internal range. */
 export function privateIp(h) {

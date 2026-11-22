@@ -150,11 +150,11 @@ test('elements report state: value, checked, expanded, in_view and select option
   for (const line of s.snapshot.split('\n')) assert.match(line, LINE);
   const gift = find(s.snapshot, 'Gift wrap'); const det = find(s.snapshot, 'Details');
   const t1 = Date.now();
-  assert.equal((await r.handle({ cmd: 'act', action: 'click', ref: +gift[1], expect: { label: gift[4] } })).error, 'covered');      // an invisible checkbox under its styled label: refused at once
-  assert.ok(Date.now() - t1 < 3000, 'refused at once, not after the 6 s click timeout');
+  assert.equal((await r.handle({ cmd: 'act', action: 'click', ref: +gift[1], expect: { label: gift[4] } })).ok, true);      // an invisible checkbox under its styled label: the step goes to the label, as a person's click does (it used to be refused as "covered")
+  assert.ok(Date.now() - t1 < 3000, 'done at once, not after the 6 s click timeout');
   assert.equal((await r.handle({ cmd: 'act', action: 'click', ref: +det[1], expect: { label: det[4] } })).ok, true);
   s = await r.handle({ cmd: 'snapshot' }); e = els(s);
-  assert.equal(e['Gift wrap'].checked, false); assert.equal(e.Details.expanded, true);
+  assert.equal(e['Gift wrap'].checked, true); assert.equal(e.Details.expanded, true);
   const size = find(s.snapshot, 'Size');
   assert.equal((await r.handle({ cmd: 'act', action: 'select', ref: +size[1], value: 'Medium (M)', expect: { label: size[4] } })).ok, true);   // by label
   assert.equal(await r.page.inputValue('select'), 'Medium (M)');
@@ -344,4 +344,120 @@ test('snapshot says what has the keyboard: nothing, a text field with what it ho
   assert.equal(s3.focus.secret, true); assert.equal(s3.focus.value, ''); assert.equal(s3.focus.label, '');
   await r.page.evaluate(() => document.querySelector('button').focus());
   assert.equal((await r.handle({ cmd: 'snapshot' })).focus.editable, false);
+});
+
+// ---- November 2026 reliability work: each of these was a task that failed in the lab (browser-opt/lab) before the runner was changed.
+const setPage = body => r.page.setContent(`<!doctype html><title>T</title><body style="margin:0">${body}</body>`);
+
+test('controls inside open shadow roots are listed, clicked and typed into like any other', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  await setPage(`<h1>Library</h1><div id=host></div><script>
+    const root = document.getElementById('host').attachShadow({ mode: 'open' });
+    root.innerHTML = '<input aria-label="Search books" style="width:200px;height:30px"><button id=go>Go</button><div id=inner></div>';
+    const deep = root.getElementById('inner').attachShadow({ mode: 'open' }); deep.innerHTML = '<button>Deep button</button><p>Deep words</p>';
+    root.getElementById('go').addEventListener('click', () => { document.title = 'WENT ' + root.querySelector('input').value; });</script>`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  const field = s.elements.find(e => e.label === 'Search books'), go = s.elements.find(e => e.label === 'Go'), deep = s.elements.find(e => e.label === 'Deep button');
+  assert.ok(field && go && deep, 'the search box of a web component used to be invisible: the task could only click its button over and over');
+  assert.ok(field.ref < go.ref && go.ref < deep.ref, 'numbers follow page order through shadow roots too');
+  assert.equal(field.covered, false); assert.equal(deep.covered, false);
+  assert.match(s.text, /Deep words/);                                                       // the words inside are read too
+  assert.equal((await r.handle({ cmd: 'act', action: 'type', ref: field.ref, value: 'dune', expect: { label: 'Search books' } })).ok, true);
+  const s2 = await r.handle({ cmd: 'snapshot' });
+  assert.equal(s2.focus.label, 'Search books'); assert.equal(s2.focus.value, 'dune');        // focus is followed into the shadow root
+  assert.equal((await r.handle({ cmd: 'act', action: 'click', ref: s2.elements.find(e => e.label === 'Go').ref, expect: { label: 'Go' } })).ok, true);
+  assert.equal(await r.page.title(), 'WENT dune');
+});
+
+test('a control the page gave no name is still listed: a dropdown by its first option, a field or button by what the code calls it', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  await setPage(`<select id=dropdown><option value="">Please select an option</option><option>Option 1</option><option>Option 2</option></select>
+    <input name="first_name"><input type=checkbox><br><input type=checkbox> gift wrap<br><button id="cart-toggle"><svg width=20 height=20></svg></button>
+    <a href="#x" title="The Road to Little Dribbling: Adventures of an American in Britain">The Road to Little ...</a><p><a href="#y" title="A Very Long Book Title Indeed">A Very Long ...</a> in stock</p>`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  const labels = s.elements.map(e => e.label);
+  assert.ok(labels.includes('Dropdown: Please select an option'), labels.join(' | '));
+  assert.ok(labels.includes('first name')); assert.ok(labels.includes('Checkbox')); assert.ok(labels.includes('gift wrap')); assert.ok(labels.includes('cart toggle (unnamed button)'));
+  assert.ok(labels.includes('The Road to Little Dribbling: Adventures of an American in Britain'));       // a name the page cut short is given whole when its title says it
+  assert.match(s.text, /A Very Long Book Title Indeed/);                                                  // ... in the page's words too
+  const dd = s.elements.find(e => e.tag === 'select');
+  assert.deepEqual(dd.options, ['Please select an option', 'Option 1', 'Option 2']);
+  assert.equal((await r.handle({ cmd: 'act', action: 'select', ref: dd.ref, value: 'Option 2', expect: { label: dd.label } })).ok, true);
+  assert.equal(await r.page.evaluate(() => document.getElementById('dropdown').value), 'Option 2');
+});
+
+test('the page text starts with what is in the window, wherever the page is scrolled to, and the whole page is given in page order', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  const top = await r.handle({ cmd: 'snapshot' });
+  assert.ok(top.text.startsWith('Long page\nLine 0'), top.text.slice(0, 40)); assert.equal(top.full_at, 0);
+  await r.handle({ cmd: 'act', action: 'scroll', value: 'down' }); await r.handle({ cmd: 'act', action: 'scroll', value: 'down' });
+  const down = await r.handle({ cmd: 'snapshot' });
+  assert.ok(down.scroll >= 1300);
+  const first = Number(down.text.match(/^Line (\d+)/)[1]);
+  assert.ok(first >= 20 && first <= 24, `the first words are the first line in the window, not the top of the document (Line ${first})`);
+  assert.match(down.text, /\[below the window\]/); assert.match(down.text, /\[above the window\]\nLong page\nLine 0/);
+  assert.ok(down.full.startsWith('Long page\nLine 0')); assert.ok(down.full.includes('Line 59')); assert.equal(down.full.slice(down.full_at).startsWith(`Line ${first}`), true);
+});
+
+test('a click whose effect arrives a moment later is still seen as a change', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  await setPage(`<button onclick="setTimeout(() => { const a = document.createElement('a'); a.href = '#n'; a.textContent = 'Now here'; document.body.appendChild(a); }, 700)">Load</button>`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  const out = await r.handle({ cmd: 'act', action: 'click', ref: s.elements[0].ref, expect: { label: 'Load' } });
+  assert.equal(out.ok, true); assert.notEqual(out.page_fp, s.page_fp, 'read at once this said "nothing changed", and the decider clicked again');
+});
+
+test('a page caught before it has drawn anything is given a moment, and the snapshot shows what then appeared', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  await setPage(`<script>setTimeout(() => { document.body.innerHTML = '<h1>Results</h1><a href="#r">First result</a>'; }, 900)</script>`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  assert.match(s.text, /Results/); assert.ok(s.elements.some(e => e.label === 'First result'));
+});
+
+test('a picture is still taken when the page waits for a font that never arrives', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  const bytes = await r.shoot(60);
+  assert.ok(bytes.length > 1000); assert.equal(bytes[0], 0xff); assert.equal(bytes[1], 0xd8);
+  const page = r.page; const real = page.screenshot.bind(page);
+  page.screenshot = async () => { throw new Error('Timeout 3000ms exceeded while waiting for fonts to load'); };
+  try { const direct = await r.shoot(60); assert.equal(direct[0], 0xff); assert.ok(direct.length > 1000); } finally { page.screenshot = real; }
+  assert.equal((await r.handle({ cmd: 'view' })).ok, true);
+});
+
+test('a size picker drawn as labels over hidden radio buttons is listed, shows what is chosen, and a step on it chooses', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  await setPage(`<fieldset><legend>Size:</legend>
+    <input type=radio name=size id=s value=Small checked style="position:absolute;opacity:0;width:1px;height:1px"><label for=s style="display:inline-block;padding:10px 20px;border:1px solid">Small</label>
+    <input type=radio name=size id=m value=Medium style="display:none"><label for=m style="display:inline-block;padding:10px 20px;border:1px solid">Medium</label>
+    <input type=radio name=size id=l value=Large disabled style="display:none"><label for=l style="display:inline-block;padding:10px 20px;border:1px solid">Large</label></fieldset>`);
+  const s = await r.handle({ cmd: 'snapshot' });
+  const small = s.elements.find(e => e.label === 'Small'), medium = s.elements.find(e => e.label === 'Medium');
+  assert.ok(small && medium, 'the choices used to be in the page text and nowhere in the list of controls'); assert.equal(s.elements.find(e => e.label === 'Large'), undefined);   // sold out: not offered
+  assert.deepEqual([small.type, small.checked, medium.checked, medium.covered, medium.in_view], ['radio', true, false, false, true]);
+  const out = await r.handle({ cmd: 'act', action: 'click', ref: medium.ref, expect: { label: 'Medium' } });
+  assert.equal(out.ok, true); assert.notEqual(out.page_fp, s.page_fp);                          // choosing a size is a change the host can see
+  assert.equal(await r.page.evaluate(() => document.getElementById('m').checked), true);
+  const after = await r.handle({ cmd: 'snapshot' });
+  assert.equal(after.elements.find(e => e.label === 'Medium').checked, true); assert.equal(after.elements.find(e => e.label === 'Small').checked, false);
+});
+
+test('a custom dropdown, its options, menu items and switches are controls like any other', async () => {
+  await r.handle({ cmd: 'open', url: base + '/long' });
+  await setPage(`<div role="combobox" aria-expanded="false" tabindex="0" id="trip" style="width:160px;height:32px"
+      onclick="this.setAttribute('aria-expanded','true'); document.getElementById('list').hidden=false">Round trip</div>
+    <ul id="list" role="listbox" hidden><li role="option" aria-selected="true" style="height:30px">Round trip</li>
+      <li role="option" aria-selected="false" style="height:30px" onclick="document.getElementById('trip').textContent='One way'; this.parentNode.hidden=true">One way</li></ul>
+    <div role="switch" aria-checked="false" tabindex="0" style="width:60px;height:24px" onclick="this.setAttribute('aria-checked','true')">Nonstop only</div>
+    <div role="menuitem" tabindex="0" style="width:120px;height:24px">Price graph</div>`);
+  let s = await r.handle({ cmd: 'snapshot' });
+  const trip = s.elements.find(e => e.label === 'Round trip' && e.role === 'combobox');
+  assert.ok(trip, 'the trip-type control of a flight search is a combobox: it was never listed, so "one way" could only be reached by pointing at a picture');
+  assert.equal(trip.expanded, false); assert.ok(s.elements.some(e => e.role === 'menuitem' && e.label === 'Price graph'));
+  assert.equal(s.elements.find(e => e.role === 'switch').checked, false);
+  await r.handle({ cmd: 'act', action: 'click', ref: trip.ref, expect: { label: 'Round trip' } });
+  s = await r.handle({ cmd: 'snapshot' });
+  const oneWay = s.elements.find(e => e.role === 'option' && e.label === 'One way');
+  assert.ok(oneWay); assert.equal(oneWay.checked, null); assert.equal(s.elements.find(e => e.role === 'option' && e.label === 'Round trip').checked, true);       // the option that is chosen says so
+  await r.handle({ cmd: 'act', action: 'click', ref: oneWay.ref, expect: { label: 'One way' } });
+  assert.equal(await r.page.evaluate(() => document.getElementById('trip').textContent), 'One way');
 });

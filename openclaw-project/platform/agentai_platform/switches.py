@@ -102,6 +102,12 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
                   ('stripe_price_configured', 'The $79 monthly test price exists in Stripe and its ID is configured.'),
                   ('webhook_secret_present', 'The webhook signing secret is installed on the server.'),
                   ('webhook_endpoint_registered', 'The webhook endpoint is registered in Stripe and sends the events listed in the runbook.'))),
+    Switch('browser_press_approval', 'Let a customer allow the browser to press a button that changes something',
+           'When the browser reaches a button that removes, sends, submits or confirms something, it asks the customer whether to press it, instead of ending the task there.',
+           'With the customer\'s yes that one button is pressed and the task goes on. Buttons that pay, buy, order, book or subscribe are never asked about and never pressed. '
+           'With this off, every such button ends the task and hands the page to the customer, as before.',
+           'No direct cost.', 'high',
+           confirmations=(('customer_presses', 'I understand that, with a customer\'s yes, the browser presses a button that can change something for them on a website (remove, send, submit, confirm).'),)),
     Switch('credentialed_browsing', 'Let the browser worker use saved logins',
            'Lets a customer give the browser worker a website login it can reuse.',
            'Logins are kept in protected storage and used only on the sites the customer allows.',

@@ -54,7 +54,13 @@ class SightRequests(unittest.TestCase):
     def test_a_weak_pointing_answer_is_a_miss_never_an_action(self):
         for found, spot in ((0.3, 0.9), (0.9, 0.1)):
             with self.assertRaises(NoSpot):
-                self.ask(lambda b: picture_answer(b, {'operation': 'click', 'click_target': 'none'}, found=found, spot=spot))
+                self.ask(lambda b: picture_answer(b, {'operation': 'click', 'click_target': 'none', 'type_target': 'none'}, found=found, spot=spot))
+
+    def test_click_with_nothing_to_point_at_and_a_text_field_chosen_firmly_is_typing_into_that_field(self):
+        pick, _ = self.ask(lambda b: picture_answer(b, {'operation': 'click', 'click_target': 'none', 'type_target': 'c2', 'type_text': 't0'}, found=0.2, spot=0.9))
+        self.assertEqual((pick.operation, pick.target, pick.point), ('type', 'c2', None)); self.assertIsNotNone(pick.text)
+        pick, _ = self.ask(lambda b: picture_answer(b, {'operation': 'click', 'click_target': 'none', 'type_target': 'c2', 'type_text': 't0'}, found=0.9, spot=0.6))
+        self.assertEqual((pick.operation, pick.target), ('click', None)); self.assertIsNotNone(pick.point)      # something it CAN point at wins: the click is a click
 
     def test_typing_into_a_spot_needs_a_phrase_from_the_request(self):
         pick, _ = self.ask(lambda b: picture_answer(b, {'operation': 'type', 'type_target': 'none', 'type_text': 't0'}, found=0.9, spot=0.6))
@@ -89,14 +95,15 @@ class SightRequests(unittest.TestCase):
 class EveryStep(unittest.TestCase):
     def test_the_window_is_taken_on_every_step_and_the_picture_goes_to_the_assistant_when_jev_hands_over(self):
         s = PictureSession({'start': SHOP, 'item': {'url': 'https://shop.example/item', 'snap': '[1] <a> "Add to cart"', 'text': 'x', 'elements': []}}, hits={})
-        miss = {'operation': 'click', 'click_target': 'none', 'found': 0.1, 'spot': 0.9}
-        r, jev, events = runner(s, [miss] * 4, ['{"action":"click","ref":1}', '{"action":"click","ref":1}'], max_steps=4)
+        miss = {'operation': 'click', 'click_target': 'none', 'type_target': 'none', 'found': 0.1, 'spot': 0.9}
+        r, jev, events = runner(s, [miss] * 4, ['{"action":"scroll"}', '{"action":"scroll"}', '{"action":"click","ref":1}', '{"action":"click","ref":1}'], max_steps=4)
         out = r.run('buy briefs', 'https://shop.example/')
         self.assertGreaterEqual(s.views, 2)                                                       # a picture on each step, not only on a problem
         self.assertTrue(all('assets' in call[0] for call in jev.calls))
         agent = r.ladder.agent
-        self.assertEqual(agent.calls, ['agent', 'agent']); self.assertIsNotNone(agent.looks[0].shot)       # the assistant's step sees the window too, from the first miss on
-        self.assertEqual([h['by'] for h in out.steps], ['rule', 'rule', 'agent', 'agent'])                 # JEV looks again twice; the third miss hands the task over
+        self.assertEqual(agent.calls, ['agent'] * 4); self.assertIsNotNone(agent.looks[0].shot)            # the assistant's step sees the window too, from the first miss on
+        self.assertEqual([h['by'] for h in out.steps], ['agent'] * 4)                                      # a miss is not asked again on the same page: the assistant takes that step at once
+        self.assertEqual(len(jev.calls), 3)                                                                # ... and after the third miss in a row it keeps the task: JEV is not asked a fourth time
 
     def test_a_runner_that_cannot_show_the_window_stays_on_the_text_request(self):
         s = FpSession(FLAT, iter(range(1, 99)))

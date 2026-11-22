@@ -1,7 +1,8 @@
 # Capability roadmap: 148 features in build order
 
 **Status (2026-11-20):** Phase 0 and Phase 1 **DONE AND LIVE** (#1-11, the engines of #78 and #79). Phase 2 and Phase 3 **DONE AND LIVE** (#12-29, #83; owner switches off; all eight live gates passed, the handoff gate only in its few-seconds form). Phase 4 **DONE AND LIVE** (#30-48; release `b0a5dd7`; installed on the host; `customer_uploads` and `customer_knowledge` on for every account; all four exit gates passed live with `deploy/phase45_live.py`; the policy describing it published 2026-11-19). Phase 5 **DONE AND LIVE** (#49-58 and D1-D5, switch on; the policy for the copy published 2026-11-19; every exit gate passed, gate 1 live with two real Google accounts on 2026-11-20). Phase 6 is **BUILT; GOOGLE LIVE** (#59-67, D6, D7, D9 on for every account with the policy published; #68 and #69 skipped by the owner; D8 Microsoft configured since 2026-11-21, but no account could connect until the fix of branch `mail-experience` (`roadmap/phase-06.md`, "Correction"); its changes wait for the owner's live test (exit gate 8)). Phase 7 is **READY, NOT STARTED** (`roadmap/phase-07.md`). Phases 8 to 12 are **NOT STARTED**. Evidence and open items: `roadmap/phase-00.md` to `roadmap/phase-07.md`.
-It orders the 148 features of the supplied inventory, says what each one is, and gives the approach to build it on top of what Lumina already has.
+
+Phases 13 (iOS) and 14 (Cloudflare Code Mode and context management) are **NOT STARTED**. They extend the original 148-feature inventory. The [prompt index](../../../phase-prompts/capability-roadmap/README.md) gives their independent start conditions.
 
 - **P / M** are the inventory's own labels (partly built / missing). They were not re-audited feature by feature. Where this plan relies on existing code, the module is named and was read on 2026-11-14 at commit `51a89e9`.
 - **#** is the feature's number in the supplied inventory, kept so the two lists can be compared.
@@ -271,6 +272,8 @@ The supplied dependency order is kept. Five changes, with reasons:
 
 **Exit gate:** a week-long soak with schedules, a watcher and a webhook trigger on two accounts, with no missed or duplicate run.
 
+The #80/#81 preferences and outbox provide the delivery contract for Phase 13. Mobile delivery, device registration, and Apple distribution belong to Phase 13.
+
 ---
 
 ## Phase 8. Human and agent collaboration
@@ -379,9 +382,37 @@ These are **packages of skills, templates and connectors** on the phases above. 
 
 ---
 
+## Phase 13. Lumina for iPhone and iPad
+
+**Goal:** Give customers a mobile version of the full workspace, including task approvals and Live browser handoff, using the existing Django API and server-side execution. See the [iOS phase prompt](../../../phase-prompts/capability-roadmap/phase-13-ios.md) for the approach comparison, screen-by-screen scope, and owner decisions.
+
+| # | Feature | Status | Done when |
+|---|---|---|---|
+| I1 | iOS architecture and distribution | Not started | The owner picks the client architecture, device scope and distribution target after reviewing options and device risks |
+| I2 | Mobile runtime and integrations | Not started | Existing sign-in, OAuth, Universal Links or web equivalents, file flows, and resume work on devices. Notifications reuse #80/#81 preferences and outbox |
+| I3 | Customer parity and release | Not started | Every customer workflow has device evidence or an owner-approved handoff. The approved distribution target is live |
+
+**Dependencies:** Device audit and prototype can start from the current customer API. Release notifications use the proven #80/#81 contract. Phases 8–12 need only be included to the extent their capabilities are in the chosen web release baseline.
+
+---
+
+## Phase 14. Cloudflare Code Mode and context management
+
+**Goal:** Reduce context spent on tool catalogs and intermediate results through Cloudflare Code Mode on Lumina's existing OpenClaw relay. Improve context budgeting and compaction for long sessions. See the [Code Mode phase prompt](../../../phase-prompts/capability-roadmap/phase-14-code-mode.md) for integration choices, rollout boundaries, and benchmarks.
+
+| # | Feature | Status | Done when |
+|---|---|---|---|
+| C1 | Baseline and integration decision | Not started | Measure direct tools, tuned tool discovery, and the official Code Mode SDK on matching workflows |
+| C2 | Bounded tool composition | Not started | The approved read-only canary runs with scoped discovery and sandboxed execution through existing tenant, permission, budget, and audit controls. Direct tools remain available for fallback |
+| C3 | Conversation context management | Not started | Long sessions use model-aware budgets, targeted retrieval, and resumable compaction with provenance. Results meet the agreed quality, cost, token, and latency gates |
+
+**Dependencies:** Live Phase 1–3 gates for evaluation, runtime, permissions, and the tool and action pipeline. Code Mode is independent of the iOS release and earlier unstarted phases.
+
+---
+
 ## 4. Rules for every phase
 
-1. **A phase starts only when the previous exit gate passed on the live stack.** NOT_RUN and BLOCKED are not PASS (same rule as Phase 15).
+1. **A phase starts only when its required exit gates passed on the live stack.** Follow the dependencies in the prompt index and each prompt. NOT_RUN and BLOCKED are not PASS (same rule as the earlier product Phase 15).
 2. **Every feature ships behind an owner switch and a per-account rollout list** (`switches.py`, `rollout.py`), off by default.
 3. **Every write kind is one row in one registry**: preview renderer, executor, verifier, undo or compensation, permission action. No row, no write.
 4. **Every new data kind gets a retention row and a deletion step** before it stores anything (#18, #20).
@@ -400,6 +431,8 @@ These are **packages of skills, templates and connectors** on the phases above. 
 | Document parsing | Self-hosted (Docling first) or a managed service | Self-hosted, to avoid a new recipient of customer documents |
 | Transcription | Self-hosted with a GPU, or a managed service | Decide when Phase 11 starts; it is the first feature that needs a GPU |
 | Telegram | Record only (today) or allowed to run tasks | Decide in Phase 6 with #68 |
+| iOS app | Web install, WebView, Capacitor, hybrid, cross-platform native, or SwiftUI | Prove the critical flows on iPhone, then choose. Start with Capacitor as the parity candidate |
+| Cloudflare Code Mode | Official SDK with a bounded hosted tool adapter, or stay on tuned direct tools if the measured path misses its gates | Start with a small read-only pilot. Approve customer data scope and go/no-go targets before canary rollout |
 
 ## 6. Sources for the tool survey
 

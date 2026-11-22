@@ -10,8 +10,12 @@ SNAPSHOT_RE = re.compile(r'^\[(\d{1,4})\]\s+<([a-z]+)(?:\s+type=([a-z]+))?>\s+"(
 # Consequential controls always need the user: model confidence can never grant permission to pay, send, delete or sign in.
 SENSITIVE = re.compile(r'\b(submit|pay|payment|purchase|buy( now)?|order|place order|confirm|delete|remove|send|transfer|sign\s*out|log\s*out|'
                        r'unsubscribe|publish|donate|checkout|complete (order|purchase)|subscribe|book now)\b', re.I)
+# The part of SENSITIVE that spends the customer's money or commits them to an order: never pressed for them, whatever they are asked. The rest of SENSITIVE (remove, delete, send,
+# submit, confirm, sign out, unsubscribe, publish) may be pressed after the customer says yes to that one button (loop.py).
+PAYMENT = re.compile(r'\b(pay|payment|purchase|buy( it)?( now)?|order|place (an |my |your |the )?order|checkout|check out|complete (order|purchase)|donate|subscribe|book now|transfer)\b', re.I)
 CHECKOUT_PATH = re.compile(r'/(checkout|payment|pay|billing|order/confirm|purchase)\b', re.I)
 CARD_FIELD = re.compile(r'(card number|cvv|cvc|security code|expiry|expiration|credit card|debit card)', re.I)
+CARD_INPUT = re.compile(r'^\[\d{1,4}\]\s+<(input|select|textarea)\b')
 ACTIONS = {'a': 'click', 'button': 'click', 'input': 'type', 'textarea': 'type', 'select': 'select'}
 
 
@@ -113,7 +117,8 @@ def with_focus(cands: list[dict], focus) -> list[dict]:
 
 def page_is_payment(url: str, snapshot_text: str, page_text: str) -> bool:
     """A page that is, or is about to be, a payment step: the read-only release stops here and hands the screen to the user."""
-    return bool(CHECKOUT_PATH.search(url or '')) or bool(CARD_FIELD.search(snapshot_text or '')) or sum(1 for _ in CARD_FIELD.finditer(page_text or '')) >= 2
+    fields = '\n'.join(line for line in (snapshot_text or '').splitlines() if CARD_INPUT.match(line.strip()))       # a card FIELD, not a footer link that says "credit card"
+    return bool(CHECKOUT_PATH.search(url or '')) or bool(CARD_FIELD.search(fields)) or sum(1 for _ in CARD_FIELD.finditer(page_text or '')) >= 2
 
 
 PASSWORD_FIELD = re.compile(r'^\[\d+\]\s+<input\s+type=password>', re.M)
@@ -128,6 +133,24 @@ def page_is_login(snapshot_text: str) -> bool:
 BOT_CHECK = re.compile(r'just a moment|verify (you are|you.re) (a )?human|checking (if|that) you are human|checking your browser|attention required|are you a robot|press (&|and) hold|captcha|unusual traffic|access denied', re.I)
 
 
+# Wording only a challenge itself uses: it counts wherever it is on the page (a search site keeps its whole menu above the challenge, so the page is not short).
+BOT_CHALLENGE = re.compile(r'confirm (this|that) [^.\n]{0,40}(was|were) made by a human|bots use [^.\n]{0,30} too|complete the (following )?challenge to (confirm|verify|continue)|'
+                           r'select all (squares|images) (with|containing)|verify you are human by completing|prove you.re (not a robot|human)|our systems have detected unusual traffic', re.I)
+
+
+REFUSAL_STATUS = frozenset({403, 429, 451})
+SOLVABLE = re.compile(r'captcha|verify|human|robot|press (&|and) hold|just a moment|checking your browser|challenge', re.I)
+
+
+def page_is_refusal(title: str, page_text: str, status) -> bool:
+    """The site answered the page itself with a refusal (403, 429, 451) and a short page that offers nothing to solve: "Access Denied", "Something went wrong, go back and try again".
+    That is not a human check (there is nothing for the customer to do in this browser) and not a page to act on (going back and trying again, as such pages suggest, loops).
+    Only an engine that reports the status can say this; without one (`status` None) nothing is claimed."""
+    return status in REFUSAL_STATUS and len(page_text or '') < 1500 and not SOLVABLE.search(f'{title or ""} {page_text or ""}')
+
+
 def page_is_bot_check(title: str, page_text: str) -> bool:
-    """A human-verification wall (Cloudflare and similar). Short pages only, so an article that merely mentions captchas does not match."""
-    return len(page_text or '') < 1500 and bool(BOT_CHECK.search(f'{title or ""} {(page_text or "")[:1500]}'))
+    """A human-verification wall (Cloudflare and similar). The loose words count on short pages only, so an article that merely mentions captchas does not match;
+    a challenge's own wording counts anywhere."""
+    text = page_text or ''
+    return (len(text) < 1500 and bool(BOT_CHECK.search(f'{title or ""} {text[:1500]}'))) or bool(BOT_CHALLENGE.search(text))

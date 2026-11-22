@@ -150,8 +150,13 @@ def main():
             return PictureOnlyChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
         return JevChooser(JEV_ENDPOINT, JEV_MODEL, key, http_post)
 
+    stage_starts = {}
+
     def spawn(job_id, out_dir):
-        argv = stage_argv(job_id, str(out_dir), str(args.runner_dir), args.image)
+        stage_starts[job_id] = n = stage_starts.get(job_id, 0) + 1      # a stage started again for the same job (its browser died) needs a name of its own: the first may not be gone yet
+        if len(stage_starts) > 500:
+            stage_starts.pop(next(iter(stage_starts)))
+        argv = stage_argv(job_id, str(out_dir), str(args.runner_dir), args.image, name=None if n == 1 else f'lumina-browse-{job_id[:12]}-r{n - 1}')
         return ProcessTransport(argv, env={**os.environ, 'DOCKER_HOST': docker_host})
 
     from ..safety import Reader
@@ -191,12 +196,13 @@ def main():
             config = {}                                   # no file: nothing is listed for native, and the customer's own Chrome is on unless the file says otherwise
         return pick_engine(config, account, hub.link(account) is not None, device_store.wants_local(account))
 
-    service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account, local_spawn=local_spawn,
-                           devices=DeviceDesk(device_store, hub, allowed=local_allowed) if args.device_port else None)
     import threading
     from ..switches import SwitchStore
     from .service import watch_kill_switch, watch_purge
     switches = SwitchStore(args.switches, facts_path=args.switch_facts)
+    service = BrowseService(spawn=spawn, jev_for=jev_for, root=args.jobs, jev_mode=args.jev_mode, native_spawn=native_spawn, engine_for=engine_for, switch_for=safety.for_account, local_spawn=local_spawn,
+                           devices=DeviceDesk(device_store, hub, allowed=local_allowed) if args.device_port else None,
+                           press_approval=lambda: switches.is_on('browser_press_approval'))       # read when a button is reached, so the owner's switch applies at once
     threading.Thread(target=watch_kill_switch, args=(service, lambda: switches.is_on('browse_tasks'), threading.Event()), daemon=True).start()
     threading.Thread(target=watch_purge, args=(service, threading.Event()), daemon=True).start()      # now, and then every 15 minutes: screenshots and live frames live a day
     start_live_view(args, service)

@@ -247,7 +247,7 @@ class BrowserMethodChecks(unittest.TestCase):
         b.call('acct', 'browser.shot', {'targetId': 'TAB-1', 'path': '/etc/passwd'}, caller=0)
         named = [m['params'] for r in relays for m in r.sent][-2:]
         self.assertEqual(named[0]['body'], {'kind': 'press', 'key': 'Enter', 'targetId': 'TAB-1'}); self.assertEqual(named[1]['body'], {'type': 'jpeg', 'targetId': 'TAB-1'})
-        self.assertIn('document.querySelectorAll(sel)', sent[1]['params']['body']['fn'])
+        self.assertIn('root.querySelectorAll(sel)', sent[1]['params']['body']['fn'])          # our own description script: it now reads the document and every open shadow root under it
         self.assertNotIn('document.cookie', sent[1]['params']['body']['fn'])
         self.assertIn('"max": 5', sent[1]['params']['body']['fn'])
         self.assertEqual(sent[2]['params']['body'], {'kind': 'clickCoords', 'x': 10, 'y': 20.5})

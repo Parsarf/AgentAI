@@ -56,8 +56,8 @@ class UltrafastChooser(JevChooser):
             return {**data, 'model': MODEL}
         return call
 
-    def choose(self, subgoal, page_text, candidates, *, page=None, history=(), caps=frozenset(), phrases=(), allow_enter=False, position='', hint='', shot=None):
-        pick = super().choose(subgoal, page_text, candidates, page=page, history=history, caps=caps, phrases=phrases, allow_enter=allow_enter, position=position, hint=hint, shot=shot)
+    def choose(self, subgoal, page_text, candidates, *, page=None, history=(), caps=frozenset(), phrases=(), allow_enter=False, position='', hint='', shot=None, **where):
+        pick = super().choose(subgoal, page_text, candidates, page=page, history=history, caps=caps, phrases=phrases, allow_enter=allow_enter, position=position, hint=hint, shot=shot, **where)
         if pick.operation == 'type' and pick.text is None and pick.point is None:         # a listed field, and the request gives no text for it
             field = next((c for c in candidates if c['id'] == pick.target), None)
             if field is not None:

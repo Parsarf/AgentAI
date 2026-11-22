@@ -1,0 +1,206 @@
+[
+ {
+  "id": "wiki-two-hops",
+  "kind": "multi-page",
+  "args": {
+   "task": "Open the Ada Lovelace article, follow its link to Charles Babbage, and report the year Charles Babbage was born.",
+   "site": "https://en.wikipedia.org/wiki/Ada_Lovelace",
+   "steps": [
+    "Find the link to Charles Babbage in the article.",
+    "Open it.",
+    "Report his year of birth."
+   ],
+   "done_when": "Charles Babbage's birth year is reported from his own article."
+  },
+  "expect": {
+   "answer": [
+    "1791"
+   ],
+   "url": [
+    "Charles_Babbage"
+   ]
+  }
+ },
+ {
+  "id": "hn-top-comments",
+  "kind": "multi-page",
+  "args": {
+   "task": "Open the comments page of the story ranked number 1 and report how many comments it has and the username of the first commenter.",
+   "site": "https://news.ycombinator.com/",
+   "done_when": "The comment count and the first commenter's username are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\d+"
+   ],
+   "url": [
+    "item\\?id="
+   ]
+  }
+ },
+ {
+  "id": "amazon-add-to-cart",
+  "kind": "cart",
+  "args": {
+   "task": "Find a Head tennis racket and add one to the cart, then stop with the cart showing it. Do not check out.",
+   "site": "https://www.amazon.com/",
+   "search": [
+    "Head tennis racket"
+   ],
+   "steps": [
+    "Search for Head tennis racket.",
+    "Open the first racket in the results.",
+    "Add it to the cart.",
+    "Stop when the cart shows it."
+   ],
+   "done_when": "The cart shows one Head tennis racket."
+  },
+  "expect": {
+   "answer": [
+    "cart"
+   ]
+  }
+ },
+ {
+  "id": "google-flights",
+  "kind": "widget-heavy",
+  "args": {
+   "task": "Find the cheapest one-way flight from Zurich to London on 20 December and report the airline, departure time and price.",
+   "site": "https://www.google.com/travel/flights",
+   "steps": [
+    "Set the trip to one way.",
+    "Enter Zurich as the origin and London as the destination.",
+    "Set the date to 20 December.",
+    "Search.",
+    "Report the cheapest flight."
+   ],
+   "choices": {
+    "trip": "one way",
+    "from": "Zurich",
+    "to": "London",
+    "date": "20 December"
+   },
+   "done_when": "The cheapest flight's airline, time and price are reported."
+  },
+  "expect": {
+   "answer": [
+    "CHF|\\$|€|£"
+   ]
+  },
+  "max_steps": 30
+ },
+ {
+  "id": "zara-linen-sizes",
+  "kind": "shop-read",
+  "args": {
+   "task": "Search Zara for linen shirts, open the first men's linen shirt and report its price and which sizes are available.",
+   "site": "https://www.zara.com/us/",
+   "search": [
+    "linen shirt"
+   ],
+   "done_when": "The first linen shirt's price and available sizes are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\$\\s?\\d"
+   ]
+  },
+  "needs_ok": true,
+  "refusal_ok": true
+ },
+ {
+  "id": "on-tennis-shirt",
+  "kind": "shop-read",
+  "args": {
+   "task": "Find a sleeveless tennis top on On's site and report its name, price and the sizes offered.",
+   "site": "https://www.on.com/en-us/",
+   "search": [
+    "sleeveless tennis"
+   ],
+   "done_when": "A sleeveless tennis top's name, price and sizes are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\$\\s?\\d"
+   ]
+  }
+ },
+ {
+  "id": "ebay-sort-lowest",
+  "kind": "widget",
+  "args": {
+   "task": "Search eBay for mechanical keyboard, sort the results by price plus shipping lowest first, and report the title and price of the first listing.",
+   "site": "https://www.ebay.com/",
+   "search": [
+    "mechanical keyboard"
+   ],
+   "done_when": "Results are sorted lowest price first and the first listing's title and price are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\$\\s?\\d"
+   ]
+  },
+  "needs_ok": true,
+  "refusal_ok": true
+ },
+ {
+  "id": "doordash-spicy",
+  "kind": "location",
+  "args": {
+   "task": "Find three spicy chicken dishes that deliver to ZIP code 92618 and report each dish, restaurant and price.",
+   "site": "https://www.doordash.com/",
+   "search": [
+    "spicy chicken"
+   ],
+   "choices": {
+    "delivery address": "92618"
+   },
+   "done_when": "Three spicy chicken dishes with restaurant and price are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\$\\s?\\d"
+   ]
+  },
+  "needs_ok": true
+ },
+ {
+  "id": "stackoverflow-search",
+  "kind": "search-read",
+  "args": {
+   "task": "Search Stack Overflow for python list comprehension and report the title and vote count of the first result.",
+   "site": "https://stackoverflow.com/",
+   "search": [
+    "python list comprehension"
+   ],
+   "done_when": "The first result's title and votes are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\d+"
+   ]
+  },
+  "needs_ok": true
+ },
+ {
+  "id": "allrecipes-ingredients",
+  "kind": "search-read",
+  "args": {
+   "task": "Find a recipe for classic banana bread and list its ingredients.",
+   "site": "https://www.allrecipes.com/",
+   "search": [
+    "classic banana bread"
+   ],
+   "done_when": "The ingredients of one banana bread recipe are listed."
+  },
+  "expect": {
+   "answer": [
+    "banana",
+    "flour"
+   ]
+  },
+  "needs_ok": true,
+  "refusal_ok": true
+ }
+]

@@ -1,6 +1,12 @@
 export interface RunRow { request_id: string; goal: string; status: string; url: string | null; created_epoch: number }
 export interface RunEvent { n: number; kind: string; [k: string]: unknown }
-export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; needs_you?: string | null; pending_action: { label?: string } | null; events: RunEvent[] }
+/** A question the browser stopped to ask, as the server sends it (browse/service.py `_public_question`): the options are the server's, an answer names one of them by id. */
+export interface BrowserQuestion {
+  id: string; title: string; field: string; menu: boolean; use?: string; kind?: 'choice' | 'fields';
+  options: { id: string; label: string; item?: string }[];
+  fields?: { id: string; label: string; key: string; sensitive: boolean; input_type: string; prefill?: string }[];
+}
+export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; needs_you?: string | null; pending_action: { label?: string } | null; question?: BrowserQuestion | null; events: RunEvent[] }
 
 /** Browser-task states in which the page is still alive: the live picture is worth showing. */
 export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused', 'asking'];      // the server's list: platform/agentai_platform/browse/job_states.py LIVE
