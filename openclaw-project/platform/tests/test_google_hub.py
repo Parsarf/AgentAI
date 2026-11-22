@@ -283,6 +283,10 @@ class Conversion(unittest.TestCase):
         found = to_body(g.messages[mid])
         self.assertEqual((found['text'], found['html']), (f'Plain text of {mid}', f'<p>Markup of <b>{mid}</b></p>'))
         self.assertEqual([(f['name'], f['size'], f['id']) for f in found['attachments']], [('a.pdf', 2048, 'att-a.pdf'), ('b.pdf', 2048, 'att-b.pdf')])
+        inside = to_body({'payload': {'mimeType': 'multipart/related', 'parts': [
+            {'mimeType': 'text/html', 'body': {'data': base64.urlsafe_b64encode(b'<img src="cid:ii_1">').decode()}},
+            {'mimeType': 'image/png', 'filename': '', 'headers': [{'name': 'Content-ID', 'value': '<ii_1>'}], 'body': {'attachmentId': 'att-in', 'size': 77}}]}})
+        self.assertEqual(inside['attachments'], [{'id': 'att-in', 'name': 'picture', 'type': 'image/png', 'size': 77, 'cid': 'ii_1'}])    # a picture shown inside the message, by the name its markup uses
         nested = {'payload': {'mimeType': 'multipart/mixed', 'parts': [{'mimeType': 'multipart/alternative', 'parts': [{'mimeType': 'text/html', 'body': {'data': b64('<p>ünï</p>')}}]}]}}
         self.assertEqual(to_body(nested)['html'], '<p>ünï</p>')
 

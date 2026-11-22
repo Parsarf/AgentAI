@@ -18,7 +18,8 @@ export interface ProviderLabel { id: string; name: string }
 export interface Thread { connection_id: string; id: string; subject: string; snippet: string; people: Person[]; last_epoch: number; message_count: number; unread: boolean;
   starred: boolean; has_attachments: boolean; labels: string[]; provider_labels: ProviderLabel[] }
 export interface Attachment { id: string; name: string; type: string; size: number }
-export interface Body { html: string; text: string; blocked_images: number; images_shown: boolean; attachments: Attachment[]; fetched_epoch: number }
+/** `designed`: the message sets a background of its own, so it is shown as sent on a light page; otherwise it is shown in the theme. `quoted`: earlier messages under it were folded. */
+export interface Body { html: string; text: string; blocked_images: number; images_shown: boolean; designed?: boolean; quoted?: boolean; attachments: Attachment[]; fetched_epoch: number }
 export interface Message { id: string; thread_id: string; subject: string; snippet: string; sender: Person; to: Person[]; cc: Person[]; sent_epoch: number; labels: string[];
   provider_labels: ProviderLabel[]; unread: boolean; starred: boolean; has_attachments: boolean; body: Body | null }
 export interface HubCalendar { connection_id: string; id: string; name: string; colour: string; timezone: string | null; access: 'busy' | 'read' | 'write' | 'owner'; primary: boolean;
@@ -31,7 +32,9 @@ export interface HubEvent { connection_id: string; calendar_id: string; id: stri
 export interface MailSettings { undo_send_seconds: number; mark_read_on_open: boolean; limits: { recipients?: number; per_hour?: number }; allowed: { recipients: number; per_hour: number };
   platform: { recipients: number; per_hour: number } }
 export type OrganizeOp = 'archive' | 'inbox' | 'star' | 'unstar' | 'read' | 'unread' | 'label' | 'unlabel' | 'move' | 'trash' | 'untrash';
-export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[]; mail?: MailSettings }; counts: { unread: number; by_account: Record<string, number> };
+/** A mail and calendar service that can be connected. `kinds`: the kinds of account it signs in separately (a personal or a work account), chosen before going there. */
+export interface Provider { provider: string; label: string; kinds?: { id: string; label: string }[] }
+export interface Overview { accounts: HubAccount[]; providers?: Provider[]; settings: { timezone: string | null; image_senders: string[]; mail?: MailSettings }; counts: { unread: number; by_account: Record<string, number> };
   calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean; feeds?: boolean }
 /** A change in a connected account, as the action pipeline reports it (Phase 6). `direct` is the screen when the customer made it with their own hand. */
 export interface HubAction { id: string; kind: string; state: string; preview: { title: string; summary: string; destination: string; changes: { field: string; before: unknown; after: unknown }[]; can_undo: boolean };
@@ -85,6 +88,12 @@ export const hub = {
   composeLink: (id: string) => api<{ draft: Draft; link: string | null }>('GET', `/v1/hub/drafts/${encodeURIComponent(id)}/compose`),
   // Phase 6: changing calendars. The customer's own press is the approval; each call goes through the action pipeline once.
   allow: (account: HubAccount, add: string[]) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider: account.provider, connection: account.id, add }),
+  /** Begin signing in to a service (optionally one kind of account). Nothing is connected until the customer comes back. */
+  connect: (provider: string, kind?: string) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider, ...(kind ? { kind } : {}) }),
+  /** Sign in again to an account whose access ended: the same connection, its mail and what it was allowed are kept. */
+  reconnect: (account: HubAccount) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider: account.provider, connection: account.id }),
+  finishLink: (state: string, code: string) => api<{ connection_id: string }>('POST', '/v1/hub/link/finish', { state, code }),
+  people: (q: string) => api<{ people: Person[] }>('GET', '/v1/hub/mail/people' + query({ q })),
   createEvent: (e: NewEvent) => api<{ action: HubAction }>('POST', '/v1/hub/events/create', e),
   cancelEvent: (connection: string, calendar: string, event: string, notify = true, scope?: Scope, series?: string | null) =>
     api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify, ...(scope && series ? { scope, series } : {}) }),
@@ -95,6 +104,33 @@ export const hub = {
   undo: (action: string, screen = 'calendar') => api<{ action: HubAction }>('POST', `/v1/hub/actions/${encodeURIComponent(action)}/undo`, { screen }),
   respondEvent: (connection: string, calendar: string, event: string, response: 'accepted' | 'tentative' | 'declined', scope?: 'this' | 'all', series?: string | null) =>
     api<{ action: HubAction }>('POST', '/v1/hub/events/respond', { connection, calendar, event, response, ...(scope && series ? { scope, series } : {}) }),
+};
+
+/** The page a message is shown in: served with its own content policy (the app's would refuse the message's styles and pictures), framed only by Lumina. */
+export const frameUrl = (connection: string, id: string, images = false) => '/v1/hub/mail/frame' + query({ connection, id, images });
+/** One attachment: a download, or (`inline`, pictures only) something to show. */
+export const fileUrl = (connection: string, message: string, attachment: string, inline = false) => '/v1/hub/mail/file' + query({ connection, message, attachment, inline });
+export const isPicture = (a: Attachment) => /^image\/(png|jpeg|gif|webp)$/i.test(a.type);
+
+/** Why a sign-in connected nothing, in a sentence that says what to do. The keys are the server's reasons (connectors.LINK_REASONS and the return route's). */
+export const LINK_WORDS: Record<string, string> = {
+  declined: 'You did not give access, so nothing was connected.',
+  expired: 'That sign-in was already used or took too long. Nothing was connected. Start again from "Add account".',
+  admin_consent: 'Your organization lets only an administrator allow apps like Lumina. Ask your IT administrator to allow Lumina, then connect again.',
+  provider_setup: 'The mail service refused Lumina itself, not your account. Nothing was connected, and trying again will not help until we fix it: please tell support.',
+  provider_unreachable: 'The mail service did not answer. Nothing was connected. Try again in a minute.',
+  provider_refused: 'The mail service refused this sign-in. Nothing was connected. Try again, or use a different account.',
+  no_identity: 'The mail service did not say which account you signed in to. Nothing was connected. Try again.',
+  unexpected_access: 'The mail service offered more access than Lumina asks for, so Lumina refused it. Nothing was connected.',
+  no_access: 'The account was signed in, but without access to mail or calendars. Nothing was connected. Connect again and leave mail or calendars ticked.',
+  different_account: 'You signed in as a different account than the one being changed. Nothing changed. Sign in with the same address.',
+  interrupted: 'The sign-in was not finished at the mail service. Nothing was connected. Try again.',
+  not_allowed: 'Your role in this organization does not allow connecting accounts.',
+  failed: 'The account could not be connected. Nothing was connected. Try again.',
+};
+export const linkWords = (reason: string | null | undefined, reference?: string | null) => {
+  const words = LINK_WORDS[reason ?? ''] ?? LINK_WORDS.failed;
+  return reference && /^[A-Z]{3,10}\d{3,8}$/.test(reference) ? `${words} (Reference: ${reference}.)` : words;
 };
 
 /** Addresses typed in one box, split on commas, semicolons and spaces. */
@@ -114,9 +150,10 @@ export const PROBLEM: Record<string, string> = {
 };
 export const problemWords = (kind: string | null | undefined) => (kind ? PROBLEM[kind] ?? 'That did not work. Try again.' : '');
 export const failed = (error: unknown) => (error instanceof ApiError && error.status === 503 && error.code === 'feature_off' ? 'Mail and Calendar are not switched on.' :
+  error instanceof ApiError && error.status === 429 ? 'Lumina was asked for too much in a short time. Wait a minute, then carry on.' :
   error instanceof ApiError && error.code.startsWith('connector_') ? problemWords(error.code.slice(10)) : 'That did not work. Try again.');
 
-export const LABEL_WORDS: Record<string, string> = { inbox: 'Inbox', starred: 'Starred', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', all: 'All mail', spam: 'Spam', trash: 'Trash', unread: 'Unread' };
+export const LABEL_WORDS: Record<string, string> = { inbox: 'Inbox', starred: 'Starred', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', all: 'All mail', spam: 'Spam', trash: 'Bin', unread: 'Unread' };
 export const LIST_ORDER = ['inbox', 'starred', 'sent', 'drafts', 'archive', 'all', 'spam', 'trash'];
 
 export const personName = (p: Person) => p.name || p.address;
@@ -125,6 +162,30 @@ export function people(list: Person[], own?: string): string {
   const others = list.filter(p => !own || p.address !== own.toLowerCase());
   const shown = (others.length ? others : list).map(personName);
   return shown.length <= 2 ? shown.join(', ') : `${shown[0]}, ${shown[1]} +${shown.length - 2}`;
+}
+/** Two letters for a person's mark: of their name, else of their address. */
+export function initials(p: Person): string {
+  const words = (p.name || p.address.split('@')[0] || '?').replace(/["'()<>]/g, '').split(/[\s._-]+/).filter(Boolean);
+  const letters = words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] ?? '?').slice(0, 2);
+  return letters.toUpperCase();
+}
+/** A steady number 0-5 from an address: which of the six quiet tints its mark gets (the same person always the same one). */
+export function tint(address: string): number {
+  let h = 0; for (let i = 0; i < address.length; i++) h = (h * 31 + address.charCodeAt(i)) >>> 0;
+  return h % 6;
+}
+/** Who a message went to, as its header shows it: "me" for the account itself, first names for the rest, then a count. */
+export function recipients(to: Person[], cc: Person[], own?: string): string {
+  const mine = (own ?? '').toLowerCase();
+  const names = [...to, ...cc].map(p => (mine && p.address.toLowerCase() === mine ? 'me' : (p.name || p.address).split(/[\s@]/)[0]));
+  if (!names.length) return 'no one';
+  return names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+}
+/** What a reply carries under the customer's own words: the message it answers, each line marked, as mail programs do. */
+export function quoteOf(m: { sender: Person; sent_epoch: number; body: { text: string } | null; snippet: string }, zone: string, limit = 6000): string {
+  const text = (m.body?.text || m.snippet || '').trim(); if (!text) return '';
+  const cut = text.length > limit ? text.slice(0, limit) + '\n[...]' : text;
+  return `\n\nOn ${fullTime(m.sent_epoch, zone)}, ${m.sender.name ? `${m.sender.name} <${m.sender.address}>` : m.sender.address} wrote:\n` + cut.split('\n').map(l => (l.startsWith('>') ? '>' + l : '> ' + l)).join('\n');
 }
 export const fileSize = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} B`);
 
@@ -228,24 +289,86 @@ export function eventDays(e: HubEvent, zone: string, from: string, to: string): 
   for (let day = first < from ? from : first; day <= last && day <= to; day = addDays(day, 1)) out.push(day);
   return out;
 }
-export interface Placed { event: HubEvent; top: number; height: number; column: number; columns: number }
-/** Timed events of one day, laid out so that overlapping ones sit side by side and none is hidden. `top` and `height` are minutes from that day's midnight. */
-export function layoutDay(events: HubEvent[], day: string, zone: string): Placed[] {
-  const start = zonedEpoch(day, 0, zone), end = zonedEpoch(addDays(day, 1), 0, zone);
-  const items = events.filter(e => !e.all_day && e.start_epoch < end && e.end_epoch > start)
-    .map(e => { const from = Math.max(e.start_epoch, start), to = Math.min(Math.max(e.end_epoch, e.start_epoch + 900), end);
-      return { event: e, from, to, top: Math.round((from - start) / 60), height: Math.max(20, Math.round((to - from) / 60)), column: 0, columns: 1 }; })
-    .sort((a, b) => a.from - b.from || b.to - a.to);
-  let group: typeof items = [], groupEnd = 0;
-  const close = () => { const width = Math.max(0, ...group.map(i => i.column)) + 1; group.forEach(i => { i.columns = width; }); group = []; };
+/** One timed event as the day grid draws it. All in minutes from that day's midnight: `at` and `length` are the event's own start and duration within the day (a
+ *  deadline has length 0); `top` and `height` are the box drawn for it, which is never shorter than one line of text. `column` of `columns` is where it sits among the
+ *  events it overlaps, and `span` how many of those columns it may fill (the ones beside it are free). `point`: no length at all. */
+export interface Placed { event: HubEvent; at: number; length: number; top: number; height: number; column: number; columns: number; span: number; point: boolean; group: number }
+/** Events of one busy stretch that have no room to be drawn side by side: one control stands in for them and opens the list. */
+export interface Folded { key: string; top: number; height: number; column: number; columns: number; events: HubEvent[] }
+const DAY = 24 * 60;
+const overlap = (a: { top: number; height: number }, b: { top: number; height: number }) => a.top < b.top + b.height && b.top < a.top + a.height;
+const widen = (items: Placed[], limit?: number) => {
   for (const item of items) {
-    if (group.length && item.from >= groupEnd) close();
-    const used = new Set(group.filter(g => g.to > item.from).map(g => g.column));
+    const most = limit ?? item.columns; let span = 1;
+    while (item.column + span < most && !items.some(o => o !== item && o.group === item.group && o.column === item.column + span && overlap(o, item))) span++;
+    item.span = span;
+  }
+};
+/** Timed events of one day, laid out so that overlapping ones sit side by side and none is hidden. Each keeps its true start. `label` is how many minutes one line of text
+ *  is tall on the grid: a shorter event (or a deadline) still gets a box that tall, and it is that box that must not be covered, so two short events at the same time sit
+ *  side by side too. */
+export function layoutDay(events: HubEvent[], day: string, zone: string, label = 20): Placed[] {
+  const start = zonedEpoch(day, 0, zone), end = zonedEpoch(addDays(day, 1), 0, zone);
+  const items: Placed[] = events.filter(e => !e.all_day && e.start_epoch < end && (e.end_epoch > start || (e.end_epoch === e.start_epoch && e.start_epoch >= start)))
+    .map(e => { const from = Math.max(e.start_epoch, start), to = Math.min(Math.max(e.end_epoch, from), end);
+      const at = Math.round((from - start) / 60), length = Math.round((to - from) / 60), height = Math.max(label, length);
+      return { event: e, at, length, top: Math.min(at, DAY - height), height, column: 0, columns: 1, span: 1, point: e.end_epoch <= e.start_epoch, group: 0 }; })
+    .sort((a, b) => a.top - b.top || b.height - a.height || a.event.title.localeCompare(b.event.title));
+  let group: Placed[] = [], groupEnd = 0, groups = 0;
+  const close = () => { const width = Math.max(0, ...group.map(i => i.column)) + 1; group.forEach(i => { i.columns = width; i.group = groups; }); groups++; group = []; };
+  for (const item of items) {
+    if (group.length && item.top >= groupEnd) close();
+    const used = new Set(group.filter(g => g.top + g.height > item.top).map(g => g.column));
     let column = 0; while (used.has(column)) column++;
-    item.column = column; group.push(item); groupEnd = Math.max(groupEnd, item.to);
+    item.column = column; group.push(item); groupEnd = Math.max(groupEnd, item.top + item.height);
   }
   if (group.length) close();
-  return items.map(({ event, top, height, column, columns }) => ({ event, top, height, column, columns }));
+  widen(items);
+  return items;
+}
+/** The same day when its column is too narrow for every overlapping event to be read side by side. `fit` is how many may sit side by side at all; a busy stretch
+ *  with more than that draws its first `lanes` columns (marked `folded`, so the page leaves room beside them) and folds the rest into one control per run of time.
+ *  Nothing is dropped: every event is either shown or in a fold. */
+export function foldDay(placed: Placed[], fit: number, lanes: number): { shown: (Placed & { folded?: boolean })[]; more: Folded[] } {
+  fit = Math.max(1, fit); lanes = Math.max(1, Math.min(lanes, fit));
+  if (!placed.some(p => p.columns > fit)) return { shown: placed, more: [] };
+  const shown: (Placed & { folded?: boolean })[] = [], more: Folded[] = [];
+  for (const id of [...new Set(placed.map(p => p.group))]) {
+    const group = placed.filter(p => p.group === id);
+    if (group[0].columns <= fit) { shown.push(...group); continue; }
+    const kept = group.filter(p => p.column < lanes).map(p => ({ ...p, columns: lanes, folded: true }));
+    widen(kept, lanes); shown.push(...kept);
+    let run: Placed[] = [], runEnd = 0;
+    const close = () => { const top = Math.min(...run.map(r => r.top));
+      more.push({ key: `${id}-${top}`, top, height: runEnd - top, column: lanes, columns: lanes, events: run.map(r => r.event) }); run = []; runEnd = 0; };
+    for (const p of group.filter(p => p.column >= lanes).sort((a, b) => a.top - b.top)) {
+      if (run.length && p.top >= runEnd) close();
+      run.push(p); runEnd = Math.max(runEnd, p.top + p.height);
+    }
+    if (run.length) close();
+  }
+  return { shown, more };
+}
+/** A title in two parts: what it is, and the bracketed note some calendars put at its end (a course, a team): "Homework 9 [PHYS 101]" -> Homework 9, PHYS 101.
+ *  The first part is what a narrow chip must show; the whole title is always on the event itself. */
+export function titleParts(title: string): { main: string; tag: string } {
+  const m = /^(.*\S)\s*\[([^\][]{2,80})\]\s*$/.exec(title);
+  return m && m[1].length >= 2 ? { main: m[1], tag: m[2].trim() } : { main: title, tag: '' };
+}
+/** A run of days in few words, for where the long form has no room: "Nov 16 – 22, 2026", "Apr 27 – May 3, 2026". */
+export function rangeShort(from: string, to: string): string {
+  const month = (d: string) => wording(d, { month: 'short' }), year = (d: string) => d.slice(0, 4), date = (d: string) => Number(d.slice(8));
+  if (year(from) !== year(to)) return `${month(from)} ${date(from)}, ${year(from)} – ${month(to)} ${date(to)}, ${year(to)}`;
+  return from.slice(0, 7) === to.slice(0, 7) ? `${month(from)} ${date(from)} – ${date(to)}, ${year(to)}` : `${month(from)} ${date(from)} – ${month(to)} ${date(to)}, ${year(to)}`;
+}
+/** The list after the server's newest page was read again while the reader is further down it: the newest page as it is now, then what was already loaded below it.
+ *  New mail joins at the top, what changed is shown as it is now, and nothing below is thrown away (the list keeps the reader's place when rows are added above).
+ *  A conversation that was in the list within the newest page's span of time and is not in that page any more has left this mailbox (archived, moved or deleted
+ *  somewhere else): it goes. `whole`: the newest page is the entire mailbox. */
+export function mergeNewest(loaded: Thread[], newest: Thread[], whole: boolean): Thread[] {
+  if (whole || !newest.length) return newest;
+  const there = new Set(newest.map(threadKey)); const until = newest[newest.length - 1].last_epoch;
+  return [...newest, ...loaded.filter(t => !there.has(threadKey(t)) && t.last_epoch <= until)];
 }
 export const eventKey = (e: { connection_id: string; calendar_id: string; id: string }) => `${e.connection_id}\u0000${e.calendar_id}\u0000${e.id}`;
 export const threadKey = (t: { connection_id: string; id: string }) => `${t.connection_id}\u0000${t.id}`;

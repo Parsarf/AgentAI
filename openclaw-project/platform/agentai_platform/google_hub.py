@@ -150,10 +150,15 @@ _STALE = (http.client.RemoteDisconnected, http.client.CannotSendRequest, http.cl
 
 
 def default_http(method, url, headers, data=None, timeout=20):
-    """One HTTPS request to Google: -> (status, headers, body). Redirects are not followed. A kept-alive connection that the other side has closed meanwhile is tried
-    again once on a new one, for reads only (a token request is never sent twice)."""
+    """One HTTPS request to Google: -> (status, headers, body). See `https_request`."""
+    return https_request(method, url, headers, data, timeout, hosts=HOSTS)
+
+
+def https_request(method, url, headers, data=None, timeout=20, *, hosts):
+    """One HTTPS request to one of `hosts` (the calling provider's own allow-list, never another provider's): -> (status, headers, body). Redirects are not followed. A
+    kept-alive connection that the other side has closed meanwhile is tried again once on a new one, for reads only (a token request is never sent twice)."""
     parts = urlsplit(url)
-    if parts.scheme != 'https' or parts.hostname not in HOSTS or parts.port not in (None, 443):
+    if parts.scheme != 'https' or parts.hostname not in hosts or parts.port not in (None, 443):
         raise ProviderError(0, 'host_not_allowed')
     target = (parts.path or '/') + ('?' + parts.query if parts.query else '')
     for attempt in (0, 1):
@@ -261,8 +266,9 @@ def to_body(raw) -> dict:
     def walk(part):
         kind = str(part.get('mimeType') or '')
         inner = part.get('body') or {}
-        if part.get('filename') and inner.get('attachmentId'):
-            files.append({'id': inner['attachmentId'], 'name': part['filename'], 'type': kind, 'size': inner.get('size') or 0})
+        cid = next((str(h.get('value') or '').strip().strip('<>') for h in part.get('headers') or [] if str(h.get('name', '')).lower() == 'content-id'), '')
+        if inner.get('attachmentId') and (part.get('filename') or cid):          # a picture shown inside the message may have no file name, only the name its markup uses
+            files.append({'id': inner['attachmentId'], 'name': part.get('filename') or 'picture', 'type': kind, 'size': inner.get('size') or 0, **({'cid': cid} if cid else {})})
         elif kind in found and inner.get('data'):
             found[kind].append(_decode(inner['data']))
         for child in (part.get('parts') or []):

@@ -9,7 +9,9 @@ threads=1
 timeout=15
 graceful_timeout=10
 backlog=16
-limit_request_line=2048
+# 4094 only so that a provider's sign-in return fits (GET /v1/hub/link/callback?code=...: Microsoft's code for a work account alone can pass 2,000 characters).
+# Every other route is still held to 2,048 by accounts/middleware.py.
+limit_request_line=4094
 limit_request_fields=32
 limit_request_field_size=2048
 max_requests=1000

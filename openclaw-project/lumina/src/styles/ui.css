@@ -50,7 +50,38 @@
 .input[aria-invalid='true'] { border-color: var(--danger); }
 .input[disabled] { color: var(--text-disabled); background: var(--fill-subtle); cursor: not-allowed; }
 select.input { appearance: none; padding-right: 32px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23a3a5af' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
-.field-error { color: var(--danger); font-size: var(--text-sm); margin-top: 4px; }
+.input.small { min-height: var(--control-sm); padding-top: 3px; padding-bottom: 3px; font-size: var(--text-sm); }
+.input.auto { width: auto; }
+textarea.input { min-height: 76px; line-height: var(--leading-normal); resize: vertical; }
+.input[type='date'], .input[type='time'] { font-variant-numeric: tabular-nums; }
+.input[aria-invalid='true']:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 28%, transparent); }
+
+/* Form fields (components/ui/Field.tsx): the label above its control, a quiet note at the label's right, the error right under the field it is about, then a hint.
+   .form stacks fields; .field-row puts short ones side by side and stacks them where there is no room; .field-group frames the ones that belong together;
+   .check-row is a checkbox or radio with its words. */
+.form { display: grid; gap: var(--space-4); align-content: start; min-width: 0; }
+.fields { display: grid; gap: var(--space-4); }
+.field { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.field-label { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.field-label label, .field > label { color: var(--text-secondary); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.field-note { color: var(--text-muted); font-size: var(--text-xs); }
+.field-hint { color: var(--text-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.field-error { color: var(--danger); font-size: var(--text-sm); }
+.field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: var(--space-3); align-items: start; }
+.field-group { display: grid; gap: var(--space-3); min-width: 0; margin: 0; padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--fill-subtle); }
+.check-row { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-sm); color: var(--text-primary); font-size: var(--text-sm); cursor: pointer; justify-self: start; }
+.check-row input { flex: none; width: 16px; height: 16px; margin: 0; }
+.check-row:has(input:disabled) { color: var(--text-disabled); cursor: not-allowed; }
+.form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.form-actions .form-status { flex: 1 1 180px; min-width: 0; margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+
+/* Side lists: the rows of a context column (folders, filters, the sections of Settings). One height, one selected state. */
+.files-folder { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--control-sm); margin: 0; padding: 0 10px; border: 1px dashed transparent; border-radius: var(--radius-sm); background: none;
+  color: var(--text-secondary); font-size: var(--text-sm); font-weight: var(--weight-regular); text-align: left; cursor: pointer; }
+.files-folder:hover { background: var(--fill-hover); color: var(--text-primary); }
+.files-folder[aria-pressed='true'], .files-folder[aria-selected='true'], .files-folder[aria-current] { background: var(--accent-soft); color: var(--text-primary); }
+.files-folder.drop { border-color: var(--accent); background: var(--accent-soft); }
+.files-folder .faint { margin-left: auto; }
 
 /* Menus: opaque elevated surface. Rendered by components/ui/Menu.tsx, which handles position, keys and focus. */
 .menu-wrap { position: relative; display: inline-block; }
@@ -117,7 +148,7 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); }
 .btn:focus-visible, .chip:focus-visible, .iconbtn:focus-visible, .seg-item:focus-visible { outline-offset: 2px; border-radius: var(--radius-pill); }
 .iconbtn:focus-visible { border-radius: 50%; }
-.input:focus-visible { outline: 0; }
+.input:focus-visible { outline: 0; border-radius: var(--radius-sm); }   /* a field keeps its own shape when it has the focus */
 .menu-item { padding-top: 6px; padding-bottom: 6px; }
 .menu-hint { display: block; margin-top: 2px; color: var(--text-muted); font-size: var(--text-xs); white-space: normal; }
 .menu-item .menu-text:has(.menu-hint) { white-space: normal; }

@@ -270,6 +270,71 @@ class Dashboard(Base):
         del calls
 
 
+class Reading(Base):
+    """A message's page and its attachments, as the browser asks for them."""
+    def test_a_message_is_shown_in_a_page_with_its_own_policy_that_only_lumina_may_frame(self):
+        self.fill()
+        self.wp.bodies['1@postbox'] = {'html': '<style>.h{color:#c00}</style><p class="h" style="font-size:18px">Hallo<script>steal()</script></p><img src="https://track.test/p.gif">'}
+        at = f'/v1/hub/mail/frame?connection={self.cp}&id=1%40postbox'
+        page = self.a.get(at, secure=True)
+        self.assertEqual((page.status_code, page['Content-Type']), (200, 'text/html; charset=utf-8'))
+        html = page.content.decode()
+        self.assertIn('<style>.h{color:', html); self.assertIn('style="font-size:18px"', html)              # the sender's formatting reaches the page
+        self.assertNotIn('steal', html); self.assertNotIn('track.test', html)
+        policy = page['Content-Security-Policy']
+        self.assertIn("style-src 'unsafe-inline'", policy)                                                  # ITS OWN policy: the app's allows no inline style and no remote picture
+        self.assertIn("img-src 'self' data:;", policy); self.assertNotIn('https:', policy)
+        self.assertIn('sandbox allow-same-origin allow-popups', policy); self.assertNotIn('allow-scripts', policy); self.assertNotIn('script-src', policy)
+        self.assertEqual((page['X-Frame-Options'], page['Referrer-Policy'], page['X-Content-Type-Options']), ('SAMEORIGIN', 'no-referrer', 'nosniff'))
+        self.assertIn('no-store', page['Cache-Control'])
+        shown = self.a.get(at + '&images=1', secure=True)
+        self.assertIn("img-src 'self' data: https: http:", shown['Content-Security-Policy'])
+        self.assertIn('src="https://track.test/p.gif"', shown.content.decode())
+        other = self.b.get(at, secure=True)                                                                 # another customer: it does not exist, and nothing of theirs may frame it
+        self.assertEqual((other.status_code, other['X-Frame-Options']), (404, 'DENY'))
+        self.assertEqual(self.a.get(f'/v1/hub/mail/frame?connection={self.cp}&id=nothing', secure=True).status_code, 404)
+        from django.test import Client
+        self.assertIn(Client().get(at, secure=True).status_code, (401, 403))
+        body = self.a.get(f'/v1/hub/mail/message?connection={self.cp}&id=1%40postbox', secure=True).json()['message']['body']
+        self.assertEqual((body['blocked_images'], body['designed'], body['quoted']), (1, False, False))
+
+    def test_an_attachment_downloads_and_a_picture_inside_a_message_is_shown_from_lumina(self):
+        self.fill()
+        png = b'\x89PNG\r\n\x1a\n' + b'0' * 64
+        self.wa.mail['m-0001']['files'] = [{'id': 'att-1', 'name': 'Report "Q3".pdf', 'type': 'application/pdf', 'size': 9}, {'id': 'att-2', 'name': 'shot.png', 'type': 'image/png', 'size': len(png), 'cid': 'shot@01'},
+                                           {'id': 'att-3', 'name': 'page.html', 'type': 'text/html', 'size': 20}]
+        self.wa.attachments.update({('m-0001', 'att-1'): b'%PDF-1.7 x', ('m-0001', 'att-2'): png, ('m-0001', 'att-3'): b'<script>alert(1)</script>'})
+        self.wa.bodies['m-0001'] = {'html': '<p>See the picture</p><img src="cid:shot@01" alt="shot">'}
+        body = self.a.get(f'/v1/hub/mail/message?connection={self.ca}&id=m-0001', secure=True).json()['message']['body']
+        self.assertEqual([f['name'] for f in body['attachments']], ['Report "Q3".pdf', 'page.html'])          # the picture shown inside is not listed as a file again
+        self.assertIn(f'src="/v1/hub/mail/file?connection={self.ca}&amp;message=m-0001&amp;attachment=att-2&amp;inline=1"', body['html'])
+        file = lambda aid, more='': self.a.get(f'/v1/hub/mail/file?connection={self.ca}&message=m-0001&attachment={aid}{more}', secure=True)
+        pdf = file('att-1')
+        self.assertEqual((pdf.status_code, pdf.content, pdf['Content-Type']), (200, b'%PDF-1.7 x', 'application/octet-stream'))
+        self.assertTrue(pdf['Content-Disposition'].startswith('attachment; filename="Report Q3.pdf"'))
+        self.assertEqual((pdf['Content-Security-Policy'], pdf['X-Content-Type-Options']), ("default-src 'none'; sandbox", 'nosniff'))
+        shown = file('att-2', '&inline=1')
+        self.assertEqual((shown.status_code, shown['Content-Type'], shown.content), (200, 'image/png', png))
+        self.assertTrue(shown['Content-Disposition'].startswith('inline'))
+        page = file('att-3', '&inline=1')                                                                   # markup is never shown from Lumina's address, whatever is asked
+        self.assertEqual(page['Content-Type'], 'application/octet-stream'); self.assertTrue(page['Content-Disposition'].startswith('attachment'))
+        self.assertEqual(file('nothing').status_code, 404)
+        self.assertEqual(self.b.get(f'/v1/hub/mail/file?connection={self.ca}&message=m-0001&attachment=att-1', secure=True).status_code, 404)
+
+
+class Pace(Base):
+    def test_working_through_an_inbox_and_a_draft_saving_itself_have_their_own_allowance(self):
+        """Production limit found while testing the new Inbox: every change a person makes in a minute shared one allowance of 30, so archiving quickly, or a draft saving
+        itself while it is written, was refused part-way ("rate_limited"). Mail changes and draft saves each have their own; everything else keeps the shared one."""
+        self.fill()
+        refused = lambda path, body: self.post(self.a, path, body).status_code == 429
+        self.assertFalse(any(refused('/v1/hub/drafts', {'connection_id': self.ca, 'to': [], 'subject': 's', 'body': str(n)}) for n in range(45)))       # 45 saves in a minute
+        self.assertFalse(any(refused('/v1/hub/mail/organize', {'connection': self.ca, 'threads': ['t-0001'], 'op': 'archive'}) for _ in range(45)))      # and 45 changes beside them
+        self.assertFalse(refused('/v1/hub/settings', {'timezone': 'UTC'}))                                   # neither used up the shared allowance
+        self.assertTrue(any(refused('/v1/hub/settings', {'timezone': 'UTC'}) for _ in range(40)))            # which is still there for everything else
+        self.assertTrue(any(refused('/v1/hub/mail/organize', {'connection': self.ca, 'threads': ['t-0001'], 'op': 'archive'}) for _ in range(120)))      # and mail's own has an end too
+
+
 class SignIn(Base):
     """Signing in to a real provider's shape (a fake Google answers), through the routes."""
     def setUp(self):
@@ -278,9 +343,9 @@ class SignIn(Base):
         from tests.test_google_hub import FakeGoogle
         self.g = FakeGoogle()
         http = self.g
-        providers = {'google': {'label': 'Google', 'register': lambda registry: google_hub.register(registry, http),
-                                'address': lambda redirect, state, challenge, hint=None, add=(): google_hub.authorize_url('client-1', redirect, state, challenge, hint=hint, add=add),
-                                'grants': tuple(g.name for g in google_hub.GRANTS),
+        providers = {'google': {'label': 'Google', 'register': lambda registry: google_hub.register(registry, http), 'kinds': (),
+                                'address': lambda redirect, state, challenge, hint=None, add=(), kind=None: google_hub.authorize_url('client-1', redirect, state, challenge, hint=hint, add=add),
+                                'grants': tuple(g.name for g in google_hub.GRANTS), 'grant_scopes': {g.name: g.scope for g in google_hub.GRANTS},
                                 'exchange': google_hub.exchanger('client-1', 'secret-1', http), 'refresh': google_hub.refresher('client-1', 'secret-1', http),
                                 'needs_any': (google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE)}}
         offered = patch.object(wiring, 'sign_in_providers', lambda: providers); offered.start(); self.addCleanup(offered.stop)
@@ -316,7 +381,7 @@ class SignIn(Base):
         self.assertEqual(refused.status_code, 403, refused.content)                                           # no calendar permission yet: refused, nothing sent
         account = next(x for x in self.a.get('/v1/hub', secure=True).json()['accounts'] if x['id'] == connection)
         self.assertEqual(account['capabilities']['missing'].get('event_write'), 'calendar_write')
-        self.assertEqual(self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection}).status_code, 400)          # what to add must be said
+        self.assertEqual(self.post(self.a, '/v1/hub/link', {'provider': 'google', 'add': ['calendar_write']}).status_code, 400)        # adding is always to an account
         begun = self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection, 'add': ['calendar_write']})
         asked = parse_qs(urlsplit(begun.json()['authorize_url']).query)
         self.assertEqual((asked['login_hint'], asked['include_granted_scopes']), (['dana@gmail.test'], ['true']))
@@ -339,7 +404,7 @@ class SignIn(Base):
 
     def test_sign_in_connects_the_account_with_nothing_chosen_then_the_customer_chooses(self):
         from urllib.parse import parse_qs, urlsplit
-        self.assertEqual(self.a.get('/v1/hub', secure=True).json()['providers'], [{'provider': 'google', 'label': 'Google'}])
+        self.assertEqual(self.a.get('/v1/hub', secure=True).json()['providers'], [{'provider': 'google', 'label': 'Google', 'kinds': []}])
         begun = self.post(self.a, '/v1/hub/link', {'provider': 'google'})
         self.assertEqual(begun.status_code, 200, begun.content)
         asked = parse_qs(urlsplit(begun.json()['authorize_url']).query)
@@ -384,6 +449,61 @@ class SignIn(Base):
         self.assertEqual(self.post(self.a, '/v1/hub/link', {'provider': 'nobody'}).status_code, 503)
         self.assertIn(stranger.post('/v1/hub/link/finish', '{}', content_type='application/json', secure=True).status_code, (401, 403))      # finishing needs the signed-in person
 
+
+    def test_a_sign_in_that_connects_nothing_says_why_and_logs_no_more_than_the_reason(self):
+        from urllib.parse import parse_qs, urlsplit
+        from django.test import Client
+        begin = lambda: parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google'}).json()['authorize_url']).query)['state'][0]
+        wrong = self.post(self.a, '/v1/hub/link/finish', {'state': begin(), 'code': 'wrong'})
+        self.assertEqual((wrong.status_code, wrong.json()['error'], wrong.json()['reason']), (409, 'link_failed', 'expired'))          # Google: invalid_grant, a code used or too old
+        again = self.post(self.a, '/v1/hub/link/finish', {'state': 'never-started', 'code': 'good-code'})
+        self.assertEqual((again.status_code, again.json()['reason']), (409, 'expired'))
+        self.g.scope = 'openid https://www.googleapis.com/auth/userinfo.email'                               # both boxes unticked at the provider
+        none = self.post(self.a, '/v1/hub/link/finish', {'state': begin(), 'code': 'good-code'})
+        self.assertEqual((none.status_code, none.json()['reason']), (409, 'no_access'))
+        logged = [json.loads(line) for line in self.output.getvalue().splitlines() if '"hub_link_failed"' in line]
+        self.assertEqual([l['reason'] for l in logged], ['expired', 'expired', 'no_access'])
+        self.assertTrue(all(set(l) <= {'event', 'request_id', 'provider', 'reason', 'reference'} for l in logged))
+        self.assertNotIn('good-code', self.output.getvalue())
+        back = Client().get('/v1/hub/link/callback', {'error': 'consent_required', 'error_description': 'AADSTS65001: The user or administrator has not consented to use the application'}, secure=True)
+        self.assertEqual(back['Location'], '/app/inbox?connect=admin_consent&ref=AADSTS65001')
+        self.assertEqual(Client().get('/v1/hub/link/callback', {'error': 'server_error', 'error_description': '<script>'}, secure=True)['Location'], '/app/inbox?connect=provider_unreachable')
+        self.assertEqual(self.rows('SELECT count(*) FROM connector_connections')[0][0], 0)
+
+    def test_a_return_as_long_as_a_work_accounts_is_taken(self):
+        from urllib.parse import parse_qs, urlsplit
+        from django.test import Client
+        state = parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google'}).json()['authorize_url']).query)['state'][0]
+        long_code = '1.' + 'A' * 2600                                                                         # a Microsoft code for a work account can pass 2,000 characters
+        back = Client().get('/v1/hub/link/callback', {'state': state, 'code': long_code, 'session_state': '0' * 36}, secure=True)
+        self.assertEqual((back.status_code, back['Location']), (302, '/app/inbox#link-state=' + state + '&link-code=' + long_code))
+        self.assertEqual(Client().get('/v1/hub/link/callback', {'state': state, 'code': 'A' * 5000}, secure=True).status_code, 413)   # and still bounded
+        self.assertEqual(self.a.get('/v1/hub/mail/threads?q=' + 'x' * 2100, secure=True).status_code, 413)                                # every other route keeps its limit
+        done = self.post(self.a, '/v1/hub/link/finish', {'state': state, 'code': long_code})
+        self.assertEqual((done.status_code, done.json()['reason']), (409, 'expired'))                        # reached the exchange (the fake refuses this code), not "invalid request"
+
+    def test_connecting_an_account_again_keeps_its_connection_its_copy_and_what_it_was_allowed(self):
+        from urllib.parse import parse_qs, urlsplit
+        from agentai_platform import google_hub
+        self.g.mail(1)
+        connection = self.connect()
+        asked = parse_qs(urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection, 'add': ['send']}).json()['authorize_url']).query)
+        self.g.scope += ' ' + google_hub.SEND_SCOPE
+        self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'})
+        self.assertEqual([t['subject'] for t in self.a.get('/v1/hub/mail/threads?label=all', secure=True).json()['threads']], ['Subject 1'])
+        wiring.connector_service().needs_customer(self.account_ids[0], connection)                           # its access ended at the provider
+        self.assertEqual(self.a.get('/v1/hub', secure=True).json()['accounts'][0]['state'], 'needs_you')
+        begun = self.post(self.a, '/v1/hub/link', {'provider': 'google', 'connection': connection})          # connect again: no `add`
+        self.assertEqual(begun.status_code, 200, begun.content)
+        asked = parse_qs(urlsplit(begun.json()['authorize_url']).query)
+        self.assertEqual(asked['login_hint'], ['dana@gmail.test'])
+        self.assertIn(google_hub.SEND_SCOPE, asked['scope'][0].split())                                      # what it held is asked for again
+        done = self.post(self.a, '/v1/hub/link/finish', {'state': asked['state'][0], 'code': 'good-code'})
+        self.assertEqual((done.status_code, done.json()['connection_id']), (201, connection))
+        account = self.a.get('/v1/hub', secure=True).json()['accounts'][0]
+        self.assertEqual((account['id'], account['state'], account['granted']['mail']), (connection, 'working', True))
+        self.assertEqual([t['subject'] for t in self.a.get('/v1/hub/mail/threads?label=all', secure=True).json()['threads']], ['Subject 1'])   # its copy is still there
+        self.assertIn(self.post(self.b, '/v1/hub/link', {'provider': 'google', 'connection': connection}).status_code, (400, 404, 409))    # someone else's account: nothing begins
 
     def test_changing_an_event_from_the_dashboard_asks_the_scope_of_a_series_and_stays_off_until_proven(self):
         from urllib.parse import parse_qs, urlsplit
@@ -470,3 +590,50 @@ class Off(Base):
         for path in ('/v1/hub/refresh', '/v1/hub/settings', '/v1/hub/calendars', '/v1/hub/link', '/v1/hub/link/finish', '/v1/hub/ask'):
             self.assertEqual(self.post(self.a, path, {}).status_code, 503, path)
         self.assertFalse(self.a.get('/v1/app', secure=True).json()['features']['dashboard'])
+
+
+class MicrosoftSignIn(Base):
+    """Signing in to Microsoft through the routes (a fake Graph answers as Microsoft does): the two kinds of account, and an account that connects."""
+    def setUp(self):
+        super().setUp()
+        from agentai_platform import microsoft_hub
+        from tests.test_microsoft_hub import FakeGraph
+        self.g, self.m = FakeGraph(), microsoft_hub
+        self.g.scope = 'openid profile email https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/User.Read'
+        http = self.g
+        providers = {'microsoft': {'label': 'Microsoft', 'register': lambda registry: microsoft_hub.register(registry, http),
+                                   'kinds': tuple({'id': name, 'label': label} for name, label, _t in microsoft_hub.ACCOUNT_KINDS),
+                                   'address': lambda redirect, state, challenge, hint=None, add=(), kind=None: microsoft_hub.authorize_url('cid', redirect, state, challenge, hint=hint, add=add, kind=kind),
+                                   'grants': tuple(g.name for g in microsoft_hub.GRANTS), 'grant_scopes': {g.name: g.scope for g in microsoft_hub.GRANTS},
+                                   'exchange': microsoft_hub.exchanger('cid', 'secret', http), 'refresh': microsoft_hub.refresher('cid', 'secret', http),
+                                   'needs_any': (microsoft_hub.MAIL_SCOPE, microsoft_hub.CALENDAR_SCOPE)}}
+        offered = patch.object(wiring, 'sign_in_providers', lambda: providers); offered.start(); self.addCleanup(offered.stop)
+        fake = patch.object(wiring, 'connector_registry', lambda db=None: microsoft_hub.register(Registry(), http)); fake.start(); self.addCleanup(fake.stop)
+        origin = override_settings(PUBLIC_ORIGIN='https://app.test'); origin.enable(); self.addCleanup(origin.disable)
+
+    def test_a_personal_and_a_work_account_are_offered_and_one_connects_and_shows_its_mail(self):
+        from urllib.parse import parse_qs, urlsplit
+        offered = self.a.get('/v1/hub', secure=True).json()['providers']
+        self.assertEqual(offered, [{'provider': 'microsoft', 'label': 'Microsoft', 'kinds': [{'id': 'personal', 'label': 'Personal: Outlook.com, Hotmail, Live'},
+                                                                                             {'id': 'work', 'label': 'Work or school: Microsoft 365'}]}])
+        where = lambda **more: urlsplit(self.post(self.a, '/v1/hub/link', {'provider': 'microsoft', **more}).json()['authorize_url'])
+        self.assertEqual((where(kind='personal').path, where(kind='work').path, where().path),
+                         ('/consumers/oauth2/v2.0/authorize', '/organizations/oauth2/v2.0/authorize', '/common/oauth2/v2.0/authorize'))
+        self.assertEqual(self.post(self.a, '/v1/hub/link', {'provider': 'microsoft', 'kind': 'neither'}).status_code, 400)
+        state = parse_qs(where(kind='personal').query)['state'][0]
+        done = self.post(self.a, '/v1/hub/link/finish', {'state': state, 'code': 'M.C5_BAY.2.U.abc'})
+        self.assertEqual(done.status_code, 201, done.content)
+        connection = done.json()['connection_id']
+        account = self.a.get('/v1/hub', secure=True).json()['accounts'][0]
+        self.assertEqual((account['identity'], account['provider_label'], account['state'], account['granted']), ('me@outlook.test', 'Microsoft', 'working', {'mail': False, 'calendar': False}))
+        self.assertEqual(account['capabilities']['labels'], 'folders')
+        self.post(self.a, f'/v1/integrations/{connection}/grants', {'grants': [{'kind': 'mailbox', 'id': '*'}]})
+        sync = wiring.hub_services()[2]
+        for _ in range(3):
+            sync.tick(limit=50)
+        self.assertEqual(sorted(t['subject'] for t in self.a.get('/v1/hub/mail/threads?label=all', secure=True).json()['threads']), ['Hello', 'Plans'])
+        self.g.token_error = (401, {'error': 'invalid_client', 'error_description': 'AADSTS7000222: The provided client secret keys are expired.'})
+        state = parse_qs(where(kind='work').query)['state'][0]
+        failed = self.post(self.a, '/v1/hub/link/finish', {'state': state, 'code': 'x'})
+        self.assertEqual((failed.status_code, failed.json()), (409, {'error': 'link_failed', 'reason': 'provider_setup', 'reference': 'AADSTS7000222'}))
+        self.assertEqual(len(self.a.get('/v1/hub', secure=True).json()['accounts']), 1)                      # the account connected before is untouched

@@ -208,6 +208,48 @@ describe('Calendar', () => {
     expect(screen.getByTitle('Work · Read only until you allow changes')).toBeTruthy();
   });
 
+  it('keeps a crowded day readable: all-day events one line each with "+N more" for the rest, a short event and a deadline at their time, the course after the name', async () => {
+    const allDay = (id: string, title: string) => event({ id, title, colour: 'green', all_day: true, start_date: '2026-05-22', end_date: '2026-05-23', start_epoch: at('2026-05-22T00:00:00Z'), end_epoch: at('2026-05-23T00:00:00Z'), place: '' });
+    const crowded = [allDay('h1', 'Homework 9 due [PHYS 101-003 Fall 2026]'), allDay('h2', 'Lab report: Buoyancy [PHYS 101-003 Fall 2026]'), allDay('h3', 'Reading response 7 [ENGL 204-001 Fall 2026]'), allDay('h4', 'Team charter draft [ENGR 110-002 Fall 2026]'),
+      event({ id: 'q1', title: 'Classwork 21: Fluids [PHYS 101-003 Fall 2026]', start_epoch: at('2026-05-21T16:30:00Z'), end_epoch: at('2026-05-21T16:40:00Z'), place: '' }),
+      event({ id: 'd1', title: 'Submit Buoyancy Lab [PHYS 101-003 Fall 2026]', start_epoch: at('2026-05-21T18:00:00Z'), end_epoch: at('2026-05-21T18:00:00Z'), place: '' })];
+    server(base({ '/v1/hub/events': { events: crowded, complete: true }, '/v1/hub/event': (url: URL) => ({ event: crowded.find(e => e.id === url.searchParams.get('id')) }) }));
+    show();
+    const friday = await screen.findByLabelText('All day, Friday, May 22, 2026');
+    expect(within(friday).getAllByRole('button').map(b => b.textContent)).toEqual(['Homework 9 duePHYS 101-003 Fall 2026', 'Lab report: BuoyancyPHYS 101-003 Fall 2026', '+2 more']);
+    expect(within(friday).getByRole('button', { name: 'Homework 9 due [PHYS 101-003 Fall 2026], all day' }).getAttribute('title')).toBe('Homework 9 due [PHYS 101-003 Fall 2026] · all day');
+    fireEvent.click(within(friday).getByRole('button', { name: '2 more all day on Friday, May 22, 2026. Show all 4' }));
+    const list = screen.getByRole('menu');                                                                                   // the full list for that day, not only what was hidden
+    expect(within(list).getAllByRole('menuitem').map(i => i.textContent)).toEqual(['Homework 9 due [PHYS 101-003 Fall 2026]all day', 'Lab report: Buoyancy [PHYS 101-003 Fall 2026]all day',
+      'Reading response 7 [ENGL 204-001 Fall 2026]all day', 'Team charter draft [ENGR 110-002 Fall 2026]all day']);
+    fireEvent.click(within(list).getByRole('menuitem', { name: /Team charter draft/ }));
+    const panel = within(await screen.findByLabelText('Event details'));
+    expect(panel.getByRole('heading', { name: 'Team charter draft' })).toBeTruthy(); expect(panel.getByText('ENGR 110-002 Fall 2026')).toBeTruthy();
+    expect(panel.getByText('Friday, May 22, 2026, all day')).toBeTruthy();
+    const thursday = screen.getByLabelText('Thursday, May 21, 2026', { selector: '.hub-day-col' });
+    const short = within(thursday).getByRole('button', { name: 'Classwork 21: Fluids [PHYS 101-003 Fall 2026], 12:30 PM' }), due = within(thursday).getByRole('button', { name: 'Submit Buoyancy Lab [PHYS 101-003 Fall 2026], 2:00 PM' });
+    expect([short.className.includes('brief'), short.className.includes('point'), due.className.includes('point')]).toEqual([true, false, true]);
+    expect([short.style.top, due.style.top]).toEqual(['calc(var(--hour) * 12.5)', 'calc(var(--hour) * 14)']);               // where they really are
+    expect(short.querySelector('b')!.textContent).toBe('Classwork 21: Fluids');                                              // what it is comes first
+    expect(due.getAttribute('title')).toBe('Submit Buoyancy Lab [PHYS 101-003 Fall 2026] · 2:00 PM');
+  });
+
+  it('opens New event as a dialog over the calendar: the grid stays in place behind it, and closing it gives the focus back', async () => {
+    const writable = account({ capabilities: caps({ event_write: true }) });
+    server(base({ '/v1/hub': overview({ accounts: [writable, second], read_only: false }) })); show();
+    await screen.findByRole('button', { name: 'Standup, 9:00 AM' });
+    const grid = document.querySelector('.hub-week')!; const body = grid.parentElement!; const before = Array.from(body.children);
+    const opener = screen.getByRole('button', { name: 'New event' }); opener.focus(); fireEvent.click(opener);
+    const dialog = screen.getByRole('dialog', { name: 'New event' });
+    expect(body.contains(dialog)).toBe(false);                                                                               // nothing is put above the grid
+    expect(Array.from(body.children)).toEqual(before); expect(document.querySelector('.hub-week')).toBe(grid);
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Title'));
+    expect(within(dialog).getByRole('button', { name: 'Create event' }).className).toContain('primary');
+    expect(within(dialog).getByRole('button', { name: 'Cancel' }).className).toContain('tertiary');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(opener); expect(document.querySelector('.hub-week')).toBe(grid);
+  });
+
   it('answers an invitation from someone else instead of offering to cancel it (Phase 6, #64)', async () => {
     const writable = account({ capabilities: caps({ event_write: true, respond: true }) });
     server(base({ '/v1/hub': overview({ accounts: [writable, second], read_only: false }), 'POST /v1/hub/refresh': { requested: 1 },
@@ -267,7 +309,7 @@ describe('Calendar changes (Phase 6, #62, #D7)', () => {
     const form = screen.getByRole('form', { name: 'New event' });
     expect([(within(form).getByLabelText('Title') as HTMLInputElement).value, (within(form).getByLabelText('People') as HTMLInputElement).value]).toEqual(['Planning', 'bo@y.test']);
     expect(asked('/v1/hub/events/create')).toEqual([]);                                                              // picking is not creating
-    fireEvent.click(within(form).getByRole('button', { name: 'Create' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Create event' }));
     await waitFor(() => expect(asked('/v1/hub/proposals/p1/close').map(c => c.body)).toEqual([{ state: 'picked' }]));
     expect(asked('/v1/hub/events/create').map(c => c.body)).toEqual([{ connection: 'c1', calendar: 'work', title: 'Planning', start: '2026-05-20T15:00', end: '2026-05-20T15:30',
       attendees: ['bo@y.test'], notify: true }]);

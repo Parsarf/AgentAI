@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import SeriesScope from './SeriesScope';
+import Field from '../ui/Field';
 import { addDays, addresses, failed, hub, localTime, type EventChange, type HubAccount, type HubAction, type HubEvent, type Scope } from '../../lib/hub';
 
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b.slice(0, 10) + 'T00:00:00Z') - Date.parse(a.slice(0, 10) + 'T00:00:00Z')) / 86400000);
@@ -43,21 +44,24 @@ export default function ChangeEvent({ event, account, zone, onDone, onCancel }: 
       else setErr(r.action.ended_words || 'The event was not changed.');
     } catch (e) { setErr(failed(e)); } finally { setBusy(false); }
   };
+  const late = !event.all_day && !!from && !!to && span === 0 && to <= from ? 'It must end after it starts.' : '';
   return (
-    <form className="hub-event-editor" aria-label="Change event" onSubmit={e => { e.preventDefault(); void save(); }}>
+    <form className="form hub-change" aria-label="Change event" noValidate onSubmit={e => { e.preventDefault(); if (title.trim() && !late) void save(); }}>
       <p className="faint small">{account.identity}</p>
-      <label>Title <input value={title} onChange={e => setTitle(e.target.value)} required maxLength={500} /></label>
-      <label>Day <input type="date" value={date} onChange={e => setDate(e.target.value)} required /></label>
-      {!event.all_day && <div className="row"><label>From <input type="time" value={from} onChange={e => setFrom(e.target.value)} required /></label>
-        <label>To <input type="time" value={to} onChange={e => setTo(e.target.value)} required /></label></div>}
-      <label>People <input value={people} onChange={e => setPeople(e.target.value)} placeholder="Addresses, separated by commas" /></label>
-      <label>Place <input value={place} onChange={e => setPlace(e.target.value)} maxLength={500} /></label>
-      <label>Notes <textarea value={notes} onChange={e => setNotes(e.target.value)} maxLength={8000} rows={3} /></label>
+      <Field label="Title" note="Required" error={title.trim() ? '' : 'Give the event a title.'}>{p => <input {...p} className="input" value={title} onChange={e => setTitle(e.target.value)} required maxLength={500} />}</Field>
+      <div className="field-row">
+        <Field label="Date">{p => <input {...p} className="input" type="date" value={date} onChange={e => setDate(e.target.value)} required />}</Field>
+        {!event.all_day && <Field label="Starts">{p => <input {...p} className="input" type="time" value={from} onChange={e => setFrom(e.target.value)} required aria-invalid={late ? true : undefined} />}</Field>}
+        {!event.all_day && <Field label="Ends" error={late}>{p => <input {...p} className="input" type="time" value={to} onChange={e => setTo(e.target.value)} required />}</Field>}
+      </div>
+      <Field label="People">{p => <input {...p} className="input" value={people} onChange={e => setPeople(e.target.value)} placeholder="Email addresses, separated by commas" autoComplete="off" spellCheck={false} />}</Field>
+      <Field label="Place">{p => <input {...p} className="input" value={place} onChange={e => setPlace(e.target.value)} maxLength={500} />}</Field>
+      <Field label="Notes">{p => <textarea {...p} className="input" value={notes} onChange={e => setNotes(e.target.value)} maxLength={8000} rows={3} />}</Field>
       {event.series_id && <SeriesScope name={`change-${event.id}`} value={scope} onChange={setScope} legend="This event repeats. Which events should change?" />}
-      {told > 0 && <label className="row"><input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} /> Tell the people invited</label>}
-      {told > 0 && <p className="small" role="status">{notify ? `${told} ${told === 1 ? 'person is' : 'people are'} told about the change.` : 'Nobody is told.'}</p>}
+      {told > 0 && <label className="check-row"><input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} /> Tell the people invited</label>}
+      {told > 0 && <p className="faint small" role="status">{notify ? `${told} ${told === 1 ? 'person is' : 'people are'} told about the change.` : 'Nobody is told.'}</p>}
       {err && <p className="notice warning small" role="alert">{err}</p>}
-      <div className="row"><button type="submit" className="btn" disabled={busy || !title.trim() || (!!event.series_id && !scope)}>Save</button>
-        <button type="button" className="btn ghost" onClick={onCancel} disabled={busy}>Cancel</button></div>
+      <div className="form-actions"><button type="button" className="btn small tertiary" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="submit" className="btn small primary" disabled={busy || !title.trim() || !!late || (!!event.series_id && !scope)}>Save</button></div>
     </form>);
 }
