@@ -6,7 +6,7 @@
 html, body, #root { height: 100%; }
 html { font-size: 100%; }
 body { margin: 0; background: var(--surface-base); color: var(--text-primary); font: var(--text-base)/var(--leading-normal) var(--font); -webkit-font-smoothing: antialiased; }
-button, input, textarea { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 h1, h2, h3, p { margin: 0; }
@@ -66,12 +66,11 @@ h1, h2, h3, p { margin: 0; }
 .gblock { margin: 10px 0 18px 4%; padding: 18px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--surface); }
 .gblock h3 { font-size: 17px; font-weight: 600; } .gblock header { margin-bottom: 12px; display: grid; gap: 6px; }
 .gblock footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
-.fields { display: grid; gap: 16px; } .field { display: grid; gap: 7px; } .field label { color: var(--ink-2); font-size: 13px; }
 .gblock input[type=text], .gblock input[type=number], .gblock select, .gblock textarea, .gblock .phase-body input:not([type=checkbox]), .gblock .inline input {
   background: var(--fill-hover); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 11px; outline: 0; width: 100%; }
 .gblock input:focus, .gblock select:focus, .gblock textarea:focus { border-color: var(--neon); }
 .gblock select { appearance: auto; color-scheme: dark; }
-.seg, .radios { display: flex; flex-wrap: wrap; gap: 8px; }
+.gblock .seg, .radios { display: flex; flex-wrap: wrap; gap: 8px; }   /* a generated form's own choice row; the shared segmented control is .seg in ui.css */
 .respond { display: inline-flex; gap: 4px; }
 .slider { display: flex; align-items: center; gap: 12px; } .slider input[type=range] { flex: 1; accent-color: var(--neon); } .slider output { min-width: 70px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .save.saving, .save.unsaved { color: var(--ink-2); } .save.conflict, .save.error { color: var(--warn); }
