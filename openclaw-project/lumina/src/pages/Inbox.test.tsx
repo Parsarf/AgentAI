@@ -355,18 +355,43 @@ describe('Inbox', () => {
     vi.useRealTimers();
   });
 
-  it('does not throw the customer back to the top when they have paged further: it offers the new mail instead', async () => {
+  it('shows new mail by itself even when the customer has paged further down, keeps what they had loaded, and asks nothing', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    let mark = 'm1';
+    let mark = 'm1'; let top = [thread()];
+    const arrived = thread({ id: 't-new', subject: 'Just arrived', snippet: 'Call me', last_epoch: NOW - 5, people: [{ name: 'Ivo', address: 'ivo@z.test' }] });
     server(base({ '/v1/hub/pulse': () => ({ mark, loading: false, items: 2 }),
-      '/v1/hub/mail/threads': (url: URL) => (url.searchParams.get('cursor') ? { threads: [other], next: null, complete: true } : { threads: [thread()], next: 'c-2', complete: false }) }));
+      '/v1/hub/mail/threads': (url: URL) => (url.searchParams.get('cursor') ? { threads: [other], next: null, complete: true } : { threads: top, next: 'c-2', complete: false }) }));
     show();
     await screen.findByText('Termin morgen');                                                     // the second page came by itself (the list reached its end)
     await waitFor(() => expect(asked('/v1/hub/pulse').length).toBeGreaterThan(0));
-    mark = 'm2';
+    mark = 'm2'; top = [arrived, thread()];
     await vi.advanceTimersByTimeAsync(8000);
-    expect(await screen.findByText('There is new mail.')).toBeTruthy();
-    expect(screen.getByText('Termin morgen')).toBeTruthy();                                       // what they were reading is still there
+    expect(await screen.findByText('Just arrived')).toBeTruthy();                                 // there, without being asked for
+    const rows = within(screen.getByRole('list', { name: 'Conversations' })).getAllByRole('listitem');
+    expect(rows.map(r => within(r).getByText(/Just arrived|Quarterly|Termin/).textContent)).toEqual(['Just arrived', 'Quarterly numbers', 'Termin morgen']);   // on top, and the further page is still there
+    expect(screen.queryByText(/There is new mail/)).toBeNull(); expect(screen.queryByRole('button', { name: 'Show it' })).toBeNull();
+    expect(asked('/v1/hub/mail/threads').at(-1)!.get('cursor')).toBeNull();                       // one read of the newest page, not the whole list again
+    vi.useRealTimers();
+  });
+
+  it('shows a message that arrives in the open conversation without it being opened again', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let mark = 'm1'; let now = thread({ message_count: 1 }); let messages = [message()];
+    server(base({ '/v1/hub/pulse': () => ({ mark, loading: false, items: 1 }), '/v1/hub/mail/threads': () => ({ threads: [now], next: null, complete: true }),
+      '/v1/hub/mail/thread': () => ({ thread: now, messages, problem: null }) }));
+    show();
+    fireEvent.click((await screen.findByText('Quarterly numbers')).closest('button')!);
+    await screen.findByRole('article', { name: 'Message from Ann' });
+    await waitFor(() => expect(asked('/v1/hub/pulse').length).toBeGreaterThan(0));
+    const opens = asked('/v1/hub/mail/thread').length;
+    mark = 'm2'; await vi.advanceTimersByTimeAsync(8000);                                         // something else changed: the conversation is the same, so it is not read again
+    await waitFor(() => expect(asked('/v1/hub/pulse').length).toBeGreaterThan(1));
+    expect(asked('/v1/hub/mail/thread').length).toBe(opens);
+    now = thread({ message_count: 2, last_epoch: NOW - 2 });
+    messages = [message(), message({ id: 'm-3', sender: { name: 'Bo', address: 'bo@y.test' }, snippet: 'One more thing', sent_epoch: NOW - 2, body: { ...message().body!, blocked_images: 0 } })];
+    mark = 'm3'; await vi.advanceTimersByTimeAsync(8000);
+    expect(await screen.findByRole('article', { name: 'Message from Bo' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'Message from Ann' })).toBeTruthy();
     vi.useRealTimers();
   });
 

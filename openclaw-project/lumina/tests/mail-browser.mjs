@@ -396,6 +396,27 @@ await step('new mail arrives by itself, at the top, without a reload', async () 
   assert.ok((await page.locator('.mail-row').evaluateAll(rows => rows.slice(0, 4).map(r => r.textContent))).some(t => t.includes('Just arrived')), 'among the newest');
 });
 
+await step('new mail while reading far down the list: it joins the top by itself, nothing is asked, the reader stays where they were', async () => {
+  const list = page.locator('.mail-list');
+  const total = () => list.locator('.vlist-rows > li').first().getAttribute('aria-setsize').then(Number);
+  await list.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await waitFor(() => Number(document.querySelector('.mail-list .vlist-rows > li')?.getAttribute('aria-setsize')) > 50, null, { timeout: 15000 });      // a further page was read
+  await list.evaluate(el => { el.scrollTop = 30 * 84; }); await page.waitForTimeout(400);
+  const before = await total();
+  const reading = await list.evaluate(el => { const top = el.getBoundingClientRect().top; const row = [...el.querySelectorAll('.mail-row')].find(r => r.getBoundingClientRect().top >= top);
+    return { subject: row.querySelector('.mail-row-subject').textContent, at: Math.round(row.getBoundingClientRect().top - top) }; });
+  await context.request.get(BASE + '/fake/arrive');
+  await waitFor(n => Number(document.querySelector('.mail-list .vlist-rows > li')?.getAttribute('aria-setsize')) === n + 1, before, { timeout: 45000, polling: 500 });
+  assert.equal(await page.getByText(/There is new mail/).count(), 0); assert.equal(await page.getByRole('button', { name: 'Show it' }).count(), 0);
+  const after = await list.evaluate((el, subject) => { const top = el.getBoundingClientRect().top; const row = [...el.querySelectorAll('.mail-row')].find(r => r.querySelector('.mail-row-subject').textContent === subject);
+    return row ? Math.round(row.getBoundingClientRect().top - top) : null; }, reading.subject);
+  assert.equal(after, reading.at, 'the row being read is where it was');
+  assert.ok(await total() > 50, 'what was loaded further down is still there');
+  await list.evaluate(el => { el.scrollTop = 0; });
+  await waitFor(() => [...document.querySelectorAll('.mail-row')].slice(0, 4).filter(r => r.textContent.includes('Just arrived')).length >= 1);
+  await shot('19b-new-mail-on-top');
+});
+
 await step('an account whose access ended says so, keeps its mail, and is connected again in place with what it was allowed', async () => {
   const beforeId = (await api('/v1/hub')).accounts.find(a => a.provider === 'google').id;
   await context.request.get(BASE + '/fake/expire?provider=google');
