@@ -1,27 +1,47 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import * as I from '../Icons';
+import Menu, { type MenuItem } from '../ui/Menu';
 import { api } from '../../lib/api';
-import { failed, hub, type HubAccount } from '../../lib/hub';
+import { failed, hub, linkWords, type HubAccount, type Provider } from '../../lib/hub';
 
-export interface Provider { provider: string; label: string }
+export type { Provider };
 interface Resource { kind: string; id: string; name: string }
 
 /** Connect a mail and calendar account. The customer is sent to the provider, which shows what is asked for; nothing is connected until they come back, and then nothing
- *  can be read until they choose what. The providers come from the server as data: this component names none. */
-export function AddAccount({ providers, primary }: { providers: Provider[]; primary?: boolean }) {
-  const [busy, setBusy] = useState(''); const [err, setErr] = useState('');
-  const start = async (provider: string) => {
-    setBusy(provider); setErr('');
-    try { const r = await api<{ authorize_url: string }>('POST', '/v1/hub/link', { provider }); window.location.assign(r.authorize_url); }
-    catch (e) { setErr(failed(e)); setBusy(''); }
+ *  can be read until they choose what. Where a provider signs in different kinds of account separately (a personal or a work account) the customer picks one first: each
+ *  has its own sign-in page. The providers and their kinds come from the server as data: this component names none. */
+export function AddAccount({ providers, primary, label = 'Add account', trigger }: { providers: Provider[]; primary?: boolean; label?: string;
+  trigger?(p: { open: boolean; props: Record<string, unknown>; busy: boolean }): ReactNode }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const start = async (provider: string, kind?: string) => {
+    setBusy(true); setErr('');
+    try { const r = await hub.connect(provider, kind); window.location.assign(r.authorize_url); }
+    catch (e) { setErr(failed(e)); setBusy(false); }
   };
+  const items: MenuItem[] = providers.flatMap(p => (p.kinds?.length
+    ? p.kinds.map((k, n) => ({ id: `${p.provider}:${k.id}`, label: k.label, section: n === 0 ? p.label : undefined, onSelect: () => { void start(p.provider, k.id); } }))
+    : [{ id: p.provider, label: p.label, onSelect: () => { void start(p.provider); } }]));
   if (!providers.length) return <p className="faint small">No mail or calendar service can be connected yet.</p>;
   return (
-    <div className="hub-connect">
-      {providers.map(p => <button key={p.provider} type="button" className={`btn small${primary ? ' primary' : ''}`} disabled={!!busy} aria-busy={busy === p.provider} onClick={() => start(p.provider)}>
-        {busy === p.provider ? 'Opening…' : `Connect ${p.label}`}</button>)}
-      <p className="faint small">Lumina asks only to read. Changing anything needs a separate permission, asked the first time you do it.</p>
-      {err && <p className="notice warning" role="alert">{err}</p>}
-    </div>);
+    <span className="hub-connect">
+      <Menu label="Choose a mail service" heading="Lumina asks only to read. Changing anything is a separate permission, asked the first time you use it." items={items}
+        trigger={({ open, props }) => trigger ? trigger({ open, props, busy }) : <button type="button" className={`btn small${primary ? ' primary' : ''}`} disabled={busy} aria-busy={busy} aria-expanded={open} {...props}>
+          <I.Plus width={16} height={16} />{busy ? 'Opening…' : label}</button>} />
+      {err && <span className="hub-connect-error small" role="alert">{err}</span>}
+    </span>);
+}
+
+/** Sign in again to an account whose access ended. The same connection: its mail and what it was allowed stay. */
+export function Reconnect({ account, small = true, className = '' }: { account: HubAccount; small?: boolean; className?: string }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const go = async () => {
+    setBusy(true); setErr('');
+    try { const r = await hub.reconnect(account); window.location.assign(r.authorize_url); } catch (e) { setErr(failed(e)); setBusy(false); }
+  };
+  return <>
+    <button type="button" className={`btn${small ? ' small' : ''} ${className}`} disabled={busy} aria-busy={busy} onClick={go}>{busy ? 'Opening…' : 'Reconnect'}</button>
+    {err && <span className="small" role="alert">{err}</span>}
+  </>;
 }
 
 /** After signing in: the customer chooses what Lumina may read. Nothing is chosen for them. Mail: all of it, only some labels or folders, or none. Calendars: each one. */
@@ -46,9 +66,9 @@ export function ChooseAccess({ account, onDone, onCancel }: { account: HubAccoun
   };
   const kind = account.capabilities.labels === 'folders' ? 'folders' : 'labels';
   return (
-    <div className="hub-choose panel" role="dialog" aria-modal="false" aria-label={`Choose what Lumina may read in ${account.identity}`}>
-      <h2>What may Lumina read in {account.identity}?</h2>
-      <p className="muted small">Nothing is read until you choose. You can change this at any time in Settings, Access. Lumina cannot send, change or delete anything here.</p>
+    <div className="hub-choose" role="dialog" aria-modal="false" aria-label={`Choose what Lumina may read in ${account.identity}`}>
+      <header><h2>{account.identity} is connected</h2>
+        <p className="muted small">Choose what Lumina may read. Nothing is read until you do, and you can change it at any time in Settings, Access. This does not let Lumina send, change or delete anything.</p></header>
       {resources === null ? <p className="muted" role="status">Loading…</p> : <>
         {(groups.everything || groups.labels.length > 0) && <fieldset><legend>Mail</legend>
           {groups.everything && <label><input type="radio" name="hub-mail" checked={mail === 'all'} onChange={() => setMail('all')} /> All mail</label>}
@@ -71,5 +91,5 @@ export function ChooseAccess({ account, onDone, onCancel }: { account: HubAccoun
     </div>);
 }
 
-/** What the page says after coming back from a provider. */
-export const CONNECT_NOTE: Record<string, string> = { failed: 'The account could not be connected. Nothing was connected. Please try again.', declined: 'You did not give access, so nothing was connected.' };
+/** What the page says after coming back from a provider without a connection: the reason the server gave, as a sentence that says what to do. */
+export const connectNote = (reason: string | null, reference?: string | null) => (reason ? linkWords(reason, reference) : '');

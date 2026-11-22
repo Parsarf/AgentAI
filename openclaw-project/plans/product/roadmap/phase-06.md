@@ -7,6 +7,18 @@ built and tested against a fake Graph. The owner registered the Entra app; its k
 Microsoft is published (PR #84), so every customer can connect Outlook and read it; changes stay in `proving` (off) until the live run (`deploy/phase6_microsoft_live.py`)
 passes on the owner's outlook.com and work Microsoft 365 accounts (exit gate 8, steps in "Needs the owner"). Slack (#68's Slack part, #69) and Telegram tasks were skipped by the owner.
 
+## Correction (2026-11-21): no Microsoft account could be connected until the fix in branch `mail-experience`
+
+"Microsoft configured and open for reading" above was true of the settings, not of the code. The owner's first real attempt ended in "The account could not be connected".
+Cause, reproduced locally: `microsoft_hub.default_http` sent every request through Google's network function, which allows only Google's hosts, so the exchange of the
+sign-in code was refused inside Lumina (`host_not_allowed`) before anything reached Microsoft (the failed attempt was answered in 13 ms; a real exchange takes about 400 ms).
+Every Microsoft test passed because each hands the adapter a fake `http`. Fixed with the cause's own tests (`tests/test_microsoft_hub.py` `TheRealNetwork`), together with:
+scope names as Microsoft answers them (`profile` added by Microsoft, lower case, no `offline_access` in the answer), a return address longer than 2,048 characters (work
+accounts), separate sign-ins for personal and work accounts, a reason for every sign-in that connects nothing (`connectors.LINK_REASONS`), and connecting an account again
+in place. **Nothing here was proven on a real Microsoft account**: that is still exit gate 8, and its first step (connect an outlook.com and a work account) can only pass
+once this branch is deployed. `AADSTS16000` is not this failure: it is Microsoft's own page refusing a personal account inside an organization's directory, before the
+browser comes back to Lumina; the personal sign-in (`/consumers`) avoids it.
+
 ## Exit gate
 
 | Gate | State |

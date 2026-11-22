@@ -155,9 +155,11 @@ def message(mid, thread_id, *, subject='', sender=None, to=(), cc=(), sent_epoch
 
 
 def body(text='', html='', attachments=()) -> dict:
-    """A message's content, fetched only when it is opened or read. `attachments`: [{'id', 'name', 'type', 'size'}] (names and sizes; the bytes are fetched on demand)."""
+    """A message's content, fetched only when it is opened or read. `attachments`: [{'id', 'name', 'type', 'size'}] (names and sizes; the bytes are fetched on demand);
+    one that is a picture shown inside the message also carries 'cid', the name the message's markup calls it by."""
     files = [{'id': _text(a.get('id'), 500), 'name': _text(a.get('name') or 'attachment', 255), 'type': _text(a.get('type') or 'application/octet-stream', 120),
-              'size': max(0, int(a.get('size') or 0))} for a in (attachments or []) if isinstance(a, dict) and a.get('id')][:100]
+              'size': max(0, int(a.get('size') or 0)), **({'cid': _text(str(a['cid']).strip('<>'), 300)} if a.get('cid') else {})}
+             for a in (attachments or []) if isinstance(a, dict) and a.get('id')][:100]
     return {'text': str(text or '')[:400_000], 'html': str(html or '')[:1_000_000], 'attachments': files}
 
 

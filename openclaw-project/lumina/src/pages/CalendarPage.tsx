@@ -7,7 +7,7 @@ import { EmptyState } from '../components/frame/parts';
 import { useSelection, type Action, type Looking } from '../components/frame/Assistant';
 import { useCommands } from '../components/frame/CommandBar';
 import { usePulse } from '../components/hub/usePulse';
-import { AddAccount, ChooseAccess, CONNECT_NOTE } from '../components/hub/Connect';
+import { AddAccount, ChooseAccess, connectNote as connectWords } from '../components/hub/Connect';
 import AllowChanges from '../components/hub/AllowChanges';
 import EventEditor from '../components/hub/EventEditor';
 import ChangeEvent from '../components/hub/ChangeEvent';
@@ -171,7 +171,7 @@ export default function CalendarPage() {
   useEffect(() => { const up = () => { drag.current = drag.current && { ...drag.current, from: '' }; }; window.addEventListener('pointerup', up); return () => window.removeEventListener('pointerup', up); }, []);
   useEffect(() => { const t = window.setInterval(() => { if (document.visibilityState === 'visible') setNow(nowSeconds()); }, 60000); return () => window.clearInterval(t); }, []);   // the current time line moves
   const [params, setParams] = useSearchParams(); const [choosing, setChoosing] = useState<string | null>(params.get('connected'));
-  const connectNote = CONNECT_NOTE[params.get('connect') ?? ''];
+  const connectNote = connectWords(params.get('connect'), params.get('ref'));
   const doneChoosing = () => { setChoosing(null); setParams({}, { replace: true }); window.setTimeout(() => { void loadInfo(); void load(); }, 1200); };
 
   const zone = useMemo(() => (info?.settings.timezone && validZone(info.settings.timezone) ? info.settings.timezone : browserZone()), [info?.settings.timezone]);

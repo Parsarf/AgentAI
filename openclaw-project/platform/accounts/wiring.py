@@ -100,18 +100,20 @@ def sign_in_providers():
     if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
         from agentai_platform import google_hub
         cid, secret = settings.GOOGLE_CLIENT_ID, settings.GOOGLE_CLIENT_SECRET
-        out[google_hub.PROVIDER] = {'label': google_hub.DECLARATION.label, 'register': google_hub.register,
-                                    'address': lambda redirect, state, challenge, hint=None, add=(): google_hub.authorize_url(cid, redirect, state, challenge, hint=hint, add=add),
-                                    'grants': tuple(g.name for g in google_hub.GRANTS),
+        out[google_hub.PROVIDER] = {'label': google_hub.DECLARATION.label, 'register': google_hub.register, 'kinds': (),
+                                    'address': lambda redirect, state, challenge, hint=None, add=(), kind=None: google_hub.authorize_url(cid, redirect, state, challenge, hint=hint, add=add),
+                                    'grants': tuple(g.name for g in google_hub.GRANTS), 'grant_scopes': {g.name: g.scope for g in google_hub.GRANTS},
                                     'exchange': google_hub.exchanger(cid, secret), 'refresh': google_hub.refresher(cid, secret),
                                     'needs_any': (google_hub.MAIL_SCOPE, google_hub.CALENDAR_SCOPE)}
     secret = _microsoft_secret()
     if settings.MICROSOFT_CLIENT_ID and secret:
         from agentai_platform import microsoft_hub
         mid = settings.MICROSOFT_CLIENT_ID
+        # `kinds`: the kinds of account this provider signs in separately (the customer picks one before being sent there); none for a provider with one sign-in.
         out[microsoft_hub.PROVIDER] = {'label': microsoft_hub.DECLARATION.label, 'register': microsoft_hub.register,
-                                       'address': lambda redirect, state, challenge, hint=None, add=(): microsoft_hub.authorize_url(mid, redirect, state, challenge, hint=hint, add=add),
-                                       'grants': tuple(g.name for g in microsoft_hub.GRANTS),
+                                       'kinds': tuple({'id': name, 'label': label} for name, label, _tenant in microsoft_hub.ACCOUNT_KINDS),
+                                       'address': lambda redirect, state, challenge, hint=None, add=(), kind=None: microsoft_hub.authorize_url(mid, redirect, state, challenge, hint=hint, add=add, kind=kind),
+                                       'grants': tuple(g.name for g in microsoft_hub.GRANTS), 'grant_scopes': {g.name: g.scope for g in microsoft_hub.GRANTS},
                                        'exchange': microsoft_hub.exchanger(mid, secret), 'refresh': microsoft_hub.refresher(mid, secret),
                                        'needs_any': (microsoft_hub.MAIL_SCOPE, microsoft_hub.CALENDAR_SCOPE)}
     return out

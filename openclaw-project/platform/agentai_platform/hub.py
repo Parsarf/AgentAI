@@ -21,6 +21,11 @@ from .connector_kit import ConnectorFault
 from .hub_model import COMMON_LABELS, hub_caps
 from .security import NotFound, require
 
+# Pictures a message carries inside itself are shown in it (never a vector picture: it can hold a script). Messages fetched before this moment kept no note of which
+# attachment is such a picture; one that needs it is fetched once more (HubService._before_inline_pictures).
+INLINE_PICTURES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
+INLINE_PICTURES_SINCE = 1795305600                               # 2026-11-22 00:00 UTC
+
 # A draft whose send has started and was not stopped or failed (#66): it is no longer a draft, and it is never sent twice.
 SENDING = "(SELECT 1 FROM actions a WHERE a.account_id=hub_drafts.account_id AND a.id=hub_drafts.sent_action_id AND a.state NOT IN ('failed','declined','expired'))"
 
@@ -294,6 +299,34 @@ class HubService:
                 out.append({'connection_id': connection, 'labels': sorted(seen.values(), key=lambda p: p['name'].lower())[:300]})
         return out
 
+    def people(self, principal, query, *, limit=8) -> list[dict]:
+        """People the customer's mail is with, whose name or address holds `query`: the suggestions while they type a recipient. From the copy Lumina keeps (the
+        conversations it was allowed to read), most recent first; the accounts' own addresses are left out. -> [{'name', 'address'}]."""
+        word = ' '.join(str(query or '').lower().split())[:100]
+        if not word:
+            return []
+        limit = max(1, min(int(limit or 8), 20))
+        with self.store.connect() as con:
+            self._enter(con, principal)
+            ids = self._connections(con, principal)
+            if not ids:
+                return []
+            own = {str(r['identity_label']).lower() for r in con.execute(f"SELECT identity_label FROM connector_connections WHERE account_id=? AND id IN ({','.join('?' * len(ids))})",
+                                                                        (principal.account_id, *ids))}
+            rows = con.execute(f'''SELECT people_json FROM hub_threads WHERE account_id=? AND connection_id IN ({",".join("?" * len(ids))}) AND instr(people_text,?)>0
+                ORDER BY last_epoch DESC LIMIT 300''', (principal.account_id, *ids, word)).fetchall()
+        found = {}
+        for row in rows:
+            for person in json.loads(row['people_json']):
+                address = str(person.get('address') or '').lower()
+                if not address or '@' not in address or address in own or address in found:
+                    continue
+                if word in address or word in str(person.get('name') or '').lower():
+                    found[address] = {'name': str(person.get('name') or ''), 'address': address}
+                    if len(found) >= limit:
+                        return list(found.values())
+        return list(found.values())
+
     def counts(self, principal, connections=None) -> dict:
         """Unread threads in the inbox, in all and per account: the badges."""
         with self.store.connect() as con:
@@ -307,17 +340,48 @@ class HubService:
         return {'unread': sum(per.values()), 'by_account': per}
 
     # -- mail: a thread and a message -------------------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def file_address(connection_id, message_id, attachment_id, *, inline=False) -> str:
+        """Where the web app reads one attachment of a message from (the route checks, again, that it is this person's)."""
+        from urllib.parse import urlencode
+        return '/v1/hub/mail/file?' + urlencode({'connection': connection_id, 'message': message_id, 'attachment': attachment_id, **({'inline': '1'} if inline else {})})
+
+    def _shown(self, row, *, images, settings) -> dict:
+        """A fetched message's content made safe to show (hub_html): the markup, how many remote pictures were left out, whether it is shown as sent on a page of its own
+        (`designed`) or in the theme, and its attachments without the pictures that are shown inside it."""
+        sender = json.loads(row['sender_json'])
+        allowed = bool(images or sender.get('address') in settings['image_senders'])
+        files = json.loads(row['attachments_json'] or '[]')
+        markup = row['body_html'] or ''
+        low = markup.lower()
+        carried = {f['cid']: f for f in files if f.get('cid') and ('cid:' + str(f['cid']).lower()) in low and str(f.get('type', '')).lower() in INLINE_PICTURES}
+        if markup:
+            shown = hub_html.sanitize(markup, images=allowed, inline={cid: self.file_address(row['connection_id'], row['id'], f['id'], inline=True) for cid, f in carried.items()})
+        else:
+            shown = {'html': hub_html.from_text(row['body_text']), 'blocked_images': 0, 'designed': False, 'quoted': False}
+        inside = {f['id'] for f in carried.values()}
+        return {**shown, 'images_shown': allowed, 'attachments': [{k: f[k] for k in ('id', 'name', 'type', 'size') if k in f} for f in files if f.get('id') not in inside]}
+
     def _message(self, row, *, images, settings) -> dict:
         sender = json.loads(row['sender_json'])
         out = {'id': row['id'], 'thread_id': row['thread_id'], 'subject': row['subject'], 'snippet': row['snippet'], 'sender': sender, 'to': json.loads(row['to_json']),
                'cc': json.loads(row['cc_json']), 'sent_epoch': row['sent_epoch'], 'labels': json.loads(row['labels_json']), 'provider_labels': json.loads(row['provider_labels_json']),
                'unread': bool(row['unread']), 'starred': bool(row['starred']), 'has_attachments': bool(row['has_attachments']), 'body': None}
         if row['body_fetched_epoch'] is not None:
-            allowed = images or sender.get('address') in settings['image_senders']
-            shown = hub_html.sanitize(row['body_html'], images=allowed) if row['body_html'] else {'html': hub_html.from_text(row['body_text']), 'blocked_images': 0}
-            out['body'] = {'html': shown['html'], 'text': row['body_text'] or '', 'blocked_images': shown['blocked_images'], 'images_shown': bool(allowed),
-                           'attachments': json.loads(row['attachments_json'] or '[]'), 'fetched_epoch': row['body_fetched_epoch']}
+            shown = self._shown(row, images=images, settings=settings)
+            out['body'] = {'html': shown['html'], 'text': row['body_text'] or hub_html.to_text(row['body_html']), 'blocked_images': shown['blocked_images'], 'images_shown': shown['images_shown'],
+                           'designed': shown['designed'], 'quoted': shown['quoted'], 'attachments': shown['attachments'], 'fetched_epoch': row['body_fetched_epoch']}
         return out
+
+    def frame(self, principal, connection_id, message_id, *, images=False) -> dict:
+        """The page a message is shown in (its content made safe, in the page hub_html builds), fetched now if it was not yet. -> {'document', 'images'}: `images` says
+        whether remote pictures may load in it, which the route turns into the page's own content policy. Raises NotFound for anything that is not this person's."""
+        found = self.message(principal, connection_id, message_id, images=images)
+        body = found['message']['body']
+        if body is None:
+            words = 'This message could not be opened right now.'
+            return {'document': hub_html.document('<p>' + words + '</p>', designed=False), 'images': False}
+        return {'document': hub_html.document(body['html'], designed=body['designed']), 'images': bool(body['images_shown'])}
 
     def thread(self, principal, connection_id, thread_id, *, open_last=True, images=False) -> dict:
         """A thread with its messages, oldest first. The last message's body is fetched if it was not yet (`open_last`); the others carry a body only if they were opened
@@ -357,10 +421,11 @@ class HubService:
         (the headers are still shown, with a plain sentence)."""
         now = int(self.clock())
         with self.store.connect() as con:
-            row = con.execute('SELECT body_fetched_epoch FROM hub_messages WHERE account_id=? AND connection_id=? AND id=?', (principal.account_id, connection_id, message_id)).fetchone()
+            row = con.execute('SELECT body_fetched_epoch,body_html,attachments_json FROM hub_messages WHERE account_id=? AND connection_id=? AND id=?',
+                              (principal.account_id, connection_id, message_id)).fetchone()
             if row is None:
                 return 'not_found'
-            if row['body_fetched_epoch'] is not None:
+            if row['body_fetched_epoch'] is not None and not self._before_inline_pictures(row):
                 con.execute('UPDATE hub_messages SET body_opened_epoch=? WHERE account_id=? AND connection_id=? AND id=?', (now, principal.account_id, connection_id, message_id))
                 return None
         try:
@@ -373,6 +438,14 @@ class HubService:
                 WHERE account_id=? AND connection_id=? AND id=?''', (found['text'], found['html'] or None, json.dumps(found['attachments']), now, now, int(bool(found['attachments'])),
                                                                  principal.account_id, connection_id, message_id))
         return None
+
+    @staticmethod
+    def _before_inline_pictures(row) -> bool:
+        """A message fetched before Lumina kept which of its attachments are the pictures shown inside it: it refers to such pictures and none of its attachments says
+        which one it is. It is fetched once more (after which its fetch time is past INLINE_PICTURES_SINCE, so never again for this reason)."""
+        if row['body_fetched_epoch'] >= INLINE_PICTURES_SINCE or 'cid:' not in (row['body_html'] or '').lower():
+            return False
+        return '"cid"' not in (row['attachments_json'] or '')
 
     def search_older(self, principal, connection_id, query, *, continuation=None) -> dict:
         """Mail older than the synced window, searched live at the provider. Nothing found here is stored; opening a result fetches it like any message. The result always
@@ -796,7 +869,8 @@ class HubService:
         data = self.client.call(principal.account_id, declaration, lambda: adapter.mail_attachment(credential, message_id, attachment_id), where=(connection_id, 'mailbox', '*'))
         if not isinstance(data, bytes) or len(data) > self.MAX_ATTACHMENT:
             raise ConnectorFault('invalid')
-        return {'name': found.get('name') or 'attachment', 'type': found.get('type') or 'application/octet-stream', 'size': len(data), 'data': data}
+        kind = str(found.get('type') or 'application/octet-stream').split(';')[0].strip().lower()
+        return {'name': found.get('name') or 'attachment', 'type': kind, 'size': len(data), 'data': data, 'picture': kind in INLINE_PICTURES}
 
     # -- drafts (#57) --------------------------------------------------------------------------------------------------------------------------------
     MAX_DRAFTS = 500

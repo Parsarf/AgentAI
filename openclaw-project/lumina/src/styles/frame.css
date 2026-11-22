@@ -255,8 +255,8 @@ a.ci-row:hover { background: var(--fill-hover); }
 .w-compact .iconbtn.small { width: var(--touch-min); height: var(--touch-min); }
 .w-compact .seg-item { min-height: 38px; }
 .w-compact .hub-label, .w-compact .files-folder, .w-compact .chatitem, .w-compact .mini-day, .w-compact .cmd-row, .w-compact .help-row { min-height: var(--touch-min); }
-.w-compact .hub-pick, .w-compact .hub-calendar-row input, .w-compact .hub-toggles input { width: 22px; height: 22px; }
-.w-compact .hub-calendar-row, .w-compact .hub-toggles label { min-height: var(--touch-min); display: flex; align-items: center; }
+.w-compact .mail-pick, .w-compact .hub-calendar-row input { width: 22px; height: 22px; }
+.w-compact .hub-calendar-row { min-height: var(--touch-min); display: flex; align-items: center; }
 .greeting .greeting-title { font: inherit; letter-spacing: inherit; margin: 0; }
 .wk-record-head .wk-record-title { font-size: var(--text-xl); font-weight: var(--weight-semibold); letter-spacing: -.02em; line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .hub-pick-area { flex: none; display: grid; place-items: center; width: 44px; cursor: pointer; }
@@ -267,3 +267,19 @@ a.ci-row:hover { background: var(--fill-hover); }
 .w-compact .phase-title { min-height: var(--touch-min); }
 .w-compact .switch.sm { width: 42px; height: 24px; } .w-compact .switch.sm i { width: 18px; height: 18px; } .w-compact .switch.sm.on i { transform: translateX(18px); }
 .w-compact input[type='range'] { min-height: var(--touch-min); }
+
+/* A list and what is opened from it, inside a `fill` canvas (components/frame/MasterDetail.tsx). Side by side from 820px of canvas; one at a time below. */
+.md { container-type: inline-size; container-name: md; flex: 1 1 auto; min-height: 0; display: flex; margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-3)); border-top: 1px solid var(--border-subtle); }
+.w-compact .md { margin: 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-4)); }
+.md-list, .md-detail { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.md-list { flex: 1 1 auto; }
+.md-detail { flex: 1 1 auto; display: none; }
+.md-open > .md-list { display: none; }
+.md-open > .md-detail { display: flex; }
+.md-empty { flex: 1; display: grid; place-items: center; padding: var(--space-6); color: var(--text-muted); text-align: center; }
+.md-back { flex: none; }
+@container md (min-width: 820px) {
+  .md > .md-list, .md-open > .md-list { display: flex; flex: 0 0 clamp(320px, 36cqi, 420px); border-right: 1px solid var(--border-subtle); }
+  .md > .md-detail { display: flex; }
+  .md .md-back.md-back { display: none; }
+}

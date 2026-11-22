@@ -43,8 +43,42 @@ class ConnectorNotConfigured(ConnectorError):
     pass
 
 
-class WrongAccount(ConnectorError):
+class LinkFailed(ConnectorError):
+    """A sign-in that connected nothing, and why: one of LINK_REASONS, for the page to say in a sentence and for the log. `reference` is the provider's own number for
+    the refusal when it gave one (never its text)."""
+    def __init__(self, reason='failed', reference=''):
+        super().__init__('link failed')
+        self.reason, self.reference = reason if reason in LINK_REASONS else 'failed', str(reference or '')[:40]
+
+
+class WrongAccount(LinkFailed):
     """A sign-in meant to add permissions to one account came back signed in as another: nothing changed."""
+    def __init__(self, message='signed in as a different account'):
+        super().__init__('different_account')
+
+
+# Why a sign-in connected nothing. `expired`: the sign-in was already used or took too long. `admin_consent`: the organization lets only an administrator allow apps.
+# `provider_setup`: the provider refused Lumina itself (its app registration, secret or return address): nothing the customer can fix. `provider_unreachable`: no answer.
+# `provider_refused`: the provider said no for another reason. `no_identity`: it did not say which account this is. `unexpected_access`: it gave access that was not asked
+# for. `no_access`: the customer gave none of the access that makes the connection useful. `different_account`: adding to one account, signed in as another.
+LINK_REASONS = ('failed', 'expired', 'admin_consent', 'provider_setup', 'provider_unreachable', 'provider_refused', 'no_identity', 'unexpected_access', 'no_access',
+                'different_account', 'not_allowed')
+
+
+def link_reason(error) -> str:
+    """Which LINK_REASONS a provider's refusal of the code exchange is. Reads the error's status and code only."""
+    status, code = getattr(error, 'status', None), str(getattr(error, 'code', '') or '')
+    if code == 'admin_consent_required':
+        return 'admin_consent'
+    if code in ('unreachable', 'bad_answer') or (status == 0 and not code) or (isinstance(status, int) and status >= 500):
+        return 'provider_unreachable'
+    if code in ('host_not_allowed', 'invalid_client', 'unauthorized_client', 'redirect_uri_mismatch', 'invalid_request', 'unsupported_grant_type'):
+        return 'provider_setup'
+    if code == 'invalid_grant':                                  # the code was used already, or waited too long
+        return 'expired'
+    if code == 'no_tokens':                                      # signed in, but without the lasting access a connection needs
+        return 'no_access'
+    return 'provider_refused' if status is not None else 'failed'
 
 
 class WriteDisabled(ConnectorError):
@@ -397,6 +431,17 @@ class ConnectorService:
             out['identity'] = identity
         return out
 
+    def granted_scopes(self, principal: Principal, connection_id: str) -> list:
+        """The provider permissions one of this person's connections holds now (empty when it is not theirs or is gone)."""
+        with self.store.connect() as con:
+            self.store._authorize(con, principal)
+            row = con.execute("SELECT granted_scopes FROM connector_connections WHERE account_id=? AND id=? AND state!='revoked'", (principal.account_id, str(connection_id))).fetchone()
+        try:
+            found = json.loads(row['granted_scopes']) if row else []
+        except ValueError:
+            found = []
+        return [s for s in found if isinstance(s, str)] if isinstance(found, list) else []
+
     def link_service(self, principal: Principal, state: str) -> str | None:
         """Which provider a sign-in that is still open belongs to (None when there is none for this person): the callback asks before it finishes, so the right exchange is used."""
         with self.store.connect() as con:
@@ -414,20 +459,24 @@ class ConnectorService:
             self.store._authorize(con, principal)
             if con.execute("""UPDATE connector_link_states SET used_epoch=? WHERE state_hash=? AND account_id=? AND actor_id=? AND used_epoch IS NULL AND expires_epoch>=?""",
                            (now, digest, principal.account_id, principal.actor_id, now)).rowcount != 1:
-                raise ConnectorError('link failed')
+                raise LinkFailed('expired')
             row = dict(con.execute('SELECT service,redirect_uri,verifier_ref,upgrade_connection_id FROM connector_link_states WHERE state_hash=?', (digest,)).fetchone())
         verifier = self.custody.get(principal.account_id, row['verifier_ref']).decode()
         self.custody.delete(principal.account_id, row['verifier_ref'])
         declared = self.declared(row['service'])
         if redirect_uri != row['redirect_uri'] or declared is None:
-            raise ConnectorError('link failed')
+            raise LinkFailed('provider_setup')
         try:
             result = exchange(code, verifier, redirect_uri)
-        except Exception:
-            raise ConnectorError('link failed') from None
+        except Exception as error:
+            raise LinkFailed(link_reason(error), getattr(error, 'reference', '')) from None
         granted = set(result.granted_scopes)
-        if not result.identity or len(result.identity) > 320 or not granted <= set(declared.scopes) or (needs_any and not granted & set(needs_any)):
-            raise ConnectorError('the account could not be verified, or it gave none of the access that was asked for')
+        if not result.identity or len(result.identity) > 320:
+            raise LinkFailed('no_identity')
+        if not granted <= set(declared.scopes):
+            raise LinkFailed('unexpected_access')
+        if needs_any and not granted & set(needs_any):
+            raise LinkFailed('no_access')
         expires = result.tokens.get('expires_in') if isinstance(result.tokens, dict) else None
         expires = int(expires) if isinstance(expires, (int, float)) and expires > 0 else None
         if row['upgrade_connection_id']:
@@ -443,7 +492,7 @@ class ConnectorService:
             old = con.execute("SELECT secret_ref,identity_label FROM connector_connections WHERE account_id=? AND id=? AND service=? AND state!='revoked'",
                               (principal.account_id, connection_id, service)).fetchone()
             if old is None or str(identity).lower() != str(old['identity_label']).lower():
-                raise WrongAccount('signed in as a different account')
+                raise WrongAccount()
             secret_ref = custody_put(self.custody, con, principal.account_id, service, json.dumps(tokens).encode()) if tokens else old['secret_ref']
             con.execute("""UPDATE connector_connections SET state='connected',needs_reason=NULL,needs_notified_epoch=NULL,granted_scopes=?,secret_ref=?,updated_epoch=?,
                 expires_epoch=?,refresh_after_epoch=NULL WHERE account_id=? AND id=?""",

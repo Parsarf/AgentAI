@@ -2,7 +2,8 @@
 let csrf: string | null = null;
 
 export class ApiError extends Error {
-  constructor(public code: string, public status: number, public category?: string, public detail?: string, public fieldErrors?: Record<string, string>) { super(code); }
+  /** `data`: the answer's other fields, for a route that says more than a code (why a sign-in connected nothing). */
+  constructor(public code: string, public status: number, public category?: string, public detail?: string, public fieldErrors?: Record<string, string>, public data?: Record<string, unknown>) { super(code); }
 }
 
 type Listener = () => void;
@@ -32,7 +33,7 @@ export async function api<T = any>(method: 'GET' | 'POST', path: string, body?: 
     try { data = await res.json(); } catch (error) { if (controller?.signal.aborted) throw error; }
     if (!res.ok) {
       if (res.status === 401) unauthorized.forEach(fn => fn());
-      throw new ApiError(data.error || `http_${res.status}`, res.status, data.category, data.detail, data.field_errors);
+      throw new ApiError(data.error || `http_${res.status}`, res.status, data.category, data.detail, data.field_errors, data);
     }
     return data as T;
   } finally { if (timer !== undefined) clearTimeout(timer); }

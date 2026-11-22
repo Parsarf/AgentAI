@@ -116,7 +116,7 @@ class Alpha:
         if message_id not in world.mail:
             raise ProviderError(404)
         raw = world.bodies.get(message_id, {})
-        return body(raw.get('text', 'Body of ' + message_id), raw.get('html', ''), [{'id': f['id'], 'name': f['name'], 'type': f['type'], 'size': f['size']} for f in world.mail[message_id].get('files', [])])
+        return body(raw.get('text', 'Body of ' + message_id), raw.get('html', ''), [{k: f[k] for k in ('id', 'name', 'type', 'size', 'cid') if k in f} for f in world.mail[message_id].get('files', [])])
 
     def mail_attachment(self, credential, message_id, attachment_id):
         world = self.world(credential); world.enter('mail_attachment')

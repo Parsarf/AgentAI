@@ -7587,6 +7587,99 @@
     "parameters": []
    }
   },
+  "/v1/hub/mail/frame": {
+   "get": {
+    "summary": "The page a message is shown in (connection, id): HTML, not JSON, with its own content policy (nothing runs; remote pictures only with images=1 or an allowed sender). Framed only by Lumina's own pages",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/mail/file": {
+   "get": {
+    "summary": "One attachment of a message (connection, message, attachment), read from the mail service now and not kept: a download, or with inline=1 a picture to show (PNG, JPEG, GIF, WebP only)",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
+  "/v1/hub/mail/people": {
+   "get": {
+    "summary": "People the customer's own mail is with whose name or address holds q: suggestions while a recipient is typed. The accounts' own addresses are left out",
+    "security": [
+     {
+      "sessionCookie": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Account-scoped result"
+     },
+     "401": {
+      "description": "Identity required"
+     },
+     "403": {
+      "description": "The caller's role does not include this action (error not_permitted)"
+     },
+     "404": {
+      "description": "Unavailable or not owned"
+     },
+     "409": {
+      "description": "Not possible in the current state"
+     },
+     "503": {
+      "description": "Feature switched off or storage unavailable"
+     }
+    },
+    "parameters": []
+   }
+  },
   "/v1/hub/mail/search-older": {
    "get": {
     "summary": "Mail older than the synced window, searched live at the provider (connection, q, continuation); says when the result is partial; stores nothing",

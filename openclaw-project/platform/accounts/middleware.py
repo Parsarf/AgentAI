@@ -13,6 +13,10 @@ WEBHOOKS={'/v1/telegram/webhook','/v1/billing/webhook'}
 # Routes whose views take structured state up to 131072 bytes (views.endpoint, structured=True): the general 8 KB ceiling used to refuse them first.
 STRUCTURED_ROUTES=('/v1/blocks/','/v1/genui/artifacts/')
 STRUCTURED_BODY=131072
+# Where a mail provider sends the customer's browser back after signing in: the address carries the provider's code, which for a Microsoft work account alone can
+# pass 2,000 characters. The view reads two values of bounded length from it and nothing else (accounts/hub.py link_callback).
+LONG_RETURNS={'/v1/hub/link/callback'}
+LONG_RETURN=4000
 
 class BoundaryMiddleware:
     def __init__(self, get_response): self.get_response=get_response
@@ -25,7 +29,7 @@ class BoundaryMiddleware:
             except ValueError: return JsonResponse({'error':'invalid_proxy_identity'},status=400)
         try:
             request.get_host()
-            if len(request.get_full_path()) > 2048 or int(request.META.get('CONTENT_LENGTH') or 0) > (31457280 if request.path=='/v1/requests' or request.path.endswith('/send') or request.path.endswith('/files') else 262144 if request.path in WEBHOOKS else STRUCTURED_BODY if request.path.startswith(STRUCTURED_ROUTES) else 8192):
+            if len(request.get_full_path()) > (LONG_RETURN if request.path in LONG_RETURNS else 2048) or int(request.META.get('CONTENT_LENGTH') or 0) > (31457280 if request.path=='/v1/requests' or request.path.endswith('/send') or request.path.endswith('/files') else 262144 if request.path in WEBHOOKS else STRUCTURED_BODY if request.path.startswith(STRUCTURED_ROUTES) else 8192):
                 response=JsonResponse({'error':'request_too_large'},status=413)
             elif any(x in request.GET for x in ['account','account_id','tenant','tenant_id','session','session_id','native_session_ref','deployment_id']) or any(x in request.META for x in ['HTTP_X_ACCOUNT_ID','HTTP_X_TENANT_ID','HTTP_X_SESSION_ID','HTTP_X_AGENT_ID']):
                 response=JsonResponse({'error':'routing_override_denied'},status=400)
@@ -37,7 +41,8 @@ class BoundaryMiddleware:
         response.setdefault('Cache-Control', 'no-store')
         response['X-Content-Type-Options']='nosniff'
         # The executable player alone may be framed by our own app. Keep all other routes unframeable.
-        response['X-Frame-Options'] = 'SAMEORIGIN' if request.path == '/v1/apps/player' and response.status_code == 200 else 'DENY'
+        # ... and the page a mail message is shown in (accounts/hub.py mail_frame), which sets its own policy: nothing runs in it, and only Lumina may frame it.
+        response['X-Frame-Options'] = 'SAMEORIGIN' if response.status_code == 200 and (request.path == '/v1/apps/player' or getattr(response, 'frame_same_origin', False)) else 'DENY'
         # The UI shell (/app/) sets its own policy because it must run scripts; every other response gets the strict one.
         response.setdefault('Content-Security-Policy',"default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         response.setdefault('Referrer-Policy','same-origin')
@@ -69,6 +74,10 @@ class AccountMiddleware:
                 limit=240 if scope=='api.read' else 30      # a live dashboard polls a few times per second at most
                 if scope=='api.mutate' and request.path.startswith('/v1/blocks/') and request.path.endswith('/state'):
                     scope,limit='api.autosave',90          # debounced draft saves while editing a plan
+                if request.method == 'POST' and request.path == '/v1/hub/drafts':
+                    scope,limit='api.autosave',90          # a mail draft is saved by itself as it is written, like a plan
+                if request.method == 'POST' and (request.path == '/v1/hub/mail/organize' or request.path.startswith('/v1/hub/actions/')):
+                    scope,limit='api.mail',120             # working through an inbox is one request a conversation (archive, bin, star, undo): at 30 a minute, shared with everything else, it was refused mid-way. The routes keep their own limits
                 if request.method == 'POST' and request.path.startswith('/v1/location/'):
                     scope,limit='api.location',60
                 if request.method == 'POST' and request.path.startswith('/v1/browse/') and request.path.endswith('/control'):

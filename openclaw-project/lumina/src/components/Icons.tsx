@@ -50,3 +50,22 @@ export const Dash = make(<path d="M7 12h10" />);
 export const Download = make(<><path d="M12 4v11" /><path d="M7.5 11l4.5 4.5 4.5-4.5" /><path d="M5 20h14" /></>);
 export const Trash = make(<><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6.5 7l1 13h9l1-13" /></>);
 export const Folder = make(<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />);
+
+// Mail (the Inbox's own actions). One stroke and weight with the rest.
+export const Inbox = make(<><path d="M3.5 13l2.6-7.2A2 2 0 018 4.5h8a2 2 0 011.9 1.3L20.5 13" /><path d="M3.5 13v4.5a2 2 0 002 2h13a2 2 0 002-2V13h-5a3 3 0 01-6 0z" /></>);
+export const Archive = make(<><rect x="3" y="4.5" width="18" height="4.5" rx="1.5" /><path d="M5 9v8.5a2 2 0 002 2h10a2 2 0 002-2V9" /><path d="M10 13h4" /></>);
+export const Star = make(<path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.6l-5.1 2.7 1-5.7-4.1-4 5.7-.8z" />);
+export const StarFilled = make(<path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.6l-5.1 2.7 1-5.7-4.1-4 5.7-.8z" fill="currentColor" />);
+export const Reply = make(<><path d="M9.5 7L4.5 12l5 5" /><path d="M5 12h8a6.5 6.5 0 016.5 6.5" /></>);
+export const ReplyAll = make(<><path d="M8 7L3 12l5 5" /><path d="M13 7l-5 5 5 5" /><path d="M8.5 12H14a6 6 0 016 6.5" /></>);
+export const Forward = make(<><path d="M14.5 7l5 5-5 5" /><path d="M19 12h-8a6.5 6.5 0 00-6.5 6.5" /></>);
+export const MailOpen = make(<><path d="M3 10.2l9-5.7 9 5.7V18a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><path d="M3.4 10.6l8.6 5.4 8.6-5.4" /></>);
+export const MailUnread = make(<><path d="M21 12.5V17a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h9.5" /><path d="M3.5 7.5l8.5 6 3.2-2.3" /><circle cx="19" cy="6" r="2.6" fill="currentColor" stroke="none" /></>);
+export const Send = make(<><path d="M20.5 3.5L10 14" /><path d="M20.5 3.5l-6.6 17-3.9-6.5-6.5-3.9z" /></>);
+export const Tag = make(<><path d="M3.5 12.2V5.5a2 2 0 012-2h6.7a2 2 0 011.4.6l6.8 6.8a2 2 0 010 2.8l-6.7 6.7a2 2 0 01-2.8 0l-6.8-6.8a2 2 0 01-.6-1.4z" /><circle cx="8" cy="8" r="1.2" /></>);
+export const Picture = make(<><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><circle cx="8.5" cy="9.5" r="1.6" /><path d="M21 15.5l-4.6-4.6a1.5 1.5 0 00-2.1 0L5.5 19.5" /></>);
+export const Close = make(<path d="M6 6l12 12M18 6L6 18" />);
+export const Back = make(<><path d="M10.5 6l-6 6 6 6" /><path d="M5 12h14.5" /></>);
+export const Compose = make(<><path d="M12 4.5H6.5a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2V12" /><path d="M17.8 3.9a1.9 1.9 0 012.7 2.7L12 15l-3.6.9.9-3.6z" /></>);
+export const Sliders = make(<><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></>);
+export const Person = make(<><circle cx="12" cy="8.2" r="3.7" /><path d="M4.8 20a7.3 7.3 0 0114.4 0" /></>);
