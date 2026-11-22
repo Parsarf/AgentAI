@@ -52,12 +52,21 @@ class Policy:
     deny_domains: re.Pattern = DEFAULT_DENY
     # `switch(key) -> bool`: is this safety switch on for the account the job runs for (agentai_platform/safety.py)? Every rule below asks before it acts; the default is on.
     switch: Callable[[str], bool] = lambda key: True
+    # `press_approval() -> bool`: may a customer be asked to allow one consequential button (remove, send, submit, confirm), which is then pressed with their yes? This is the
+    # owner's switch `browser_press_approval` (agentai_platform/switches.py), off unless the owner turned it on. Off: such a button ends the task in a hand-off, as it always did.
+    press_approval: Callable[[], bool] = lambda: False
 
     def on(self, key: str) -> bool:
         try:
             return bool(self.switch(key))
         except Exception:
             return True                                  # fails closed: a switch that cannot be read is on
+
+    def may_ask_to_press(self) -> bool:
+        try:
+            return self.press_approval() is True
+        except Exception:
+            return False                                 # fails closed: when the owner's switch cannot be read, nothing is pressed for the customer
 
     def url_ok(self, url: str) -> bool:
         try:
@@ -488,8 +497,8 @@ class BrowseRunner:
                     continue
                 # A button that removes, sends, submits or confirms (not one that pays or orders) used to end the whole task at a hand-off: "Remove" on a wrong item in the cart, or a
                 # "Remove" chip in a search form, and the customer had to finish alone or start again. The customer is asked about that one button; with their yes it is pressed and
-                # the task goes on. No answer, a no, or anything that pays: the hand-off, as before.
-                if (self.ask_gate is not None and a['ref'] is not None and not secret and a['label'] and not cand.PAYMENT.search(a['label']) and approvals < 3
+                # the task goes on. No answer, a no, or anything that pays: the hand-off, as before. Only while the owner's switch `browser_press_approval` is on: off, it is the hand-off.
+                if (self.policy.may_ask_to_press() and self.ask_gate is not None and a['ref'] is not None and not secret and a['label'] and not cand.PAYMENT.search(a['label']) and approvals < 3
                         and not cand.page_is_payment(url, snap.get('snapshot', ''), pay_text)):
                     approvals += 1
                     options = [{'id': 'o1', 'label': 'Yes, press it', 'do': {'action': 'approve'}}, {'id': 'o2', 'label': 'No, I will do it myself', 'do': {'action': 'self'}}]

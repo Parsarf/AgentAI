@@ -49,7 +49,7 @@ apply unchanged: one batch of questions, then build, merge, deploy, and pass the
 
 ## Build order (from the prompt) and the pull requests planned
 
-1. #80 and #81: the outbox, the channel adapters, preferences (one PR).
+1. #80 and #81: the outbox, the channel adapters, preferences (one PR). Exercise the reusable delivery contract with a fake channel and canonical links. The iOS phase will add its own device delivery adapter.
 2. #70 to #75: boards read with the task model, then the write kind with deadlines, milestones, blockers and the report (two PRs).
 3. #76 and #77: the ingress service and triggers, then provider push for Google (two PRs; Microsoft's push after gate 8).
 4. #78 and #79: schedules with the switch precondition and the morning brief, then watchers (two PRs).

@@ -101,7 +101,8 @@ class Lab:
     def __init__(self, out, jev_key, *, use_jev=True, headless=True, runner=None, service_kwargs=None):
         self.out, self.jev_key, self.use_jev, self.headless = Path(out), jev_key, use_jev, headless
         self.runner = Path(runner) if runner else PROJECT / 'browse'
-        self.service_kwargs = service_kwargs or {}
+        # The lab measures the behaviour with the owner's switch `browser_press_approval` on (its stand-in customer answers the question); pass press_approval to change that.
+        self.service_kwargs = {'press_approval': lambda: True, **(service_kwargs or {})}
 
     def spawn(self, job_id, out_dir):
         env = {**os.environ, 'BROWSE_CHROME': CHROME, 'BROWSE_OUT': str(out_dir)}

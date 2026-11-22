@@ -153,15 +153,17 @@ class Job:
 
 class BrowseService:
     def __init__(self, *, spawn, jev_for=lambda account: None, root, jev_mode='live', clock=time.monotonic,
-                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep, native_spawn=None, engine_for=lambda account: 'runner', switch_for=None, local_spawn=None, devices=None):
+                 takeover_seconds=TAKEOVER_SECONDS, start_picker=None, free_memory=None, sleep=time.sleep, native_spawn=None, engine_for=lambda account: 'runner', switch_for=None, local_spawn=None, devices=None, press_approval=lambda: False):
         """spawn(job_id, out_dir) -> transport; jev_for(account) -> JevChooser|None. The only model the service itself calls is JEV: every step JEV hands over goes to the
         account's own assistant, which answers through agent_step().
         native_spawn(account, job_id, out_dir) -> transport on the account's own cell browser; local_spawn(account, job_id, out_dir) -> transport on the customer's own paired Chrome
         (raises BrowseError when it is not connected); engine_for(account) -> 'runner' | 'native' | 'local' says which a new job uses (an engine without its spawn falls back to 'runner');
-        switch_for(account) -> switch(key) -> bool reads the account's safety switches (read again at every step, so a change in the menu applies at once)."""
+        switch_for(account) -> switch(key) -> bool reads the account's safety switches (read again at every step, so a change in the menu applies at once).
+        press_approval() -> bool is the owner's switch `browser_press_approval`: may a customer be asked to allow one consequential button (off unless given)."""
         self.spawn, self.jev_for, self.root, self.jev_mode, self.clock = spawn, jev_for, Path(root), jev_mode, clock
         self.native_spawn, self.local_spawn, self.engine_for, self._account_slots = native_spawn, local_spawn, engine_for, {}
         self.devices = devices                      # a DeviceDesk (browse/devices.py) when the customers' own Chrome is switched on, else None
+        self.press_approval = press_approval
         self.switch_for = switch_for or (lambda account: (lambda key: True))      # switch_for(account) -> switch(key) -> bool: the account's safety switches (agentai_platform/safety.py); everything is on unless the owner turned it off
         self.free_memory, self.sleep = free_memory or available_memory, sleep
         self.takeover_seconds, self.jobs, self._slot, self._guard = takeover_seconds, {}, threading.Semaphore(1), threading.Lock()
@@ -631,7 +633,7 @@ class BrowseService:
                 now_seq[0] += 1
                 live_now.write(out_dir, now_seq[0], by, mode, note)      # who is deciding, for the live view (codes only)
 
-            result = BrowseRunner(session, ladder, policy=Policy(read_only=True, switch=self.switch_for(job.account)), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
+            result = BrowseRunner(session, ladder, policy=Policy(read_only=True, switch=self.switch_for(job.account), press_approval=self.press_approval), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
                                   max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), hand_gate=self._hand_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault, attached=job.tab).run(job.goal, start)
             job.cost += result.cost_microusd
             job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action

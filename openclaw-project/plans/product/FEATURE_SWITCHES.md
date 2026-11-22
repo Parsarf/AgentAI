@@ -27,6 +27,7 @@ holds an old `jev_services` entry that is no longer a switch; it is ignored.)
 | Smarter browser actions (Jev) | OFF, blocked | confirm data terms and transport review; the optimized browser route must be deployed |
 | Customers connect Gmail/Calendar/Drive/GitHub | OFF, blocked | sign-in apps registered; protected token storage; customer notice confirmed |
 | Browser saved logins | OFF, blocked | protected storage; secure login screen |
+| A customer may allow the browser to press a button that changes something (`browser_press_approval`, new 2026-11-21) | OFF | the owner's decision and one confirmation. Off: a button that removes, sends, submits or confirms ends the task in a hand-off, as before. On: the customer is asked about that one button and it is pressed with their yes. Buttons that pay, buy, order, book or subscribe are never asked about and never pressed, whatever this says |
 | Customer schedules | LOCKED | Phase 15 safety checks |
 | Claude Code for customers | LOCKED | isolated workspaces and a metered key |
 | Assistants prepare changes in connected services (`connector_writes`) | OFF, blocked | the connector key file installed on the server (`connector_custody_ready`); you confirm that assistants may change things in connected services after each customer's approval |

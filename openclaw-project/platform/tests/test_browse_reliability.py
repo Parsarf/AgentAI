@@ -6,7 +6,7 @@ import unittest
 
 from agentai_platform.browse import candidates as cand
 from agentai_platform.browse.ladder import OP_FLOOR, TEXT_CHUNK, Ladder, JevChooser, Look, control_line, page_words, parse_decision, render, words_block
-from agentai_platform.browse.loop import BrowseRunner
+from agentai_platform.browse.loop import BrowseRunner, Policy
 from agentai_platform.browse.session import RunnerError, Session
 from tests.test_browse import FLAT, MODEL, FpSession, ScriptedJev, jev_answer, live, scripted_llm
 
@@ -223,8 +223,16 @@ class AButtonOnlyTheCustomerMayAllow(unittest.TestCase):
             asked.append(question); return answer, 0
         s = FpSession(CART, iter(range(99)))
         llm = scripted_llm(list(agent_steps))
+        kw.setdefault('policy', Policy(press_approval=lambda: True))              # the owner's switch `browser_press_approval` is on in these tests, unless one says otherwise
         r = BrowseRunner(s, Ladder(agent=llm), ask_gate=ask_gate, wait=lambda x: None, max_steps=4, **kw).run('g', 'https://shop.example/cart')
         return r, s, asked
+
+    def test_while_the_owners_switch_is_off_nobody_is_asked_and_nothing_is_pressed(self):
+        def broken():
+            raise OSError('the switch file cannot be read')
+        for policy in (Policy(), Policy(press_approval=lambda: False), Policy(press_approval=broken), Policy(press_approval=lambda: 'yes')):
+            r, s, asked = self.go(['{"action":"click","ref":2}'], {'option': 'o1'}, policy=policy)
+            self.assertEqual((r.status, r.pending_action['label'], asked), ('handoff', 'Remove', [])); self.assertEqual([c for c in s.log if c[0] == 'act'], [])
 
     def test_with_the_customers_yes_the_button_is_pressed_and_the_task_goes_on(self):
         r, s, asked = self.go(['{"action":"click","ref":2}', '{"action":"click","ref":2}', DONE], {'option': 'o1'})

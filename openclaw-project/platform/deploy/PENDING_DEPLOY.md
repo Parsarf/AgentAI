@@ -1,5 +1,17 @@
 # Steps to do by hand when this branch is deployed
 
+## Browsing reliability (2026-11-21): the runner on the server is a copy made by hand
+
+A merge to `main` updates the Python side of the browser service and restarts `agentai-browse` by itself. **The runner in `/opt/agentai-browse/runner` is not updated by a deploy**
+(`AUTO_DEPLOY.md`, "Not covered"), and most of the page-reading fixes of this change are in `browse/runner.mjs`. Until it is copied, the new Python runs against the old runner: it
+reads the runner's new fields with `.get`, so tasks run as before, without the fixes. To install it:
+
+    install -m 0644 /opt/agentai-supervisor/current/browse/runner.mjs /opt/agentai-browse/runner/runner.mjs && systemctl restart agentai-browse
+
+(the path of the release's copy may differ: use the `browse/runner.mjs` of the deployed release; `package.json` and the lockfile did not change, so `node_modules` stays).
+Keep the old file beside it for a rollback. The new owner switch `browser_press_approval` is **off** after the deploy: nothing about what the browser may press changes until the
+owner turns it on (`plans/product/FEATURE_SWITCHES.md`). The browser extension was not repackaged: it keeps its 0.3.0 page script until a new package is built and published.
+
 **Done on 2026-11-16 (release `8327634`):** the privacy wording is published, the connector key file is installed (`/var/lib/agentai-platform/connector.key`, path in `accounts.env`), the three timers are enabled, the two switch facts are recorded, and the live proof passed all eight gates. The retention sweeper's first run removed 1,011 activity records older than 30 days. Still open: back up the connector key file with the other keys; the `--hour` form of the handoff gate; one offboarding of a throwaway account that has a real assistant before `account_self_service` is turned on. The steps below are kept as the record of what was done.
 
 Before 2026-11-16: nothing here had been done on the server. Everything in the release is behind owner switches that are **off**, so deploying the code changes nothing a customer sees
