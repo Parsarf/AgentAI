@@ -41,26 +41,63 @@ export function urlAllowed(raw, allowLoopback = false) {
   return !privateIp(h);
 }
 
-const SELECTOR = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [onclick]';
+const SELECTOR = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=combobox], [role=option], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=switch], [onclick]';
 
 // Runs in the page. Describes interactive elements in the format the host parses: [ref] <tag type=x> "label", plus their state.
 // A field that holds a secret (password, card, one-time code) is always listed, never with its value, so the host can see that the page needs the user.
+// Controls inside open shadow roots (web components: a search box, a cookie banner, a cart drawer) are listed like any other.
 function describe(args) {
   const { sel, max } = args;
-  for (const el of document.querySelectorAll('[data-lumina-ref]')) { el.removeAttribute('data-lumina-ref'); el.removeAttribute('data-lumina-label'); }
+  const roots = [document];                             // the document and every open shadow root under it, in page order
+  for (let i = 0; i < roots.length && roots.length < 300; i++) for (const el of roots[i].querySelectorAll('*')) if (el.shadowRoot && roots.length < 300) roots.push(el.shadowRoot);
+  for (const root of roots) for (const el of root.querySelectorAll('[data-lumina-ref]')) { el.removeAttribute('data-lumina-ref'); el.removeAttribute('data-lumina-label'); }
   const clean = s => (s || '').replace(/\s+/g, ' ').replace(/"/g, "'").trim().slice(0, 100);
   const vw = window.innerWidth, vh = window.innerHeight;
+  const up = n => n.parentNode || n.host || null;       // one step up, through a shadow root to its host
+  const within = (el, hit) => { for (let n = hit; n; n = up(n)) if (n === el) return true; return false; };
+  const hidden = el => { for (let n = el; n && n.closest; n = n.getRootNode().host) if (n.closest('[aria-hidden=true]')) return true; return false; };
+  const deepHit = (x, y) => { let el = document.elementFromPoint(x, y); while (el && el.shadowRoot) { const inner = el.shadowRoot.elementFromPoint(x, y); if (!inner || inner === el) break; el = inner; } return el; };
+  const named = el => { const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean); const root = el.getRootNode();
+    return ids.map(id => { const t = root.getElementById ? root.getElementById(id) : null; return t ? t.innerText || t.textContent : ''; }).join(' '); };
+  const all = [];
+  for (const root of roots) for (const el of root.querySelectorAll(sel)) all.push(el);
+  // Page order across shadow roots: two controls in different trees are compared where their trees meet (a host comes before what is inside it).
+  const chain = el => { const c = [el]; for (let root = el.getRootNode(); root && root.host; root = root.host.getRootNode()) c.unshift(root.host); return c; };
+  if (roots.length > 1) {
+    const chains = new Map(all.map(el => [el, chain(el)]));
+    all.sort((a, b) => { const ca = chains.get(a), cb = chains.get(b);
+      for (let i = 0; i < Math.max(ca.length, cb.length); i++) { if (ca[i] === cb[i]) continue; if (!ca[i]) return -1; if (!cb[i]) return 1; return (ca[i].compareDocumentPosition(cb[i]) & 4) ? -1 : 1; }
+      return 0; });
+  }
   const found = [];
-  for (const el of document.querySelectorAll(sel)) {
+  for (const el of all) {
     if (found.length >= 600) break;
-    const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
-    if (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none' || el.disabled || el.closest('[aria-hidden=true]')) continue;
     const tag = el.tagName.toLowerCase(); const role = el.getAttribute('role');
     let kind = tag === 'a' || role === 'link' ? 'a' : tag === 'input' || tag === 'select' || tag === 'textarea' ? tag : 'button';
     const type = kind === 'input' ? (el.getAttribute('type') || 'text').toLowerCase().replace(/[^a-z]/g, '') : '';
+    let r = el.getBoundingClientRect(); let st = getComputedStyle(el);
+    // A size or colour picker is usually a radio button the page hides and a label drawn as the button. The hidden input was skipped and the label is not a control, so the
+    // choices were in the page's words and nowhere in the list: the task could read "Small Medium Large" and not choose one. Such a box is listed where its label is, and a step on it goes to the label.
+    let face = el;
+    if ((type === 'checkbox' || type === 'radio') && !el.disabled && el.labels && el.labels.length && (r.width < 4 || r.height < 4 || st.visibility === 'hidden' || st.display === 'none' || st.opacity === '0')) {
+      const lab = [...el.labels].find(l => { const q = l.getBoundingClientRect(); const ls = getComputedStyle(l); return q.width >= 4 && q.height >= 4 && ls.visibility !== 'hidden' && ls.display !== 'none'; });
+      if (lab) { face = lab; r = lab.getBoundingClientRect(); st = getComputedStyle(lab); }
+    }
+    if (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none' || el.disabled || hidden(el)) continue;
     const secret = type === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((el.getAttribute('autocomplete') || '').toLowerCase());
-    let label = clean(el.getAttribute('aria-label') || (kind === 'input' || kind === 'select' || kind === 'textarea' ? ((el.labels && el.labels[0] && el.labels[0].innerText) || el.placeholder || (secret ? '' : el.value) || el.name || el.getAttribute('title')) : (el.innerText || el.value || el.getAttribute('title'))));
+    const field = kind === 'input' || kind === 'select' || kind === 'textarea';
+    const img = el.querySelector && el.querySelector('img[alt], svg title');
+    const box = kind === 'input' && (type === 'checkbox' || type === 'radio');
+    const beside = box && el.nextSibling && el.nextSibling.nodeType === 3 ? el.nextSibling.nodeValue : '';      // a box with its words written straight after it and no label element
+    let label = clean(el.getAttribute('aria-label') || named(el) || (field ? ((el.labels && el.labels[0] && (el.labels[0].innerText || el.labels[0].getAttribute('title') || el.labels[0].getAttribute('aria-label'))) || el.placeholder || beside || (secret || kind === 'select' || (box && el.value === 'on') ? '' : el.value) || el.getAttribute('title'))
+      : (el.innerText || el.value || el.getAttribute('title') || (img && (img.getAttribute('alt') || img.textContent)))));
+    const full = clean(el.getAttribute('title'));       // a name the page cut short ("The Road to Little ...") is given whole when the page says what it is
+    if (!field && full && /(\.\.\.|…)$/.test(label) && full.toLowerCase().startsWith(label.replace(/(\.\.\.|…)$/, '').trim().toLowerCase().slice(0, 12))) label = full;
     if (!label && secret) label = type === 'password' ? 'Password' : 'Secret field';
+    // A control the page gave no name is still a control: an unnamed dropdown is called by its first option, an unnamed field or button by what the page calls it in its code.
+    if (!label && kind === 'select') label = clean('Dropdown: ' + ((el.options[0] && el.options[0].label) || el.name || el.id || 'choose'));
+    if (!label && (field || tag === 'button' || tag === 'a')) { const hint = clean((el.name || el.id || '').replace(/[-_]+/g, ' ')); if (hint && hint.length <= 40) label = field ? hint : hint + ' (unnamed button)'; }
+    if (!label && kind === 'input' && ['checkbox', 'radio'].includes(type)) label = type === 'checkbox' ? 'Checkbox' : 'Radio button';
     if (!label) continue;
     let value = '';
     if (!secret) {
@@ -68,18 +105,19 @@ function describe(args) {
       else if ((tag === 'input' && !['checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'file'].includes(type)) || tag === 'textarea') value = el.value;
     }
     const ariaChecked = el.getAttribute('aria-checked'); const ariaExpanded = el.getAttribute('aria-expanded');
-    const checked = type === 'checkbox' || type === 'radio' ? !!el.checked : ariaChecked === 'true' ? true : ariaChecked === 'false' ? false : null;
+    const picked = el.getAttribute('aria-selected') === 'true' || el.getAttribute('aria-pressed') === 'true' || ['page', 'true', 'step', 'location'].includes(el.getAttribute('aria-current'));
+    const checked = type === 'checkbox' || type === 'radio' ? !!el.checked : ariaChecked === 'true' ? true : ariaChecked === 'false' ? false : picked ? true : null;
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     const options = tag === 'select' ? [...el.options].slice(0, 15).map(o => (o.label || '').replace(/\s+/g, ' ').trim().slice(0, 80)) : [];
     // Is something else on top of the middle of the part of it that shows? null when none of it is in the window. The host uses the share of covered controls to tell that a panel or popup is in the way.
     const vl = Math.max(r.left, 0), vr = Math.min(r.right, vw), vt = Math.max(r.top, 0), vb = Math.min(r.bottom, vh);
     let covered = null;
     if (vr - vl > 1 && vb - vt > 1) {
-      const hit = document.elementFromPoint((vl + vr) / 2, (vt + vb) / 2);
-      covered = !(hit && (hit === el || el.contains(hit) || (el.labels && [...el.labels].some(l => l === hit || l.contains(hit)))));
+      const hit = deepHit((vl + vr) / 2, (vt + vb) / 2);
+      covered = !(hit && (within(face, hit) || within(el, hit) || (el.labels && [...el.labels].some(l => within(l, hit)))));
     }
     const seen = vr - vl > 1 && vb - vt > 1;
-    found.push({ el, label, secret, item: { ref: 0, tag: kind, type, label, role: role || '', value: clean(value), checked, expanded: ariaExpanded === 'true' ? true : ariaExpanded === 'false' ? false : null,
+    found.push({ el: face, label, secret, item: { ref: 0, tag: kind, type, label, role: role || '', value: clean(value), checked, expanded: ariaExpanded === 'true' ? true : ariaExpanded === 'false' ? false : null,
       in_view: cx >= 0 && cy >= 0 && cx <= vw && cy <= vh, covered, options, x: Math.round(seen ? (vl + vr) / 2 : cx), y: Math.round(seen ? (vt + vb) / 2 : cy) } });
   }
   // A secret field is always listed (the host must see that the page needs the user); then what a person can see and reach, so a long header or a closed menu cannot crowd it out. Numbers still follow page order.
@@ -93,7 +131,8 @@ function describe(args) {
   }
   // What has the keyboard right now: the host tells the decider whether typing would land in a text field, and what that field holds (never a secret).
   let focus = null;
-  const act = document.activeElement;
+  let act = document.activeElement;
+  while (act && act.shadowRoot && act.shadowRoot.activeElement) act = act.shadowRoot.activeElement;
   if (act && act !== document.body && act !== document.documentElement) {
     const atag = act.tagName.toLowerCase(), atype = atag === 'input' ? (act.getAttribute('type') || 'text').toLowerCase().replace(/[^a-z]/g, '') : '';
     const asecret = atype === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((act.getAttribute('autocomplete') || '').toLowerCase());
@@ -101,8 +140,47 @@ function describe(args) {
     focus = { tag: atag, type: atype, editable, secret: asecret, ref: Number(act.getAttribute('data-lumina-ref')) || null,
       label: asecret ? '' : clean(act.getAttribute('data-lumina-label') || act.getAttribute('aria-label') || act.placeholder || act.name), value: asecret || !editable ? '' : clean(act.value !== undefined ? act.value : act.innerText) };
   }
+  // The page's words, starting with what is in the window right now and going on down the page. It used to be the first 6,000 characters of the whole document whatever the scroll
+  // position, so nothing a decider scrolled to was ever read. What is above the window comes last, and only if there is room.
+  const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'IFRAME', 'OPTION', 'TITLE', 'HEAD']);
+  const LINE = 'tr, li, p, h1, h2, h3, h4, h5, h6, dt, dd, figcaption, blockquote, pre, label, button, a, summary, caption';
+  const bands = [[], [], []];                           // in the window, below it, above it
+  let nodes = 0;
+  const walk = root => {
+    const tw = document.createTreeWalker(root, 5 /* elements and text */, { acceptNode: n => n.nodeType === 1 && (SKIP.has(n.tagName.toUpperCase()) || n.getAttribute('aria-hidden') === 'true') ? 2 /* reject the subtree */ : 1 });
+    let last = null, box = null, line = null;
+    for (let n = tw.nextNode(); n && nodes < 8000; n = tw.nextNode()) {
+      if (n.nodeType === 1) { if (n.shadowRoot) walk(n.shadowRoot); continue; }
+      let words = n.nodeValue.replace(/\s+/g, ' ');
+      if (!words.trim()) continue;
+      nodes += 1;
+      const parent = n.parentElement; if (!parent) continue;
+      if (/(\.\.\.|…)\s*$/.test(words)) {          // a name the page cut short: read whole when the page itself says what it is (a title on it or on its link)
+        const named = parent.closest('[title]'); const whole = named ? (named.getAttribute('title') || '').replace(/\s+/g, ' ').trim() : '';
+        const stem = words.replace(/(\.\.\.|…)\s*$/, '').trim().toLowerCase();
+        if (whole && stem.length >= 4 && whole.toLowerCase().startsWith(stem.slice(0, 12))) words = whole;
+      }
+      if (parent !== last) {
+        last = parent; box = parent.getBoundingClientRect();
+        if (box.width < 1 || box.height < 1 || (parent.checkVisibility && !parent.checkVisibility({ checkVisibilityCSS: true }))) box = null;
+        line = parent.closest(LINE) || parent;
+      }
+      if (!box) continue;
+      const band = bands[box.bottom < 0 ? 2 : box.top > vh ? 1 : 0];
+      const tail = band[band.length - 1];
+      if (tail && tail.line === line) tail.text += words; else band.push({ line, text: words });
+    }
+  };
+  if (document.body) walk(document.body);
+  const say = band => band.map(b => b.text.trim()).filter(Boolean).join('\n');
+  const windowText = say(bands[0]), below = say(bands[1]), above = say(bands[2]);
+  let text = windowText.slice(0, 5000);
+  if (below && text.length < 11500) text += '\n[below the window]\n' + below.slice(0, 11500 - text.length);
+  if (above && text.length < 11000) text += '\n[above the window]\n' + above.slice(0, 11500 - text.length);
+  // The same words in page order, for a reader that takes the whole page at once (the assistant, when it writes the answer): `full_at` is where the window starts in it.
+  const full = [above, windowText, below].filter(Boolean).join('\n').slice(0, 40000);
   const page = document.documentElement;
-  return { elements: out, title: document.title.slice(0, 120), text: (document.body && document.body.innerText || '').replace(/\s+\n/g, '\n').slice(0, 6000),
+  return { elements: out, title: document.title.slice(0, 120), text: text.slice(0, 12000), full, full_at: above ? Math.min(above.length + 1, full.length) : 0,
     scroll: Math.round(window.scrollY), height: Math.round(Math.max(page.scrollHeight, document.body ? document.body.scrollHeight : 0)), window: vh, focus };
 }
 
@@ -113,7 +191,7 @@ function hitAt({ x, y }) {
   while (el && el.shadowRoot) { const inner = el.shadowRoot.elementFromPoint(x, y); if (!inner || inner === el) break; el = inner; }
   if (!el) return null;
   const clean = s => (s || '').replace(/\s+/g, ' ').replace(/"/g, "'").trim().slice(0, 100);
-  const control = el.closest('a, button, input, select, textarea, summary, label, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab]');
+  const control = el.closest('a, button, input, select, textarea, summary, label, [role=button], [role=link], [role=checkbox], [role=radio], [role=tab], [role=combobox], [role=option], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=switch]');
   const c = control || el, tag = c.tagName.toLowerCase(), field = ['input', 'select', 'textarea'].includes(tag);
   const type = tag === 'input' ? (c.getAttribute('type') || 'text').toLowerCase().replace(/[^a-z]/g, '') : '';
   const secret = type === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((c.getAttribute('autocomplete') || '').toLowerCase());
@@ -138,15 +216,19 @@ function focusActive() {
 // Runs in the page. Read-only (marks nothing): a text summary of what a person would see, so two summaries are equal exactly when the page did not visibly change.
 // Scroll position is part of it, so scrolling counts as a change until the bottom is reached.
 function fingerprint(sel) {
-  const parts = [location.href, String(Math.round(window.scrollY / 50)), String(((document.body && document.body.innerText) || '').length)];
-  for (const el of document.querySelectorAll(sel)) {
+  const roots = [document];
+  for (let i = 0; i < roots.length && roots.length < 300; i++) for (const el of roots[i].querySelectorAll('*')) if (el.shadowRoot && roots.length < 300) roots.push(el.shadowRoot);
+  const hidden = el => { for (let n = el; n && n.closest; n = n.getRootNode().host) if (n.closest('[aria-hidden=true]')) return true; return false; };
+  const parts = [location.href, String(Math.round(window.scrollY / 50)), String(((document.body && document.body.innerText) || '').length), String(roots.length)];
+  for (const root of roots) for (const el of root.querySelectorAll(sel)) {
     const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
-    if (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none' || el.closest('[aria-hidden=true]')) continue;
     const type = (el.getAttribute('type') || '').toLowerCase();
+    const box = (type === 'checkbox' || type === 'radio') && el.labels && el.labels.length > 0;       // a box the page hides behind its label still shows its tick there
+    if (!box && (r.width < 2 || r.height < 2 || st.visibility === 'hidden' || st.display === 'none' || hidden(el))) continue;
     const secret = type === 'password' || /^(cc-|one-time-code|current-password|new-password)/.test((el.getAttribute('autocomplete') || '').toLowerCase());
     const label = (el.getAttribute('aria-label') || el.innerText || el.placeholder || '').replace(/\s+/g, ' ').trim().slice(0, 60);
     const value = secret ? '' : (el.tagName === 'SELECT' ? (el.selectedOptions[0] && el.selectedOptions[0].label) : ['checkbox', 'radio'].includes(type) ? String(el.checked) : el.value) || '';
-    parts.push(`${el.tagName}|${label}|${String(value).slice(0, 60)}|${el.getAttribute('aria-expanded') || ''}|${el.getAttribute('aria-checked') || ''}|${el.disabled ? 1 : 0}`);
+    parts.push(`${el.tagName}|${label}|${String(value).slice(0, 60)}|${el.getAttribute('aria-expanded') || ''}|${el.getAttribute('aria-checked') || ''}|${el.getAttribute('aria-selected') || ''}|${el.getAttribute('aria-pressed') || ''}|${el.disabled ? 1 : 0}`);
   }
   return parts.join('\n');
 }
@@ -160,9 +242,10 @@ function ready(el, action) {
   if (r.width < 2 || r.height < 2) return 'covered';
   const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'covered';
-  const top = document.elementFromPoint(cx, cy);
+  let top = document.elementFromPoint(cx, cy);
+  while (top && top.shadowRoot) { const inner = top.shadowRoot.elementFromPoint(cx, cy); if (!inner || inner === top) break; top = inner; }      // look through open shadow roots, as describe does
   if (!top) return 'covered';
-  if (top === el || el.contains(top)) return 'ok';
+  for (let n = top; n; n = n.parentNode || n.host) if (n === el) return 'ok';
   return 'covered';                                                                                // a banner, modal, or any other element is on top (the browser would refuse the click too, after a 6 s wait)
 }
 
@@ -197,6 +280,8 @@ export class Runner {
   // closes itself, or a site closing a tab), the agent carries on in the page that is still open instead of being left holding a dead one.
   prepare(p) {
     p.setDefaultTimeout(8000); p.setDefaultNavigationTimeout(20000);
+    // What the site answered for the page itself (200, 403, 429 ...): the host tells a page that was refused from a page that is merely empty or slow.
+    p.on('response', res => { try { if (res.request().isNavigationRequest() && res.frame() === p.mainFrame()) p._luminaStatus = res.status(); } catch { /* the frame is gone */ } });
     p.on('close', () => { if (this.page === p) { const open = this.context.pages().filter(x => !x.isClosed()); if (open.length) this.page = open[open.length - 1]; } });
     return p;
   }
@@ -237,8 +322,52 @@ export class Runner {
     try { await l.cdp.send('Page.stopScreencast'); await l.cdp.detach(); } catch { /* page already closed */ }
   }
   info() { return { url: this.page.url(), title: '' }; }
+  /** A JPEG of the window. The ordinary way waits for the page's web fonts, and on a shop whose fonts never finish loading it gave up after 8 s on every step
+   *  (the decider then had no picture). After a short try, the browser is asked for the picture directly, which waits for nothing. */
+  async shoot(quality) {
+    try { return await this.page.screenshot({ type: 'jpeg', quality, scale: 'css', fullPage: false, timeout: 3000 }); }
+    catch {
+      const cdp = await this.context.newCDPSession(this.page);
+      try { const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality, captureBeyondViewport: false }); return Buffer.from(data, 'base64'); }
+      finally { await cdp.detach().catch(() => {}); }
+    }
+  }
   async fp() { try { return createHash('sha1').update(await this.page.evaluate(fingerprint, SELECTOR)).digest('hex').slice(0, 12); } catch { return null; } }   // null = could not tell (page changing under us)
-  async settle() { try { await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }); await this.page.waitForLoadState('networkidle', { timeout: 2500 }); } catch { /* slow pages are fine */ } }
+  /** Wait until the page has stopped changing, not until its network is silent: most real sites never go silent (analytics, ads, long polls), so that wait ran its full 2.5 s
+   *  on every page opened and after many steps. The page counts as still when it has loaded and two looks 150 ms apart see the same amount of it; never longer than `ms`. */
+  async settle(ms = 2500) {
+    const until = Date.now() + ms;
+    try { await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }); } catch { /* slow pages are fine */ }
+    let last = null;
+    for (;;) {
+      const now = await this.page.evaluate(() => document.readyState + '|' + document.getElementsByTagName('*').length + '|' + ((document.body && document.body.innerText) || '').length).catch(() => null);
+      if (now !== null && now === last && now.startsWith('complete')) return;
+      if (Date.now() >= until) return;
+      last = now;
+      await this.page.waitForTimeout(150).catch(() => {});
+    }
+  }
+  /** A page caught between two pages (still loading, or nothing drawn yet) reads as an empty one, and a decider shown an empty page gives up or calls for the customer.
+   *  Give it a little longer, and stop the moment it has something to show. Never more than `ms`. */
+  async drawn(ms = 3000) {
+    const until = Date.now() + ms;
+    for (;;) {
+      const state = await this.page.evaluate(() => ({ loading: document.readyState === 'loading', words: ((document.body && document.body.innerText) || '').trim().length, things: document.querySelectorAll('a[href], button, input, select, textarea').length })).catch(() => null);
+      if (state && !state.loading && (state.words >= 20 || state.things >= 1)) return;
+      if (Date.now() >= until) return;
+      await this.page.waitForTimeout(200).catch(() => {});
+    }
+  }
+  /** After a click or a key the page often changes a moment later than the browser calls it settled (a site that swaps its own content in, a menu that animates open).
+   *  Reading it at once said "nothing changed" about a click that worked, and the decider clicked again. Wait for a change, up to `ms`; a click that really did nothing costs that wait once. */
+  async changedSince(before, beforeUrl, ms = 900) {
+    const until = Date.now() + ms;
+    for (;;) {
+      const now = await this.fp();
+      if (now === null || now !== before || this.page.url() !== beforeUrl || Date.now() >= until) return now;
+      await this.page.waitForTimeout(150).catch(() => {});
+    }
+  }
 
   async handle(msg) {
     await this.ensurePage();
@@ -249,13 +378,14 @@ export class Runner {
         await this.settle(); return { ok: true, url: this.page.url(), title: (await this.page.title()).slice(0, 120) };
       }
       case 'snapshot': {
-        await this.settle(); const d = await this.page.evaluate(describe, { sel: SELECTOR, max: MAX_ELEMENTS });
+        await this.settle(); await this.drawn(); const d = await this.page.evaluate(describe, { sel: SELECTOR, max: MAX_ELEMENTS });
         const lines = d.elements.map(e => `[${e.ref}] <${e.tag}${e.type ? ' type=' + e.type : ''}> "${e.label}"`).join('\n');
-        return { ok: true, url: this.page.url(), title: d.title, snapshot: lines, text: d.text, pages: this.context.pages().length, elements: d.elements, page_fp: await this.fp(), scroll: d.scroll, height: d.height, window: d.window, focus: d.focus };
+        return { ok: true, url: this.page.url(), title: d.title, snapshot: lines, text: d.text, pages: this.context.pages().length, elements: d.elements, page_fp: await this.fp(), scroll: d.scroll, height: d.height, window: d.window, focus: d.focus, full: d.full, full_at: d.full_at, http_status: this.page._luminaStatus || null };
       }
       case 'act': {
         const { ref, action, value, expect } = msg;
-        const done = async extra => ({ ok: true, url: this.page.url(), page_fp: await this.fp(), ...extra });
+        const fpBefore = ['click', 'clickat', 'press', 'select'].includes(action) ? await this.fp() : null; const urlBefore = this.page.url();
+        const done = async extra => ({ ok: true, url: this.page.url(), page_fp: fpBefore ? await this.changedSince(fpBefore, urlBefore) : await this.fp(), ...extra });
         if (action === 'back') { await this.page.goBack({ timeout: 8000 }).catch(() => {}); await this.settle(); return done(); }
         if (action === 'press') { if (!KEYS.has(value)) return { ok: false, error: 'key_not_allowed' }; await this.page.keyboard.press(value); await this.settle(); return done(); }
         if (action === 'scroll') {
@@ -329,7 +459,7 @@ export class Runner {
         return { ok: true, url: this.page.url() };     // no waiting for the page to settle: the next input must not queue behind a slow load
       }
       case 'view': {   // the picture JEV is shown when the element list cannot be used: one JPEG of the window as it is (1280x800, inside JEV's size limits), optionally kept for the run's record
-        const bytes = await this.page.screenshot({ type: 'jpeg', quality: 75, scale: 'css', fullPage: false });
+        const bytes = await this.shoot(75);
         const size = this.page.viewportSize() || { width: 1280, height: 800 };
         let file; if (msg.save) { file = `shot-${String(++this.shots).padStart(3, '0')}.jpg`; writeFileSync(join(OUT, file), bytes); }     // same names and folder as every other picture, so the host serves it the same way
         return { ok: true, data: bytes.toString('base64'), width: size.width, height: size.height, view: { w: size.width, h: size.height }, file };
@@ -341,7 +471,7 @@ export class Runner {
       }
       case 'screenshot': {
         const file = `shot-${String(++this.shots).padStart(3, '0')}.jpg`;
-        await this.page.screenshot({ path: join(OUT, file), type: 'jpeg', quality: 60, fullPage: false });
+        writeFileSync(join(OUT, file), await this.shoot(60));
         return { ok: true, file };
       }
       default: return { ok: false, error: 'unknown_command' };
@@ -356,7 +486,13 @@ async function main() {
   rl.on('line', line => { queue = queue.then(async () => {
     let msg; try { msg = JSON.parse(line); } catch { return console.log(JSON.stringify({ ok: false, error: 'bad_json' })); }
     if (msg.cmd === 'close') { await runner.stop(); console.log(JSON.stringify({ id: msg.id, ok: true })); process.exit(0); }
-    let res; try { res = await runner.handle(msg); } catch (e) { res = { ok: false, error: 'runner_error' }; }
+    // A page whose own script never yields makes a read of it hang for ever. Each command has a limit a little under the host's, so the host gets an answer it can act on
+    // (look again, reload) instead of losing the whole task to a silence.
+    const limit = { open: 36000, snapshot: 16000, act: 27000, view: 12000, screenshot: 12000, probe: 6000, xy: 18000 }[msg.cmd] || 16000;
+    let res; let timer;
+    try { res = await Promise.race([runner.handle(msg), new Promise(resolve => { timer = setTimeout(() => resolve({ ok: false, error: 'timeout' }), limit); })]); }
+    catch (e) { res = { ok: false, error: 'runner_error' }; }
+    clearTimeout(timer);
     console.log(JSON.stringify({ id: msg.id, ...res }));
   }); });
   rl.on('close', async () => { await queue; await runner.stop(); process.exit(0); });   // finish queued work before shutting the browser

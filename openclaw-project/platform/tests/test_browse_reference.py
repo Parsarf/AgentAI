@@ -80,9 +80,9 @@ class WhatJevIsOffered(unittest.TestCase):
     def test_the_sensitive_control_rule_still_applies_to_a_control_past_the_old_cap(self):
         controls = [('a', el(i, f'Menu {i}', in_view=False)) for i in range(1, 41)] + [('button', el(41, 'Place order', 300, 400))]
         s = Page(controls)
-        r, jev, _ = runner(s, [{'operation': 'click', 'click_target': 'c41'}], max_steps=1)
+        r, jev, _ = runner(s, [{'operation': 'click', 'click_target': 'c41'}], ['{"action":"click","ref":41}'], max_steps=2)
         out = r.run('order it', URL)
-        self.assertEqual((out.status, s.acts), ('handoff', []))                                      # nothing was clicked: that one is the customer's
+        self.assertEqual((out.status, s.acts), ('handoff', []))                                      # nothing was clicked: JEV's pick went to the assistant, and its pick of the same control is the customer's
         self.assertEqual(out.pending_action['label'], 'Place order')
 
     def test_an_older_engine_keeps_the_list_it_had(self):

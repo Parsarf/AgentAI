@@ -66,20 +66,30 @@ class ProcessTransport:
 
 class Session:
     DEADLINES = {'open': 40, 'attach': 20, 'snapshot': 20, 'act': 30, 'screenshot': 20, 'view': 20, 'probe': 10}
+    READS = frozenset({'snapshot', 'view', 'screenshot', 'probe'})      # commands that change nothing on the page: safe to send again
+    MAX_RESTARTS = 1
 
-    def __init__(self, transport, trace=NULL):
+    def __init__(self, transport, trace=NULL, respawn=None, wait=time.sleep):
+        """`respawn() -> transport`: start the browser again after it died (the host stage only). One slow answer or one crashed browser used to end the whole task
+        ("the browser run failed"): a read is now asked once more, and a dead browser is started again once, on the address the task was on."""
         self.t, self._id, self.trace = transport, 0, trace
+        self.respawn, self.wait, self.restarts, self.last_url = respawn, wait, 0, ''
 
-    def call(self, cmd, **params):
+    def _once(self, cmd, params):
         self._id += 1
         started = time.monotonic()
         # What is recorded about a call is which command, on which element, and how it went: never the text typed or the label.
         info = {'cmd': cmd, **{k: params[k] for k in ('action', 'ref', 'x', 'y') if k in params}}
         try:
             self.t.send({'id': self._id, 'cmd': cmd, **params})
-            reply = self.t.recv(self.DEADLINES.get(cmd, 20))
-            if reply.get('id') != self._id:
-                raise RunnerError('out-of-order reply')
+            deadline = started + self.DEADLINES.get(cmd, 20)
+            while True:
+                reply = self.t.recv(max(0.05, deadline - time.monotonic()))
+                if isinstance(reply.get('id'), int) and reply['id'] < self._id:
+                    continue                                              # the late answer to a call that already timed out: not this call's
+                if reply.get('id') != self._id:
+                    raise RunnerError('out-of-order reply')
+                break
         except Exception as exc:
             self.trace.emit('runner_error', **info, ms=int((time.monotonic() - started) * 1000), why=type(exc).__name__ + (f': {exc}' if str(exc) else ''),
                             stderr=list(getattr(self.t, 'stderr_tail', ()))[-8:])
@@ -93,7 +103,42 @@ class Session:
             if reply.get(key) is not None:
                 fields[key] = reply[key]
         self.trace.emit('runner', **info, **fields)
+        if isinstance(reply.get('url'), str) and reply['url'].startswith('http'):
+            self.last_url = reply['url']
         return reply
+
+    def call(self, cmd, **params):
+        try:
+            return self._once(cmd, params)
+        except TimeoutError:
+            if cmd in self.READS:                                         # a page busy with its own scripts: give it a moment and ask once more
+                self.wait(1.5)
+                try:
+                    return self._once(cmd, params)
+                except (TimeoutError, RunnerError, OSError) as exc:
+                    return self._restart(cmd, params, exc)
+            raise
+        except (RunnerError, OSError) as exc:                             # the browser is gone (it crashed, ran out of memory, or its pipe closed)
+            return self._restart(cmd, params, exc)
+
+    def _restart(self, cmd, params, exc):
+        if self.respawn is None or self.restarts >= self.MAX_RESTARTS or cmd in ('open', 'attach', 'close') or not self.last_url:
+            raise exc
+        self.restarts += 1
+        self.trace.emit('browser_restart', n=self.restarts, during=cmd, why=type(exc).__name__)
+        try:
+            self.t.close()
+        except Exception:
+            pass
+        self.t = self.respawn()
+        opened = self._once('open', {'url': self.last_url})
+        if not opened.get('ok'):
+            raise exc
+        if cmd == 'snapshot':
+            return {**self._once('snapshot', {}), 'restarted': True}
+        if cmd in self.READS:
+            return self._once(cmd, params)
+        return {'ok': False, 'error': 'browser_restarted'}               # the step itself was not carried out: the loop reads the page again and decides afresh
 
     def open(self, url): return self.call('open', url=url)
     def snapshot(self): return self.call('snapshot')

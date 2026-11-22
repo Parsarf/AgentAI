@@ -267,7 +267,7 @@ class NativeRunner:
             return {'ok': False, 'error': 'action_failed'}
         lines = '\n'.join(f'[{e["ref"]}] <{e["tag"]}{" type=" + e["type"] if e["type"] else ""}> "{e["label"]}"' for e in d['elements'])
         return {'ok': True, 'url': d.get('url', ''), 'title': d.get('title', ''), 'snapshot': lines, 'text': d.get('text', ''), 'pages': len(self.known) or 1, 'elements': d['elements'],
-                'page_fp': self.fp(), 'scroll': d.get('scroll'), 'height': d.get('height'), 'window': d.get('window'), 'focus': d.get('focus'), **self._reopened()}
+                'page_fp': self.fp(), 'scroll': d.get('scroll'), 'height': d.get('height'), 'window': d.get('window'), 'focus': d.get('focus'), 'full': d.get('full'), 'full_at': d.get('full_at'), **self._reopened()}
 
     def _reopened(self):
         if not self.reopened:

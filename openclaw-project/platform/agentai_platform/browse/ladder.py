@@ -30,14 +30,21 @@ from .goals import goal_parts, instruction_text
 
 log = logging.getLogger('agentai.browse')       # lines go to the service journal; they carry reasons and numbers, never page text or typed values
 
-ACTIONS = ('click', 'type', 'select', 'press', 'scroll', 'back', 'wait', 'ask', 'done', 'stop')
+ACTIONS = ('click', 'type', 'select', 'press', 'scroll', 'back', 'wait', 'read', 'ask', 'done', 'stop')
 OPERATIONS = ('click', 'type', 'select', 'scroll_down', 'scroll_up', 'back', 'press_enter', 'press_escape', 'wait', 'done', 'needs_user', 'ask_user', 'too_complex')
 RUNNER_V3 = frozenset({'scroll_up', 'wait', 'escape'})   # an engine that also says what has the keyboard (snapshot `focus`): Escape is offered, and typing/focus feedback is given
 RUNNER_V2 = frozenset({'scroll_up', 'wait'})     # moves only a runner that sends element state understands; an older runner would scroll down / reject them
+# JEV sees one window and 1,500 characters; the assistant that confirms `done` reads the whole page. Told so, JEV stops scrolling through a long list just to "see" it.
+DONE_WORDS = ('The goal is achieved, or this page holds the answer (anywhere on it, also further down than the window shows: the whole page is then read for the answer)')
+SCROLL_DOWN_WORDS = 'Scroll down to reach a control that is further down the page (not to read: the whole page is read for you when you choose done)'
 NONE = 'none'                                    # every follow-up question has it: a question needs at least two options, and "none fits" is a valid answer
 MAX_OPTIONS = 100                                # JEV answers at most 255 options per question; select options are the only list that can grow
 IMAGE_HEADERS = {'TypeSafe-Danger-Zone-Images': 'true'}      # JEV 1.14: images and `box` questions are an experimental feature and must be switched on per request
 PICTURE_DEADLINE_S = 20                          # a request with a picture is slower than a text one (the first can take a few seconds)
+FIELD_SURE = 0.6                                 # how sure JEV must be of a text field for "click, none listed" to be read as "type into that field"
+OP_FLOOR = 0.5                                   # below this probability for the step itself JEV is guessing: in the lab every wrong step it took (a dead scroll, a click that left the page it needed,
+                                                 # asking the customer something the request had settled) sat under it. Such a step goes to the assistant, for that step only.
+FLOOR_EXEMPT = frozenset({'done', 'too_complex', 'scroll_down', 'scroll_up', 'wait'})      # the assistant confirms `done` anyway; a scroll or a wait is cheap, undone by the next step, and has its own loop rules
 MIN_FOUND, MIN_SPOT = 0.5, 0.2                   # a pointing answer is used only if JEV says something fits (yes/no) and is at least this sure of the spot; `box` always returns a box,
                                                  # even for something that is not there, and its number is not a calibrated probability. Both are in the trace so they can be tuned.
 BOX_INSTRUCTION = ('The one thing on the page that the next step uses: what to click, or the text field to type into. Answer for whatever step would make the most progress on the subgoal.')
@@ -79,6 +86,8 @@ class Look:
     claude: str = ''               # not empty: Claude, not JEV, decides this step, for this reason
     jev_candidates: list | None = None   # what JEV is offered instead of the full list: only the controls a person could click right now (candidates.reachable); None = the full list
     focus: dict | None = None      # what has the keyboard, as the engine reported it ({'editable','label','value','ref',...}); None = unknown or nothing
+    at_top: bool = False           # the page is scrolled to its very top: scrolling up would do nothing, so it is not offered
+    at_bottom: bool = False        # ... and to its very bottom, with no panel that moved on the last scroll down
 
 
 def _finite01(v):
@@ -98,7 +107,8 @@ def describe(c):
     if c.get('value'):
         bits.append('now: "' + scrub(c['value'], 60) + '"')
     if c.get('checked') is not None:
-        bits.append('checked' if c['checked'] else 'not checked')
+        boxed = c.get('input_type') in ('checkbox', 'radio') or c.get('role') in ('checkbox', 'radio', 'switch', 'menuitemcheckbox', 'menuitemradio')
+        bits.append(('checked' if c['checked'] else 'not checked') if boxed else ('selected' if c['checked'] else 'not selected'))
     if c.get('expanded') is not None:
         bits.append('open' if c['expanded'] else 'closed')
     if c.get('focused'):
@@ -142,7 +152,7 @@ def goal_phrases(goal):
     return out[:8]
 
 
-def build_heads(candidates, caps=frozenset(), phrases=(), allow_enter=False, points=False):
+def build_heads(candidates, caps=frozenset(), phrases=(), allow_enter=False, points=False, at_top=False, at_bottom=False):
     """-> ({question: {option id: description}}, select_options {option id: (select ref, option text)}). The only definition of what JEV may answer."""
     kinds = {c['action'] for c in candidates}
     ops = {}
@@ -152,8 +162,9 @@ def build_heads(candidates, caps=frozenset(), phrases=(), allow_enter=False, poi
         ops['type'] = 'Type into one of the listed fields' + (' (or into a field you can see in the picture)' if points else '')
     if 'select' in kinds:
         ops['select'] = 'Choose an option in one of the listed dropdowns'
-    ops['scroll_down'] = 'Scroll down to see more of the page'
-    if 'scroll_up' in caps:
+    if not at_bottom:
+        ops['scroll_down'] = SCROLL_DOWN_WORDS
+    if 'scroll_up' in caps and not at_top:
         ops['scroll_up'] = 'Scroll up'
     ops['back'] = 'Go back to the previous page'
     if allow_enter:
@@ -162,7 +173,7 @@ def build_heads(candidates, caps=frozenset(), phrases=(), allow_enter=False, poi
         ops['press_escape'] = 'Press Escape to close a popup, a menu or a list of suggestions that is in the way'
     if 'wait' in caps:
         ops['wait'] = 'Wait a moment for the page to finish loading'
-    ops['done'] = 'The goal is achieved or the page already shows the answer'
+    ops['done'] = DONE_WORDS
     ops['needs_user'] = 'The user must act: a sign-in, a password, or a human check or captcha'
     ops['ask_user'] = 'The page offers a choice the request does not settle (a size, a flavour, which of several products) and a wrong guess would be a bad result: ask the user'
     ops['too_complex'] = 'This is too hard or unclear for a quick choice; hand over to a stronger model'
@@ -229,6 +240,7 @@ class Pick:
     text: str | None = None        # a phrase from the user's request to type; None means "write new text"
     text_src: str = ''             # who wrote `text` when it is not a phrase from the request: 'helper' (the ultrafast text writer); '' = the request's own words
     answers: dict = field(default_factory=dict)   # question -> (choice, probability), for the log
+    op_p: float = 1.0              # the probability JEV gave the operation itself (what the 'unsure' floor reads)
     point: tuple | None = None     # picture mode: the spot to click or type at, in page pixels
     found: float | None = None     # picture mode: JEV's chance that something fits
     spot: float | None = None      # picture mode: JEV's number for how sure it is of the spot (not a calibrated probability)
@@ -241,13 +253,14 @@ class NoSpot(ValueError):
         self.op, self.found, self.spot, self.cost, self.answers = op, found, spot, cost, answers
 
 
-def picture_heads(caps=frozenset(), phrases=(), allow_enter=False):
+def picture_heads(caps=frozenset(), phrases=(), allow_enter=False, at_top=False, at_bottom=False):
     """The choice questions asked with a picture: what to do, and which text. Where to click is a `box` question, not a list. -> {question: {option id: description}}"""
     ops = {'click': 'Click something on the page (a link, a button, a menu, an icon, a close button, or a box to tick)'}
     if phrases:
         ops['type'] = 'Type into a text field that is on the page'
-    ops['scroll_down'] = 'Scroll down to see more of the page'
-    if 'scroll_up' in caps:
+    if not at_bottom:
+        ops['scroll_down'] = SCROLL_DOWN_WORDS
+    if 'scroll_up' in caps and not at_top:
         ops['scroll_up'] = 'Scroll up'
     ops['back'] = 'Go back to the previous page'
     if allow_enter:
@@ -256,7 +269,7 @@ def picture_heads(caps=frozenset(), phrases=(), allow_enter=False):
         ops['press_escape'] = 'Press Escape to close a popup, a menu or a list of suggestions that is in the way'
     if 'wait' in caps:
         ops['wait'] = 'Wait a moment for the page to finish loading'
-    ops['done'] = 'The goal is achieved or the page already shows the answer'
+    ops['done'] = DONE_WORDS
     ops['needs_user'] = 'The user must act: a sign-in, a password, or a human check or captcha'
     ops['ask_user'] = 'The page offers a choice the request does not settle (a size, a flavour, which of several products) and a wrong guess would be a bad result: ask the user'
     ops['too_complex'] = 'This is too hard or unclear for a quick choice; hand over to a stronger model'
@@ -347,9 +360,9 @@ class JevChooser:
         holds = f'it reads "{scrub(focus.get("value", ""), 80)}"' if focus.get('value') else 'it is empty'
         return f'Keyboard: the text field{name} has focus ({holds}). Do not click it again: type into it, or press Enter if the text is already right.'
 
-    def choose(self, subgoal, page_text, candidates, *, page=None, history=(), caps=frozenset(), phrases=(), allow_enter=False, position='', hint='', shot=None):
+    def choose(self, subgoal, page_text, candidates, *, page=None, history=(), caps=frozenset(), phrases=(), allow_enter=False, position='', hint='', shot=None, at_top=False, at_bottom=False):
         """JEV answers from the page's controls. With `shot` (the window as a picture) it sees the page as it is while choosing, and may point at a spot only when nothing listed fits."""
-        heads, select_options = build_heads(candidates, caps, phrases, allow_enter, points=shot is not None)
+        heads, select_options = build_heads(candidates, caps, phrases, allow_enter, points=shot is not None, at_top=at_top, at_bottom=at_bottom)
         questions = {name: {'type': 'choice', 'instructions': INSTRUCTIONS[name], 'criteria': options} for name, options in heads.items()}
         if shot is not None:
             ref = str(uuid.uuid4())
@@ -371,6 +384,7 @@ class JevChooser:
         cost = int(round((usage.get('input_tokens') or 0) * 0.042))               # micro-USD at $0.042/Mtok; an estimate
         op, op_p = answers['operation']
         probs, pick = [op_p], Pick(op, 0.0, cost)
+        pick.op_p = op_p
 
         def needed(name):
             choice, p = answers[name]
@@ -389,6 +403,15 @@ class JevChooser:
                 pick.found, pick.spot = pointing['found'], pointing['target']['confidence']
                 pick.answers = {**answers, 'found': ('yes', pick.found), 'target': ('box', pick.spot)}
                 if pick.found < MIN_FOUND or pick.spot < MIN_SPOT:
+                    # "Click", no listed link or button, nothing it can point at, and a text field chosen firmly in the same answer: JEV means the field (a person clicks a field before
+                    # typing in it). Here typing goes straight into the field, so this is a typing step. It used to be a miss, three times over, and the whole form went to the assistant.
+                    field = answers.get('type_target', (NONE, 0))
+                    if op == 'click' and field[0] != NONE and field[1] >= FIELD_SURE and answers.get('type_text', (NONE, 0))[0] != NONE:
+                        text_id = answers['type_text'][0]
+                        pick.operation, pick.target, pick.point = 'type', field[0], None
+                        pick.text = None if text_id == 'write_new' else phrases[int(text_id[1:])]
+                        pick.confidence = min(op_p, field[1])
+                        return pick
                     raise NoSpot(op, pick.found, pick.spot, cost, pick.answers)
                 box, view = pointing['target'], shot['view']
                 pick.point = ((box['left'] + box['right']) / 2 * view['w'], (box['top'] + box['bottom']) / 2 * view['h'])
@@ -412,9 +435,9 @@ class JevChooser:
         pick.answers = answers
         return pick
 
-    def choose_picture(self, subgoal, page, history, shot, *, why='', caps=frozenset(), phrases=(), allow_enter=False, position='', hint=''):
+    def choose_picture(self, subgoal, page, history, shot, *, why='', caps=frozenset(), phrases=(), allow_enter=False, position='', hint='', at_top=False, at_bottom=False):
         """JEV is shown the window (a picture) and answers what to do, and for a click or typing, where. The same strict checks apply to every answer."""
-        heads = picture_heads(caps, phrases, allow_enter)
+        heads = picture_heads(caps, phrases, allow_enter, at_top=at_top, at_bottom=at_bottom)
         ref = str(uuid.uuid4())
         questions = {name: {'type': 'choice', 'instructions': INSTRUCTIONS[name], 'criteria': options} for name, options in heads.items()}
         questions['target'] = {'type': 'box', 'instructions': BOX_INSTRUCTION}
@@ -433,7 +456,7 @@ class JevChooser:
         cost = int(round((usage.get('input_tokens') or 0) * 0.042))
         op, op_p = answers['operation']
         probs = [op_p]
-        pick = Pick(op, 0.0, cost, answers=answers, found=pointing['found'], spot=pointing['target']['confidence'])
+        pick = Pick(op, 0.0, cost, answers=answers, found=pointing['found'], spot=pointing['target']['confidence'], op_p=op_p)
         if op == 'type':
             text_id, p = answers['type_text']
             if text_id == NONE:
@@ -450,13 +473,91 @@ class JevChooser:
         return pick
 
 
+def control_line(c):
+    """One control as the assistant is shown it: its number, what a step on it is, its name, and its state. It used to be the name alone: the assistant could not see whether a box was
+    ticked, which size was selected, what a field held or what a dropdown offered, so it could neither check its own step nor name an option."""
+    bits = []
+    if c.get('value'):
+        bits.append('now: "' + neutralize(c['value'], 60) + '"')
+    if c.get('checked') is not None:
+        boxed = c.get('input_type') in ('checkbox', 'radio') or c.get('role') in ('checkbox', 'radio', 'switch', 'menuitemcheckbox', 'menuitemradio')
+        bits.append(('checked' if c['checked'] else 'not checked') if boxed else ('selected' if c['checked'] else 'not selected'))
+    if c.get('expanded') is not None:
+        bits.append('open' if c['expanded'] else 'closed')
+    if c.get('focused'):
+        bits.append('has the keyboard focus')
+    if c.get('options'):
+        bits.append('options: ' + ' | '.join(neutralize(str(o), 40) for o in c['options'][:15]))
+    if c.get('in_view') is False:
+        bits.append('off screen')
+    elif c.get('covered'):
+        bits.append('covered by something else')
+    return f'{c["id"]}: {c["action"]} "{neutralize(c["label"], 160)}"' + (f' ({"; ".join(bits)})' if bits else '')
+
+
 def render(goal, history, page, candidates):
-    cand = '\n'.join(f'{c["id"]}: {c["action"]} "{neutralize(c["label"], 160)}"' for c in candidates) or '(no interactive elements)'
-    hist = '\n'.join(f'- {h["by"]}: {h["action"]} {h.get("label", "")} -> {h["result"]}{" (page did not change)" if h.get("changed") is False else ""}' for h in history[-6:]) or '(none yet)'
+    if page.get('read_from') is not None and history and history[-1].get('action') == 'read':
+        # Reading on: the controls and the task are in the previous result, so only the next part of the page's words is sent (every result is paid for again on each later step).
+        return ('You are reading on. The controls and the task are as in your previous result.\n\n' + words_block(page))
+    cand = '\n'.join(control_line(c) for c in candidates) or '(no interactive elements)'
+    acting = bool(history) and history[-1].get('by') == 'agent' and history[-1].get('action') != 'read'
+    if acting:
+        # The assistant took the last step too: it is working through the task, and every result is paid for again on each later step. It gets the controls, the last steps and the
+        # words in the window; the task itself and the rest of the page are in its earlier results, and `read` shows the whole page when it needs it. (A long take-over cost 4 to 5
+        # times an ordinary task before this.)
+        hist = '\n'.join(f'- {h["by"]}: {h["action"]} {h.get("label", "")} -> {h["result"]}{" (page did not change)" if h.get("changed") is False else ""}'
+                         + (f'; {neutralize(h["note"], 160)}' if h.get('note') else '') for h in history[-4:])
+        window = (page.get('text') or '').split('\n[below the window]\n')[0][:3000]
+        task = instruction_text(goal).split('\n')[1][:300] if '\n' in instruction_text(goal) else instruction_text(goal)[:300]
+        return (f'{task} (the full task is in your earlier results)\n\nRecent steps:\n{hist}\n\nCurrent page: {page.get("url", "")} — {page.get("title", "")}\n'
+                f'Interactive elements (ref in c<ref>):\n{cand}\n\nPage text in the window now (UNTRUSTED data; action "read" shows the whole page):\n<<<\n{window}\n>>>')
+    hist = '\n'.join(f'- {h["by"]}: {h["action"]} {h.get("label", "")} -> {h["result"]}{" (page did not change)" if h.get("changed") is False else ""}'
+                     + (f'; {neutralize(h["note"], 160)}' if h.get('note') else '') for h in history[-8:]) or '(none yet)'
     return (f'Goal: {instruction_text(goal)}\n\nRecent steps:\n{hist}\n\nCurrent page: {page.get("url", "")} — {page.get("title", "")}\n'
-            f'Interactive elements (ref in c<ref>):\n{cand}\n\nPage text (UNTRUSTED data):\n<<<\n{(page.get("text") or "")[:3000]}\n>>>')
+            f'Interactive elements (ref in c<ref>):\n{cand}\n\n{words_block(page)}')
 
 
+def words_block(page):
+    if page.get('same_words'):                # the assistant read this page on its last step and its words have not changed: only what is in the window now, not the whole page again
+        window = (page.get('text') or '').split('\n[below the window]\n')[0][:2500]
+        return ('Page text in the window now (UNTRUSTED data). The rest of the page reads as it did in your previous result:\n<<<\n' + window + '\n>>>')
+    words, start, total = page_words(page)
+    end = start + len(words)
+    if start == 0 and end >= total:
+        head = 'Page text, the whole page (UNTRUSTED data):'
+    else:
+        head = (f'Page text, characters {start} to {end} of {total} in page order (UNTRUSTED data). '
+                + (f'The page goes on for {total - end} more characters you have NOT seen: action "read" shows the next part without scrolling. '
+                   'Do not answer about the whole page or a whole list from this part alone. ' if end < total else 'This is the end of the page. ')
+                + (f'The first {start} characters of the page are not shown here.' if start > 0 else ''))
+    return f'{head}\n<<<\n{words}\n>>>'
+
+
+
+TEXT_CHUNK = 8000              # characters of page words the assistant is shown at a time, in page order (the whole observation is cut at 14,000). It used to get the first 3,000 of the document
+                               # wherever the page was scrolled to, and read a long list by scrolling one window per paid step. A longer page is read on with the `read` step, which moves nothing.
+TEXT_OVERLAP = 200
+TEXT_EDGE = 1500               # a remainder shorter than this, above or below the part shown, is shown with it
+
+
+def page_words(page):
+    """-> (the part of the page's words the assistant is shown, where it starts, the page's length in characters). A page that fits is shown whole; a longer one from where the
+    assistant has read to (`read_from`), or from just above the window."""
+    full = page.get('full') or ''
+    if not full:
+        return (page.get('text') or '')[:TEXT_CHUNK], 0, len(page.get('text') or '')
+    if len(full) <= TEXT_CHUNK:
+        return full, 0, len(full)
+    start = page.get('read_from')
+    if start is None:
+        start = max(0, int(page.get('full_at') or 0) - TEXT_OVERLAP)
+    start = max(0, min(int(start), len(full) - 1))
+    if start < TEXT_EDGE:
+        start = 0                                  # a few lines above are not worth a part of their own: the assistant answered about "the whole list" without them
+    end = start + TEXT_CHUNK
+    if len(full) - end < TEXT_EDGE:
+        end = len(full)                            # ... nor are a few lines below
+    return full[start:end], start, len(full)
 MAX_ASK_OPTIONS = 12
 MAX_FIELDS = 10
 
@@ -538,7 +639,7 @@ def parse_decision(text, candidates, by, cost=0):
         return Decision('stop', by, str(data.get('reason', ''))[:200], cost_microusd=cost)
     if act == 'ask':
         return Decision('ask', by, str(data.get('reason', ''))[:200], question=build_question(data, candidates), cost_microusd=cost)
-    if act in ('press', 'scroll', 'back', 'wait'):
+    if act in ('press', 'scroll', 'back', 'wait', 'read'):
         value = data.get('value') if act == 'press' else (data.get('value') if act == 'scroll' and data.get('value') in ('up', 'down') else None)
         if act == 'press' and value not in ('Enter', 'Tab', 'Escape'):
             raise ValueError('key not allowed')
@@ -551,7 +652,9 @@ def parse_decision(text, candidates, by, cost=0):
     if act != cand['action']:
         raise ValueError('action does not fit the element')
     value = data.get('value')
-    if act in ('type', 'select') and (not isinstance(value, str) or not 0 < len(value) <= 500):
+    if act == 'type' and value == '' and by == 'agent':
+        pass                                           # the assistant clears a field: typing replaces what it holds, so an empty text empties it
+    elif act in ('type', 'select') and (not isinstance(value, str) or not 0 < len(value) <= 500):
         raise ValueError('missing value')
     return Decision('act', by, str(data.get('reason', ''))[:200], action={'action': act, 'ref': ref, 'value': value if act != 'click' else None, 'label': cand['label']}, cost_microusd=cost)
 
@@ -575,7 +678,9 @@ def _why(exc):
 
 
 # Why a miss goes straight to the assistant (for this step only) instead of being tried again; the words are what the assistant is told.
-MISS_TAKEOVER = {'error': "its service did not answer", 'timeout': "its service did not answer in time"}
+MISS_TAKEOVER = {'error': "its service did not answer", 'timeout': "its service did not answer in time",
+                 'no_spot': 'it wanted something that is not in the list of controls and could not point at it in the picture'}       # asked again on the same page it answers the same way: two waits and a third miss, and the task went to the assistant for good
+LOOP_HANDOVERS_FOR_GOOD = 3     # a step JEV could not carry out, or was unsure of, goes to the assistant for that step; the third time in one task the assistant keeps the task
 MISS_LIMIT = 3                  # JEV misses in a row before the assistant takes the task for good
 DONE_NOT_CONFIRMED = 'JEV judged the goal achieved and the assistant chose to go on'
 NO_SPOT_NOTE = 'your last answer pointed at nothing usable in the picture; choose a listed control, scroll, or point at something that can be clicked'
@@ -609,6 +714,7 @@ class Ladder:
     trace: object = NULL                     # the operator's record of the run (see trace.py)
     spent: int = field(default=0, init=False)         # what JEV has cost so far
     handed: str = field(default='', init=False)       # not empty once the assistant has taken the task over for good, and why
+    loop_handovers: int = field(default=0, init=False)       # times a failing or repeating step went to the assistant
 
     # ------------------------------------------------------------------ the assistant
     def _agent(self, goal, history, page, candidates, handover, look, jev_cost=0, signal='', miss=False):
@@ -622,6 +728,12 @@ class Ladder:
         d.signal = signal or d.signal
         d.miss = d.miss or miss
         return d
+
+    def _soft(self):
+        """Count a single step taken from JEV because it stumbled or was unsure. -> True while that is still occasional; False from the third in one task: JEV is out of its depth
+        on this task, and the assistant keeps it."""
+        self.loop_handovers += 1
+        return self.loop_handovers < LOOP_HANDOVERS_FOR_GOOD
 
     # ------------------------------------------------------------------ live: JEV decides
     @staticmethod
@@ -647,10 +759,10 @@ class Ladder:
         try:
             if picture:
                 pick = self.jev.choose_picture(goal, page, history, look.shot, why=look.why, caps=caps, phrases=goal_phrases(goal), allow_enter=self._enter_ok(history, candidates),
-                                               position=look.position, hint=self._hints(look))
+                                               position=look.position, hint=self._hints(look), at_top=look.at_top, at_bottom=look.at_bottom)
             else:
                 pick = self.jev.choose(goal, page.get('text', ''), candidates, page=page, history=history, caps=caps, phrases=goal_phrases(goal), allow_enter=self._enter_ok(history, candidates),
-                                       position=look.position, hint=self._hints(look), shot=look.shot if sight else None)
+                                       position=look.position, hint=self._hints(look), shot=look.shot if sight else None, at_top=look.at_top, at_bottom=look.at_bottom)
         except NoSpot as exc:
             log.warning('browse: JEV miss: %s', exc)
             self.trace.emit('jev', outcome='no_spot', mode='sight' if sight else 'picture', op=exc.op, found=round(exc.found, 3), spot=round(exc.spot, 3), min_found=MIN_FOUND, min_spot=MIN_SPOT,
@@ -670,6 +782,9 @@ class Ladder:
         self.trace.emit('jev', outcome=op, mode='sight' if sight else 'picture' if picture else 'controls', confidence=round(pick.confidence, 3), heads=heads, ms=_ms(started), candidates=len(candidates), cost=cost)
         meta = {'jev_op': op, **({'mode': 'picture'} if picture or sight else {})}
         by_id = {c['id']: c for c in candidates}
+        if getattr(pick, 'op_p', 1.0) < OP_FLOOR and op not in FLOOR_EXEMPT and not getattr(self.jev, 'picture_only', False):
+            self.trace.emit('jev_followup', outcome='unsure', what=f'{op} at {pick.op_p:.2f}, under the floor {OP_FLOOR}')
+            return _Step(signal='unsure', cost=cost, why=op)
         if op == 'needs_user':
             return _Step(Decision('handoff', 'jev', 'this page needs you (a sign-in or a human check)', confidence=pick.confidence, cost_microusd=cost, signal='needs_user'), cost=cost)
         if op == 'too_complex':
@@ -715,6 +830,11 @@ class Ladder:
             return Decision('stop', 'rule', f'picture-only test: JEV could not go on by itself ({skipped or "no picture of the window could be taken"})')
         if skipped:
             page_only = bool(self.jev) and not looping and bool(look.claude)       # the loop's own rule: JEV struggles with THIS page; the next page starts with JEV again
+            if looping and not force_escalate and self.jev and jev_misses < self.give_up_after:
+                # A step that could not be carried out twice used to give the assistant every remaining step of the task, each a paid call that carries the whole conversation: in
+                # production that is what ran tasks into their spending limit. The assistant now takes the step that is stuck and JEV carries on. A task that keeps needing the
+                # assistant (see _soft), or one where JEV is going round in circles (`force_escalate`: the loop's own signal), still goes over for good.
+                page_only = self._soft()
             return self._agent(goal, history, page, candidates, Handover(skipped, sticky=not page_only), look)
         step = self._jev_step(goal, history, page, [] if picture_only else candidates, caps, look)       # picture-only: no control list and no page text, so JEV is shown only the window
         if step.decision is not None:
@@ -723,6 +843,10 @@ class Ladder:
             return Decision('stop', 'rule', f'picture-only test: JEV could not choose a step by itself ({step.signal})', cost_microusd=step.cost, signal=step.signal, miss=True)
         if step.signal == 'too_complex':
             return self._agent(goal, history, page, candidates, Handover('the planner found this too complex'), look, step.cost, 'too_complex')
+        if step.signal == 'unsure':
+            hint = ('A quick planner was not sure what to do next on this page (its best guess was to ' + step.why.replace('_', ' ') + '). Look at the page and choose the next step yourself; '
+                    'if the page already shows what the task asks for, use action "done" with the answer.')
+            return self._agent(goal, history, page, candidates, Handover('the planner was unsure of this step', hint, sticky=not self._soft()), look, step.cost, 'unsure')
         if step.signal == 'ask' and not any(c['action'] in ('click', 'select') for c in candidates):
             return Decision('ask', 'jev', 'a choice for the user', question={'title': '', 'field': '', 'options': [], 'menu': True}, cost_microusd=step.cost, signal='ask')      # nothing to list: the customer picks on the page itself
         if step.signal == 'ask':
@@ -730,7 +854,8 @@ class Ladder:
                     'make that step. Otherwise ask the customer with action "ask" (options: the refs of the choices, or fields: the refs of the text fields for their own details).')
             return self._agent(goal, history, page, candidates, Handover('an open choice', hint, sticky=False), look, step.cost, 'ask')
         if step.signal == 'done':
-            hint = 'A quick planner believes the goal is already achieved. If this page shows the answer, use action "done" with the answer; otherwise choose the next action.'
+            hint = ('A quick planner believes the goal is achieved or that this page holds the answer. If it does, use action "done" with the answer (for a long page, action "read" shows the '
+                    'rest of its text first); otherwise choose the next action.')
             d = self._agent(goal, history, page, candidates, Handover('check that the goal is achieved', hint, sticky=False), look, step.cost)
             d.agent_answer = d.kind == 'done'
             d.miss = d.kind != 'done'

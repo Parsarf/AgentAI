@@ -10,16 +10,20 @@ from . import candidates as cand
 from . import modes
 from agentai_platform import privacy
 from .untrusted import neutralize
-from .ladder import RUNNER_V2, RUNNER_V3, Decision, Ladder, Look, Refused
+from .ladder import RUNNER_V2, RUNNER_V3, TEXT_OVERLAP, Decision, Ladder, Look, Refused, page_words
 from .trace import NULL
 
 CLICKABLE_TAGS = frozenset({'a', 'button', 'input', 'select', 'textarea', 'summary', 'label'})      # what a probe names when the point is on a real control
 LOGIN_REASON = 'this page needs you to sign in; I never type passwords'
 WALL_REASON = 'the site is asking to verify you are human, which I cannot pass for you'
+REFUSED_REASON = "the site refused to show its pages to Lumina's browser (it answered with an access-denied or error page)"
 # What the customer is told while the run waits for them (the run stays alive, and carries on when they are done).
 WAIT_WALL = 'The site is asking you to verify you are human. Do it in the browser below, then press Continue.'
 WAIT_LOGIN = 'This page needs you to sign in. Lumina never types your password. Sign in in the browser below, then press Continue.'
 WAIT_PASSWORD = 'The next step is a password. Lumina never types passwords. Enter it in the browser below, then press Continue.'
+AGENT_STEP_LIMIT = 12   # steps the assistant may take in one browser task. Each is a paid call that carries the whole conversation so far, so a take-over that is not getting anywhere
+                        # costs more with every step: in the lab the tasks that went past this never finished and cost 15 to 40 times an ordinary task; in production they ran into the
+                        # customer's spending limit. Past it the task ends where it is and says so; the assistant can then report, ask the customer, or try another way.
 MAX_HANDOFFS = 5        # times one run waits for the customer; after that the same stop ends the run as it always did
 DEFAULT_DENY = re.compile(r'(^|\.)(paypal|venmo|cash\.app|chase|bankofamerica|wellsfargo|citi|capitalone|robinhood|coinbase|binance|fidelity|schwab|vanguard)\.', re.I)
 
@@ -143,6 +147,10 @@ class BrowseRunner:
             if not self.policy.url_ok(start_url):
                 return Result('blocked', 'that site is not allowed')
             opened = self.s.open(start_url)
+            if not opened.get('ok') and opened.get('error') != 'url_blocked':      # a site that did not answer the first time often does the second (a dropped connection, a slow start)
+                self.trace.emit('open_retry', error=opened.get('error'))
+                self.wait(2)
+                opened = self.s.open(start_url)
             if not opened.get('ok'):
                 return Result('error', f'could not open the page ({opened.get("error")})')
         self.on_event('opened', {'url': opened.get('url'), 'title': opened.get('title')})
@@ -153,6 +161,20 @@ class BrowseRunner:
         refocus = 0          # clicks in a row refused because the text field already had the keyboard; any step that really ran resets it
         unchanged = 0        # acted steps in a row (a wait does not count) after which the page looked exactly the same
         overruled = {}       # address -> times JEV said the goal was achieved there and the assistant, asked to confirm, took a step instead
+        last_after = None    # the page's fingerprint right after the last acted step, to notice a change that arrived a moment later
+        wait_run = 0         # waits in a row after which the page looked the same
+        doubted = set()      # (address, label) of consequential controls JEV chose and the assistant was asked about first
+        once = ''            # not empty: the assistant, not JEV, decides the next step only, for this reason
+        read_at = {}         # address -> where in the page's words the assistant has read to (its `read` step moves this, never the page)
+        dead_bottom = None   # (address, scroll position, page height) where a scroll down was tried at the bottom and moved nothing: scrolling down is not offered there again
+        agent_read = None    # (address, the page's words) as the assistant last saw them: an unchanged page is not sent to it whole again
+        was_handed = False   # the assistant has taken the task for good (ladder.handed), noticed once
+        agent_steps = 0      # steps the assistant has taken in this task (acted steps and reads)
+        approved = set()     # (address, label) of consequential controls the customer said yes to in this task
+        approvals = 0        # times the customer was asked for such a yes
+        refusals = 0         # times the site answered with a refusal page (403, 429): once is tried again, twice ends the task with that as the reason
+        load_fails = 0       # times the browser showed its own error page instead of the site (a dropped connection, a name that did not resolve)
+        blank_waits = 0      # times JEV asked for the customer on a page with nothing on it yet
         hold = None          # {'reason', 'url'} while the assistant, not JEV, decides the steps on this page; it ends when a Claude step moves the page or the page changes address
         picture_only = bool(getattr(self.ladder.jev, 'picture_only', False))      # the owner's navigation test (picture_only_brain.py): JEV is shown the window only, and no one else decides a step
         for step in range(1, self.max_steps + 1):
@@ -166,8 +188,16 @@ class BrowseRunner:
             if self.clock() - started > self.max_seconds:
                 return self._end(res, 'deadline', 'time limit reached', history)
             snap = self.s.snapshot()
+            if not snap.get('ok'):                  # one unreadable moment (a page mid-navigation, a script error in it) is not the end of the task: look once more
+                self.trace.emit('snapshot_retry', error=snap.get('error'))
+                self.wait(2)
+                snap = self.s.snapshot()
             if not snap.get('ok'):
                 return self._end(res, 'error', 'could not read the page', history)
+            if snap.get('restarted'):               # the browser died and was started again on the same address: sign-ins, carts and anything typed are gone
+                self.on_stat('browser_restarts')
+                history.append({'step': step, 'by': 'rule', 'action': 'reopen', 'label': '', 'result': 'ok', 'changed': None,
+                                'note': 'the browser stopped working and was started again at the same address; anything typed, chosen, signed in to or put in a cart before is gone, so check before going on'})
             if snap.get('reopened'):                # this task's tab was closed to make room for another of the customer's tasks, and has been opened again where it was
                 self.trace.emit('tab_reopened')
                 history.append({'step': step, 'by': 'rule', 'action': 'reopen', 'label': '', 'result': 'ok', 'changed': None,
@@ -181,8 +211,28 @@ class BrowseRunner:
                 history.append(entry)
                 self.on_event('step', {**entry, 'url': start_url})
                 continue
+            if url.startswith('chrome-error:'):          # the browser's own error page: the site did not answer. That is not "a site that is not allowed": try the address again
+                load_fails += 1
+                self.trace.emit('load_failed', n=load_fails)
+                if load_fails > 2:
+                    return self._end(res, 'error', 'the site stopped answering, so the page could not be loaded', history, getattr(self.s, 'last_url', '') or start_url)
+                self.wait(2)
+                again = self.s.open(next((h['url'] for h in reversed(history) if str(h.get('url') or '').startswith('http')), None) or start_url)
+                entry = {'step': step, 'by': 'rule', 'action': 'reload', 'label': '', 'result': 'ok' if again.get('ok') else 'failed', 'changed': None,
+                         'note': 'the site did not answer and the page was loaded again; check what is on it before going on'}
+                history.append(entry)
+                continue
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
+            if cand.page_is_refusal(snap.get('title', ''), snap.get('text', ''), snap.get('http_status')):
+                refusals += 1
+                self.trace.emit('site_refused', n=refusals, status=snap.get('http_status'))
+                if refusals > 1:
+                    return self._end(res, 'blocked', REFUSED_REASON, history, url)
+                self.wait(3)                               # a site that is briefly over its limit answers the second time
+                self.s.open(url)
+                history.append({'step': step, 'by': 'rule', 'action': 'reload', 'label': '', 'result': 'ok', 'changed': None, 'note': 'the site refused the page and it was asked for again'})
+                continue
             walls = self.policy.on('denied_sites')        # the human-check and sign-in stops belong to the `denied_sites` switch
             for _ in range(3):                  # some verification pages clear by themselves within seconds
                 if not walls or not cand.page_is_bot_check(snap.get('title', ''), snap.get('text', '')):
@@ -203,14 +253,24 @@ class BrowseRunner:
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
             fp_before = snap.get('page_fp')
+            # A step judged "nothing changed" straight after it ran, on a page that then did change (a site swapping its content in, a slow menu): say so, or the decider repeats a step that worked.
+            if history and last_after and fp_before and fp_before != last_after and history[-1].get('changed') is False and history[-1]['action'] in ('click', 'press', 'select', 'type', 'wait'):
+                history[-1]['changed'] = True
+                unchanged = 0
+                wait_run = 0
+                self.trace.emit('late_change', action=history[-1]['action'])
             candidates = cand.build(snap.get('snapshot', ''), elements=snap.get('elements'))
             focus_known = 'focus' in snap                                   # an engine that says what has the keyboard (None = nothing has it)
             focus = snap.get('focus') if isinstance(snap.get('focus'), dict) else None
             everything = cand.with_focus(cand.build(snap.get('snapshot', ''), limit=200, elements=snap.get('elements')), focus)        # every listed control: what a chosen number is looked up in
             in_window = cand.reachable(everything)                          # what JEV is offered: the controls a person could click right now (None: the engine does not say, JEV gets `candidates`)
             self.trace.emit('snapshot', where=_where(url), candidates=len(candidates), text_chars=len(snap.get('text') or ''), page_fp=fp_before, v2=snap.get('elements') is not None)
-            page = {'url': url, 'title': self._neutral(snap.get('title', ''), 300), 'text': self._neutral(snap.get('text', ''))}
-            if self.policy.read_only and self.policy.on('payment_stop') and cand.page_is_payment(url, snap.get('snapshot', ''), page['text']):
+            page = {'url': url, 'title': self._neutral(snap.get('title', ''), 300), 'text': self._neutral(snap.get('text', '')),
+                    'full': self._neutral(snap.get('full') or ''), 'full_at': snap.get('full_at') or 0, 'read_from': read_at.get(url)}
+            # The payment rule reads the words in the window. The page's words are now twice as long and go on below the window: a footer's "credit card, debit card" made a shop's
+            # search page a payment step. A real payment page is still caught by its address and by its card fields, wherever on the page they are.
+            pay_text = page['text'].split('\n[below the window]\n')[0].split('\n[above the window]\n')[0]
+            if self.policy.read_only and self.policy.on('payment_stop') and cand.page_is_payment(url, snap.get('snapshot', ''), pay_text):
                 self.trace.emit('floor', rule='payment page')
                 outcome, waited = self._offer_fill('card', url, snap, step, history)
                 started += waited
@@ -251,7 +311,17 @@ class BrowseRunner:
             mode, mode_why = modes.choose_mode(snap, candidates, history)
             pos_words, _bottom = modes.position(snap)
             look = Look(position=pos_words, hint=modes.hint(snap, history), why=mode_why,
-                        claude=hold['reason'] if hold else '', jev_candidates=in_window, focus=focus if focus_known else None)
+                        claude=hold['reason'] if hold else once, jev_candidates=in_window, focus=focus if focus_known else None)
+            once = ''
+            if snap.get('height') and snap.get('window'):
+                # A scroll that cannot move anything is not offered: up from the very top, and down once a scroll down has just been tried at the bottom and moved nothing.
+                # A panel inside the page (a cart drawer, a long menu) scrolls without the page moving, so one that has moved keeps both on offer.
+                last = history[-1] if history else {}
+                look.at_top = (snap.get('scroll') or 0) <= 4 and panel_moves == 0
+                here = (url, snap.get('scroll') or 0, snap.get('height'))
+                if _bottom and last.get('action') == 'scroll' and last.get('move') == 'down' and last.get('changed') is False:
+                    dead_bottom = here
+                look.at_bottom = _bottom and dead_bottom == here
             if focus_known and not focus:
                 look.focus = {}                                         # known: nothing has the keyboard
             visible, covered = modes.covered_share(snap)
@@ -269,12 +339,23 @@ class BrowseRunner:
             now_mode = 'picture' if look.shot is not None else 'controls'            # the live label: JEV is looking at the picture (with or without the list)
             if notice or (now_mode == 'picture' and not look.claude and self._now != ('jev', 'picture')):     # a change worth a little notice, told before the step is decided
                 self._publish('claude' if look.claude else 'jev', now_mode, notice or 'picture')
+            page['same_words'] = bool(page['full']) and read_at.get(url) is None and agent_read == (url, hash(page['full']))
             try:
                 d: Decision = self.ladder.decide(goal, history, page, candidates, force_escalate=forced, failures=failures, jev_misses=jev_misses,
                                                  caps=(RUNNER_V3 if focus_known else RUNNER_V2) if snap.get('elements') is not None else frozenset(), look=look)
             except Refused as exc:
                 return self._end(res, 'budget', f'stopped: the spending limit was reached ({exc})', history, url)
             res.cost_microusd += d.cost_microusd
+            if self.ladder.handed and not was_handed:
+                was_handed = True                      # the assistant has just been given the task for good: the repeats that brought it here were JEV's, so it starts with a clean count
+                seen.clear()                           # (the rule "the same step a fourth time ends the task" used to fire on the assistant's second step, before it had tried anything)
+            if d.by == 'agent':
+                agent_read = (url, hash(page['full']))
+                if d.kind == 'act':
+                    agent_steps += 1
+                    if agent_steps > AGENT_STEP_LIMIT and not picture_only:
+                        self.trace.emit('agent_step_limit', steps=agent_steps)
+                        return self._end(res, 'stuck', f'the assistant took {AGENT_STEP_LIMIT} steps in the browser without finishing; the page is left as it is', history, url)
             if d.kind == 'act':                                                         # who really decided this step; a final answer or a stop is not a take-over
                 by_now = 'claude' if d.by == 'agent' else 'jev'
                 self._publish(by_now, now_mode, 'help' if by_now == 'claude' and d.miss and not look.claude else '')       # 'help': JEV was asked, missed, and Claude took just this step
@@ -300,6 +381,11 @@ class BrowseRunner:
             if d.kind == 'done':
                 res.answer = d.answer
                 return self._end(res, 'done', d.reason, history, url)
+            if d.kind == 'handoff' and d.by == 'jev' and blank_waits < 2 and len((snap.get('text') or '').strip()) < 40 and not candidates:
+                blank_waits += 1                       # nothing is on the page yet (it is still loading): that is not a sign-in or a human check, so look again before calling the customer
+                self.trace.emit('blank_page_wait', n=blank_waits)
+                self.wait(1.5)
+                continue
             if d.kind == 'handoff':
                 outcome, waited = self._wait_for_user(d.reason or WAIT_LOGIN, None, step, history, url)       # JEV added a hand-off; it can never remove one. They press Continue when they are done
                 started += waited
@@ -337,6 +423,18 @@ class BrowseRunner:
                 self.trace.emit('ask', outcome=note, field=d.question.get('field'), options=len(d.question['options']))
                 d = Decision('act', d.by, 'the user chose', action=dict(option['do']), cost_microusd=d.cost_microusd, meta={'ask': note})
             a = d.action
+            if a['action'] == 'read':                 # the assistant reads on in a long page: nothing in the browser moves, the next look simply shows the next part of the page's words
+                words, at, total = page_words(page)
+                more = at + len(words) < total
+                if more:
+                    read_at[url] = at + len(words) - TEXT_OVERLAP
+                entry = {'step': step, 'by': d.by, 'action': 'read', 'label': '', 'result': 'ok', 'changed': None, 'url': url,
+                         'note': 'the next part of the page text is shown' if more else 'that was the end of the page text; there is nothing more to read on this page'}
+                history.append(entry)
+                self.on_stat('agent_read')
+                self.on_event('step', {**{k: v for k, v in entry.items() if k != 'note'}})
+                once = 'you are reading this page'
+                continue
             chosen = next((c for c in everything if c['ref'] == a['ref']), None) if a['ref'] is not None else None
             hit = None
             if a['action'] in ('clickat', 'typeat'):      # chosen from a picture: name what is really under that point, then apply the same rules as to any control
@@ -352,6 +450,12 @@ class BrowseRunner:
                         self.on_stat('jev_snapped')
                         a = d.action = {'action': 'click', 'ref': near['ref'], 'value': None, 'label': near['label']}
                         chosen = near
+                if a['action'] == 'typeat' and hit is not None and not hit.get('editable') and hit.get('tag') in CLICKABLE_TAGS and not chosen['sensitive'] and d.by == 'jev':
+                    # JEV wants to type into something that is a button, not a field: a search box that opens when its button is clicked. Click it; the field it opens is listed on the next look.
+                    self.trace.emit('type_became_click', tag=hit.get('tag'))
+                    a = d.action = {'action': 'clickat', 'ref': None, 'value': None, 'label': a['label'], 'x': a['x'], 'y': a['y'],
+                                    'note': 'this is a button, not a text field, so it was clicked instead of typed into; if a text field opened, type into it now'}
+                    d.text_src = ''
                 if a['action'] == 'typeat' and hit is not None and not hit.get('editable'):
                     entry = {'step': step, 'by': d.by, 'action': 'type', 'label': a['label'], 'result': 'not_a_field', 'changed': None}      # nothing was typed: what JEV pointed at takes no text
                     history.append(entry)
@@ -361,13 +465,46 @@ class BrowseRunner:
                     if failures >= 4:
                         return self._end(res, 'stuck', 'too many failed steps', history, url)
                     continue
-            if self.policy.gate(url, snap.get('snapshot', ''), page['text'], chosen) == 'handoff':
+            if (url, a.get('label')) in approved and not cand.page_is_payment(url, snap.get('snapshot', ''), pay_text):
+                pass                                    # the customer already said yes to this very button on this page
+            elif self.policy.gate(url, snap.get('snapshot', ''), pay_text, chosen) == 'handoff':
                 self.trace.emit('floor', rule='sensitive control', label=a['label'])
                 if chosen and (chosen.get('input_type') == 'password' or chosen.get('password')):       # a password is the customer's: they enter it, press Continue, and the run goes on
                     outcome, waited = self._wait_for_user(WAIT_PASSWORD, None, step, history, url)
                     started += waited
                     if outcome != 'timeout':
                         continue
+                secret = bool(chosen and (chosen.get('input_type') == 'password' or chosen.get('password')))
+                if d.by == 'jev' and a['ref'] is not None and not secret and self.ladder.agent is not None and not picture_only and (url, a['label']) not in doubted:
+                    # JEV picks fast and sometimes wrongly ("Remove" in a cart the task had just filled). Its pick alone used to end the whole task in a hand-off. The assistant, which knows
+                    # the task, is asked first; only a consequential control IT chooses goes to the customer. Nothing is clicked here either way.
+                    doubted.add((url, a['label']))
+                    entry = {'step': step, 'by': 'jev', 'action': {'clickat': 'click', 'typeat': 'type'}.get(a['action'], a['action']), 'label': a['label'], 'result': 'needs_approval', 'changed': None,
+                             'note': 'not done: this control changes something for the customer (it pays, sends, removes or confirms), so it is never pressed without them'}
+                    history.append(entry)
+                    once = f'JEV chose "{a["label"][:60]}", which only the customer may press; decide whether the task is already done, or what else moves it on'
+                    self.trace.emit('second_opinion', label=a['label'])
+                    self.on_stat('sensitive_second_opinion')
+                    continue
+                # A button that removes, sends, submits or confirms (not one that pays or orders) used to end the whole task at a hand-off: "Remove" on a wrong item in the cart, or a
+                # "Remove" chip in a search form, and the customer had to finish alone or start again. The customer is asked about that one button; with their yes it is pressed and
+                # the task goes on. No answer, a no, or anything that pays: the hand-off, as before.
+                if (self.ask_gate is not None and a['ref'] is not None and not secret and a['label'] and not cand.PAYMENT.search(a['label']) and approvals < 3
+                        and not cand.page_is_payment(url, snap.get('snapshot', ''), pay_text)):
+                    approvals += 1
+                    options = [{'id': 'o1', 'label': 'Yes, press it', 'do': {'action': 'approve'}}, {'id': 'o2', 'label': 'No, I will do it myself', 'do': {'action': 'self'}}]
+                    self.trace.emit('ask', outcome='approval_asked', label=a['label'])
+                    self.on_stat('approval_asked')
+                    answer, waited = self.ask_gate({'title': f'Lumina wants to press "{self._neutral(a["label"], 60)}" on {_host(url)}. Allow it?', 'field': '', 'options': options, 'menu': False, 'use': 'approval'}, step)
+                    started += waited
+                    if (answer or {}).get('option') == 'o1':
+                        approved.add((url, a['label']))
+                        self.on_stat('approval_given')
+                        history.append({'step': step, 'by': 'rule', 'action': 'ask', 'label': a['label'], 'result': 'ok', 'changed': None, 'note': 'the customer allowed this button to be pressed'})
+                        once = 'the customer allowed the button you chose; press it now if it is still the right step'
+                        continue
+                    if self.cancelled():
+                        return self._end(res, 'cancelled', 'stopped by you', history, url)
                 res.pending_action = {'action': a['action'], 'label': a['label'], 'url': url}
                 return self._end(res, 'handoff', f'next step is "{a["label"]}", which needs you', history, url)
             has_keys = bool(focus and focus.get('editable'))
@@ -388,20 +525,20 @@ class BrowseRunner:
             # A scroll or key press is the same step only if it is the same move from the same place on the page (the fingerprint includes the scroll position).
             spot = (round(a['x'] / 40), round(a['y'] / 40)) if a['action'] in ('clickat', 'typeat') else None          # the same place, give or take a few pixels
             key = (url, a['action'], a['ref'], a.get('label'), a.get('value') if a['action'] in ('scroll', 'press') else None, (fp_before, panel_moves) if a['action'] == 'scroll' else None, spot)
-            seen[key] = seen.get(key, 0) + 1
+            seen[key] = seen.get(key, 0) + (0 if a['action'] == 'wait' else 1)      # waiting again for a page that is still loading is not a loop; waits have their own count below
             if seen[key] > 2:
                 if seen[key] > 3:
                     return self._end(res, 'stuck', 'repeating the same step', history, url)
                 forced = True
                 self.trace.emit('loop_signal', rule='same step a third time', action=a['action'], label=a.get('label'))
             out = self.s.act(a['action'], a['ref'], a.get('value'), a.get('label'), **({'x': a['x'], 'y': a['y']} if a['action'] in ('clickat', 'typeat') else {}))
-            after = out.get('page_fp')
+            after = last_after = out.get('page_fp')
             changed = None if not (fp_before and after) else after != fp_before         # None = unknown (an older runner, or the page was mid-change)
             if a['action'] == 'scroll' and out.get('moved') is True and changed is False:
                 panel_moves += 1
                 changed = True                    # a panel or popup scrolled inside the page: the page as a whole did not move, but what is shown did
             shown = {'clickat': 'click', 'typeat': 'type'}.get(a['action'], a['action'])      # the history and the customer's step list say what was done, not how
-            entry = {'step': step, 'by': d.by, 'action': shown, 'label': a['label'], 'result': 'ok' if out.get('ok') else out.get('error', 'failed'), 'changed': changed,
+            entry = {'step': step, 'by': d.by, 'action': shown, 'label': a['label'], 'result': 'ok' if out.get('ok') else out.get('error', 'failed'), 'changed': changed, 'url': out.get('url', url),
                      **({'move': a.get('value')} if a['action'] == 'scroll' else {})}
             if a.get('note'):
                 entry['note'] = a['note']         # why nothing was done on this step (JEV's own answer could not be used), so it is not asked the same way again
@@ -423,6 +560,14 @@ class BrowseRunner:
             failures = 0
             if d.by == 'jev':
                 jev_misses = 0
+            if a['action'] == 'wait':
+                wait_run = wait_run + 1 if changed is False else 0
+                if wait_run >= 10:
+                    return self._end(res, 'stuck', 'the page did not finish loading', history, url)
+                if wait_run in (5, 8):                # a page that has not changed after five waits is probably not loading: the assistant looks
+                    once = f'JEV has waited {wait_run} times and the page has not changed'
+            else:
+                wait_run = 0
             if a['action'] != 'wait':
                 unchanged = unchanged + 1 if changed is False else 0
                 if unchanged >= 5:                    # three of JEV's steps changed nothing (the assistant then takes the page, modes.claude_reason), and neither did the assistant's next two

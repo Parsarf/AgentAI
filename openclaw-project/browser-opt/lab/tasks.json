@@ -1,0 +1,396 @@
+[
+ {
+  "id": "books-travel-cheapest",
+  "kind": "navigate-read",
+  "args": {
+   "task": "Find the cheapest book in the Travel category and report its title and price.",
+   "site": "https://books.toscrape.com/",
+   "steps": [
+    "Open the Travel category from the category list.",
+    "Look at every book's price on the page.",
+    "Report the title and price of the cheapest one."
+   ],
+   "done_when": "The title and price of the cheapest Travel book are reported."
+  },
+  "expect": {
+   "answer": [
+    "Little Dribbling",
+    "23\\.21"
+   ]
+  }
+ },
+ {
+  "id": "books-compare-two",
+  "kind": "navigate-read",
+  "args": {
+   "task": "Compare the prices of the books \"A Light in the Attic\" and \"Tipping the Velvet\" and say which one is cheaper and by how much.",
+   "site": "https://books.toscrape.com/",
+   "done_when": "Both prices are reported and the cheaper book is named."
+  },
+  "expect": {
+   "answer": [
+    "51\\.77",
+    "53\\.74",
+    "Light in the Attic"
+   ]
+  }
+ },
+ {
+  "id": "wiki-search-ada",
+  "kind": "search-read",
+  "args": {
+   "task": "Search Wikipedia for Ada Lovelace and report her date of birth.",
+   "site": "https://en.wikipedia.org/",
+   "search": [
+    "Ada Lovelace"
+   ],
+   "steps": [
+    "Type Ada Lovelace into the search box and submit.",
+    "Open the Ada Lovelace article.",
+    "Report her date of birth."
+   ],
+   "done_when": "Her date of birth is reported from the article."
+  },
+  "expect": {
+   "answer": [
+    "1815"
+   ]
+  }
+ },
+ {
+  "id": "hn-top-story",
+  "kind": "read",
+  "args": {
+   "task": "Report the title of the story ranked number 1 on the front page right now, and how many points it has.",
+   "site": "https://news.ycombinator.com/",
+   "done_when": "The title and points of the first story are reported."
+  },
+  "expect": {
+   "answer": [
+    "point"
+   ]
+  }
+ },
+ {
+  "id": "quotes-page-2",
+  "kind": "navigate-read",
+  "args": {
+   "task": "Go to the second page of quotes and report the author of the first quote on that page.",
+   "site": "https://quotes.toscrape.com/",
+   "steps": [
+    "Scroll to the bottom and click Next.",
+    "Report the author of the first quote on page 2."
+   ],
+   "done_when": "The author of the first quote on page 2 is reported."
+  },
+  "expect": {
+   "answer": [
+    "Marilyn Monroe"
+   ]
+  }
+ },
+ {
+  "id": "dropdown-option-2",
+  "kind": "widget",
+  "args": {
+   "task": "Choose \"Option 2\" in the dropdown list on the page.",
+   "site": "https://the-internet.herokuapp.com/dropdown",
+   "done_when": "The dropdown shows Option 2 as selected."
+  },
+  "expect": {
+   "answer": [
+    "Option 2"
+   ]
+  }
+ },
+ {
+  "id": "checkbox-tick-first",
+  "kind": "widget",
+  "args": {
+   "task": "Tick the first checkbox on the page (checkbox 1) and leave the second one as it is.",
+   "site": "https://the-internet.herokuapp.com/checkboxes",
+   "done_when": "Checkbox 1 is checked."
+  },
+  "expect": {
+   "answer": [
+    "check"
+   ]
+  }
+ },
+ {
+  "id": "dynamic-loading",
+  "kind": "wait",
+  "args": {
+   "task": "Click Start, wait for the loading to finish, and report the text that appears.",
+   "site": "https://the-internet.herokuapp.com/dynamic_loading/2",
+   "done_when": "The text that appears after loading is reported."
+  },
+  "expect": {
+   "answer": [
+    "Hello World"
+   ]
+  }
+ },
+ {
+  "id": "entry-ad-modal",
+  "kind": "popup",
+  "args": {
+   "task": "Close the popup window that appears on the page, then report the main heading of the page underneath.",
+   "site": "https://the-internet.herokuapp.com/entry_ad",
+   "done_when": "The popup is closed and the page heading is reported."
+  },
+  "expect": {
+   "answer": [
+    "Entry Ad"
+   ]
+  }
+ },
+ {
+  "id": "login-wall",
+  "kind": "handoff",
+  "args": {
+   "task": "Open the secure area of this site and report what the page says after signing in.",
+   "site": "https://the-internet.herokuapp.com/login",
+   "done_when": "The secure area page text is reported."
+  },
+  "expect_needs": true
+ },
+ {
+  "id": "laptops-cheapest",
+  "kind": "navigate-read",
+  "args": {
+   "task": "Find the cheapest laptop in the shop and report its name and price.",
+   "site": "https://webscraper.io/test-sites/e-commerce/allinone",
+   "steps": [
+    "Open Computers, then Laptops.",
+    "Look through all the laptops listed.",
+    "Report the name and price of the cheapest one."
+   ],
+   "done_when": "The cheapest laptop's name and price are reported."
+  },
+  "expect": {
+   "answer": [
+    "295\\.99"
+   ]
+  }
+ },
+ {
+  "id": "hockey-form-search",
+  "kind": "search-read",
+  "args": {
+   "task": "Search the hockey teams table for Boston Bruins and report how many wins they had in 1990.",
+   "site": "https://www.scrapethissite.com/pages/forms/",
+   "search": [
+    "Boston Bruins"
+   ],
+   "done_when": "The number of wins for Boston Bruins in 1990 is reported."
+  },
+  "expect": {
+   "answer": [
+    "\\b44\\b"
+   ]
+  }
+ },
+ {
+  "id": "form-fill-pizza",
+  "kind": "form",
+  "args": {
+   "task": "Fill in the pizza order form: customer name Jordan Lee, telephone 555-0142, email jordan.lee@example.com, size Medium, topping Bacon, and delivery instructions \"Leave at the front desk\". Do not submit the order.",
+   "site": "https://httpbin.org/forms/post",
+   "steps": [
+    "Type the customer name.",
+    "Type the telephone number.",
+    "Type the email address.",
+    "Choose Medium.",
+    "Tick Bacon.",
+    "Type the delivery instructions.",
+    "Stop without submitting and report what was filled in."
+   ],
+   "done_when": "Every field is filled in as asked and nothing was submitted."
+  },
+  "expect": {
+   "answer": [
+    "Jordan Lee"
+   ],
+   "url": [
+    "forms/post"
+   ]
+  }
+ },
+ {
+  "id": "github-stars",
+  "kind": "read",
+  "args": {
+   "task": "Report how many stars the repository has and what its latest release is called.",
+   "site": "https://github.com/microsoft/playwright",
+   "done_when": "The star count and the latest release name are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\d+(\\.\\d+)?k|\\d{2},\\d{3}",
+    "v?1\\.\\d+"
+   ]
+  }
+ },
+ {
+  "id": "pypi-requests",
+  "kind": "read",
+  "args": {
+   "task": "Report the latest released version of the requests package and its release date.",
+   "site": "https://pypi.org/project/requests/",
+   "done_when": "The latest version number and its release date are reported."
+  },
+  "expect": {
+   "answer": [
+    "2\\.\\d+\\.\\d+"
+   ]
+  }
+ },
+ {
+  "id": "ddg-search-open",
+  "kind": "search-read",
+  "args": {
+   "task": "Search for \"playwright python documentation\" and open the first result, then report the title of the page that opens.",
+   "site": "https://duckduckgo.com/",
+   "search": [
+    "playwright python documentation"
+   ],
+   "done_when": "The first result is open and its page title is reported."
+  },
+  "expect": {
+   "answer": [
+    "Playwright"
+   ]
+  },
+  "note": "DuckDuckGo shows a human check to this browser, so asking the customer is also a right ending here",
+  "needs_ok": true
+ },
+ {
+  "id": "guardian-headline",
+  "kind": "popup",
+  "args": {
+   "task": "Report the main headline at the top of the front page.",
+   "site": "https://www.theguardian.com/international",
+   "done_when": "The top headline is reported."
+  },
+  "expect": {
+   "answer": [
+    "\\w{4,}"
+   ]
+  }
+ },
+ {
+  "id": "bbc-headline",
+  "kind": "read",
+  "args": {
+   "task": "Report the first headline on the BBC News front page.",
+   "site": "https://www.bbc.com/news",
+   "done_when": "The first headline is reported."
+  },
+  "expect": {
+   "answer": [
+    "\\w{4,}"
+   ]
+  }
+ },
+ {
+  "id": "amazon-search-price",
+  "kind": "search-read",
+  "args": {
+   "task": "Search for a 6 ft USB C cable and report the name and price of the first result.",
+   "site": "https://www.amazon.com/",
+   "search": [
+    "usb c cable 6ft"
+   ],
+   "done_when": "The first search result's name and price are reported."
+  },
+  "expect": {
+   "answer": [
+    "\\$\\s?\\d"
+   ]
+  }
+ },
+ {
+  "id": "mdn-search",
+  "kind": "search-read",
+  "args": {
+   "task": "Find the documentation page for Array.prototype.at() and report what the method returns when the index is out of range.",
+   "site": "https://developer.mozilla.org/en-US/",
+   "search": [
+    "Array.prototype.at"
+   ],
+   "done_when": "What at() returns for an out-of-range index is reported."
+  },
+  "expect": {
+   "answer": [
+    "undefined"
+   ]
+  }
+ },
+ {
+  "id": "arxiv-search",
+  "kind": "search-read",
+  "args": {
+   "task": "Search arXiv for \"retrieval augmented generation survey\" and report the title of the first result.",
+   "site": "https://arxiv.org/",
+   "search": [
+    "retrieval augmented generation survey"
+   ],
+   "done_when": "The first result's title is reported."
+  },
+  "expect": {
+   "answer": [
+    "\\w{4,}"
+   ]
+  }
+ },
+ {
+  "id": "shop-add-to-cart",
+  "kind": "cart",
+  "args": {
+   "task": "Find a pair of joggers that is in stock in size Medium, choose size Medium, add it to the cart and stop with the cart open. Do not check out.",
+   "site": "https://www.youngla.com/",
+   "search": [
+    "joggers"
+   ],
+   "steps": [
+    "Search for joggers.",
+    "Open a pair that is available in Medium (try another if one is sold out).",
+    "Choose size Medium.",
+    "Add it to the cart.",
+    "Stop when the cart shows the item."
+   ],
+   "choices": {
+    "size": "Medium"
+   },
+   "done_when": "The cart shows one pair of joggers in size Medium."
+  },
+  "customer": {
+   "answer": "M"
+  },
+  "expect": {
+   "answer": [
+    "cart|bag"
+   ]
+  }
+ },
+ {
+  "id": "laptops-filter-add",
+  "kind": "cart",
+  "args": {
+   "task": "Open the laptop \"Asus VivoBook X441NA-GA190\", choose the 256 GB hard drive option and report the price shown.",
+   "site": "https://webscraper.io/test-sites/e-commerce/allinone/computers/laptops",
+   "steps": [
+    "Find and open the Asus VivoBook X441NA-GA190.",
+    "Click the 256 option under HDD.",
+    "Report the price shown."
+   ],
+   "done_when": "The price with the 256 GB option selected is reported."
+  },
+  "expect": {
+   "answer": [
+    "\\$\\s?\\d"
+   ]
+  }
+ }
+]

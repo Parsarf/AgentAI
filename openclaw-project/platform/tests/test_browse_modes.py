@@ -232,18 +232,25 @@ class PictureSteps(unittest.TestCase):
                 self.assertEqual(out.status, 'handoff'); self.assertEqual(s.acts, []); self.assertEqual(out.pending_action['label'], label)
 
     def test_typing_where_there_is_no_text_field_is_recorded_and_nothing_is_typed(self):
-        s = PictureSession({'start': COVERED}, hits={(640, 400): hit('Just words')})
+        s = PictureSession({'start': COVERED}, hits={(640, 400): hit('Just words', tag='div')})
         r, *_ = runner(s, [{'operation': 'type', 'type_text': 't0', 'at': (0.5, 0.5)}], ['{"action":"stop","reason":"x"}'], max_steps=3)
         out = r.run('find boxers', 'https://shop.example/')
         self.assertEqual(s.acts, []); self.assertEqual((out.steps[0]['action'], out.steps[0]['result']), ('type', 'not_a_field'))
 
+    def test_typing_at_a_button_clicks_it_instead_so_the_field_it_opens_can_be_typed_into(self):
+        s = PictureSession({'start': COVERED, 'shop': SHOP}, hits={(640, 400): hit('Search')})
+        r, *_ = runner(s, [{'operation': 'type', 'type_text': 't0', 'at': (0.5, 0.5)}, {'operation': 'done'}], ['{"action":"done","answer":"ok"}'], max_steps=2)
+        out = r.run('find boxers', 'https://shop.example/')
+        self.assertEqual(s.acts, [('clickat', None, None, 640, 400)]); self.assertEqual((out.steps[0]['action'], out.steps[0]['result']), ('click', 'ok'))
+        self.assertIn('a button, not a text field', out.steps[0]['note'])
+
     def test_a_weak_spot_is_a_miss_and_claude_takes_that_step(self):
         s = PictureSession({'start': COVERED, 'shop': SHOP}, hits={})
         weak = {'operation': 'click', 'found': 0.1, 'spot': 0.9}
-        r, jev, _ = runner(s, [weak, weak, weak], ['{"action":"scroll"}'], max_steps=3)
+        r, jev, _ = runner(s, [weak, weak, weak], ['{"action":"scroll"}'] * 3, max_steps=3)
         out = r.run('g', 'https://shop.example/')
-        self.assertEqual([h['by'] for h in out.steps], ['rule', 'rule', 'agent']); self.assertEqual(s.acts[-1], ('scroll', None, None, None, None))      # a weak spot is looked at again, twice, and JEV is told why; the third hands over, and with no controls to name the assistant could only scroll
-        self.assertIn('pointed at nothing usable', jev.calls[1][0]['state'])                                                                         # JEV's second look says what went wrong with the first
+        self.assertEqual([h['by'] for h in out.steps], ['agent'] * 3); self.assertEqual(s.acts[-1], ('scroll', None, None, None, None))      # asked again on the same page JEV answers the same way, so the assistant takes that step at once; with no controls to name it could only scroll
+        self.assertIn('could not point at it', r.ladder.agent.hints[0])                                                                    # and is told why the step came to it
 
     def test_when_the_picture_cannot_be_taken_claude_decides_instead(self):
         s = PictureSession({'start': COVERED}); s.view = lambda save=False: {'ok': False, 'error': 'no_picture'}
@@ -288,8 +295,8 @@ class RealRunner(unittest.TestCase):
         self.assertEqual([(h['by'], h['action'], h['label'], h['result']) for h in out.steps], [('jev', 'click', 'Accept', 'ok')])        # the popup's button was found under the point and clicked
         first, second = transport.calls[0][0], transport.calls[1][0]
         (asset,) = first['assets'].values(); self.assertTrue(asset['data_base64'].startswith('/9j/'))                                  # a real JPEG of the real window
+        self.assertIn('Accept', json.dumps(first['questions']['click_target']))                                                        # the popup's button sits in a shadow root: it is listed all the same
         self.assertIn('assets', second); self.assertIn('Paddle Shop', json.dumps(second['questions']['click_target']))                  # the cover is gone: the page lists its controls, and JEV still sees the window
-        self.assertTrue(any(k == 'screenshot' and d.get('seen_by') == 'jev' for k, d in events))
 
 
 class WhoIsDeciding(unittest.TestCase):
@@ -367,7 +374,8 @@ class ClaudeTakesThePage(unittest.TestCase):
         self.assertIn('scroll -> ok, page changed; now 29% of the way down', states[2])                                 # what the scroll did, in words
         self.assertTrue(all('Hint:' not in st for st in states[:3])); self.assertIn('Hint: you have scrolled 3 times in a row', states[3])
         self.assertTrue(any('already at the bottom of the page, nothing more to see below' in st for st in states))
-        self.assertEqual((out.status, out.answer), ('done', 'ok')); self.assertEqual(len(jev.calls), 6)                  # JEV scrolled until it stopped moving; Claude took the page and finished
+        self.assertEqual((out.status, out.answer), ('done', 'ok')); self.assertEqual(len(jev.calls), 8)                  # JEV scrolled until it stopped moving; scrolling down was then no longer offered, and the assistant finished
+        self.assertNotIn('scroll_down', jev.calls[-1][0]['questions']['operation']['criteria'])
 
 
 if __name__ == '__main__':

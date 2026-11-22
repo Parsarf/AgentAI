@@ -86,7 +86,8 @@ def watch_purge(service, stop, every=PURGE_EVERY_SECONDS, sleep=time.sleep):
 # What the owner reads to judge JEV and the hand-over to the assistant: acted steps by who decided them (jev_acted + agent_step = steps taken), how often JEV handed over
 # (jev_too_complex, jev_misses, no_change_loops, claude_page_takeovers), and what the assistant did for JEV (agent_text, agent_answer).
 STAT_KEYS = ('jev_calls', 'ask_answered', 'ask_remembered', 'jev_acted', 'jev_typed_from_goal', 'agent_step', 'agent_text', 'agent_answer', 'jev_needs_user', 'jev_too_complex', 'jev_misses',
-             'jev_ask', 'no_change_loops', 'claude_page_takeovers', 'other_step', 'helper_text')
+             'jev_ask', 'no_change_loops', 'claude_page_takeovers', 'other_step', 'helper_text',
+             'sensitive_second_opinion', 'agent_read', 'browser_restarts', 'approval_asked', 'approval_given')       # JEV's pick of a consequential control went to the assistant first; the assistant read on in a long page; the browser died and was started again
 
 
 class BrowseError(Exception):
@@ -608,7 +609,8 @@ class BrowseService:
             start = self._pick_start(job)
             transport = {'native': self.native_spawn, 'local': self.local_spawn}[job.engine](job.account, job.id, out_dir) if job.engine != 'runner' else self.spawn(job.id, out_dir)
             stage = transport
-            job.session = session = Session(transport, trace=trace)
+            respawn = (lambda: self.spawn(job.id, out_dir)) if job.engine == 'runner' else None      # the host stage can be started again; a cell's browser or the customer's own Chrome is theirs
+            job.session = session = Session(transport, trace=trace, respawn=respawn)
             jev = self.jev_for(job.account) if self.jev_mode != 'off' else None
             trace.emit('ready', start=_where(start), jev=jev is not None, decider=type(jev).__name__ if jev is not None else '')       # JevChooser (standard) | UltrafastChooser (the owner's switch is off)
             ladder = Ladder(admit=self._admit(job), jev=jev, agent=self._agent_gate(job), max_cost=job.max_cost, trace=trace, on_call=lambda: job.stats.__setitem__('jev_calls', job.stats['jev_calls'] + 1))

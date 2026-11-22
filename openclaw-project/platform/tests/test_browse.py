@@ -200,8 +200,16 @@ class Loop(unittest.TestCase):
     def test_jev_cannot_click_a_consequential_control_and_can_add_a_hand_off(self):
         pages = {'start': {'url': 'https://shop.example/x', 'snap': '[1] <a> "Keep browsing"\n[2] <button> "Place order"', 'text': 'Cart'}}
         s = FakeSession(pages)
-        r = BrowseRunner(s, live(scripted_llm([]), ScriptedJev({'operation': 'click', 'click_target': 'c2'})), max_steps=3).run('g', 'https://shop.example/x')
-        self.assertEqual((r.status, r.pending_action['label']), ('handoff', 'Place order')); self.assertEqual([c for c in s.log if c[0] == 'act'], [])
+        # JEV's pick of a consequential control never clicks it and no longer ends the task by itself: the assistant, which knows the task, is asked first.
+        llm = scripted_llm(['{"action":"click","ref":2}'])
+        r = BrowseRunner(s, live(llm, ScriptedJev({'operation': 'click', 'click_target': 'c2'})), max_steps=3).run('g', 'https://shop.example/x')
+        self.assertEqual((r.status, r.pending_action['label']), ('handoff', 'Place order')); self.assertEqual([c for c in s.log if c[0] == 'act'], [])      # the assistant chose it too: it is the customer's
+        self.assertIn('only the customer may press', llm.why[0]); self.assertEqual(r.steps[0]['result'], 'needs_approval')
+        s = FakeSession(pages)                                                                                                    # the assistant says the task is done instead: no hand-off, nothing clicked
+        r = BrowseRunner(s, live(scripted_llm(['{"action":"done","answer":"the cart is ready"}']), ScriptedJev({'operation': 'click', 'click_target': 'c2'})), max_steps=3).run('g', 'https://shop.example/x')
+        self.assertEqual((r.status, r.answer), ('done', 'the cart is ready')); self.assertEqual([c for c in s.log if c[0] == 'act'], [])
+        r = BrowseRunner(FakeSession(pages), Ladder(jev=JevChooser('https://x', MODEL, 'k', ScriptedJev({'operation': 'click', 'click_target': 'c2'}))), max_steps=3).run('g', 'https://shop.example/x')
+        self.assertEqual((r.status, r.pending_action['label']), ('handoff', 'Place order'))                                         # no assistant to ask: the hand-off, as before
         r2 = BrowseRunner(FakeSession(pages), live(scripted_llm([]), ScriptedJev({'operation': 'needs_user'})), max_steps=3).run('g', 'https://shop.example/x')
         self.assertEqual(r2.status, 'handoff'); self.assertIn('needs you', r2.reason)
 
@@ -337,7 +345,7 @@ class JevOperations(unittest.TestCase):
     def test_done_is_confirmed_by_one_hand_over_that_writes_the_answer(self):
         d, llm, *_ = self.decide({'operation': 'done'}, llm_steps=['{"action":"done","answer":"Aero $59"}'])
         self.assertEqual((d.kind, d.answer, d.by, d.agent_answer, d.miss, llm.calls), ('done', 'Aero $59', 'agent', True, False, ['agent']))
-        self.assertIn('already achieved', llm.hints[0])
+        self.assertIn('goal is achieved', llm.hints[0])
         d, llm, jev, ladder = self.decide({'operation': 'done'}, llm_steps=['{"action":"click","ref":2}'])                 # the assistant disagrees: its step is taken, JEV missed
         self.assertEqual((d.kind, d.by, d.action['ref'], d.miss, d.agent_answer, llm.calls), ('act', 'agent', 2, True, False, ['agent']))
         self.assertEqual(ladder.handed, '')                                                                               # a one-time check does not keep the task
@@ -481,8 +489,9 @@ class HandOffToTheAssistant(unittest.TestCase):
     def test_the_same_step_a_third_time_goes_to_the_assistant_and_a_fourth_ends_the_run(self):
         r, llm, *_ = self.run_loop([self.click('c2')] * 3 + [self.click('c1')] * 2, ['{"action":"click","ref":3}', '{"action":"scroll"}', '{"action":"back"}'], max_steps=6, session=FpSession(FLAT, iter(range(99))))
         self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'agent', 'agent', 'agent']); self.assertEqual(llm.calls, ['agent'] * 3)
-        r, *_ = self.run_loop([self.click('c2')] * 6, ['{"action":"click","ref":2}'], max_steps=8, session=FpSession(FLAT, iter(range(99))))
+        r, llm, *_ = self.run_loop([self.click('c2')] * 6, ['{"action":"click","ref":2}'] * 4, max_steps=8, session=FpSession(FLAT, iter(range(99))))
         self.assertEqual((r.status, r.reason), ('stuck', 'repeating the same step'))
+        self.assertEqual([h['by'] for h in r.steps], ['jev'] * 3 + ['agent'] * 3); self.assertEqual(len(llm.calls), 4)      # the assistant starts with a clean count: JEV's repeats are not held against it, its own are
 
     def test_three_acts_that_changed_nothing_send_the_next_step_to_the_assistant_and_the_run_ends_when_the_page_still_does_not_change(self):
         same = lambda: FpSession(FLAT, iter([7] * 99))
@@ -612,16 +621,19 @@ class RealRunner(unittest.TestCase):
                 if head: picks[head] = by_label(head, text)(body)
                 return jev_answer(body, {**picks, **more})
             return pick
-        jev = ScriptedJev(step('type', 'type_target', 'Search paddles', type_text='t0'), step('scroll_down'), step('scroll_up'), step('wait'), step('click', 'click_target', 'Add to cart'),
+        jev = ScriptedJev(step('type', 'type_target', 'Search paddles', type_text='t0'), step('scroll_down'), step('wait'), step('click', 'click_target', 'Add to cart'),
                           step('click', 'click_target', 'Checkout'))
         events = []
-        r = BrowseRunner(session, live(scripted_llm([]), jev), on_event=lambda k, d: events.append((k, d)), max_steps=8).run('carbon paddle', f'http://127.0.0.1:{port}/')
+        def agent(goal, history, page, candidates, handover, look):          # asked about JEV's pick of Checkout, the assistant chooses it too: that is the customer's
+            return parse_decision(json.dumps({'action': 'click', 'ref': next(c['ref'] for c in candidates if c['label'] == 'Checkout')}), candidates, 'agent')
+        r = BrowseRunner(session, live(agent, jev), on_event=lambda k, d: events.append((k, d)), max_steps=8).run('carbon paddle', f'http://127.0.0.1:{port}/')
         self.assertEqual(r.status, 'handoff'); self.assertEqual(r.pending_action['label'], 'Checkout')
-        self.assertEqual([h['action'] for h in r.steps], ['type', 'scroll', 'scroll', 'wait', 'click']); self.assertTrue(all(h['by'] == 'jev' and h['result'] == 'ok' for h in r.steps))
+        self.assertEqual([h['action'] for h in r.steps], ['type', 'scroll', 'wait', 'click', 'click']); self.assertTrue(all(h['by'] == 'jev' and h['result'] == 'ok' for h in r.steps[:4]))
+        self.assertEqual(r.steps[4]['result'], 'needs_approval')
         self.assertIn('Search paddles', json.dumps(jev.bodies[0]['questions']['type_target']))
         self.assertIn('now: ', json.dumps(jev.bodies[1]['questions']['type_target']))          # after typing, the field reports its text
-        self.assertTrue({'scroll_up', 'wait'} <= set(jev.bodies[0]['questions']['operation']['criteria']))      # the new runner has the new moves
-        self.assertTrue(all(h['changed'] is not None for h in r.steps))                         # the real runner reports page_fp
+        self.assertIn('wait', jev.bodies[0]['questions']['operation']['criteria']); self.assertNotIn('scroll_up', jev.bodies[0]['questions']['operation']['criteria'])      # at the very top there is nothing to scroll up to
+        self.assertTrue(all(h['changed'] is not None for h in r.steps[:4]))                     # the real runner reports page_fp
 
 
 if __name__ == '__main__':

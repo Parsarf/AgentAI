@@ -69,6 +69,14 @@ def retention():
     }
 
 
+def _page_text_limit(code):
+    """The most page text the extension sends for one look at a page, or None when that cannot be read from the code any more."""
+    limit = re.search(r'MAX_PAGE_TEXT = (\d+)', code['rules.js'])
+    reply = re.sub(r'//.*', '', code['executor.js'])                         # comments may name d.full; code may not send it
+    cut = "text: (d.text || '').slice(0, MAX_PAGE_TEXT)" in reply
+    return int(limit.group(1)) if limit and cut and 'd.full' not in reply else None
+
+
 def extension():
     manifest = json.loads(_read(EXTENSION / 'manifest.json'))
     code = {p.name: _read(p) for p in (EXTENSION / 'src').glob('*.js')}
@@ -85,7 +93,8 @@ def extension():
         'server': server,
         'panel_api': panel_api,
         'stored_on_the_computer': keys,
-        'page_text_limit_chars': int(re.search(r'\.slice\(0,\s*(\d+)\)\s*,\s*scroll', page.replace('\n', ' ')).group(1)) if re.search(r'\.slice\(0,\s*(\d+)\)\s*,\s*scroll', page.replace('\n', ' ')) else None,
+        # what leaves the browser is what the executor puts in its reply, not what the page script builds: the limit counts only if the reply cuts the text to it and carries no other copy of the page's words
+        'page_text_limit_chars': _page_text_limit(code),
         'max_controls_listed': int(re.search(r'MAX_ELEMENTS = (\d+)', code['rules.js']).group(1)),
         'secret_field_values_withheld': "secret = type === 'password'" in page and 'if (!secret)' in page,
         'loads_remote_code': any(re.search(r'\beval\(|new Function\(|importScripts\(|<script[^>]+src="https?:', text) for text in list(code.values()) + [_read(EXTENSION / 'panel.html')]),
