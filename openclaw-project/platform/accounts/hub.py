@@ -4,14 +4,19 @@
     POST /v1/hub/refresh                  {"connection_id"?}  make the sync of all accounts, or one, due now
     GET  /v1/hub/pulse                    a mark that changes when anything changed: an open page asks every few seconds and reloads only then
     POST /v1/hub/settings                 {"timezone"?, "allow_images_from"?, "block_images_from"?}
-    POST /v1/hub/link                     {"provider"}  begin signing in to a mail and calendar provider; answers with the address to send the customer to
+    POST /v1/hub/link                     {"provider","kind"?,"connection"?,"add"?}  begin signing in to a mail and calendar provider (`kind`: which of its sign-ins, where it
+                                          has several); with `connection`, for that account: connect it again, or add permissions to it. Answers with the address to go to
     POST /v1/hub/ask                      {"conversation_id","message","key","looking_at"?}  a message to the assistant from the dashboard, with what is open (ids only)
     GET  /v1/hub/link/callback            where the provider sends the browser back (no session arrives with it): hands the values to the Inbox page in the address fragment
-    POST /v1/hub/link/finish              {"state","code"}  the signed-in page finishes the sign-in; the new account then has nothing chosen yet
+    POST /v1/hub/link/finish              {"state","code"}  the signed-in page finishes the sign-in; the new account then has nothing chosen yet. A sign-in that connects
+                                          nothing answers 409 with `reason` (connectors.LINK_REASONS) and, when the provider gave one, its own `reference` number
     GET  /v1/hub/mail/threads             ?label=inbox&accounts=a,b&provider_label=&unread=1&starred=1&attachments=1&person=&after=&before=&q=&cursor=&limit=
     GET  /v1/hub/mail/labels              the providers' own labels or folders, per account
     GET  /v1/hub/mail/thread              ?connection=&id=&images=1     opens the last message (its body is fetched now if it was not yet)
     GET  /v1/hub/mail/message             ?connection=&id=&images=1     opens one message
+    GET  /v1/hub/mail/frame               ?connection=&id=&images=1     the page a message is shown in (HTML with its own content policy; framed only by Lumina)
+    GET  /v1/hub/mail/file                ?connection=&message=&attachment=&inline=1   one attachment: a download, or a picture to show (never kept by Lumina)
+    GET  /v1/hub/mail/people              ?q=                            people the customer's own mail is with, for suggestions while a recipient is typed
     GET  /v1/hub/mail/search-older        ?connection=&q=&continuation= mail older than the synced window, searched live; says when the result is partial
     POST /v1/hub/calendars                {"connection_id","calendar_id","selected"?,"colour"?}   the customer's own choices for one calendar
     GET  /v1/hub/events                   ?start=<epoch>&end=<epoch>&accounts=&cancelled=1
@@ -84,37 +89,61 @@ def overview(request):
 
     def run():
         hub = wiring.hub_service()
-        return {'accounts': hub.accounts(principal), 'providers': [{'provider': name, 'label': p['label']} for name, p in wiring.sign_in_providers().items()], 'settings': hub.settings(principal), 'counts': hub.counts(principal), 'calendars': hub.calendars(principal),
+        return {'accounts': hub.accounts(principal), 'providers': [{'provider': name, 'label': p['label'], 'kinds': list(p.get('kinds') or ())} for name, p in wiring.sign_in_providers().items()], 'settings': hub.settings(principal), 'counts': hub.counts(principal), 'calendars': hub.calendars(principal),
                 'labels': list(LIST_LABELS), 'colours': list(COLOURS),
                 'read_only': not (wiring.switch_on('mail_calendar_writes') and wiring.hub_on(principal.account_id)),
                 'feeds': _feeds_on()}      # Phase 6: changes are possible only with the owner's writes switch
     return _run(run)
 
 
+LINK_CODE_MAX = 3600           # an authorization code: Google's are about 70 characters, Microsoft's for work accounts well over 1,000
+
+
 def _redirect_address():
     return django_settings.PUBLIC_ORIGIN + '/v1/hub/link/callback'
 
 
-@endpoint(['POST'], ['provider', 'connection', 'add'], structured=True)
+@endpoint(['POST'], ['provider', 'connection', 'add', 'kind'], structured=True)
 def link(request):
     """Begin signing in. Nothing is connected by this: the customer is sent to the provider, which shows what is asked for (reading only) and sends them back.
-    With `connection` and `add` (names of the provider's grants, roadmap Phase 6) it asks for more on an account already connected: finishing changes that connection in place."""
+    `kind` picks which of the provider's sign-ins to use, where it has several (a personal or a work account). With `connection` the sign-in is for an account already
+    connected, and finishing changes that connection in place: `add` (names of the provider's grants, roadmap Phase 6) asks for more on it; without `add` it connects it
+    again (its access ended), asking for what it held."""
     principal, stop = _enter(request, 'hub.link', 20)
     if stop:
         return stop
     provider = wiring.sign_in_providers().get(request.input.get('provider') if isinstance(request.input.get('provider'), str) else '')
     if provider is None:
         return JsonResponse({'error': 'connector_not_configured'}, status=503)
-    upgrade, add = request.input.get('connection'), request.input.get('add') or []
-    if (upgrade is None) != (not add) or (upgrade is not None and not isinstance(upgrade, str)) or not isinstance(add, list) or len(add) > 5 \
-            or any(not isinstance(a, str) or a not in provider['grants'] for a in add):
+    upgrade, add, kind = request.input.get('connection'), request.input.get('add') or [], request.input.get('kind')
+    if (add and upgrade is None) or (upgrade is not None and not isinstance(upgrade, str)) or not isinstance(add, list) or len(add) > 5 \
+            or any(not isinstance(a, str) or a not in provider['grants'] for a in add) or (kind is not None and kind not in {k['id'] for k in provider['kinds']}):
         return JsonResponse({'error': 'invalid_request'}, status=400)
 
     def run():
-        started = wiring.connector_service().start_link(principal, request.input['provider'], _redirect_address(), upgrade=upgrade)
-        return {'authorize_url': provider['address'](_redirect_address(), started['state'], started['challenge'], hint=started.get('identity'), add=tuple(add)),
+        connectors = wiring.connector_service()
+        started = connectors.start_link(principal, request.input['provider'], _redirect_address(), upgrade=upgrade)
+        asked = set(add)
+        if upgrade is not None:                      # what the connection holds is asked for again, so connecting again (or adding one permission) never takes another away
+            held = set(connectors.granted_scopes(principal, upgrade))
+            asked |= {name for name, scope in provider['grant_scopes'].items() if scope in held}
+        return {'authorize_url': provider['address'](_redirect_address(), started['state'], started['challenge'], hint=started.get('identity'),
+                                                     add=tuple(g for g in provider['grants'] if g in asked), kind=None if upgrade is not None else kind),
                 'expires_in': started['expires_in']}
     return _run(run)
+
+
+# What a provider says in the address when it sends the customer back without a code, as the reasons the page has sentences for. Only the code is read; the provider's
+# text is never shown or kept.
+CALLBACK_REASONS = {'access_denied': 'declined', 'consent_required': 'admin_consent', 'interaction_required': 'interrupted', 'login_required': 'interrupted',
+                    'temporarily_unavailable': 'provider_unreachable', 'server_error': 'provider_unreachable', 'invalid_client': 'provider_setup',
+                    'unauthorized_client': 'provider_setup', 'invalid_request': 'provider_setup', 'invalid_scope': 'provider_setup', 'unsupported_response_type': 'provider_setup'}
+
+
+def _note(event, request, **fields):
+    """One line for the log about a sign-in that connected nothing: the reason and the provider's own number for it. No address, no code, no token, no provider text."""
+    import json
+    print(json.dumps({'event': event, 'request_id': str(getattr(request, 'request_id', '')), **{k: v for k, v in fields.items() if v}}), flush=True)
 
 
 @endpoint(['GET'])
@@ -122,12 +151,19 @@ def link_callback(request):
     """Where the provider sends the customer's browser back. This request arrives FROM ANOTHER SITE, so the browser does not send Lumina's session cookie with it (the cookie
     is SameSite=Strict, on purpose): there is nobody signed in here, and nothing can be finished here. It only hands the two values on to the Inbox page, in the part of the
     address a browser never sends to a server or writes to a log (the fragment). The page then finishes the sign-in itself, from inside Lumina, with the session and a
-    CSRF token (`link_finish`). Nothing from the provider is shown; a value of the wrong shape is dropped."""
+    CSRF token (`link_finish`). Nothing from the provider is shown; a value of the wrong shape is dropped. A refusal comes back as one of the page's own reasons."""
+    import re
     from urllib.parse import quote
-    state, code = request.GET.get('state', ''), request.GET.get('code', '')
-    if request.GET.get('error') == 'access_denied':
-        return HttpResponseRedirect('/app/inbox?connect=declined')
-    if not state or not code or len(state) > 200 or len(code) > 2000:
+    state, code, error = request.GET.get('state', ''), request.GET.get('code', ''), request.GET.get('error', '')
+    if error:
+        described = request.GET.get('error_description', '')
+        admin = error in ('consent_required', 'admin_consent_required') or any(n in described for n in ('AADSTS65001', 'AADSTS65004', 'AADSTS90094', 'AADSTS90093'))
+        reason = 'admin_consent' if admin and error != 'access_denied' or any(n in described for n in ('AADSTS90094', 'AADSTS90093')) else CALLBACK_REASONS.get(error, 'failed')
+        found = re.search(r'AADSTS\d{4,8}', described)
+        _note('hub_link_refused', request, reason=reason, error=error[:40] if re.fullmatch(r'[a-z_]{1,40}', error) else 'other', reference=found.group(0) if found else '')
+        return HttpResponseRedirect('/app/inbox?connect=' + reason + ('&ref=' + found.group(0) if found else ''))
+    if not state or not code or len(state) > 200 or len(code) > LINK_CODE_MAX:
+        _note('hub_link_refused', request, reason='failed', error='shape')
         return HttpResponseRedirect('/app/inbox?connect=failed')
     return HttpResponseRedirect('/app/inbox#link-state=' + quote(state, safe='') + '&link-code=' + quote(code, safe=''))
 
@@ -178,19 +214,27 @@ def link_finish(request):
     from agentai_platform.connectors import ConnectorError
     from agentai_platform.permissions import NotPermitted
     state, code = request.input.get('state'), request.input.get('code')
-    if not isinstance(state, str) or not isinstance(code, str) or not state or not code or len(state) > 200 or len(code) > 2000:
+    if not isinstance(state, str) or not isinstance(code, str) or not state or not code or len(state) > 200 or len(code) > LINK_CODE_MAX:
         return JsonResponse({'error': 'invalid_request'}, status=400)
+    from agentai_platform.connectors import LinkFailed
     connectors = wiring.connector_service()
-    provider = wiring.sign_in_providers().get(connectors.link_service(principal, state) or '')
-    if provider is None:
-        return JsonResponse({'error': 'link_failed'}, status=409)
-    from agentai_platform.connectors import WrongAccount
+    name = connectors.link_service(principal, state) or ''
+    provider = wiring.sign_in_providers().get(name)
+    if provider is None:                                                             # no open sign-in with this state for this person: used already, or it took too long
+        _note('hub_link_failed', request, reason='expired')
+        return JsonResponse({'error': 'link_failed', 'reason': 'expired'}, status=409)
     try:
         connection = connectors.finish_link(principal, state, code, _redirect_address(), provider['exchange'], needs_any=provider['needs_any'])
-    except WrongAccount:
-        return JsonResponse({'error': 'different_account'}, status=409)          # adding permissions: the customer signed in as another account; nothing changed
-    except (ConnectorError, NotPermitted):
-        return JsonResponse({'error': 'link_failed'}, status=409)
+    except LinkFailed as failure:                                                    # nothing was connected, and nothing changed on an account that was being added to
+        _note('hub_link_failed', request, provider=name, reason=failure.reason, reference=failure.reference)
+        return JsonResponse({'error': 'different_account' if failure.reason == 'different_account' else 'link_failed', 'reason': failure.reason,
+                             **({'reference': failure.reference} if failure.reference else {})}, status=409)
+    except NotPermitted:
+        _note('hub_link_failed', request, provider=name, reason='not_allowed')
+        return JsonResponse({'error': 'link_failed', 'reason': 'not_allowed'}, status=409)
+    except ConnectorError:
+        _note('hub_link_failed', request, provider=name, reason='failed')
+        return JsonResponse({'error': 'link_failed', 'reason': 'failed'}, status=409)
     audit(request.user.pk, request.account_id, connection, 'hub.link', 'completed', request.request_id)
     return JsonResponse({'connection_id': connection}, status=201)
 
@@ -276,6 +320,15 @@ def labels(request):
 
 
 @endpoint(['GET'])
+def people(request):
+    """Suggestions while a recipient is typed: people the customer's own mail is with."""
+    principal, stop = _enter(request, 'hub.read', 3000)
+    if stop:
+        return stop
+    return _run(lambda: {'people': wiring.hub_service().people(principal, request.GET.get('q', ''))})
+
+
+@endpoint(['GET'])
 def thread(request):
     principal, stop = _enter(request, 'hub.open', 1200)
     if stop:
@@ -291,6 +344,54 @@ def message(request):
         return stop
     q = request.GET
     return _run(lambda: wiring.hub_service().message(principal, q.get('connection', ''), q.get('id', ''), images=bool(_flag(request, 'images'))))
+
+
+@endpoint(['GET'])
+def mail_frame(request):
+    """The page a message is shown in, for the frame the Inbox puts it in. It is an HTML page with ITS OWN content policy as a header (nothing runs, nothing is posted,
+    remote pictures only when asked for): a page the app writes into a frame itself inherits the app's policy, which allows neither the message's styles nor its
+    pictures. It can be framed only by Lumina itself; opened on its own it is the same inert page."""
+    from django.http import HttpResponse
+    from agentai_platform import hub_html
+    principal, stop = _enter(request, 'hub.open', 2400)
+    if stop:
+        return stop
+    q = request.GET
+
+    def body():
+        found = wiring.hub_service().frame(principal, q.get('connection', ''), q.get('id', ''), images=bool(_flag(request, 'images')))
+        response = HttpResponse(found['document'], content_type='text/html; charset=utf-8')
+        response['Content-Security-Policy'] = hub_html.frame_policy(found['images'])
+        response['Referrer-Policy'] = 'no-referrer'
+        response['Cache-Control'] = 'private, no-store'
+        response.frame_same_origin = True                                         # accounts/middleware.py: this one page may be framed by Lumina's own pages
+        return response
+    return guarded(body)
+
+
+@endpoint(['GET'])
+def mail_file(request):
+    """One attachment of a message, read from the provider now and handed to the browser: as a download, or (`inline=1`, pictures only) to be shown, which is how a
+    picture carried inside a message reaches its frame and how the Inbox previews a picture. Never kept by Lumina. It is always served as inert: no script in it can
+    run from Lumina's address."""
+    from urllib.parse import quote
+    from django.http import HttpResponse
+    principal, stop = _enter(request, 'hub.file', 600)
+    if stop:
+        return stop
+    q = request.GET
+
+    def body():
+        found = wiring.hub_service().attachment(principal, q.get('connection', ''), q.get('message', ''), q.get('attachment', ''))
+        shown = bool(_flag(request, 'inline')) and found['picture']
+        response = HttpResponse(found['data'], content_type=found['type'] if shown else 'application/octet-stream')
+        name = ''.join(ch for ch in str(found['name']) if ch >= ' ' and ch not in '"\\/')[:200] or 'attachment'
+        plain = name.encode('ascii', 'ignore').decode() or 'attachment'
+        response['Content-Disposition'] = f"{'inline' if shown else 'attachment'}; filename=\"{plain}\"; filename*=UTF-8''{quote(name, safe='')}"
+        response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+        response['Cache-Control'] = 'private, max-age=300' if shown else 'private, no-store'
+        return response
+    return guarded(body)
 
 
 @endpoint(['GET'])
@@ -624,7 +725,15 @@ def action_undo(request, action_id):
         return stop
     screen = request.input.get('screen') or 'calendar'
     _, _, actions, _ = wiring.action_services()
-    return _run(lambda: {'action': actions.undo_direct(principal, action_id, screen=screen)})
+
+    def run():
+        action = actions.undo_direct(principal, action_id, screen=screen)
+        try:
+            wiring.hub_service().refresh(principal)                            # the copy catches up with what was put back at once, as it does with the change itself
+        except Exception:
+            pass
+        return {'action': action}
+    return _run(run)
 
 
 @endpoint(['POST'])

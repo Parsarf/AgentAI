@@ -21,11 +21,18 @@ from . import microsoft_writes
 from .microsoft_writes import WRITE_KINDS, MicrosoftWrites
 
 PROVIDER = 'microsoft'
-AUTHORIZE_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
-TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+LOGIN = 'https://login.microsoftonline.com'
+AUTHORIZE_URL = LOGIN + '/common/oauth2/v2.0/authorize'
+TOKEN_URL = LOGIN + '/common/oauth2/v2.0/token'
 GRAPH = 'https://graph.microsoft.com/v1.0'
 HOSTS = ('graph.microsoft.com', 'login.microsoftonline.com')
 IDENTITY_SCOPES = ('openid', 'email', 'offline_access', 'User.Read')
+# Microsoft adds `profile` to the answer of an OpenID sign-in by itself. It is never asked for and gives nothing `User.Read` does not: accepted, so a real sign-in is not
+# refused as "more access than was asked for".
+ECHOED_SCOPES = ('profile',)
+# Which kind of Microsoft account the customer is connecting. Each has its own sign-in address: a personal account sent through the shared one can be answered inside an
+# organization's directory where it does not exist (Microsoft's AADSTS16000, on its own page, before anything comes back to Lumina).
+ACCOUNT_KINDS = (('personal', 'Personal: Outlook.com, Hotmail, Live', 'consumers'), ('work', 'Work or school: Microsoft 365', 'organizations'))
 MAIL_SCOPE, CALENDAR_SCOPE = 'Mail.Read', 'Calendars.Read'
 EVENTS_SCOPE, SEND_SCOPE, MODIFY_SCOPE = 'Calendars.ReadWrite', 'Mail.Send', 'Mail.ReadWrite'
 GRANTS = (Grant('calendar_write', EVENTS_SCOPE, ('event_write', 'respond', 'event_change', 'event_series'),
@@ -42,7 +49,7 @@ RESPONSES = {'accepted': 'accepted', 'declined': 'declined', 'tentativelyAccepte
 MAX_ANSWER = 12_000_000
 
 DECLARATION = Declaration(
-    provider=PROVIDER, label='Microsoft', auth='oauth', scopes=(MAIL_SCOPE, CALENDAR_SCOPE) + IDENTITY_SCOPES + WRITE_SCOPES,
+    provider=PROVIDER, label='Microsoft', auth='oauth', scopes=(MAIL_SCOPE, CALENDAR_SCOPE) + IDENTITY_SCOPES + ECHOED_SCOPES + WRITE_SCOPES,
     resource_kinds=('mailbox', 'label', 'calendar'), record_kinds=('event', 'message', 'threads'), read_operations=(), write_kinds=WRITE_KINDS,
     change_tokens=True, version_token='etag', preconditions=True, idempotency_keys=True, paging='cursor',
     error_map={'TooManyRequests': 'retry_later', 'ApplicationThrottled': 'retry_later', 'MailboxConcurrency': 'retry_later', 'InvalidAuthenticationToken': 'needs_customer',
@@ -60,8 +67,10 @@ ADMIN_WORDS = 'Your organization lets only an administrator allow apps like Lumi
 
 
 def default_http(method, url, headers, data=None, timeout=20):
-    from .google_hub import default_http as http
-    return http(method, url, headers, data, timeout)
+    """One HTTPS request to Microsoft: the shared connection code, held to MICROSOFT's hosts. (It used to go through Google's own function, which allows only Google's
+    hosts: every real call to Microsoft was refused before it left the server, and no account could be connected.)"""
+    from .google_hub import https_request
+    return https_request(method, url, headers, data, timeout, hosts=HOSTS)
 
 
 def _failure(status, headers, raw) -> ProviderError:
@@ -245,11 +254,25 @@ class MicrosoftAdapter(MicrosoftWrites):
         html = content.get('content', '') if content.get('contentType') == 'html' else ''
         text = content.get('content', '') if content.get('contentType') != 'html' else ''
         files = []
-        if raw.get('hasAttachments'):
-            for a in self._get(credential, f'/me/messages/{quote(message_id, safe="")}/attachments', [('$select', 'id,name,contentType,size,isInline')]).get('value') or []:
-                if not a.get('isInline'):
-                    files.append({'id': a['id'], 'name': a.get('name') or 'attachment', 'type': a.get('contentType') or 'application/octet-stream', 'size': int(a.get('size') or 0)})
+        if raw.get('hasAttachments') or 'cid:' in html.lower():                # a message whose only attachments are pictures shown inside it says it has none
+            for a in self._attachments(credential, message_id):
+                cid = str(a.get('contentId') or '').strip('<>')
+                if a.get('isInline') and not cid:
+                    continue
+                files.append({'id': a['id'], 'name': a.get('name') or 'attachment', 'type': a.get('contentType') or 'application/octet-stream', 'size': int(a.get('size') or 0),
+                              **({'cid': cid} if cid else {})})
         return body(text, html, files)
+
+    def _attachments(self, credential, message_id) -> list:
+        """A message's attachments by name, without their bytes. `contentId` (the name the markup uses for a picture shown inside the message) belongs to file
+        attachments only, so it is asked for by its type; where that is refused, the list is read without it (the pictures inside are then not shown)."""
+        at = f'/me/messages/{quote(message_id, safe="")}/attachments'
+        try:
+            return self._get(credential, at, [('$select', 'id,name,contentType,size,isInline,microsoft.graph.fileAttachment/contentId')]).get('value') or []
+        except ProviderError as error:
+            if error.status != 400:
+                raise
+            return self._get(credential, at, [('$select', 'id,name,contentType,size,isInline')]).get('value') or []
 
     def mail_attachment(self, credential, message_id, attachment_id) -> bytes:
         raw = self._get(credential, f'/me/messages/{quote(message_id, safe="")}/attachments/{quote(attachment_id, safe="")}')
@@ -280,31 +303,59 @@ class MicrosoftAdapter(MicrosoftWrites):
 
 
 # -- signing in ---------------------------------------------------------------------------------------------------------------------------------------
-def authorize_url(client_id, redirect_uri, state, challenge, *, hint=None, add=()) -> str:
-    """Microsoft's sign-in (v2, common: personal and work accounts). Only reading is asked for; `add` names grants (GRANTS) asked on top for an account already connected."""
+def authorize_url(client_id, redirect_uri, state, challenge, *, hint=None, add=(), kind=None) -> str:
+    """Microsoft's sign-in (v2). Only reading is asked for; `add` names grants (GRANTS) asked on top for an account already connected. `kind` ('personal' or 'work',
+    ACCOUNT_KINDS) sends the customer to the sign-in for that kind of account; without it the shared one is used, which finds the kind from `hint` (the address)."""
     if set(add or ()) - {g.name for g in GRANTS}:
         raise ValueError('unknown permission')
+    tenants = {name: tenant for name, _label, tenant in ACCOUNT_KINDS}
+    if kind is not None and kind not in tenants:
+        raise ValueError('unknown kind of account')
     scopes = [MAIL_SCOPE, CALENDAR_SCOPE, *IDENTITY_SCOPES] + [g.scope for g in GRANTS if g.name in set(add or ())]
     query = {'client_id': client_id, 'response_type': 'code', 'redirect_uri': redirect_uri, 'response_mode': 'query', 'scope': ' '.join(scopes), 'state': state,
              'code_challenge': challenge, 'code_challenge_method': 'S256', 'prompt': 'select_account'}
     if hint:
         query['login_hint'] = hint
-    return AUTHORIZE_URL + '?' + urlencode(query)
+    return f'{LOGIN}/{tenants.get(kind, "common")}/oauth2/v2.0/authorize?' + urlencode(query)
+
+
+_KNOWN_SCOPES = {s.lower(): s for s in (MAIL_SCOPE, CALENDAR_SCOPE, *IDENTITY_SCOPES, *ECHOED_SCOPES, EVENTS_SCOPE, SEND_SCOPE, MODIFY_SCOPE)}
+_GRAPH_PREFIX = 'https://graph.microsoft.com/'
 
 
 def _short(scope) -> str:
-    return scope.rsplit('/', 1)[-1] if scope.startswith('https://graph.microsoft.com/') else scope
+    """A scope as Microsoft answers it, in the one spelling the rest of Lumina compares with: without Graph's address in front, and in the declared capitalisation
+    (Microsoft's own examples answer `mail.read` for `Mail.Read`)."""
+    scope = str(scope)
+    if scope.lower().startswith(_GRAPH_PREFIX):
+        scope = scope[len(_GRAPH_PREFIX):]
+    return _KNOWN_SCOPES.get(scope.lower(), scope)
+
+
+def _reference(described) -> str:
+    """Microsoft's own number for a refusal ('AADSTS7000215'), for the log and for support. A number, never Microsoft's text."""
+    import re
+    found = re.search(r'AADSTS\d{4,8}', str(described or ''))
+    return found.group(0) if found else ''
 
 
 def _token_call(http, form):
     status, headers, raw = http('POST', TOKEN_URL, {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}, urlencode(form).encode())
-    data = json.loads(raw or b'{}') if raw else {}
+    try:
+        data = json.loads(raw or b'{}') if raw else {}
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
     if status != 200:
         code = str(data.get('error') or '')
         described = str(data.get('error_description') or '')
         if 'AADSTS65001' in described or code in ('consent_required', 'admin_consent_required') or 'AADSTS90094' in described:
-            raise ProviderError(403, 'admin_consent_required')
-        raise ProviderError(status, code or 'token_error')
+            error = ProviderError(403, 'admin_consent_required')
+        else:
+            error = ProviderError(status, code or 'token_error')
+        error.reference = _reference(described)
+        raise error
     return data
 
 
@@ -346,8 +397,11 @@ def refresher(client_id, client_secret, http=default_http):
         if not tokens.get('refresh_token'):
             raise RefreshFault('needs_customer')
         try:
+            # What the connection holds, asked for again (never more), and always `offline_access`: Microsoft does not list it in its answers, and a renewal that
+            # leaves it out need not return the next refresh token.
+            held = [s for s in tokens.get('scope', '').split() if s not in ECHOED_SCOPES] or [MAIL_SCOPE, CALENDAR_SCOPE, *IDENTITY_SCOPES]
             data = _token_call(http, {'client_id': client_id, 'client_secret': client_secret, 'refresh_token': tokens['refresh_token'], 'grant_type': 'refresh_token',
-                                      'scope': ' '.join(tokens.get('scope', '').split() or [MAIL_SCOPE, CALENDAR_SCOPE, *IDENTITY_SCOPES])})
+                                      'scope': ' '.join(dict.fromkeys([*held, 'offline_access']))})
         except ProviderError as error:
             if error.code in ('invalid_grant', 'interaction_required'):
                 raise RefreshFault('revoked') from None

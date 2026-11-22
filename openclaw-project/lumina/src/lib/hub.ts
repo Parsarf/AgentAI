@@ -18,7 +18,8 @@ export interface ProviderLabel { id: string; name: string }
 export interface Thread { connection_id: string; id: string; subject: string; snippet: string; people: Person[]; last_epoch: number; message_count: number; unread: boolean;
   starred: boolean; has_attachments: boolean; labels: string[]; provider_labels: ProviderLabel[] }
 export interface Attachment { id: string; name: string; type: string; size: number }
-export interface Body { html: string; text: string; blocked_images: number; images_shown: boolean; attachments: Attachment[]; fetched_epoch: number }
+/** `designed`: the message sets a background of its own, so it is shown as sent on a light page; otherwise it is shown in the theme. `quoted`: earlier messages under it were folded. */
+export interface Body { html: string; text: string; blocked_images: number; images_shown: boolean; designed?: boolean; quoted?: boolean; attachments: Attachment[]; fetched_epoch: number }
 export interface Message { id: string; thread_id: string; subject: string; snippet: string; sender: Person; to: Person[]; cc: Person[]; sent_epoch: number; labels: string[];
   provider_labels: ProviderLabel[]; unread: boolean; starred: boolean; has_attachments: boolean; body: Body | null }
 export interface HubCalendar { connection_id: string; id: string; name: string; colour: string; timezone: string | null; access: 'busy' | 'read' | 'write' | 'owner'; primary: boolean;
@@ -31,7 +32,9 @@ export interface HubEvent { connection_id: string; calendar_id: string; id: stri
 export interface MailSettings { undo_send_seconds: number; mark_read_on_open: boolean; limits: { recipients?: number; per_hour?: number }; allowed: { recipients: number; per_hour: number };
   platform: { recipients: number; per_hour: number } }
 export type OrganizeOp = 'archive' | 'inbox' | 'star' | 'unstar' | 'read' | 'unread' | 'label' | 'unlabel' | 'move' | 'trash' | 'untrash';
-export interface Overview { accounts: HubAccount[]; providers?: { provider: string; label: string }[]; settings: { timezone: string | null; image_senders: string[]; mail?: MailSettings }; counts: { unread: number; by_account: Record<string, number> };
+/** A mail and calendar service that can be connected. `kinds`: the kinds of account it signs in separately (a personal or a work account), chosen before going there. */
+export interface Provider { provider: string; label: string; kinds?: { id: string; label: string }[] }
+export interface Overview { accounts: HubAccount[]; providers?: Provider[]; settings: { timezone: string | null; image_senders: string[]; mail?: MailSettings }; counts: { unread: number; by_account: Record<string, number> };
   calendars: HubCalendar[]; labels: string[]; colours: string[]; read_only: boolean; feeds?: boolean }
 /** A change in a connected account, as the action pipeline reports it (Phase 6). `direct` is the screen when the customer made it with their own hand. */
 export interface HubAction { id: string; kind: string; state: string; preview: { title: string; summary: string; destination: string; changes: { field: string; before: unknown; after: unknown }[]; can_undo: boolean };
@@ -85,6 +88,12 @@ export const hub = {
   composeLink: (id: string) => api<{ draft: Draft; link: string | null }>('GET', `/v1/hub/drafts/${encodeURIComponent(id)}/compose`),
   // Phase 6: changing calendars. The customer's own press is the approval; each call goes through the action pipeline once.
   allow: (account: HubAccount, add: string[]) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider: account.provider, connection: account.id, add }),
+  /** Begin signing in to a service (optionally one kind of account). Nothing is connected until the customer comes back. */
+  connect: (provider: string, kind?: string) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider, ...(kind ? { kind } : {}) }),
+  /** Sign in again to an account whose access ended: the same connection, its mail and what it was allowed are kept. */
+  reconnect: (account: HubAccount) => api<{ authorize_url: string; expires_in: number }>('POST', '/v1/hub/link', { provider: account.provider, connection: account.id }),
+  finishLink: (state: string, code: string) => api<{ connection_id: string }>('POST', '/v1/hub/link/finish', { state, code }),
+  people: (q: string) => api<{ people: Person[] }>('GET', '/v1/hub/mail/people' + query({ q })),
   createEvent: (e: NewEvent) => api<{ action: HubAction }>('POST', '/v1/hub/events/create', e),
   cancelEvent: (connection: string, calendar: string, event: string, notify = true, scope?: Scope, series?: string | null) =>
     api<{ action: HubAction }>('POST', '/v1/hub/events/cancel', { connection, calendar, event, notify, ...(scope && series ? { scope, series } : {}) }),
@@ -95,6 +104,33 @@ export const hub = {
   undo: (action: string, screen = 'calendar') => api<{ action: HubAction }>('POST', `/v1/hub/actions/${encodeURIComponent(action)}/undo`, { screen }),
   respondEvent: (connection: string, calendar: string, event: string, response: 'accepted' | 'tentative' | 'declined', scope?: 'this' | 'all', series?: string | null) =>
     api<{ action: HubAction }>('POST', '/v1/hub/events/respond', { connection, calendar, event, response, ...(scope && series ? { scope, series } : {}) }),
+};
+
+/** The page a message is shown in: served with its own content policy (the app's would refuse the message's styles and pictures), framed only by Lumina. */
+export const frameUrl = (connection: string, id: string, images = false) => '/v1/hub/mail/frame' + query({ connection, id, images });
+/** One attachment: a download, or (`inline`, pictures only) something to show. */
+export const fileUrl = (connection: string, message: string, attachment: string, inline = false) => '/v1/hub/mail/file' + query({ connection, message, attachment, inline });
+export const isPicture = (a: Attachment) => /^image\/(png|jpeg|gif|webp)$/i.test(a.type);
+
+/** Why a sign-in connected nothing, in a sentence that says what to do. The keys are the server's reasons (connectors.LINK_REASONS and the return route's). */
+export const LINK_WORDS: Record<string, string> = {
+  declined: 'You did not give access, so nothing was connected.',
+  expired: 'That sign-in was already used or took too long. Nothing was connected. Start again from "Add account".',
+  admin_consent: 'Your organization lets only an administrator allow apps like Lumina. Ask your IT administrator to allow Lumina, then connect again.',
+  provider_setup: 'The mail service refused Lumina itself, not your account. Nothing was connected, and trying again will not help until we fix it: please tell support.',
+  provider_unreachable: 'The mail service did not answer. Nothing was connected. Try again in a minute.',
+  provider_refused: 'The mail service refused this sign-in. Nothing was connected. Try again, or use a different account.',
+  no_identity: 'The mail service did not say which account you signed in to. Nothing was connected. Try again.',
+  unexpected_access: 'The mail service offered more access than Lumina asks for, so Lumina refused it. Nothing was connected.',
+  no_access: 'The account was signed in, but without access to mail or calendars. Nothing was connected. Connect again and leave mail or calendars ticked.',
+  different_account: 'You signed in as a different account than the one being changed. Nothing changed. Sign in with the same address.',
+  interrupted: 'The sign-in was not finished at the mail service. Nothing was connected. Try again.',
+  not_allowed: 'Your role in this organization does not allow connecting accounts.',
+  failed: 'The account could not be connected. Nothing was connected. Try again.',
+};
+export const linkWords = (reason: string | null | undefined, reference?: string | null) => {
+  const words = LINK_WORDS[reason ?? ''] ?? LINK_WORDS.failed;
+  return reference && /^[A-Z]{3,10}\d{3,8}$/.test(reference) ? `${words} (Reference: ${reference}.)` : words;
 };
 
 /** Addresses typed in one box, split on commas, semicolons and spaces. */
@@ -114,9 +150,10 @@ export const PROBLEM: Record<string, string> = {
 };
 export const problemWords = (kind: string | null | undefined) => (kind ? PROBLEM[kind] ?? 'That did not work. Try again.' : '');
 export const failed = (error: unknown) => (error instanceof ApiError && error.status === 503 && error.code === 'feature_off' ? 'Mail and Calendar are not switched on.' :
+  error instanceof ApiError && error.status === 429 ? 'Lumina was asked for too much in a short time. Wait a minute, then carry on.' :
   error instanceof ApiError && error.code.startsWith('connector_') ? problemWords(error.code.slice(10)) : 'That did not work. Try again.');
 
-export const LABEL_WORDS: Record<string, string> = { inbox: 'Inbox', starred: 'Starred', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', all: 'All mail', spam: 'Spam', trash: 'Trash', unread: 'Unread' };
+export const LABEL_WORDS: Record<string, string> = { inbox: 'Inbox', starred: 'Starred', sent: 'Sent', drafts: 'Drafts', archive: 'Archive', all: 'All mail', spam: 'Spam', trash: 'Bin', unread: 'Unread' };
 export const LIST_ORDER = ['inbox', 'starred', 'sent', 'drafts', 'archive', 'all', 'spam', 'trash'];
 
 export const personName = (p: Person) => p.name || p.address;
@@ -125,6 +162,30 @@ export function people(list: Person[], own?: string): string {
   const others = list.filter(p => !own || p.address !== own.toLowerCase());
   const shown = (others.length ? others : list).map(personName);
   return shown.length <= 2 ? shown.join(', ') : `${shown[0]}, ${shown[1]} +${shown.length - 2}`;
+}
+/** Two letters for a person's mark: of their name, else of their address. */
+export function initials(p: Person): string {
+  const words = (p.name || p.address.split('@')[0] || '?').replace(/["'()<>]/g, '').split(/[\s._-]+/).filter(Boolean);
+  const letters = words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] ?? '?').slice(0, 2);
+  return letters.toUpperCase();
+}
+/** A steady number 0-5 from an address: which of the six quiet tints its mark gets (the same person always the same one). */
+export function tint(address: string): number {
+  let h = 0; for (let i = 0; i < address.length; i++) h = (h * 31 + address.charCodeAt(i)) >>> 0;
+  return h % 6;
+}
+/** Who a message went to, as its header shows it: "me" for the account itself, first names for the rest, then a count. */
+export function recipients(to: Person[], cc: Person[], own?: string): string {
+  const mine = (own ?? '').toLowerCase();
+  const names = [...to, ...cc].map(p => (mine && p.address.toLowerCase() === mine ? 'me' : (p.name || p.address).split(/[\s@]/)[0]));
+  if (!names.length) return 'no one';
+  return names.length <= 3 ? names.join(', ') : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+}
+/** What a reply carries under the customer's own words: the message it answers, each line marked, as mail programs do. */
+export function quoteOf(m: { sender: Person; sent_epoch: number; body: { text: string } | null; snippet: string }, zone: string, limit = 6000): string {
+  const text = (m.body?.text || m.snippet || '').trim(); if (!text) return '';
+  const cut = text.length > limit ? text.slice(0, limit) + '\n[...]' : text;
+  return `\n\nOn ${fullTime(m.sent_epoch, zone)}, ${m.sender.name ? `${m.sender.name} <${m.sender.address}>` : m.sender.address} wrote:\n` + cut.split('\n').map(l => (l.startsWith('>') ? '>' + l : '> ' + l)).join('\n');
 }
 export const fileSize = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} B`);
 

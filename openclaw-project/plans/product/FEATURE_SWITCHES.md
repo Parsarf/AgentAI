@@ -17,7 +17,8 @@ whether it can be turned on yet, and why not.
 
 ## The switches today
 
-Read from the server on 2026-11-19: **on** are `customer_execution`, `browse_tasks`, `open_access`, `mail_calendar_dashboard`, `customer_uploads` and `customer_knowledge`; every other switch is off. (The state file also
+Read from the server on 2026-11-20 (release `3bc1f30`): **on** are `customer_execution`, `browse_tasks`, `open_access`, `mail_calendar_dashboard`, `customer_uploads`,
+`customer_knowledge` and `mail_calendar_writes`; every other switch is off (`customer_schedules` has no entry: off, and locked in `switches.py`). (The state file also
 holds an old `jev_services` entry that is no longer a switch; it is ignored.)
 
 | Switch | Today | What has to happen first |

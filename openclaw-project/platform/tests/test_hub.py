@@ -250,12 +250,28 @@ class Inbox(Both):
         self.assertIsNotNone(self.hub.message(self.a, self.ca, 'm-0001')['message']['body'])
         self.assertEqual(self.wa.calls.count('mail_body'), 2)
 
+    def test_people_are_suggested_from_the_customers_own_mail_and_never_from_another_accounts(self):
+        self.alpha_mail(self.wa, 9, sender=('Anders Holm', 'anders@z.test'), age_days=0.2)
+        self.run_sync()
+        self.sync.tick(limit=50)
+        found = self.hub.people(self.a, 'an')
+        self.assertEqual([p['address'] for p in found], ['anders@z.test', 'ann@x.test'])                # most recent first, by name or by address
+        self.assertEqual(self.hub.people(self.a, 'BERND'), [{'name': 'Bernd', 'address': 'bernd@y.test'}])
+        self.assertEqual(self.hub.people(self.a, 'alpha.test'), [])                                    # the accounts' own addresses are not people to write to
+        self.assertEqual(self.hub.people(self.a, ''), []); self.assertEqual(self.hub.people(self.a, 'nobody-by-this-name'), [])
+        self.assertEqual(self.hub.people(self.b, 'an'), [])                                            # another customer's mail suggests nothing
+
+    def test_a_message_that_came_as_markup_only_still_has_words_to_quote_and_search(self):
+        self.wp.bodies['1@postbox'] = {'html': '<html><head><style>p{color:red}</style></head><body><p>Hallo Dana,</p><div>zweite&nbsp;Zeile<br>dritte</div><script>x()</script></body></html>'}
+        body = self.hub.thread(self.a, self.cp, 'conv:1')['messages'][0]['body']
+        self.assertEqual(body['text'], 'Hallo Dana,\n\nzweite Zeile\ndritte')
+
     def test_a_message_is_shown_safely_and_remote_pictures_wait_for_the_customer(self):
         self.wp.bodies['1@postbox'] = {'html': '<div onclick="x()"><script>steal()</script><p>Hallo <a href="javascript:x">a</a><a href="https://ok.test/p">b</a></p>'
                                                '<img src="https://track.test/p.gif"><style>p{background:url(https://track.test/c)}</style><iframe src="https://x.test"></iframe></div>'}
         body = self.hub.thread(self.a, self.cp, 'conv:1')['messages'][0]['body']
-        self.assertEqual(body['blocked_images'], 1)
-        for bad in ('script', 'onclick', 'javascript', 'track.test', 'iframe', 'style'):
+        self.assertEqual(body['blocked_images'], 2)                                                         # the picture, and the one its style sheet would load
+        for bad in ('script', 'onclick', 'javascript', 'track.test', 'iframe', 'url('):
             self.assertNotIn(bad, body['html'])
         self.assertIn('href="https://ok.test/p" target="_blank" rel="noopener noreferrer nofollow"', body['html'])
         shown = self.hub.thread(self.a, self.cp, 'conv:1', images=True)['messages'][0]['body']
@@ -577,15 +593,110 @@ class Neutral(unittest.TestCase):
 class Html(unittest.TestCase):
     def test_what_is_not_allowed_is_rebuilt_away(self):
         cases = {'<img src=x onerror=alert(1)>': '', '<a href="  JAVASCRIPT:alert(1)">x</a>': '<a target="_blank" rel="noopener noreferrer nofollow">x</a>',
-                 '<svg><script>x</script></svg>ok': 'ok', '<p style="background:url(https://t.test/x)">a</p>': '<p>a</p>', '<b>unclosed': '<b>unclosed</b>',
+                 '<svg><script>x</script></svg>ok': 'ok', '<b>unclosed': '<b>unclosed</b>',
                  '<form action="https://evil.test"><input name=p></form>after': 'after', '<base href="https://evil.test/">t': 't',
-                 '<img src="data:image/png;base64,AAAA">': '', '<a href="mailto:a@b.test">m</a>': '<a href="mailto:a@b.test" target="_blank" rel="noopener noreferrer nofollow">m</a>',
-                 '<table width="100%"><tr><td colspan="2" onmouseover="x">c</td></tr></table>': '<table width="100"><tr><td colspan="2">c</td></tr></table>',
+                 '<a href="mailto:a@b.test">m</a>': '<a href="mailto:a@b.test" target="_blank" rel="noopener noreferrer nofollow">m</a>',
+                 '<table width="100%"><tr><td colspan="2" onmouseover="x">c</td></tr></table>': '<table width="100%"><tr><td colspan="2">c</td></tr></table>',
+                 '<iframe src="https://evil.test"></iframe><object data="x"></object><embed src="x">k': 'k', '<meta http-equiv="refresh" content="0;url=https://evil.test">m': 'm',
+                 '<link rel="stylesheet" href="https://evil.test/a.css">l': 'l', '<div class="lumina-quote x" id="lumina-top">d</div>': '<div class="x">d</div>',
                  '1 < 2 & "q"': '1 &lt; 2 &amp; "q"'}
         for given, expected in cases.items():
             self.assertEqual(sanitize(given)['html'], expected, given)
         self.assertEqual(sanitize('<img src="http://t.test/a.png" alt="A">', images=True)['html'], '<img src="http://t.test/a.png" alt="A">')
-        self.assertEqual(sanitize('<div>' * 200 + 'deep' + '</div>' * 200)['html'].count('<div>'), 60)
+        self.assertEqual(sanitize('<div>' * 200 + 'deep' + '</div>' * 200)['html'].count('<div>'), 80)
+
+    def test_the_senders_formatting_is_kept_and_nothing_in_it_can_run_or_load(self):
+        kept = sanitize('<p style="font-size:11pt; font-family:Calibri,sans-serif; margin:0 0 8px; text-align:center; position:fixed; behavior:url(x.htc); '
+                        'width:expression(alert(1)); -moz-binding:url(x); mso-fareast-language:EN-US">t</p>')['html']
+        self.assertEqual(kept, '<p style="font-size:11pt;font-family:Calibri,sans-serif;margin:0 0 8px;text-align:center">t</p>')
+        for hostile in ('color:red;}</style><script>alert(1)</script>', 'background:url(javascript:alert(1))', 'background:url("data:text/html,<script>x</script>")',
+                        'color:\\72 ed', 'font-family:x;@import url(https://e.test/a.css)', 'content:"</style>"', 'background-image:image-set("https://e.test/a.png" 1x)'):
+            made = sanitize(f'<p style="{hostile}">t</p>')['html']
+            for mark in ('script', 'javascript', '@import', 'image-set', 'text/html', '\\', 'e.test'):
+                self.assertNotIn(mark, made, hostile)
+        sheet = sanitize('<style>p.a{color:#c00;margin:0} @import url(https://e.test/a.css); @font-face{font-family:x;src:url(https://e.test/f.woff)} '
+                         '.b{background:#fff url(https://e.test/b.png)} @media (max-width:600px){.c{width:100% !important}} .lumina-quote{display:none} '
+                         'a[href^="http"]{color:#06c} </style><script>x</script><p class="a">t</p>', images=False)
+        self.assertNotIn('e.test', sheet['html']); self.assertNotIn('@import', sheet['html']); self.assertNotIn('font-face', sheet['html']); self.assertNotIn('lumina-quote', sheet['html'])
+        self.assertIn('@media (max-width:600px){.c{width:100% !important}}', sheet['html'])
+        self.assertEqual((sheet['blocked_images'], sheet['designed']), (1, True))                             # the picture in the sheet is counted like any other, and not loaded
+        self.assertIn('url("https://e.test/b.png")', sanitize('<style>.b{background:#fff url(https://e.test/b.png)}</style>', images=True)['html'])
+
+    def test_remote_pictures_wait_for_the_customer_and_pictures_inside_the_message_come_from_lumina(self):
+        mail = ('<img src="https://t.test/open.gif" width="1" height="1"><img src="https://t.test/logo.png" alt="Acme"><td background="https://t.test/bg.png">x</td>'
+                '<img src="cid:shot@01"><img src="cid:unknown"><img src="data:image/png;base64,AAAA"><img src="data:image/svg+xml;base64,AAAA"><img src="data:text/html,x">')
+        blocked = sanitize(mail, inline={'shot@01': '/v1/hub/mail/file?attachment=a1&inline=1'})
+        self.assertEqual(blocked['blocked_images'], 3)
+        self.assertNotIn('t.test', blocked['html'])
+        self.assertIn('<span class="lumina-alt">Acme</span>', blocked['html'])                              # what the picture was is still said
+        self.assertIn('<img src="/v1/hub/mail/file?attachment=a1&amp;inline=1">', blocked['html'])
+        self.assertIn('<img src="data:image/png;base64,AAAA">', blocked['html'])
+        self.assertNotIn('svg', blocked['html']); self.assertNotIn('text/html', blocked['html']); self.assertNotIn('unknown', blocked['html'])
+        shown = sanitize(mail, images=True)
+        self.assertEqual((shown['blocked_images'], shown['html'].count('https://t.test/')), (0, 3))
+
+    def test_a_message_without_a_background_is_shown_in_the_theme_and_one_with_a_background_as_sent(self):
+        from agentai_platform.hub_html import contrast, parse_colour, readable, DARK_PAGE, LIGHT_PAGE
+        plain = sanitize('<p style="color:#000000">Hi</p><font color="navy">n</font><span style="color:#d93025">warning</span>')
+        self.assertFalse(plain['designed'])
+        self.assertIn('color:light-dark(#000000, var(--lm-fg, #f2f2f5))', plain['html'])                     # ordinary dark text takes the theme's text colour on a dark theme
+        self.assertIn('color:light-dark(#d93025, #', plain['html'])                                         # a colour keeps its hue: as sent on a light theme, lifted a little on a dark one
+        for colour in ('#000', 'navy', '#333333', 'rgb(5, 99, 193)', '#8b0000', 'white', '#ffff00', '#eeeeee'):
+            made = readable(colour)
+            if 'light-dark' not in made:
+                self.assertGreaterEqual(min(contrast(parse_colour(made)[:3], DARK_PAGE), contrast(parse_colour(made)[:3], LIGHT_PAGE)), 4.5, colour)
+                continue
+            inside, depth, cut = made[len('light-dark('):-1], 0, 0
+            for at, ch in enumerate(inside):                                                                # the comma between the two colours, not one inside var(...)
+                depth += (ch == '(') - (ch == ')')
+                if ch == ',' and not depth:
+                    cut = at
+                    break
+            light, dark = inside[:cut].strip(), inside[cut + 1:].strip()
+            for value, page in ((light, LIGHT_PAGE), (dark, DARK_PAGE)):
+                if not value.startswith('var('):
+                    self.assertGreaterEqual(contrast(parse_colour(value)[:3], page), 4.5, (colour, value))
+        for designed in ('<table bgcolor="#f4f4f4"><tr><td style="color:#000000">x</td></tr></table>', '<div style="background-color:#fff;color:#111111">x</div>',
+                         '<body bgcolor="white"><p style="color:black">x</p></body>', '<style>.w{background:#fafafa}</style><p style="color:#000">x</p>'):
+            made = sanitize(designed)
+            self.assertTrue(made['designed'], designed)
+            self.assertNotIn('light-dark', made['html'])                                                    # as sent: its colours are its own
+        self.assertFalse(sanitize('<div style="background:transparent;background-color:inherit">x</div>')['designed'])
+
+    def test_earlier_messages_under_a_reply_are_folded_and_a_forward_is_not(self):
+        from agentai_platform.hub_html import from_text
+        reply = sanitize('<div>Works for me.</div><div class="gmail_quote"><div class="gmail_attr">On Monday Ann wrote:</div><blockquote class="gmail_quote">Lunch?</blockquote></div><p>after</p>')
+        self.assertTrue(reply['quoted'])
+        self.assertRegex(reply['html'], r'^<div>Works for me\.</div><details class="lumina-quote"><summary>.*</summary><div class="lumina-quoted"><div class="gmail_quote">.*</div></div></details><p>after</p>$')
+        cite = sanitize('<p>Yes.</p><blockquote type="cite"><p>Can you?</p></blockquote>')
+        self.assertTrue(cite['quoted'])
+        rest = sanitize('<div><p>Agreed.</p><div id="divRplyFwdMsg"><b>From:</b> Ann</div><div>Earlier words</div></div><footer>f</footer>')
+        self.assertRegex(rest['html'], r'<p>Agreed\.</p><details.*Earlier words</div></div></details></div><footer>f</footer>$')    # from its heading to the end of its part
+        # A desktop mail program wraps the heading of the quoted messages in a block of its own and puts the quoted messages AFTER that block: the fold takes them too.
+        desk = sanitize('<div class="W"><p>Hi</p><div><div style="border:none;border-top:solid #E1E1E1 1.0pt;padding:3.0pt 0in 0in 0in"><p><b>From:</b> Dana</p></div></div><p>Earlier words</p></div><p>tail</p>')
+        self.assertRegex(desk['html'], r'^<div class="W"><p>Hi</p><details class="lumina-quote">.*<p>Earlier words</p></div></details></div><p>tail</p>$')
+        forward = sanitize('<div>FYI</div><div class="gmail_quote"><div class="gmail_attr">---------- Forwarded message ---------</div>The contract</div>')
+        self.assertFalse(forward['quoted']); self.assertNotIn('<details', forward['html'])
+        self.assertFalse(sanitize('<div class="gmail_quote">Only a quote, nothing above it</div>')['quoted'])
+        self.assertFalse(sanitize('<p>a</p><blockquote>a quotation in a newsletter</blockquote>')['quoted'])
+        text = from_text('Sure.\n\nOn Mon, Ann <ann@x.test> wrote:\n> Lunch?\n> See https://x.test/menu.\n')
+        self.assertTrue(text.startswith('<pre class="lumina-text">Sure.</pre><details class="lumina-quote">'))
+        self.assertIn('<a href="https://x.test/menu" target="_blank" rel="noopener noreferrer nofollow">https://x.test/menu</a>.', text)
+        self.assertNotIn('<details', from_text('> only quoted lines\n> here'))
+        self.assertEqual(from_text('<b>not markup</b> & more'), '<pre class="lumina-text">&lt;b&gt;not markup&lt;/b&gt; &amp; more</pre>')
+
+    def test_the_page_a_frame_shows_carries_its_own_policy(self):
+        from agentai_platform.hub_html import document, frame_policy
+        self.assertIn("img-src 'self' data:;", frame_policy(False))
+        self.assertIn("img-src 'self' data: https: http:;", frame_policy(True))
+        for policy in (frame_policy(False), frame_policy(True)):
+            self.assertIn("default-src 'none'", policy); self.assertIn("frame-ancestors 'self'", policy); self.assertIn("form-action 'none'", policy)
+            self.assertIn('sandbox allow-same-origin allow-popups allow-popups-to-escape-sandbox', policy)
+            self.assertNotIn('script', policy)                                                              # no script source and no allow-scripts: nothing can run
+        plain, designed = document('<p>x</p>', designed=False), document('<p>x</p>', designed=True)
+        self.assertIn('color-scheme:light dark', plain); self.assertIn('var(--lm-fg,CanvasText)', plain)
+        self.assertIn('color-scheme:light;background:#ffffff', designed); self.assertNotIn('--lm-fg', designed.split('.lumina-quote{padding')[1])
+        self.assertIn('<meta name="referrer" content="no-referrer">', plain)
 
 
 if __name__ == '__main__':

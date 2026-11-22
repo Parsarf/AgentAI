@@ -29,6 +29,14 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'mail-pick', keys: 'x', name: 'Select the open thread', group: 'Mail', where: ['inbox'] },
   { id: 'mail-search', keys: '/', name: 'Search mail', group: 'Mail', where: ['inbox'] },
   { id: 'mail-close', keys: 'escape', name: 'Close the thread', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-compose', keys: 'c', name: 'Write a new message', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-reply', keys: 'r', name: 'Reply', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-reply-all', keys: 'a', name: 'Reply to everyone', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-forward', keys: 'f', name: 'Forward', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-archive', keys: 'e', name: 'Archive, or move back to the inbox', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-bin', keys: '#', name: 'Move to the bin', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-star', keys: 's', name: 'Star, or remove the star', group: 'Mail', where: ['inbox'] },
+  { id: 'mail-unread', keys: 'u', name: 'Mark as unread', group: 'Mail', where: ['inbox'] },
   { id: 'cal-today', keys: 't', name: 'Today', group: 'Calendar', where: ['calendar'] },
   { id: 'cal-earlier', keys: 'arrowleft', name: 'Earlier', group: 'Calendar', where: ['calendar'] },
   { id: 'cal-later', keys: 'arrowright', name: 'Later', group: 'Calendar', where: ['calendar'] },
@@ -37,7 +45,7 @@ export const SHORTCUTS: Shortcut[] = [
 ];
 
 const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const WORDS: Record<string, string> = { mod: '', shift: 'Shift', escape: 'Esc', arrowleft: '←', arrowright: '→', f6: 'F6', '?': '?', '/': '/' };
+const WORDS: Record<string, string> = { mod: '', shift: 'Shift', escape: 'Esc', arrowleft: '←', arrowright: '→', f6: 'F6', '?': '?', '/': '/', '#': '#' };
 /** How a shortcut is shown: "Ctrl K" (or "⌘ K"), "G then I". */
 export function keyWords(keys: string): string {
   return keys.split(' ').map(step => step.split('+').map(k => (k === 'mod' ? (isMac() ? '⌘' : 'Ctrl') : WORDS[k] ?? k.toUpperCase())).join(' ')).join(' then ');

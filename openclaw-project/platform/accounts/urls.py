@@ -124,7 +124,7 @@ from . import organization as org
 from . import lifecycle_data as ld
 urlpatterns += [
  path('v1/assistant/ask', assistantv.ask), path('v1/search', searchv.search), path('v1/hub', hubv.overview), path('v1/hub/ask', hubv.ask), path('v1/hub/link', hubv.link), path('v1/hub/feeds', hubv.feed_add), path('v1/hub/link/callback', hubv.link_callback), path('v1/hub/link/finish', hubv.link_finish), path('v1/hub/pulse', hubv.pulse), path('v1/hub/refresh', hubv.refresh), path('v1/hub/settings', hubv.settings),
- path('v1/hub/mail/threads', hubv.threads), path('v1/hub/mail/labels', hubv.labels), path('v1/hub/mail/thread', hubv.thread), path('v1/hub/mail/message', hubv.message),
+ path('v1/hub/mail/threads', hubv.threads), path('v1/hub/mail/labels', hubv.labels), path('v1/hub/mail/thread', hubv.thread), path('v1/hub/mail/message', hubv.message), path('v1/hub/mail/frame', hubv.mail_frame), path('v1/hub/mail/people', hubv.people), path('v1/hub/mail/file', hubv.mail_file),
  path('v1/hub/mail/search-older', hubv.search_older), path('v1/hub/calendars', hubv.calendars), path('v1/hub/events', hubv.events), path('v1/hub/event', hubv.event),
  path('v1/hub/events/search', hubv.search_events),
  path('v1/controls', acc.controls),

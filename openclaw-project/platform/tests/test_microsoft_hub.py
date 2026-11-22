@@ -37,6 +37,8 @@ class FakeGraph:
             'o-2': {'id': 'o-2', 'subject': 'Standup', 'type': 'occurrence', 'seriesMasterId': 'm-series', 'originalStart': '2033-05-23T13:00:00Z', 'isOrganizer': True,
                     'start': {'dateTime': '2033-05-23T13:00:00', 'timeZone': 'UTC'}, 'end': {'dateTime': '2033-05-23T13:30:00', 'timeZone': 'UTC'}, '@odata.etag': 'W/"o2"', 'attendees': []}}
         self.calls, self.sent, self.lose_answer, self.version = [], [], False, 10
+        self.forms, self.token_error = [], None
+        self.scope = 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Calendars.Read openid email offline_access User.Read'
 
     def ok(self, body, status=200):
         return status, {}, json.dumps(body).encode()
@@ -50,8 +52,10 @@ class FakeGraph:
             form = {k: v[0] for k, v in parse_qs(data.decode()).items()}
             if form.get('code') == 'admin-needed':
                 return 400, {}, json.dumps({'error': 'invalid_grant', 'error_description': 'AADSTS65001: The user or administrator has not consented'}).encode()
-            return self.ok({'access_token': 'at', 'refresh_token': 'rt', 'expires_in': 3600, 'scope': 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Calendars.Read openid email offline_access User.Read',
-                            'id_token': jwt({'preferred_username': 'Me@Outlook.test'})})
+            self.forms.append(form)
+            if self.token_error:
+                return self.token_error[0], {}, json.dumps(self.token_error[1]).encode()
+            return self.ok({'access_token': 'at', 'refresh_token': 'rt', 'expires_in': 3600, 'scope': self.scope, 'id_token': jwt({'preferred_username': 'Me@Outlook.test'})})
         body = json.loads(data) if data else {}
         if path == '/me':
             return self.ok({'mail': 'me@outlook.test', 'userPrincipalName': 'me@outlook.test'})
@@ -164,6 +168,141 @@ class SigningIn(unittest.TestCase):
         with self.assertRaises(ProviderError) as admin:
             microsoft_hub.exchanger('cid', 'secret', g)('admin-needed', 'verifier', 'r')
         self.assertEqual(admin.exception.code, 'admin_consent_required')
+
+
+class TheRealNetwork(unittest.TestCase):
+    """Production, 2026-11-21: no Microsoft account could be connected ("The account could not be connected"). Microsoft's module sent its requests through Google's
+    network function, which allows only Google's hosts, so the exchange of the sign-in code was refused inside Lumina before anything was sent. Every other test here
+    hands the adapter a fake `http`, so none of them ran that function. These do: the real function, with only the socket replaced."""
+    def setUp(self):
+        from unittest.mock import patch
+        from agentai_platform import google_hub
+        self.google, self.asked = google_hub, []
+        test = self
+
+        class Answer:
+            status, will_close, headers = 200, True, {}
+            def __init__(self, body):
+                self.body = body
+            def read(self, n):
+                return self.body
+            def isclosed(self):
+                return True
+
+        class Con:
+            def __init__(self, host):
+                self.host, self.sock, self.timeout = host, None, None
+            def request(self, method, target, body=None, headers=None):
+                test.asked.append((method, self.host, target.split('?')[0]))
+            def getresponse(self):
+                if self.host == 'login.microsoftonline.com':
+                    return Answer(json.dumps({'access_token': 'at', 'refresh_token': 'rt', 'expires_in': 3600, 'scope': 'openid profile email Mail.Read Calendars.Read User.Read'}).encode())
+                return Answer(b'{"mail":"me@outlook.test"}')
+            def close(self):
+                pass
+        patcher = patch.object(google_hub, '_POOL', google_hub._Pool(Con)); patcher.start(); self.addCleanup(patcher.stop)
+
+    def test_microsofts_own_hosts_are_reached_and_no_other(self):
+        microsoft_hub.default_http('POST', microsoft_hub.TOKEN_URL, {}, b'grant_type=authorization_code')
+        self.assertEqual(microsoft_hub.MicrosoftAdapter()._me({'access_token': 'at'}), 'me@outlook.test')
+        self.assertEqual(self.asked, [('POST', 'login.microsoftonline.com', '/common/oauth2/v2.0/token'), ('GET', 'graph.microsoft.com', '/v1.0/me')])
+        for url in ('https://gmail.googleapis.com/gmail/v1/users/me/profile', 'https://evil.test/v1.0/me', 'http://graph.microsoft.com/v1.0/me', 'https://graph.microsoft.com:8443/v1.0/me'):
+            with self.assertRaises(ProviderError) as refused:
+                microsoft_hub.default_http('GET', url, {})
+            self.assertEqual(refused.exception.code, 'host_not_allowed')
+        with self.assertRaises(ProviderError):                                    # and Google's function still reaches only Google
+            self.google.default_http('GET', 'https://graph.microsoft.com/v1.0/me', {})
+        self.assertEqual(len(self.asked), 2)
+
+    def test_every_provider_reaches_each_host_it_declares_through_its_own_network_function(self):
+        for module in (self.google, microsoft_hub):
+            for host in module.DECLARATION.hosts:
+                self.asked.clear()
+                module.default_http('GET', f'https://{host}/', {})
+                self.assertEqual(self.asked, [('GET', host, '/')], (module.PROVIDER, host))
+
+    def test_the_whole_sign_in_through_the_real_function(self):
+        done = microsoft_hub.exchanger('cid', 'secret')('code', 'verifier', 'https://getlumina.pro/v1/hub/link/callback')
+        self.assertEqual(done.identity, 'me@outlook.test')
+        self.assertEqual([a[:2] for a in self.asked], [('POST', 'login.microsoftonline.com'), ('GET', 'graph.microsoft.com')])
+
+
+class SigningInAsMicrosoftAnswers(unittest.TestCase):
+    """The sign-in with answers shaped like Microsoft's own, through the connector service that decides whether a connection is made."""
+    def setUp(self):
+        from tests.hub_fixture import HubBase
+        base = HubBase('setUp'); base.setUp(); self.addCleanup(base.tmp.cleanup)
+        self.base, self.g = base, FakeGraph()
+        microsoft_hub.register(base.registry, self.g)
+        from agentai_platform.connectors import Service
+        d = microsoft_hub.DECLARATION
+        base.connectors.catalog['microsoft'] = Service('microsoft', d.label, 'researcher', frozenset(d.scopes), needs_selection=False,
+                                                       writable_kinds=frozenset(w.name for w in d.write_kinds), disclosure=d.disclosure)
+        self.exchange = microsoft_hub.exchanger('cid', 'secret', self.g)
+        self.redirect = 'https://getlumina.pro/v1/hub/link/callback'
+
+    def finish(self, code='good'):
+        started = self.base.connectors.start_link(self.base.a, 'microsoft', self.redirect)
+        return self.base.connectors.finish_link(self.base.a, started['state'], code, self.redirect, self.exchange, needs_any=(microsoft_hub.MAIL_SCOPE, microsoft_hub.CALENDAR_SCOPE))
+
+    def scopes(self, connection):
+        with self.base.store.connect() as con:
+            return json.loads(con.execute('SELECT granted_scopes FROM connector_connections WHERE id=?', (connection,)).fetchone()[0])
+
+    def test_profile_added_by_microsoft_lowercase_names_and_no_offline_access_in_the_answer_still_connect(self):
+        # What a real answer looks like: `profile` although it was not asked for, Graph's address in front, `offline_access` left out, and (in Microsoft's own examples) lower case.
+        self.g.scope = 'openid profile email https://graph.microsoft.com/mail.read https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/User.Read'
+        connection = self.finish()
+        self.assertEqual(self.scopes(connection), ['Calendars.Read', 'Mail.Read', 'User.Read', 'email', 'openid', 'profile'])
+        accounts = self.base.hub.accounts(self.base.a)
+        self.assertEqual([(a['provider'], a['identity'], a['state']) for a in accounts], [('microsoft', 'me@outlook.test', 'working')])
+
+    def test_each_way_a_sign_in_connects_nothing_has_its_own_reason(self):
+        from agentai_platform.connectors import LinkFailed
+
+        def reason(**answer):
+            self.g.token_error, self.g.scope = answer.pop('error', None), answer.pop('scope', FakeGraph().scope)
+            with self.assertRaises(LinkFailed) as failed:
+                self.finish()
+            return failed.exception.reason, failed.exception.reference
+
+        self.assertEqual(reason(error=(401, {'error': 'invalid_client', 'error_description': 'AADSTS7000215: Invalid client secret provided. Trace ID: 1'})), ('provider_setup', 'AADSTS7000215'))
+        self.assertEqual(reason(error=(400, {'error': 'invalid_grant', 'error_description': 'AADSTS70008: The provided authorization code or refresh token has expired'})), ('expired', 'AADSTS70008'))
+        self.assertEqual(reason(error=(400, {'error': 'invalid_grant', 'error_description': 'AADSTS65001: The user or administrator has not consented'})), ('admin_consent', 'AADSTS65001'))
+        self.assertEqual(reason(error=(503, {})), ('provider_unreachable', ''))
+        self.assertEqual(reason(scope='openid profile email User.Read'), ('no_access', ''))                              # signed in, mail and calendars both unticked
+        self.assertEqual(reason(scope=FakeGraph().scope + ' Files.ReadWrite.All'), ('unexpected_access', ''))             # more than Lumina declares is refused, never stored
+        with self.assertRaises(LinkFailed) as replay:
+            self.base.connectors.finish_link(self.base.a, 'a-state-nobody-started', 'good', self.redirect, self.exchange)
+        self.assertEqual(replay.exception.reason, 'expired')
+        with self.base.store.connect() as con:
+            self.assertEqual(con.execute('SELECT count(*) FROM connector_connections').fetchone()[0], 0)
+
+    def test_connecting_again_keeps_the_same_connection_and_never_asks_for_less_than_it_held(self):
+        connection = self.finish()
+        self.base.connectors.needs_customer('a', connection)
+        started = self.base.connectors.start_link(self.base.a, 'microsoft', self.redirect, upgrade=connection)
+        self.assertEqual(started['identity'], 'me@outlook.test')
+        again = self.base.connectors.finish_link(self.base.a, started['state'], 'good', self.redirect, self.exchange)
+        self.assertEqual(again, connection)
+        with self.base.store.connect() as con:
+            self.assertEqual(tuple(con.execute('SELECT state,needs_reason FROM connector_connections WHERE id=?', (connection,)).fetchone()), ('connected', None))
+
+    def test_a_renewal_asks_for_what_is_held_and_always_for_lasting_access(self):
+        renewed = microsoft_hub.refresher('cid', 'secret', self.g)({'refresh_token': 'rt', 'scope': 'Calendars.Read Mail.Read User.Read email openid profile'})
+        self.assertEqual(set(self.g.forms[-1]['scope'].split()), {'Calendars.Read', 'Mail.Read', 'User.Read', 'email', 'openid', 'offline_access'})
+        self.assertEqual(renewed['tokens']['access_token'], 'at')
+
+
+class WhichSignIn(unittest.TestCase):
+    def test_a_personal_and_a_work_account_each_go_to_their_own_sign_in(self):
+        at = lambda **more: urlsplit(microsoft_hub.authorize_url('cid', 'r', 'st', 'ch', **more)).path
+        self.assertEqual((at(), at(kind='personal'), at(kind='work')),
+                         ('/common/oauth2/v2.0/authorize', '/consumers/oauth2/v2.0/authorize', '/organizations/oauth2/v2.0/authorize'))
+        with self.assertRaises(ValueError):
+            microsoft_hub.authorize_url('cid', 'r', 'st', 'ch', kind='anything-else')
+        asked = set(parse_qs(urlsplit(microsoft_hub.authorize_url('cid', 'r', 'st', 'ch', kind='personal')).query)['scope'][0].split())
+        self.assertNotIn('profile', asked)                                           # accepted when Microsoft adds it, never asked for
 
 
 class Reading(unittest.TestCase):
