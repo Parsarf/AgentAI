@@ -8,6 +8,7 @@ import { startSite } from '../fixtures/site.mjs';
 process.env.BROWSE_CHROME ||= '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 process.env.BROWSE_ALLOW_LOOPBACK = '1';
 process.env.BROWSE_OUT = join(tmpdir(), 'lumina-browse-test');
+process.env.BROWSE_OPEN_LOAD_MS = '1200';                 // how long a page gets to finish loading before the task goes on with what it has drawn (25 s in the stage)
 const { Runner, urlAllowed, privateIp } = await import('../runner.mjs');
 
 let site, r, base;
@@ -15,6 +16,26 @@ before(async () => { site = await startSite(); base = `http://127.0.0.1:${site.p
 after(async () => { await r.stop(); site.close(); });
 const LINE = /^\[(\d{1,4})\]\s+<([a-z]+)(?:\s+type=([a-z]+))?>\s+"(.{0,120})"\s*$/;
 const find = (snap, text) => snap.split('\n').map(l => l.match(LINE)).find(m => m && m[4].includes(text));
+
+test('a page whose own scripts are slow is opened, not failed: the task goes on with what is drawn, and sees the rest when it arrives', async () => {
+  const started = Date.now();
+  const o = await r.handle({ cmd: 'open', url: base + '/heavy' });
+  assert.equal(o.ok, true); assert.equal(o.still_loading, true);                 // the site answered; its script had not finished (it takes 4 s)
+  const early = await r.handle({ cmd: 'snapshot' });
+  assert.ok(find(early.snapshot, 'Paddle Shop'), early.snapshot);                // what is above the slow script can be used already
+  await new Promise(resolve => setTimeout(resolve, 4200 - (Date.now() - started) > 0 ? 4200 - (Date.now() - started) : 0));
+  const late = await r.handle({ cmd: 'snapshot' });
+  assert.ok(find(late.snapshot, 'Late button'), late.snapshot); assert.equal(late.title, 'Heavy shop, loaded');
+});
+
+test('after an open that failed, the very next open works: the second try is worth making', async () => {
+  const gone = await r.handle({ cmd: 'open', url: 'http://127.0.0.1:1/' });     // nothing answers there at all: a failed open
+  assert.equal(gone.ok, false); assert.equal(gone.error, 'navigation_failed');
+  const again = await r.handle({ cmd: 'open', url: base + '/' });               // sent at once, as the host's retry is
+  assert.equal(again.ok, true, JSON.stringify(again));
+  assert.ok(find((await r.handle({ cmd: 'snapshot' })).snapshot, 'Search'));
+  assert.equal((await r.handle({ cmd: 'open', url: base + '/cart' })).ok, true);
+});
 
 test('url policy allows public web only', () => {
   for (const bad of ['file:///etc/passwd', 'javascript:alert(1)', 'data:text/html,hi', 'chrome://settings', 'http://localhost/', 'http://127.0.0.1/', 'http://10.1.2.3/', 'http://192.168.1.1/', 'http://169.254.169.254/latest', 'http://172.20.0.1/', 'http://[::1]/', 'http://user:pw@example.com/', 'http://printer.local/', 'ftp://example.com'])

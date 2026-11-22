@@ -41,14 +41,16 @@ TOOL = {
         'type': 'object',
         'properties': {
             'task': {'type': 'string', 'description': 'What to do on the website, in plain words (for example: Order the spiciest chicken wings on Uber Eats).'},
-            'site': {'type': 'string', 'description': 'Exact starting URL, including the product path and query when supplied; or a domain such as ubereats.com. When you pass tab, give the address of that tab here; it is not opened, the tab stays where it is.'},
+            'site': {'type': 'string', 'description': 'Where to start (always give it, unless you pass tab). Exact starting URL, including the product path and query when supplied; or a domain such as ubereats.com. When you pass tab, give the address of that tab here; it is not opened, the tab stays where it is.'},
             'tab': {'type': 'string', 'description': 'Only when the customer message names a granted tab (tab="g1"): work in that open tab of their own browser, exactly where it is now, instead of opening a new one.'},
             'steps': {'type': 'array', 'items': {'type': 'string'}, 'description': '3 to 10 short plain steps, one sentence each, in order.'},
             'search': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Up to 3 short phrases to type into the site\'s search box.'},
             'done_when': {'type': 'string', 'description': 'Observable checkpoint for this stage, e.g. report all visible colours and stop; do not combine comparison, cart and checkout in one stage.'},
             'choices': {'type': 'object', 'description': 'Choices already made (item: spiciest wings). Do not guess ones the website will show; the browser asks the customer.'},
         },
-        'required': ['task', 'site'],
+        # Only what no call can do without. The runtime refuses a call that breaks this schema before Lumina sees it ("must have required properties site"), so an address
+        # sent under another name (`url`) could never be taken; clean_task() finds the address and refuses, with the exact arguments, when there is none.
+        'required': ['task'],
     },
 }
 
@@ -65,15 +67,16 @@ STEP = {
     'inputSchema': {
         'type': 'object',
         'properties': {
-            'action': {'type': 'string', 'enum': list(ACTIONS)},
-            'ref': {'type': 'integer', 'description': 'The number of the control, from the list (c12 is 12).'},
+            # Described, not enforced, for the same reason: clean_step() reads the close spellings ("c12", scroll_down) instead of the runtime refusing them unread.
+            'action': {'type': 'string', 'description': 'One of: ' + ', '.join(ACTIONS) + '.'},
+            'ref': {'type': ['integer', 'string'], 'description': 'The number of the control, from the list (c12 is 12).'},
             'value': {'type': 'string', 'description': 'Text for type, the option for select, Enter/Tab/Escape for press, down/up for scroll.'},
             'answer': {'type': 'string', 'description': 'For done: the final answer, from what the page shows.'},
             'reason': {'type': 'string', 'description': 'One short sentence.'},
             'question': {'type': 'string', 'description': 'For ask: the short question for the customer.'},
             'field': {'type': 'string', 'description': 'For ask: one or two words naming what is chosen, like size.'},
-            'options': {'type': 'array', 'items': {'type': 'integer'}, 'description': 'For ask: the refs of the choices (2 to 12).'},
-            'fields': {'type': 'array', 'items': {'type': 'integer'}, 'description': 'For ask: the refs of the text fields the customer must fill in.'},
+            'options': {'type': 'array', 'items': {'type': ['integer', 'string']}, 'description': 'For ask: the refs of the choices (2 to 12).'},
+            'fields': {'type': 'array', 'items': {'type': ['integer', 'string']}, 'description': 'For ask: the refs of the text fields the customer must fill in.'},
         },
         'required': ['action'],
     },
@@ -97,18 +100,41 @@ def plain(text, limit=None):
     return out if limit is None else out[:limit]
 
 
+# The names assistants give the same argument. In the runtime's tool catalogue a tool is often called before its schema was read (2026-11-22: the first call of every
+# browser task sent `url` and was refused; the retry cost a model turn each time). Nothing here widens what the browser may do: every value is still bounded, the address is
+# still checked, and a task with no usable address is still refused, with the exact arguments in the refusal.
+TASK_NAMES = ('task', 'goal', 'instruction', 'instructions', 'description', 'prompt', 'query')
+SITE_NAMES = ('site', 'url', 'start_url', 'starting_url', 'website', 'address', 'link', 'domain', 'start')
+STEP_NAMES = ('steps', 'plan', 'instructions_list')
+DONE_NAMES = ('done_when', 'done', 'finish_when', 'success', 'stop_when')
+ADDRESS_IN_TEXT = re.compile(r'https?://[^\s"\'<>()\[\]]+|(?<![\w@.-])(?:www\.)?(?:[a-z0-9-]+\.)+(?:com|org|net|io|co|ai|app|dev|shop|store|edu|gov|us|uk|ca|de|fr|es|it|nl|au|in|jp)(?:/[^\s"\'<>()\[\]]*)?', re.I)
+TASK_SHAPE = ('Send it as: task (what to do there, in plain words), site (the address or domain to start at, for example "example.com/shoes"), and if you like steps '
+              '(a list of 3 to 10 short sentences), search (up to 3 phrases for the site\'s own search box), done_when (what the page shows when this stage is finished) '
+              'and choices (things already decided, like {"size": "M"}).')
+
+
+def _first_text(args, names):
+    return next((args[k] for k in names if isinstance(args.get(k), str) and args[k].strip()), None)
+
+
 def clean_task(args, neutral=neutralize) -> dict:
     """The assistant's arguments, bounded and neutralised: anything it writes is untrusted (a web page it read could have steered it)."""
     if not isinstance(args, dict):
         raise BadTask('arguments')
-    task = args.get('task')
-    if not isinstance(task, str) or not 8 <= len(task.strip()) <= 1200:
-        raise BadTask('task')
+    task = _first_text(args, TASK_NAMES)
+    if task is None or len(task.strip()) < 8:
+        raise BadTask('task (what to do on the website, in plain words)')
+    task = task.strip()[:1200]
     tab = args.get('tab')
     if tab is not None and not (isinstance(tab, str) and re.fullmatch(r'[a-z0-9]{1,24}', tab)):
         raise BadTask('tab')
-    raw_site = args.get('site')
-    if not isinstance(raw_site, str) or not raw_site.strip() or len(raw_site) > 2048 or re.search(r'[\x00-\x20\x7f\\]', raw_site):
+    raw_site = _first_text(args, SITE_NAMES)
+    if raw_site is None and not tab:                               # no address argument at all: one written in the task itself is the place meant
+        found = ADDRESS_IN_TEXT.search(task)
+        raw_site = found.group(0).rstrip('.,;:!?') if found else None
+    if isinstance(raw_site, str):
+        raw_site = raw_site.strip().strip('"\'<>`')
+    if not isinstance(raw_site, str) or not raw_site or len(raw_site) > 2048 or re.search(r'[\x00-\x20\x7f\\]', raw_site):
         if not tab:
             raise BadTask('site (a public website URL or domain)')
         raw_site = None
@@ -127,15 +153,18 @@ def clean_task(args, neutral=neutralize) -> dict:
             raise BadTask('site (a public website URL or domain)') from None
         site, start_url = '', None             # a granted tab starts where the customer already is: its address need not be one we could open
     steps = []
-    if args.get('steps') is not None:
-        if not isinstance(args['steps'], list) or not 1 <= len(args['steps']) <= MAX_STEPS:
-            raise BadTask('steps')
-        for item in args['steps']:
-            if not isinstance(item, str) or not 4 <= len(item.strip()) <= 300:
-                raise BadTask('step')
-            steps.append(neutral(re.sub(r'^\s*\d+[.)]\s*', '', item.strip()), 300))
-        if sum(len(x) for x in steps) > 3000:
-            raise BadTask('steps too long')
+    given = next((args[k] for k in STEP_NAMES if args.get(k) is not None), None)
+    if isinstance(given, str):                                     # one text instead of a list: its lines (or numbered sentences) are the steps
+        given = [part for part in re.split(r'\n+|(?<=[.;])\s+(?=\d+[.)]\s)', given) if part.strip()]
+    if given is not None:
+        if not isinstance(given, list):
+            raise BadTask('steps (a list of short sentences)')
+        for item in given:
+            if not isinstance(item, str) or len(item.strip()) < 4:
+                continue                                           # an empty or unreadable step is left out; the task itself still says what to do
+            text = neutral(re.sub(r'^\s*(?:\d+[.)]|[-*•])\s*', '', item.strip())[:300], 300)
+            if len(steps) < MAX_STEPS and sum(len(x) for x in steps) + len(text) <= 3000:
+                steps.append(text)
     search = []
     if isinstance(args.get('search'), list):
         for item in args['search'][:3]:
@@ -148,7 +177,7 @@ def clean_task(args, neutral=neutralize) -> dict:
         for k, v in list(args['choices'].items())[:12]:
             if isinstance(k, str) and isinstance(v, (str, int, float)) and not isinstance(v, bool) and k.strip():
                 choices[neutral(k.strip(), 40)] = neutral(str(v).strip(), 120)
-    return {'task': neutral(task.strip(), 1200), 'steps': steps, 'search': search, 'site': site.removeprefix('www.'), 'start_url': start_url, 'tab': tab or None, 'done_when': neutral(str(args.get('done_when') or '').strip(), 300), 'choices': choices}
+    return {'task': neutral(task, 1200), 'steps': steps, 'search': search, 'site': site.removeprefix('www.'), 'start_url': start_url, 'tab': tab or None, 'done_when': neutral(str(_first_text(args, DONE_NAMES) or '').strip(), 300), 'choices': choices}
 
 
 def build_goal(task: dict) -> str:
@@ -181,25 +210,66 @@ def is_refused(final) -> bool:
     return final.get('state') == 'blocked' and str(final.get('reason') or '') == REFUSED_REASON
 
 
+# What assistants send for a step when they have not read its schema, each meaning exactly one thing the step already allows.
+ACTION_NAMES = {'tap': 'click', 'press_button': 'click', 'fill': 'type', 'input': 'type', 'type_text': 'type', 'enter_text': 'type', 'choose': 'select', 'pick': 'select', 'go_back': 'back',
+                'finish': 'done', 'finished': 'done', 'complete': 'done', 'answer': 'done', 'abort': 'stop', 'cancel': 'stop', 'question': 'ask', 'ask_user': 'ask'}
+MOVES = {'scroll_down': ('scroll', 'down'), 'scroll_up': ('scroll', 'up'), 'down': ('scroll', 'down'), 'up': ('scroll', 'up'), 'enter': ('press', 'Enter'), 'press_enter': ('press', 'Enter'),
+         'submit': ('press', 'Enter'), 'escape': ('press', 'Escape'), 'tab': ('press', 'Tab')}
+VALUE_NAMES = ('value', 'text', 'input', 'content', 'option', 'key', 'direction')
+KEYS = {'enter': 'Enter', 'return': 'Enter', 'tab': 'Tab', 'escape': 'Escape', 'esc': 'Escape'}
+NO_REF = ('press', 'scroll', 'back', 'wait', 'read', 'done', 'stop')
+STEP_SHAPE = ('Send action (click, type, select, press, scroll, back, wait, read, ask, done or stop); for click, type and select also ref (the number of a control in the list: c12 is 12); '
+              'value for type (the text), select (the option), press (Enter, Tab or Escape) and scroll (down or up); answer for done; reason for stop.')
+
+
+def _ref(value):
+    """12, "12", "c12", "[12]" -> 12; anything else -> None."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    text = str(value).strip().strip('[]').lstrip('cC#')
+    return int(text) if text.isdigit() and len(text) <= 6 else None
+
+
 def clean_step(args) -> dict:
     """The assistant's step, bounded. The browse service checks it again against the page's real controls; nothing it says can name a control that is not on the page."""
-    if not isinstance(args, dict) or args.get('action') not in ACTIONS:
+    if not isinstance(args, dict):
         raise BadTask('action')
-    out = {'action': args['action']}
-    for key in ('value', 'answer', 'reason', 'question', 'field'):
+    action, value = args.get('action') or args.get('step') or args.get('type'), None
+    action = action.strip().lower().replace(' ', '_').replace('-', '_') if isinstance(action, str) else action
+    if action in MOVES:
+        action, value = MOVES[action]
+    action = ACTION_NAMES.get(action, action)
+    if action not in ACTIONS:
+        raise BadTask('action')
+    out = {'action': action}
+    given = value if value is not None else next((args[k] for k in VALUE_NAMES if args.get(k) is not None), None)
+    if given is not None:
+        if isinstance(given, (int, float)) and not isinstance(given, bool):
+            given = str(given)
+        if not isinstance(given, str):
+            raise BadTask('value')
+        if action == 'press':
+            given = KEYS.get(given.strip().lower(), given.strip())
+        elif action == 'scroll':
+            given = given.strip().lower()
+        out['value'] = given[:4000]
+    for key in ('answer', 'reason', 'question', 'field'):
         if args.get(key) is not None:
             if not isinstance(args[key], str):
                 raise BadTask(key)
             out[key] = args[key][:4000]
-    if args.get('ref') is not None:
-        if isinstance(args['ref'], bool) or not isinstance(args['ref'], (int, str)) or not str(args['ref']).lstrip('c').isdigit():
-            raise BadTask('ref')
-        out['ref'] = int(str(args['ref']).lstrip('c'))
+    if action == 'done' and 'answer' not in out and isinstance(args.get('result'), str):
+        out['answer'] = args['result'][:4000]
+    if args.get('ref') is not None and action not in NO_REF:        # a number left on a scroll or a key press means nothing: it is dropped, not a reason to refuse the step
+        ref = _ref(args['ref'])
+        if ref is None:
+            raise BadTask('ref (the number of a control in the list)')
+        out['ref'] = ref
     for key in ('options', 'fields'):
         if args.get(key) is not None:
-            if not isinstance(args[key], list) or len(args[key]) > 20 or any(isinstance(v, bool) or not isinstance(v, (int, str)) or not str(v).lstrip('c').isdigit() for v in args[key]):
-                raise BadTask(key)
-            out[key] = [int(str(v).lstrip('c')) for v in args[key]]
+            if not isinstance(args[key], list) or len(args[key]) > 20 or any(_ref(v) is None for v in args[key]):
+                raise BadTask(key + ' (a list of control numbers)')
+            out[key] = [_ref(v) for v in args[key]]
     return out
 
 
@@ -305,7 +375,7 @@ class BrowserTool:
         try:
             task = clean_task(arguments, self._neutral(account_id, 'assistant_output_cleaning'))
         except BadTask as error:
-            return f'The browser task could not be read ({error}). Send one task with a plain description, a site and short steps.', True
+            return f'The browser task could not be read ({error}). Nothing was opened. {TASK_SHAPE}', True
         request = self.current_request(account_id, request_id)
         if request is None:
             return 'There is no running task to browse for, so the browser was not started.', True
@@ -364,7 +434,7 @@ class BrowserTool:
         try:
             step = clean_step(arguments)
         except BadTask as error:
-            return f'That step could not be read ({error}). Send an action and, for click, type or select, the number of a control from the list.', True
+            return f'That step could not be read ({error}). Nothing was done on the page. {STEP_SHAPE}', True
         request = self.current_request(account_id, request_id)
         if request is None:
             return 'There is no running task to browse for, so nothing was done.', True

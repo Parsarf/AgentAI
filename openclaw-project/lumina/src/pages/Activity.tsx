@@ -5,7 +5,7 @@ import { useCommands } from '../components/frame/CommandBar';
 import Workspace from '../components/frame/Workspace';
 import { EmptyState, Table } from '../components/frame/parts';
 import { ago } from '../lib/format';
-import { isOpen, isPrompt, needLine, verdict, type Approval, type TaskSummary } from '../lib/work';
+import { browserPath, isOpen, isPrompt, needLine, verdict, type Approval, type TaskSummary } from '../lib/work';
 import Prompts from '../components/work/ChangeApproval';
 import { useTask, useWork } from '../state/work';
 import Permission from '../components/work/Permission';
@@ -58,14 +58,14 @@ export function Record({ id }: { id: string }) {
         <div className="wk-record-status"><Status task={task} /><Elapsed task={full ?? task} /><span>Started {new Date(task.created_epoch * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>{task.retry_of && <Link to={`/tasks/${task.retry_of}`}>A retry of an earlier task</Link>}{task.follows && <Link to={`/tasks/${task.follows}`}>Carries on an earlier task</Link>}</div>
         <div className="wk-record-bar">
           {task.conversation_id && <Link className="btn primary small" to={`/chat/${task.conversation_id}`}>{isOpen(task) ? 'Open the chat' : 'Continue in the chat'}</Link>}
-          {full?.browser && <Link className="btn small" to={`/live/${task.id}`}>{full.browser.live ? 'Open the browser' : 'Open the workspace'}</Link>}
+          {full?.browser && <Link className="btn small" to={full.browser.live ? browserPath(task) : `/live/${task.id}`}>{full.browser.live ? 'Open the browser' : 'Open the workspace'}</Link>}
           <TaskActions task={task} />
         </div>
       </header>
       {approvals.map(a => <Permission key={a.id} call={a} />)}
       <Prompts needs={task.needs} />
       {task.attention === 'goal' && <p className="wk-verdict">{verdict(task)}</p>}
-      {others.map(n => <div key={n.kind} className="wk-need"><p>{needLine(n)}</p>{n.kind !== 'location_permission' && <Link className="btn primary small" to={`/live/${task.id}`}>Open the browser</Link>}</div>)}
+      {others.map(n => <div key={n.kind} className="wk-need"><p>{needLine(n)}</p>{n.kind !== 'location_permission' && <Link className="btn primary small" to={browserPath(task)}>Open the browser</Link>}</div>)}
       {task.outcome && (
         <dl className="wk-outcome" aria-label="How it ended">
           <div><dt>How the run ended</dt><dd>{OUTCOME_WORDS[task.outcome]}{task.outcome !== 'completed' && words && <small>{words}</small>}</dd></div>

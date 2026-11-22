@@ -3,13 +3,18 @@
 the customer's-own-Chrome extension (browse/extension/src/page.js) and the cell's own browser (platform/agentai_platform/browse/native_scripts.py).
 
 The three used to be edited by hand and held together only by tests. Run this after changing describe, fingerprint, hitAt, focusActive or ready in runner.mjs;
-`--check` exits 1 when a copy has drifted (the tests run it)."""
+`--check` exits 1 when a copy has drifted (the tests run it).
+
+It also keeps a whole copy of the runner inside the platform package (platform/agentai_platform/browse/hosted_runner.mjs). A deploy sends the platform package to the
+server and nothing else, and the runner in /opt/agentai-browse/runner used to be copied there by hand: for a week in November 2026 the server ran a runner one release
+behind the service that drives it. The service now mounts the package's copy over the installed one (service.stage_argv), so a release always runs its own runner."""
 import re
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 RUNNER, EXTENSION, NATIVE = HERE / 'runner.mjs', HERE / 'extension' / 'src' / 'page.js', HERE.parent / 'platform' / 'agentai_platform' / 'browse' / 'native_scripts.py'
+HOSTED = HERE.parent / 'platform' / 'agentai_platform' / 'browse' / 'hosted_runner.mjs'
 SHARED = ('describe', 'hitAt', 'focusActive', 'fingerprint', 'ready')
 NATIVE_NAMES = {'describe': ('DESCRIBE', None), 'hitAt': ('HIT_AT', '  const { x, y } = args;\n'), 'fingerprint': ('FINGERPRINT', '  const sel = args.sel;\n')}
 
@@ -39,13 +44,15 @@ def main():
         text = '(args) => {\n' + (unpack or '') + body + '}'
         old = re.search(r'\n' + constant + r' = r"""([\s\S]*?)"""', new_native)
         new_native = new_native[:old.start(1)] + text + new_native[old.end(1):]
-    drift = [str(p) for p, a, b in ((EXTENSION, extension, new_extension), (NATIVE, native, new_native)) if a != b]
+    hosted = HOSTED.read_text() if HOSTED.exists() else ''
+    drift = [str(p) for p, a, b in ((EXTENSION, extension, new_extension), (NATIVE, native, new_native), (HOSTED, hosted, runner)) if a != b]
     if check:
         if drift:
             raise SystemExit('page scripts have drifted from browse/runner.mjs: ' + ', '.join(drift) + ' (run browse/sync-page-scripts.py)')
         return
     EXTENSION.write_text(new_extension)
     NATIVE.write_text(new_native)
+    HOSTED.write_text(runner)
     print('synced' if drift else 'already in sync', *drift)
 
 

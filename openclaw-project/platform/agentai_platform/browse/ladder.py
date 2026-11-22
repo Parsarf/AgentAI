@@ -642,20 +642,20 @@ def parse_decision(text, candidates, by, cost=0):
     if act in ('press', 'scroll', 'back', 'wait', 'read'):
         value = data.get('value') if act == 'press' else (data.get('value') if act == 'scroll' and data.get('value') in ('up', 'down') else None)
         if act == 'press' and value not in ('Enter', 'Tab', 'Escape'):
-            raise ValueError('key not allowed')
+            raise ValueError('key not allowed: press takes value Enter, Tab or Escape')
         return Decision('act', by, str(data.get('reason', ''))[:200], action={'action': act, 'ref': None, 'value': value, 'label': ''}, cost_microusd=cost)
     ref = data.get('ref')
     ref = int(str(ref).lstrip('c')) if ref is not None and str(ref).lstrip('c').isdigit() else None
     cand = next((c for c in candidates if c['ref'] == ref), None)
-    if cand is None:
-        raise ValueError('unknown element')
+    if cand is None:                                    # said so that the next step can be right: which number was wrong, or that one is needed at all
+        raise ValueError('unknown element' + (f': there is no control {ref} in the list above; use a number from that list' if ref is not None else f': {act} needs ref, the number of a control from the list above'))
     if act != cand['action']:
-        raise ValueError('action does not fit the element')
+        raise ValueError(f'action does not fit the element: control {ref} takes {cand["action"]}, not {act}')
     value = data.get('value')
     if act == 'type' and value == '' and by == 'agent':
         pass                                           # the assistant clears a field: typing replaces what it holds, so an empty text empties it
     elif act in ('type', 'select') and (not isinstance(value, str) or not 0 < len(value) <= 500):
-        raise ValueError('missing value')
+        raise ValueError('missing value' + (': type needs value, the text to type (at most 500 characters)' if act == 'type' else ': select needs value, one of the options listed for that control'))
     return Decision('act', by, str(data.get('reason', ''))[:200], action={'action': act, 'ref': ref, 'value': value if act != 'click' else None, 'label': cand['label']}, cost_microusd=cost)
 
 

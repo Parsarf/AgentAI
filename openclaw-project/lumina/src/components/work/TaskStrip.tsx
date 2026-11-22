@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Message } from '../../lib/conversations';
-import { isMoving, isPrompt, needLine, orbFor, receipt, verdict, type Approval, type TaskView } from '../../lib/work';
+import { browserPath, isMoving, isPrompt, needLine, orbFor, receipt, verdict, type Approval, type TaskView } from '../../lib/work';
 import { useTask } from '../../state/work';
 import Orb from '../Orb';
 import Permission from './Permission';
@@ -58,7 +58,7 @@ export default function TaskStrip({ id, eager = true, notes = [], stopping = fal
       {approvals.map(a => <Permission key={a.id} call={a} />)}
       <Prompts needs={view.needs} />
       {others.map(n => (
-        <div key={n.kind} className="wk-need"><p>{needLine(n)}</p>{n.kind !== 'location_permission' && <Link className="btn primary small" to={`/live/${view.id}`}>{n.kind === 'browser_control' ? 'Back to the browser' : 'Open the browser'}</Link>}</div>))}
+        <div key={n.kind} className="wk-need"><p>{needLine(n)}</p>{n.kind !== 'location_permission' && <Link className="btn primary small" to={browserPath(view)}>{n.kind === 'browser_control' ? 'Back to the browser' : 'Open the browser'}</Link>}</div>))}
       <div className="wk-foot">
         <TaskActions task={view} stop={false} />
         {hasDetail && <button type="button" className="btn tertiary small wk-more" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(o => !o)}>{open ? 'Hide details' : 'Details'}</button>}

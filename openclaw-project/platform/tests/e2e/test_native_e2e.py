@@ -552,11 +552,41 @@ class NativeEndToEnd(unittest.TestCase):
             urllib.request.urlopen(request, timeout=10)
         self.assertEqual(caught.exception.code, 401)
 
+    def test_a_tool_called_by_its_plain_name_with_the_arguments_assistants_guess_still_runs(self):
+        """Production, 2026-11-22: every browser task began with a refused call. The assistant had not read the tool's schema (the runtime keeps schemas out of the prompt), so it
+        sent `url` where the tool says `site`; and tools called by their plain name ("web_fetch") were answered "Tool web_fetch not found". Both now work."""
+        S = self.S
+        S.browse.script = [RUNNING, DONE]
+        sent, row = self.run_to_end('a', 'Add the spiciest wings to my cart. SCENARIO:plainname', 'k-plainname')
+        self.assertEqual(row['state'], 'completed')
+        starts = [c[1] for c in S.browse.calls if c[0] == 'start' and c[1]['request_id'] == sent['id']]
+        self.assertEqual(len(starts), 1)                                                            # the first call was taken: no refusal, no second try
+        self.assertIn('Start at: https://ubereats.com/', starts[0]['goal']); self.assertIn('Done when: The wings are in the cart.', starts[0]['goal'])
+        d = S.rows('SELECT tools_json FROM chat_deliveries WHERE request_id=?', (sent['id'],))[0]
+        self.assertIn('lumina__lumina_browser', json.loads(d['tools_json']))
+        events = [e['payload'] for e in S.events.events(S.principals['a'], sent['id'])['events']]
+        self.assertFalse([p for p in events if 'not found' in str(p.get('output', '')) or 'could not be read' in str(p.get('output', ''))])
+
+    def test_a_refused_model_call_does_not_disable_the_key_for_the_next_message(self):
+        """What the runtime does with a refusal from its model provider decides the status Lumina's gateway may use (model_keys.RELAY_REFUSAL). With 403 the runtime disables
+        the key and the customer's next message fails at once; with 409 only the refused call fails."""
+        from agentai_platform.model_keys import RELAY_REFUSAL
+        S = self.S
+        _, refused = self.run_to_end('b', f'please do it SCENARIO:refuse{RELAY_REFUSAL}', 'k-refused')
+        self.assertEqual(refused['state'], 'failed')                                               # the call that had no right to run did not run
+        _, after = self.run_to_end('b', 'an ordinary question', 'k-after-refused')
+        self.assertEqual(after['state'], 'completed', after['result']); self.assertIn('Plain answer', after['result'])
+        _, poisoned = self.run_to_end('b', 'please do it SCENARIO:refuse403', 'k-refused-403')    # and this is why it must not be 403: the same two steps...
+        _, after = self.run_to_end('b', 'another ordinary question', 'k-after-403')
+        self.assertEqual((poisoned['state'], after['state']), ('failed', 'failed'))                # ...and the ordinary question fails too. (Last in the class: account b's key stays disabled for a minute.)
+
     def test_the_cell_config_lumina_provisions_is_accepted_by_the_runtime_and_enforced(self):
         S = self.S
         config = S.cells['a'].config
         self.assertEqual(sorted(config['tools']['deny']), ['ask_user', 'browser'])
         self.assertEqual(config['agents']['defaults']['timeoutSeconds'], 1200)
+        self.assertEqual(config['tools']['toolSearch'], {'mode': 'directory'})                     # a tool's plain name is run as that tool
+        self.assertEqual(config['skills']['workshop']['autonomous'], {'mode': 'off'})                # no background model call that no task pays for
         self.assertEqual(config['mcp']['servers']['lumina']['headers']['Authorization'], 'Bearer ' + S.cells['a'].key)
         self.assertIsNone(S.cells['a'].proc.poll())                                                 # the gateway started with exactly this config
 

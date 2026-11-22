@@ -15,7 +15,7 @@ from .device_transport import DeviceTransport
 from .devices import DeviceDesk, DeviceHub, DeviceStore
 from .ladder import JevChooser
 from .native_runner import NativeRunner, NativeTransport
-from .service import BrowseError, BrowseService, serve, stage_argv
+from .service import HOSTED_RUNNER, BrowseError, BrowseService, serve, stage_argv
 from .session import ProcessTransport
 from .picture_only_brain import PictureOnlyChooser, UltrafastPictureOnlyChooser
 from .ultrafast_brain import UltrafastChooser
@@ -156,7 +156,8 @@ def main():
         stage_starts[job_id] = n = stage_starts.get(job_id, 0) + 1      # a stage started again for the same job (its browser died) needs a name of its own: the first may not be gone yet
         if len(stage_starts) > 500:
             stage_starts.pop(next(iter(stage_starts)))
-        argv = stage_argv(job_id, str(out_dir), str(args.runner_dir), args.image, name=None if n == 1 else f'lumina-browse-{job_id[:12]}-r{n - 1}')
+        argv = stage_argv(job_id, str(out_dir), str(args.runner_dir), args.image, name=None if n == 1 else f'lumina-browse-{job_id[:12]}-r{n - 1}',
+                          runner_file=str(HOSTED_RUNNER) if HOSTED_RUNNER.is_file() and (args.runner_dir / 'runner.mjs').is_file() else None)
         return ProcessTransport(argv, env={**os.environ, 'DOCKER_HOST': docker_host})
 
     from ..safety import Reader

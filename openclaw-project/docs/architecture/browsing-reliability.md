@@ -114,6 +114,27 @@ own steps are a small fraction of a cent a task. The cost that matters is the as
 heavy tasks, at list price with nothing cached. Before, such a take-over had no bound short of the task's own limits (one unchanged-code run cost $1.08 and failed); now it is
 capped at 12 assistant steps and each step carries less. It is still the expensive path, and the heavy tasks still depend on it.
 
+## What the first production runs showed (2026-11-22), and what was changed for them
+
+Four attempts at one task on the evening the work above went live (an order on a clothing shop), read from the service traces, the event stream, the
+server log and the assistant's own session record. None of the causes was in the page-reading or decision code above; each was one layer out.
+
+| Seen as | Cause (with the evidence) | Change |
+|---|---|---|
+| "The assistant could not finish this request", 3 seconds after sending, no tool used | The runtime's self-learning (`skills.workshop`, on by default) ran a background model turn 35 s after the task before it ended. No task was running, so Lumina's gateway refused the call with **403**; the runtime reads a 403 from its provider as a bad key and disables the key for about a minute; the customer's next message arrived 10 s later | Cells are configured with `skills.workshop.autonomous.mode: off` (a background review is a model call no task pays for, or one charged unseen to whichever task is running). The gateway refuses "not allowed right now" with **409** (`model_keys.RELAY_REFUSAL`). Proven on the real runtime: after a 403 the next message fails, after a 409 it does not (`tests/e2e`) |
+| "The browser task could not be read (site ...)" as the first step of every browser task | The runtime keeps tool schemas out of the prompt, so the assistant called the tool with the names it guessed: `url` and `done_when`, where the tool says `site` and `steps` | The tool takes the names assistants send (`url`, `website`, a link written in the task, steps as one text, `c12` or `"12"` for a control, `text` for a value, `scroll_down`), still bounded and checked; the schema requires only `task`, because the runtime refuses a call that breaks the schema before Lumina sees it; a refusal now lists the exact arguments |
+| "Tool web_fetch not found", "Tool web_search not found" | In the runtime's default tool mode a tool is reached through `tool_call` with an id; Lumina's own messages say "use web_fetch and web_search" | Cells use `tools.toolSearch.mode: directory`, where a tool's plain name runs as that tool; the browsing skill names the tools and their arguments |
+| "could not open the page (navigation_failed)" after 30 s on a shop whose server answers in under a second | The stage had one processor, and the runner waited for "content loaded" within 20 s. Measured on the server: the shop's home page took 43.6 s to open, read once and close with one processor, 25.2 s with two | Two processors and 2 GiB; a page is open once the site has answered (30 s), and a page that is still loading 25 s later is used as it is (`still_loading`), never failed |
+| A second try at opening a page could never work | After a failed navigation the tab is on its way to the browser's own error page, and the next `goto` is "interrupted by another navigation". So since the first release, one failed open failed every open after it | The task carries on in a fresh tab of the same browser |
+| The server ran last week's runner under this week's service | The runner in `/opt/agentai-browse/runner` was a copy made by hand | Each release carries its own copy (`hosted_runner.mjs`), mounted over the installed one |
+| "2 at the same time" over two page reads | True: the assistant read two different pages in one turn | None needed |
+
+The record of all browser runs before these changes (60 since 13 October): 9 `done`, 12 `error`, 16 `stopped`, 11 `cancelled`, 8 left at `running`, 2 `blocked`, 2 `budget`.
+
+Still open after this round: no browser task has been watched end to end on the hosted browser with all of the above; the task that prompted it ended correctly only in the
+customer's own Chrome (the products were out of stock); a marketing pop-up that covers a page is still clicked rather than closed on purpose; after a refusal for an
+exhausted allowance (402) the runtime disables the key for ten minutes, so a customer who then switches to their own model waits that long.
+
 ## Not proven, and known limits
 
 - **Nothing is deployed, and nothing was run on the server or in a cell.** The runner changes were run in desktop Chrome, not in the Docker stage (no Docker on the machine): its

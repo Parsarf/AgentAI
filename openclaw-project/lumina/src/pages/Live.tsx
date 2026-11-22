@@ -15,7 +15,7 @@ import TaskDetail from '../components/work/TaskDetail';
 import { Elapsed, Status } from '../components/work/parts';
 
 /** The browser of one task: its live picture, and the controls for stepping in. Only mounted for a task that has a browser session, so nothing probes for one. */
-function BrowserStage({ task }: { task: TaskView }) {
+export function BrowserStage({ task }: { task: TaskView }) {
   const id = task.id; const taskLive = isOpen(task);
   const [run, setRun] = useState<RunDetail | null>(null); const [events, setEvents] = useState<RunEvent[]>([]);
   const [err, setErr] = useState(''); const [text, setText] = useState(''); const [stamp, setStamp] = useState(0); const [showText, setShowText] = useState(false);

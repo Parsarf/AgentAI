@@ -26,13 +26,17 @@ import { Emojified } from '../components/Emoji';
 import Workspace from '../components/frame/Workspace';
 import ChatsColumn from '../components/frame/ChatsColumn';
 import ChatInspector from '../components/frame/ChatInspector';
+import BrowserPane, { PaneSplit, ROOM_FOR_BOTH, usePaneWidth } from '../components/BrowserPane';
+import { BrowserStage } from './Live';
+import * as I from '../components/Icons';
+import { useSize } from '../lib/useSize';
 import { chatTitle } from '../lib/chats';
 
 /** `next`, unless it is identical to `prev`, in which case `prev`: React then skips the update. */
 const same = <T,>(prev: T, next: T): T => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
 
 export default function Chat() {
-  const [query] = useSearchParams(); const asked = query.get('q'); const seed = useMemo(() => (asked ? { text: asked, n: Date.now() } : null), [asked]);
+  const [query, setQuery] = useSearchParams(); const asked = query.get('q'); const seed = useMemo(() => (asked ? { text: asked, n: Date.now() } : null), [asked]);
   const { id } = useParams(); const nav = useNavigate(); const { refresh, chats, refreshChats, app } = useData(); const work = useWork();
   const [msgs, setMsgs] = useState<Msg[]>([]); const [tasks, setTasks] = useState<ThreadTask[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]); const [err, setErr] = useState(''); const [loaded, setLoaded] = useState(false);
@@ -93,6 +97,25 @@ export default function Chat() {
   // Follow the work as it happens (a reply being written, the status line changing, a prompt appearing), unless the reader scrolled up to read something.
   useEffect(() => { if (stick.current && latestId) toEnd(false); }, [draftLength, liveLabel, liveNeeds, liveNow, latestId]);
 
+  // Lumina's browser, beside the conversation. It opens by itself the first time a task of this chat has a live browser, and from the toolbar or a link
+  // (?browser=<task>) at any time; closing it is remembered for that task, so it does not come back on its own. The person sizes it against the chat (the width is kept on
+  // this device) and may hide the chat to give the browser the whole canvas.
+  const wanted = query.get('browser');
+  const older = useTask(wanted && wanted !== latestId ? wanted : null);
+  const [pane, setPane] = useState<string | null>(null); const [chatHidden, setChatHidden] = useState(false); const autoShown = useRef<string | null>(null);
+  const paneTask = pane ? (pane === latestId ? live.full : pane === wanted ? older.full : undefined) : undefined;
+  const browsing = !!app?.features.browse;
+  const latestBrowser = browsing ? live.full?.browser ?? null : null;
+  useEffect(() => { setPane(null); setChatHidden(false); autoShown.current = null; }, [id]);
+  useEffect(() => { if (wanted && browsing) setPane(wanted); }, [wanted, browsing]);
+  useEffect(() => { if (latestId && latestBrowser?.live && autoShown.current !== latestId) { autoShown.current = latestId; setPane(latestId); } }, [latestId, latestBrowser?.live]);
+  const closePane = () => { setPane(null); setChatHidden(false); if (wanted) { const next = new URLSearchParams(query); next.delete('browser'); setQuery(next, { replace: true }); } };
+  const [splitRef, canvas] = useSize<HTMLDivElement>();
+  const paneOpen = !!pane && !!paneTask?.browser;
+  const alone = paneOpen && !!canvas.width && canvas.width < ROOM_FOR_BOTH;       // no room for both: the browser has the canvas, the chat is one press away
+  const full = paneOpen && (chatHidden || alone);
+  const [paneWidth, setPaneWidth] = usePaneWidth(canvas.width);
+
   const [made, setMade] = useState<ArtifactRow[]>([]);
   useEffect(() => {                                    // files Lumina wrote during each answer, shown under that answer
     if (!id || !app?.features.files || working || !msgs.length) return; let stop = false;
@@ -134,10 +157,12 @@ export default function Chat() {
   const produced = id ? made.filter(a => a.conversation_id === id || (a.task_id && byRequest.has(a.task_id))) : [];
   return (
     <Workspace title={current ? chatTitle(current) : 'Chat'} assistant={false} context={<ChatsColumn />} contextLabel="Chats"
-      inspector={id ? <ChatInspector tasks={mine} files={produced} blocks={blocks} onError={setErr} /> : null} inspectorKind="panel" inspectorLabel="In this chat"
-      tools={<><BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive' || action === 'delete') void nav('/history'); else void loadThread(); }} />}</>}>
-    <div className="chatpage">
-      <section className={`thread-col${fresh ? ' fresh' : ''}`}>
+      inspector={id && !paneOpen ? <ChatInspector tasks={mine} files={produced} blocks={blocks} onError={setErr} /> : null} inspectorKind="panel" inspectorLabel="In this chat"
+      tools={<>{latestBrowser && latestId && <button type="button" className="btn small chat-browser-toggle" aria-pressed={paneOpen && pane === latestId} onClick={() => (paneOpen && pane === latestId ? closePane() : setPane(latestId))}
+        title={paneOpen ? 'Close the browser' : 'Show Lumina’s browser beside the chat'}><I.Browser width={15} height={15} />Browser{latestBrowser.live && <span className="dot live" aria-hidden="true" />}</button>}
+        <BrowserToggle />{current && <ChatActions chat={current} onChanged={action => { void loadList(); if (action === 'archive' || action === 'delete') void nav('/history'); else void loadThread(); }} />}</>}>
+    <div className={`chatpage${paneOpen ? ' with-pane' : ''}${full ? ' pane-full' : ''}`} ref={splitRef} style={paneOpen && !full ? { ['--pane-w' as string]: `${paneWidth}px` } : undefined}>
+      <section className={`thread-col${fresh ? ' fresh' : ''}`} hidden={full} aria-label="Conversation">
         {err && <p className="err" role="alert">{err} <button className="btn small" onClick={loadThread}>Retry</button></p>}
         <div className="thread" aria-live="polite">
           {id && !loaded && <p className="muted">Loading…</p>}
@@ -167,6 +192,12 @@ export default function Chat() {
         {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); toEnd(true); }}>Jump to latest ↓</button>}
         <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<p className="greeting-title">What should we work on?</p></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} seed={id ? null : seed} autoFocus onSent={sent} onStop={stopTarget ? () => { void cancel(stopTarget.id); } : open.some(t => t.phase === 'stopping') ? () => {} : undefined} stopping={!!stopping || (!stopTarget && open.some(t => t.phase === 'stopping'))} />}</div>
       </section>
+      {paneOpen && paneTask && <>
+        {!full && <PaneSplit width={paneWidth} room={canvas.width} onWidth={setPaneWidth} />}
+        <BrowserPane host={paneTask.browser?.host} live={!!paneTask.browser?.live && isOpen(paneTask)} chatHidden={chatHidden} alone={alone} onToggleChat={() => setChatHidden(v => !v)} onClose={closePane}>
+          <BrowserStage key={paneTask.id} task={paneTask} />
+        </BrowserPane>
+      </>}
     </div>
     </Workspace>);
 }

@@ -74,6 +74,11 @@ BROWSING = '''# Using a website for the customer
 Use the Lumina browser tool when a real website has to be used: signing in, clicking through, filling a cart, reading live listings and prices on one
 particular site. For plain facts, news and comparing sources, web search and reading pages is faster and cheaper.
 
+How to call it: the tool is `lumina_browser`. Send `task` (what to do there, in plain words) and `site` (the address or domain to start at); add `steps` (a list of
+3 to 10 short sentences) and `done_when` (what the page shows when this stage is finished) when you can. The step tool is `lumina_browser_step`: `action`, and for
+click, type and select `ref` (the number of a control from the list it showed you) and `value`. Reading a page and searching the web are `web_fetch` (send `url`) and
+`web_search` (send `query`). If any tool is answered "not found", look it up with `tool_search` and call it through `tool_call` with the id that search returns.
+
 The browser is a separate, smaller worker that follows steps one at a time. It does well with one bounded stage and a clear finish line, and badly
 with a whole errand at once. So:
 

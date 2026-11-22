@@ -144,7 +144,7 @@ class ServiceChecks(unittest.TestCase):
         first = self.waiting(s)
         s.agent_step('acct', RID, {'action': 'click', 'ref': 99})
         again = self.waiting(s, after=first['observation']['n'])
-        self.assertIn('Your last step was not valid (unknown element)', again['observation']['text'])
+        self.assertIn('Your last step was not valid (unknown element: there is no control 99 in the list above; use a number from that list)', again['observation']['text'])
         s.agent_step('acct', RID, {'action': 'done', 'answer': 'The paddle shop has paddles.'})
         p = wait(s, ('done',)); self.assertEqual(p['answer'], 'The paddle shop has paddles.')
 
@@ -438,8 +438,12 @@ class ServiceChecks(unittest.TestCase):
     def test_stage_command_is_fixed_and_hardened(self):
         argv = svc.stage_argv('a' * 32, '/var/lib/agentai-browse/jobs/x/out', '/opt/agentai-browse/runner', 'openclaw-sandbox-browser:phase4-2026.9.6')
         flat = ' '.join(argv)
-        for needed in ('--read-only', '--cap-drop ALL', 'no-new-privileges', '--user 1000:1000', '--memory 1536m', '--pids-limit 256', '/job:ro', '--entrypoint node'):
+        for needed in ('--read-only', '--cap-drop ALL', 'no-new-privileges', '--user 1000:1000', '--memory 2g', '--cpus 2', '--pids-limit 256', '/job:ro', '--entrypoint node'):
             self.assertIn(needed, flat)
+        self.assertNotIn('/job/runner.mjs', flat)                                           # nothing is mounted over the installed runner unless a release brings its own
+        own = svc.stage_argv('a' * 32, '/o', '/opt/agentai-browse/runner', 'img', runner_file=str(svc.HOSTED_RUNNER))
+        self.assertLess(own.index('/opt/agentai-browse/runner:/job:ro'), own.index(f'{svc.HOSTED_RUNNER}:/job/runner.mjs:ro'))      # the folder first, then this release's runner over the one in it, read-only
+        self.assertEqual(svc.HOSTED_RUNNER.read_text(), (svc.HOSTED_RUNNER.parents[3] / 'browse' / 'runner.mjs').read_text())      # the copy a release carries IS the runner (browse/sync-page-scripts.py keeps it so)
         self.assertNotIn('--privileged', flat); self.assertNotIn('docker.sock', flat); self.assertNotIn('--network host', flat)
         with self.assertRaises(ValueError): svc.stage_argv('x; rm', '/o', '/r', 'img')
 

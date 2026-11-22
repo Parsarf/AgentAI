@@ -128,6 +128,17 @@ The Inbox is a mail program's three parts: the side column (mailboxes, accounts,
 - **A message's page comes from the server, never from the app.** `MessageBody` frames `/v1/hub/mail/frame`, which carries its own content policy. Markup written into a frame by the app (`srcdoc`) inherits the app's policy, which refuses inline styles and remote pictures: every message was then unstyled black serif text on white (production, 2026-11-21). Do not go back to `srcdoc`.
 - **Writing** is one bordered sheet: From (a choice for a new message when several accounts are connected), To with suggestions from the customer's own mail, Cc on demand, Subject, the text, then Send with what state the draft is in. It saves itself; there is no Save button.
 
+## The browser beside a chat (`components/BrowserPane.tsx`, `pages/Chat.tsx`)
+Lumina's browser is shown where the conversation is, not on a page of its own. In a chat whose task has a browser, a pane opens at the right of the canvas: the live
+picture, Take control, and any question the browser has for the customer (the same `BrowserStage` as the task's own page, `/live/<task>`, which stays as the full record).
+- It opens by itself the first time a task of the chat has a live browser, from the **Browser** button in the chat's toolbar, and from any "Open the browser" link
+  (`browserPath` in `lib/work.ts`: `/chat/<id>?browser=<task>`). Closed by the person, it stays closed for that task.
+- The edge between chat and browser is a separator: drag it, or focus it and use the arrow keys (Shift for bigger steps, Home and End). The width is kept on the device.
+  The conversation is never left under 360px.
+- **Hide chat** gives the browser the whole canvas; **Show chat** brings the conversation back. In a canvas too narrow for both, the browser has it alone and the button is
+  **Back to the chat**.
+- The pane stays in view while the conversation scrolls. While it is open the "In this chat" panel is not offered: one panel on the right at a time.
+
 ## Calendar (`styles/hub.css`, `pages/CalendarPage.tsx`)
 - **The calendar fits the room it has, not the window.** The side column is dragged and hidden and the assistant docks, so the page measures its own width (`lib/useSize.ts`) and names it (`cal-wide`, `cal-medium`, `cal-narrow`, `cal-tiny`). Moving through time (Today, the arrows), the views and **New event** (the page's one primary action) are always in reach. As room goes: the heading uses its short form, search becomes a button that opens a row of its own, Refresh and the timezone move into **More**, and the toolbar takes two rows (the heading and the actions above; Today, the arrows and the views below).
 - **One scrolling grid for the week and the day.** Day headings and the all-day section stay at the top and the hours at the left while it scrolls either way, so a column, its heading and its all-day events are always in line. A day is at least 112px wide: a narrow window scrolls the week sideways, a day at a time, and never squeezes it. The grid is only moved by the customer: it is put back where it was after a search or a reload, and a dialog never moves it.

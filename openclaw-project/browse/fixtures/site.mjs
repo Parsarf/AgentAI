@@ -31,6 +31,9 @@ export function startSite() {
       b.style.cssText = 'position:absolute;left:40%;top:40%;width:20%;height:10%'; b.addEventListener('click', () => { document.getElementById('main').removeAttribute('aria-hidden'); host.remove(); });
       layer.appendChild(b); root.appendChild(layer);</script>`);
     if (u.pathname === '/slow') return setTimeout(() => send('Slow', '<h1>Slow page</h1>'), 1500);
+    // A heavy shop: the site answers at once, but a script in the middle of the page takes seconds, so "content loaded" comes late. What is above the script is drawn at once.
+    if (u.pathname === '/heavy') return send('Heavy shop', '<h1>Heavy shop</h1><a href="/">Paddle Shop</a><script src="/hang.js"></script><button>Late button</button>');
+    if (u.pathname === '/hang.js') return setTimeout(() => { res.writeHead(200, { 'Content-Type': 'text/javascript' }); res.end('document.title = "Heavy shop, loaded";'); }, 4000);
     send('Not found', '<h1>404</h1>', 404);
   });
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, cart, close: () => server.close() })));

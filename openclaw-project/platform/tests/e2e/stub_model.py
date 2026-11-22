@@ -46,6 +46,8 @@ def decide(messages, tools):
         browser['_lumina_origin'] = 'model-invented'
         return {'calls': [{'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_task_update', 'args': progress}},
                           {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser', 'args': browser}}], 'fragment_delay': 0.1}
+    if 'SCENARIO:plainname' in user:                           # a tool called by its own name, without tool_call: what assistants do when told "use web_fetch"
+        return {'tool': 'lumina__lumina_browser', 'args': {'task': 'Add the spiciest chicken wings to the cart on Uber Eats', 'url': 'https://ubereats.com/', 'done_when': 'The wings are in the cart.'}}
     if 'SCENARIO:browse' in user:
         return {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser', 'args': {
             'task': 'Add the spiciest chicken wings to the cart on Uber Eats', 'site': 'ubereats.com', 'steps': ['Open the site', 'Add the spiciest wings to the cart']}}}
@@ -96,6 +98,14 @@ class Handler(BaseHTTPRequestHandler):
         with stub.lock:
             stub.requests.append({'key': key, 'request': request})
             stub.spend[key] = stub.spend.get(key, 0) + 1
+        asked = [m for m in (request.get('messages') or []) if m.get('role') == 'user' and not text_of(m).startswith(INTERNAL)]
+        refused = re.search(r'SCENARIO:refuse(\d{3})', text_of(asked[-1]) if asked else '')
+        if refused:                                                # the provider refuses this call outright, in the OpenAI error shape, with that status
+            allowance = 'SCENARIO:allowance' in text_of(asked[-1])
+            body = json.dumps({'error': {'message': 'Your Lumina model allowance is exhausted. Choose a saved personal model in Settings or contact the owner to review the allowance.' if allowance else 'No single admitted task owns this model call.',
+                                         'type': 'invalid_request_error', 'code': 'budget_exhausted' if allowance else 'admission_mismatch'}}).encode()
+            self.send_response(int(refused.group(1))); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
+            return
         out = decide(request.get('messages') or [], request.get('tools'))
         with stub.lock:
             stub.inflight += 1; stub.max_inflight = max(stub.max_inflight, stub.inflight)      # model calls going on at the same moment (parallel phases are proved by this being 2)

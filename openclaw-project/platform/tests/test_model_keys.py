@@ -251,7 +251,7 @@ class RelayChecks(unittest.TestCase):
         self.assertEqual((c.exception.status, c.exception.code), (404, 'no_key'))
         self.on = False
         with self.assertRaises(RelayError) as c: self.call(relay)
-        self.assertEqual((c.exception.status, c.exception.code), (403, 'not_enabled')); self.on = True
+        self.assertEqual((c.exception.status, c.exception.code), (409, 'not_enabled')); self.on = True
         for raw in (b'not json', b'[]', b'{}', b'{"messages":"x"}'):
             with self.assertRaises(RelayError) as c: relay.chat('acct', raw)
             self.assertEqual(c.exception.status, 400, raw)
