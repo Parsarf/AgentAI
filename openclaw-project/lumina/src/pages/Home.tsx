@@ -70,8 +70,11 @@ export default function Home() {
   const [spend, retrySpend] = useSource<{ reported_microusd: number; period_limit_microusd?: number | null; period_remaining_microusd?: number | null }>(known && app?.features.usage !== false, 'Spending is not shown for your account.', () => api('GET', '/v1/costs'));
   const waiting = tasks.filter(t => t.attention); const running = tasks.filter(t => isOpen(t) && !t.attention);
   const work: Load<TaskSummary[]> = loaded ? { state: 'ready', data: [...waiting, ...running].slice(0, 5) } : { state: 'loading' };
-  const when = (e: HubEvent) => (e.all_day ? `${dayKey(e.start_epoch, zone) === dayKey(now, zone) ? 'Today' : dayTitle(dayKey(e.start_epoch, zone), 'short')}, all day`
-    : `${dayKey(e.start_epoch, zone) === dayKey(now, zone) ? 'Today' : dayTitle(dayKey(e.start_epoch, zone), 'short')}, ${clock(e.start_epoch, zone)}`);
+  // The day an event is on. An all-day event is on its own dates (a date has no timezone: reading its start as an instant put it a day early west of Greenwich);
+  // one that began before today and is still going counts as today.
+  const today = dayKey(now, zone);
+  const dayOf = (e: HubEvent) => { const d = e.all_day && e.start_date ? e.start_date : dayKey(e.start_epoch, zone); return d < today ? today : d; };
+  const when = (e: HubEvent) => `${dayOf(e) === today ? 'Today' : dayTitle(dayOf(e), 'short')}, ${e.all_day ? 'all day' : clock(e.start_epoch, zone)}`;
   const money = (micro: number) => `$${(micro / 1e6).toFixed(2)}`;
 
   return (
@@ -86,7 +89,7 @@ export default function Home() {
         <div className="today-starters" role="group" aria-label="Start with">{STARTERS.map(s => <button key={s.key} type="button" className="chip small" onClick={() => setSeed({ text: TEMPLATES[s.key], n: Date.now() })}>{s.name}</button>)}</div>
         <div className="today-tiles">
           <Tile id="meetings" title="Next meetings" to="/calendar" load={meetings} retry={retryMeetings} empty={d => d.connected && !d.events.length}
-            count={d => d.events.filter(e => dayKey(e.start_epoch, zone) === dayKey(now, zone)).length}>
+            count={d => d.events.filter(e => dayOf(e) === today).length}>
             {d => !d.connected ? <p className="muted small">No calendar is connected. <Link to="/calendar">Connect one</Link></p>
               : <ul className="tile-list">{d.events.map(e => <li key={e.connection_id + e.calendar_id + e.id}><Link to={`/calendar?connection=${encodeURIComponent(e.connection_id)}&calendar=${encodeURIComponent(e.calendar_id)}&event=${encodeURIComponent(e.id)}`}>
                 <b>{e.busy_only ? 'Busy' : e.title || '(no title)'}</b><span className="faint small">{when(e)}{e.place ? ` · ${e.place}` : ''}</span></Link></li>)}</ul>}

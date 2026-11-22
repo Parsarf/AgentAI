@@ -9,8 +9,10 @@ export interface MenuItem {
 
 /** The shared dropdown: an opaque elevated menu with roving focus, Escape to close and focus returned to the trigger.
  *  `checkable` makes it a choice list (menuitemradio with a check); otherwise rows are plain menuitems. It renders in a portal with fixed coordinates so no scrolling or overflow-hidden parent can clip it; tokens live on :root, so it stays themed. */
-export default function Menu({ label, heading, items, trigger, side = 'bottom', align = 'start', checkable = false, rich = false, className = '' }: {
+export default function Menu({ label, heading, items, trigger, side = 'bottom', align = 'start', checkable = false, rich = false, className = '', style }: {
   label: string; heading?: string; items: MenuItem[]; side?: 'top' | 'bottom'; align?: 'start' | 'end'; checkable?: boolean; rich?: boolean; className?: string;
+  /** Where the trigger's own wrapper sits, for a trigger that is placed by its parent (a control on a grid). */
+  style?: CSSProperties;
   trigger(p: { open: boolean; props: Record<string, unknown> }): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -20,7 +22,6 @@ export default function Menu({ label, heading, items, trigger, side = 'bottom', 
   const rows = () => Array.from(list.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([disabled])') ?? []);
   useEffect(() => {
     if (!open) return;
-    const first = rows().find(r => r.getAttribute('aria-checked') === 'true') ?? rows()[0]; first?.focus();
     const down = (e: MouseEvent) => { const n = e.target as Node; if (!wrap.current?.contains(n) && !list.current?.contains(n)) close(false); };
     document.addEventListener('mousedown', down); return () => document.removeEventListener('mousedown', down);
   }, [open]);
@@ -38,6 +39,14 @@ export default function Menu({ label, heading, items, trigger, side = 'bottom', 
     place(); window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
     return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
   }, [open, side, align]);
+  // The focus moves into the menu once it has its place: until then it is drawn hidden (so it can be measured), and a hidden element cannot take the focus. Focusing
+  // it at once, as before, silently did nothing in a browser, and a menu opened from the keyboard could not be used from the keyboard.
+  const entered = useRef(false);
+  useEffect(() => {
+    if (!open) { entered.current = false; return; }
+    if (!pos || entered.current) return;
+    entered.current = true; (rows().find(r => r.getAttribute('aria-checked') === 'true') ?? rows()[0])?.focus();
+  }, [open, pos]);
   const onKey = (e: React.KeyboardEvent) => {
     const r = rows(); const i = r.indexOf(document.activeElement as HTMLElement);
     if (e.key === 'Escape') { e.preventDefault(); close(); }
@@ -48,7 +57,7 @@ export default function Menu({ label, heading, items, trigger, side = 'bottom', 
     else if (e.key === 'Tab') close(false);
   };
   return (
-    <div className={`menu-wrap ${className}`} ref={wrap}>
+    <div className={`menu-wrap ${className}`} style={style} ref={wrap}>
       {trigger({ open, props: { 'data-menu-trigger': '', 'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-controls': open ? id : undefined, onClick: () => setOpen(o => !o),
         onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true); } } } })}
       {open && createPortal(

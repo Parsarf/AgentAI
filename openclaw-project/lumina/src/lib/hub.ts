@@ -289,24 +289,77 @@ export function eventDays(e: HubEvent, zone: string, from: string, to: string): 
   for (let day = first < from ? from : first; day <= last && day <= to; day = addDays(day, 1)) out.push(day);
   return out;
 }
-export interface Placed { event: HubEvent; top: number; height: number; column: number; columns: number }
-/** Timed events of one day, laid out so that overlapping ones sit side by side and none is hidden. `top` and `height` are minutes from that day's midnight. */
-export function layoutDay(events: HubEvent[], day: string, zone: string): Placed[] {
-  const start = zonedEpoch(day, 0, zone), end = zonedEpoch(addDays(day, 1), 0, zone);
-  const items = events.filter(e => !e.all_day && e.start_epoch < end && e.end_epoch > start)
-    .map(e => { const from = Math.max(e.start_epoch, start), to = Math.min(Math.max(e.end_epoch, e.start_epoch + 900), end);
-      return { event: e, from, to, top: Math.round((from - start) / 60), height: Math.max(20, Math.round((to - from) / 60)), column: 0, columns: 1 }; })
-    .sort((a, b) => a.from - b.from || b.to - a.to);
-  let group: typeof items = [], groupEnd = 0;
-  const close = () => { const width = Math.max(0, ...group.map(i => i.column)) + 1; group.forEach(i => { i.columns = width; }); group = []; };
+/** One timed event as the day grid draws it. All in minutes from that day's midnight: `at` and `length` are the event's own start and duration within the day (a
+ *  deadline has length 0); `top` and `height` are the box drawn for it, which is never shorter than one line of text. `column` of `columns` is where it sits among the
+ *  events it overlaps, and `span` how many of those columns it may fill (the ones beside it are free). `point`: no length at all. */
+export interface Placed { event: HubEvent; at: number; length: number; top: number; height: number; column: number; columns: number; span: number; point: boolean; group: number }
+/** Events of one busy stretch that have no room to be drawn side by side: one control stands in for them and opens the list. */
+export interface Folded { key: string; top: number; height: number; column: number; columns: number; events: HubEvent[] }
+const DAY = 24 * 60;
+const overlap = (a: { top: number; height: number }, b: { top: number; height: number }) => a.top < b.top + b.height && b.top < a.top + a.height;
+const widen = (items: Placed[], limit?: number) => {
   for (const item of items) {
-    if (group.length && item.from >= groupEnd) close();
-    const used = new Set(group.filter(g => g.to > item.from).map(g => g.column));
+    const most = limit ?? item.columns; let span = 1;
+    while (item.column + span < most && !items.some(o => o !== item && o.group === item.group && o.column === item.column + span && overlap(o, item))) span++;
+    item.span = span;
+  }
+};
+/** Timed events of one day, laid out so that overlapping ones sit side by side and none is hidden. Each keeps its true start. `label` is how many minutes one line of text
+ *  is tall on the grid: a shorter event (or a deadline) still gets a box that tall, and it is that box that must not be covered, so two short events at the same time sit
+ *  side by side too. */
+export function layoutDay(events: HubEvent[], day: string, zone: string, label = 20): Placed[] {
+  const start = zonedEpoch(day, 0, zone), end = zonedEpoch(addDays(day, 1), 0, zone);
+  const items: Placed[] = events.filter(e => !e.all_day && e.start_epoch < end && (e.end_epoch > start || (e.end_epoch === e.start_epoch && e.start_epoch >= start)))
+    .map(e => { const from = Math.max(e.start_epoch, start), to = Math.min(Math.max(e.end_epoch, from), end);
+      const at = Math.round((from - start) / 60), length = Math.round((to - from) / 60), height = Math.max(label, length);
+      return { event: e, at, length, top: Math.min(at, DAY - height), height, column: 0, columns: 1, span: 1, point: e.end_epoch <= e.start_epoch, group: 0 }; })
+    .sort((a, b) => a.top - b.top || b.height - a.height || a.event.title.localeCompare(b.event.title));
+  let group: Placed[] = [], groupEnd = 0, groups = 0;
+  const close = () => { const width = Math.max(0, ...group.map(i => i.column)) + 1; group.forEach(i => { i.columns = width; i.group = groups; }); groups++; group = []; };
+  for (const item of items) {
+    if (group.length && item.top >= groupEnd) close();
+    const used = new Set(group.filter(g => g.top + g.height > item.top).map(g => g.column));
     let column = 0; while (used.has(column)) column++;
-    item.column = column; group.push(item); groupEnd = Math.max(groupEnd, item.to);
+    item.column = column; group.push(item); groupEnd = Math.max(groupEnd, item.top + item.height);
   }
   if (group.length) close();
-  return items.map(({ event, top, height, column, columns }) => ({ event, top, height, column, columns }));
+  widen(items);
+  return items;
+}
+/** The same day when its column is too narrow for every overlapping event to be read side by side. `fit` is how many may sit side by side at all; a busy stretch
+ *  with more than that draws its first `lanes` columns (marked `folded`, so the page leaves room beside them) and folds the rest into one control per run of time.
+ *  Nothing is dropped: every event is either shown or in a fold. */
+export function foldDay(placed: Placed[], fit: number, lanes: number): { shown: (Placed & { folded?: boolean })[]; more: Folded[] } {
+  fit = Math.max(1, fit); lanes = Math.max(1, Math.min(lanes, fit));
+  if (!placed.some(p => p.columns > fit)) return { shown: placed, more: [] };
+  const shown: (Placed & { folded?: boolean })[] = [], more: Folded[] = [];
+  for (const id of [...new Set(placed.map(p => p.group))]) {
+    const group = placed.filter(p => p.group === id);
+    if (group[0].columns <= fit) { shown.push(...group); continue; }
+    const kept = group.filter(p => p.column < lanes).map(p => ({ ...p, columns: lanes, folded: true }));
+    widen(kept, lanes); shown.push(...kept);
+    let run: Placed[] = [], runEnd = 0;
+    const close = () => { const top = Math.min(...run.map(r => r.top));
+      more.push({ key: `${id}-${top}`, top, height: runEnd - top, column: lanes, columns: lanes, events: run.map(r => r.event) }); run = []; runEnd = 0; };
+    for (const p of group.filter(p => p.column >= lanes).sort((a, b) => a.top - b.top)) {
+      if (run.length && p.top >= runEnd) close();
+      run.push(p); runEnd = Math.max(runEnd, p.top + p.height);
+    }
+    if (run.length) close();
+  }
+  return { shown, more };
+}
+/** A title in two parts: what it is, and the bracketed note some calendars put at its end (a course, a team): "Homework 9 [PHYS 101]" -> Homework 9, PHYS 101.
+ *  The first part is what a narrow chip must show; the whole title is always on the event itself. */
+export function titleParts(title: string): { main: string; tag: string } {
+  const m = /^(.*\S)\s*\[([^\][]{2,80})\]\s*$/.exec(title);
+  return m && m[1].length >= 2 ? { main: m[1], tag: m[2].trim() } : { main: title, tag: '' };
+}
+/** A run of days in few words, for where the long form has no room: "Nov 16 – 22, 2026", "Apr 27 – May 3, 2026". */
+export function rangeShort(from: string, to: string): string {
+  const month = (d: string) => wording(d, { month: 'short' }), year = (d: string) => d.slice(0, 4), date = (d: string) => Number(d.slice(8));
+  if (year(from) !== year(to)) return `${month(from)} ${date(from)}, ${year(from)} – ${month(to)} ${date(to)}, ${year(to)}`;
+  return from.slice(0, 7) === to.slice(0, 7) ? `${month(from)} ${date(from)} – ${date(to)}, ${year(to)}` : `${month(from)} ${date(from)} – ${month(to)} ${date(to)}, ${year(to)}`;
 }
 /** The list after the server's newest page was read again while the reader is further down it: the newest page as it is now, then what was already loaded below it.
  *  New mail joins at the top, what changed is shown as it is now, and nothing below is thrown away (the list keeps the reader's place when rows are added above).

@@ -78,6 +78,7 @@ connections.close_all()
 NOW = int(time.time())
 MIN, HOUR, DAY = 60, 3600, 86400
 ME_G, ME_M = 'dana.reyes@gmail.test', 'dana@outlook.test'
+ZONE = 'America/Los_Angeles'                                                       # the checks run the browser in this timezone too
 SEEN = []                                                                         # every remote picture a browser asked this fixture for: (name, query)
 
 
@@ -186,6 +187,7 @@ class PreviewGoogle(FakeGoogle):
         self.files, self.n = {}, 0
         self.scope += ' ' + ' '.join(g.scope for g in google_hub.GRANTS)        # the fixture's customer has already allowed changes (sending, organizing, the calendar)
         self.fill()
+        self.week()
 
     def add(self, sender, subject, *, text=None, html=None, thread=None, labels=('INBOX',), ago=HOUR, files=(), inline=(), to=None, cc=None, snippet=None):
         self.n += 1
@@ -250,6 +252,52 @@ class PreviewGoogle(FakeGoogle):
         self.add(SENDERS[6], 'An old thread, archived', text='Archived a while ago.', ago=20 * DAY, labels=())
         self.add(('Lottery Office', 'winner@prize.example'), 'You have won', text='Claim now.', ago=6 * DAY, labels=('SPAM',))
         self.add(SENDERS[7], 'Deleted last week', text='In the bin.', ago=8 * DAY, labels=('TRASH',))
+
+    def week(self):
+        """A dense week, the kind a student's calendar has (this week, Monday to Sunday, in the fixture's timezone): several all-day entries on one day, long titles
+        that end in their course, entries of ten minutes, deadlines with no length at all, and events that overlap."""
+        from datetime import date, timedelta
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(ZONE)
+        today = datetime.fromtimestamp(NOW, zone).date()
+        monday = today - timedelta(days=today.weekday())
+        school, family = 'school@group.calendar.google.com', 'family@group.calendar.google.com'
+        self.calendars += [{'id': school, 'summary': 'Coursework: PHYS 101, ENGR 110 and ENGL 204 (Fall 2026)', 'timeZone': ZONE, 'accessRole': 'reader'},
+                           {'id': family, 'summary': 'Family and household planning (shared with everyone at home)', 'timeZone': ZONE, 'accessRole': 'owner'}]
+        n = [0]
+
+        def add(calendar, title, day, start=None, end=None, days=1, **more):
+            n[0] += 1
+            d = monday + timedelta(days=day)
+            if start is None:
+                when = {'start': {'date': d.isoformat()}, 'end': {'date': (d + timedelta(days=days)).isoformat()}}
+            else:
+                at = lambda hm: datetime(d.year, d.month, d.day, int(hm.split(':')[0]), int(hm.split(':')[1]), tzinfo=zone).isoformat()
+                when = {'start': {'dateTime': at(start), 'timeZone': ZONE}, 'end': {'dateTime': at(end or start), 'timeZone': ZONE}}
+            self.event(f'w{n[0]:03d}', calendar, summary=title, **when, **more)
+        for title in ('Homework 9 due [PHYS 101-003 Fall 2026]', 'Lab report: Buoyancy [PHYS 101-003 Fall 2026]', 'Reading response 7 [ENGL 204-001 Fall 2026]', 'Team charter draft [ENGR 110-002 Fall 2026]'):
+            add(school, title, 4)
+        add(school, 'Midterm 2 review session sign-up closes [PHYS 101-003 Fall 2026]', 6)
+        add(school, 'Peer evaluation survey for project milestone 2 [ENGR 110-002 Fall 2026]', 6)
+        add(self.email, 'Career fair', 1, days=2)
+        add(family, 'Mum visiting', 5, days=2)
+        for day in (0, 2, 4):
+            add(self.email, 'PHYS 101 Lecture', day, '09:00', '09:50', location='Hall B')
+        for day in (1, 3):
+            add(self.email, 'ENGR 110 Studio', day, '10:30', '11:45', location='Maker Lab 2')
+        for day, number in ((0, 21), (1, 22), (2, 23), (3, 24)):
+            add(school, f'Classwork {number}: Fluids and pressure [PHYS 101-003 Fall 2026]', day, '12:30', '12:40')
+        add(school, 'Classwork 23b: Buoyancy pre-lab questions [PHYS 101-003 Fall 2026]', 2, '12:30', '12:45')
+        add(school, 'Submit Buoyancy Lab [PHYS 101-003 Fall 2026]', 3, '14:00')                              # a deadline: no length at all
+        add(school, 'Homework 9 [PHYS 101-003 Fall 2026]', 4, '23:59')
+        add(self.email, 'Design review with the studio team', 2, '15:00', '16:30', location='Room 2')
+        add(self.email, 'Office hours', 2, '15:00', '16:00')
+        add(family, 'Pick up the parcel', 2, '15:30', '16:00')
+        for title, start, end in (('Study group', '13:00', '14:30'), ('Advisor check-in', '13:00', '13:30'), ('Library shift', '13:15', '15:00'), ('Call the landlord', '13:30', '13:45'), ('Lunch with Ada', '13:00', '14:00')):
+            add(self.email, title, 1, start, end)
+        add(self.email, 'Dinner at Mira\'s', 5, '18:30', '21:00', location='14 Orchard Lane')
+        add(self.email, 'Gym', 0, '17:00', '18:00'); add(self.email, 'Gym', 3, '17:00', '18:00')
+        add(self.email, 'Dentist', 3, '08:15', '08:45', location='Castell Dental')
 
     def __call__(self, method, url, headers, data=None):
         parts = urlsplit(url)

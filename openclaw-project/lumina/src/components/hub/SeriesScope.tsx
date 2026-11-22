@@ -9,6 +9,6 @@ export default function SeriesScope({ value, onChange, name, legend = 'Which eve
   return (
     <fieldset className="hub-scope">
       <legend className="small">{legend}</legend>
-      {choices.map(s => <label key={s} className="row small"><input type="radio" name={name} checked={value === s} onChange={() => onChange(s)} /> {WORDS[s]}</label>)}
+      {choices.map(s => <label key={s} className="check-row"><input type="radio" name={name} checked={value === s} onChange={() => onChange(s)} /> {WORDS[s]}</label>)}
     </fieldset>);
 }

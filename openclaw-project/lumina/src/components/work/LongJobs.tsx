@@ -54,7 +54,7 @@ export default function LongJobs() {
         {live && (
           <div className="lj-controls">
             <label className="lj-policy">After an interruption{' '}
-              <select value={job.resume_policy} disabled={busy === job.id} onChange={e => void change(job, { resume_policy: e.target.value })} aria-label="After an interruption">
+              <select className="input small auto" value={job.resume_policy} disabled={busy === job.id} onChange={e => void change(job, { resume_policy: e.target.value })} aria-label="After an interruption">
                 <option value="ask">Ask me before carrying on</option>
                 <option value="auto">Carry on by itself (up to 3 times)</option>
               </select>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, addMonths, ago, dayKey, dayTitle, eventDays, eventTime, layoutDay, listTime, mergeNewest, minuteOfDay, people, rangeTitle, startOfWeek, zonedEpoch, type HubEvent, type Thread } from './hub';
+import { addDays, addMonths, ago, dayKey, dayTitle, eventDays, eventTime, foldDay, layoutDay, listTime, mergeNewest, minuteOfDay, people, rangeShort, rangeTitle, startOfWeek, titleParts, zonedEpoch, type HubEvent, type Thread } from './hub';
 
 const event = (over: Partial<HubEvent>): HubEvent => ({ connection_id: 'c', calendar_id: 'k', id: 'e', series_id: null, title: 'T', busy_only: false, start_epoch: 0, end_epoch: 0, all_day: false,
   start_date: null, end_date: null, timezone: null, place: '', conference_url: null, my_response: null, exception: false, cancelled: false, visibility: 'default', colour: 'blue', ...over });
@@ -56,6 +56,38 @@ describe('events', () => {
     expect([placed.a.column, placed.b.column, placed.c.column]).toEqual([0, 1, 0]);                     // c takes a's place once a is over
     expect([placed.a.columns, placed.b.columns, placed.c.columns, placed.d.columns]).toEqual([2, 2, 2, 1]);
     expect([placed.a.top, placed.a.height, placed.d.height]).toEqual([540, 60, 20]);                    // a very short event is still tall enough to read
+  });
+  it('draws a short event and a deadline at their true time with a box tall enough to read, and never lets two labels cover each other', () => {
+    const day = '2026-05-20', t = (hm: string) => at(`${day}T${hm}:00Z`);
+    const quiz = event({ id: 'quiz', title: 'Quiz', start_epoch: t('12:30'), end_epoch: t('12:40') }), pre = event({ id: 'pre', title: 'Pre-lab', start_epoch: t('12:30'), end_epoch: t('12:45') });
+    const due = event({ id: 'due', title: 'Submit', start_epoch: t('14:00'), end_epoch: t('14:00') }), late = event({ id: 'late', title: 'Homework', start_epoch: t('23:59'), end_epoch: t('23:59') });
+    const placed = Object.fromEntries(layoutDay([late, due, pre, quiz], day, 'UTC', 28).map(p => [p.event.id, p]));
+    expect([placed.quiz.at, placed.quiz.length, placed.quiz.top, placed.quiz.height]).toEqual([750, 10, 750, 28]);       // ten minutes, where it is, readable
+    expect([placed.quiz.column, placed.pre.column, placed.quiz.columns, placed.quiz.span]).toEqual([1, 0, 2, 1]);        // side by side, not one over the other
+    expect([placed.due.point, placed.due.at, placed.due.length, placed.due.height, placed.due.columns]).toEqual([true, 840, 0, 28, 1]);
+    expect([placed.late.at, placed.late.top, placed.late.top + placed.late.height]).toEqual([1439, 1412, 1440]);           // a label at the end of the day stays on the day
+  });
+  it('lets an event fill the room beside it, and folds a stretch too busy for the column into one control that loses nothing', () => {
+    const day = '2026-05-20', t = (hm: string) => at(`${day}T${hm}:00Z`);
+    const e = (id: string, from: string, to: string) => event({ id, title: id, start_epoch: t(from), end_epoch: t(to) });
+    const busy = [e('study', '13:00', '14:30'), e('lunch', '13:00', '14:00'), e('advisor', '13:00', '13:30'), e('library', '13:15', '15:00'), e('landlord', '13:30', '13:45')];
+    const alone = e('gym', '17:00', '18:00'), pair = [e('review', '09:00', '10:30'), e('hours', '09:00', '10:00'), e('after', '10:00', '10:30')];
+    const placed = layoutDay([...busy, alone, ...pair], day, 'UTC', 28); const by = Object.fromEntries(placed.map(p => [p.event.id, p]));
+    expect([by.gym.columns, by.gym.span]).toEqual([1, 1]);
+    expect([by.review.column, by.hours.column, by.after.column, by.after.span, by.review.columns]).toEqual([0, 1, 1, 1, 2]);
+    expect(Math.max(...busy.map(b => by[b.id].columns))).toBe(4);
+    expect(foldDay(placed, 4, 3)).toEqual({ shown: placed, more: [] });                                                    // room for all of them: nothing folds
+    const { shown, more } = foldDay(placed, 2, 1);                                                                           // a narrow column: one lane and "+N"
+    expect(shown.filter(p => p.group === by.study.group).map(p => [p.event.id, p.column, p.columns, p.span, p.folded])).toEqual([['study', 0, 1, 1, true]]);
+    expect(more.map(m => [m.events.map(x => x.id), m.top, m.top + m.height])).toEqual([[['lunch', 'advisor', 'library', 'landlord'], 780, 900]]);
+    expect([...shown.map(p => p.event.id), ...more.flatMap(m => m.events.map(x => x.id))].sort()).toEqual(placed.map(p => p.event.id).sort());
+    expect(shown.filter(p => p.group === by.review.group).every(p => !p.folded)).toBe(true);                               // two side by side still fit
+  });
+  it('puts what an event is before the bracketed course at the end of its title, and shortens a range of days', () => {
+    expect(titleParts('Homework 9 due [PHYS 101-003 Fall 2026]')).toEqual({ main: 'Homework 9 due', tag: 'PHYS 101-003 Fall 2026' });
+    expect([titleParts('Standup (new)'), titleParts('[Hold]'), titleParts('Lunch')]).toEqual([{ main: 'Standup (new)', tag: '' }, { main: '[Hold]', tag: '' }, { main: 'Lunch', tag: '' }]);
+    expect([rangeShort('2026-11-16', '2026-11-22'), rangeShort('2026-04-27', '2026-05-03'), rangeShort('2025-12-29', '2026-01-04')]).toEqual(
+      ['Nov 16 – 22, 2026', 'Apr 27 – May 3, 2026', 'Dec 29, 2025 – Jan 4, 2026']);
   });
   it('clips an event that crosses midnight to the day being drawn', () => {
     const night = event({ start_epoch: at('2026-05-20T22:00:00Z'), end_epoch: at('2026-05-21T02:00:00Z') });
