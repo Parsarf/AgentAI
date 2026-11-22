@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, addMonths, ago, dayKey, dayTitle, eventDays, eventTime, layoutDay, listTime, minuteOfDay, people, rangeTitle, startOfWeek, zonedEpoch, type HubEvent } from './hub';
+import { addDays, addMonths, ago, dayKey, dayTitle, eventDays, eventTime, layoutDay, listTime, mergeNewest, minuteOfDay, people, rangeTitle, startOfWeek, zonedEpoch, type HubEvent, type Thread } from './hub';
 
 const event = (over: Partial<HubEvent>): HubEvent => ({ connection_id: 'c', calendar_id: 'k', id: 'e', series_id: null, title: 'T', busy_only: false, start_epoch: 0, end_epoch: 0, all_day: false,
   start_date: null, end_date: null, timezone: null, place: '', conference_url: null, my_response: null, exception: false, cancelled: false, visibility: 'default', colour: 'blue', ...over });
@@ -77,5 +77,26 @@ describe('people', () => {
     expect(people(list, 'Me@a.test')).toBe('Ann, cy@z.test +1');
     expect(people(list.slice(0, 2), 'me@a.test')).toBe('Ann');
     expect(people([list[1]], 'me@a.test')).toBe('Me');
+  });
+});
+
+describe('keeping a list current while the reader is further down it', () => {
+  const t = (id: string, last_epoch: number, over: Partial<Thread> = {}): Thread => ({ connection_id: 'c', id, subject: id, snippet: '', people: [], last_epoch, message_count: 1, unread: false, starred: false,
+    has_attachments: false, labels: ['inbox'], provider_labels: [], ...over });
+  const ids = (list: Thread[]) => list.map(x => x.id);
+  it('puts new mail on top, shows what changed as it is now, and keeps what was loaded below', () => {
+    const loaded = [t('a', 90), t('b', 80), t('c', 70), t('d', 60), t('e', 50)];                  // two pages on screen: a b c | d e
+    const merged = mergeNewest(loaded, [t('new', 100), t('a', 90, { unread: true }), t('b', 80)], false);
+    expect(ids(merged)).toEqual(['new', 'a', 'b', 'c', 'd', 'e']);
+    expect(merged[1].unread).toBe(true);
+  });
+  it('moves a conversation that got an answer to the top once, and drops one that left the mailbox', () => {
+    const loaded = [t('a', 90), t('b', 80), t('c', 70), t('d', 60)];
+    expect(ids(mergeNewest(loaded, [t('d', 95), t('a', 90), t('c', 70)], false))).toEqual(['d', 'a', 'c']);       // d answered; b archived elsewhere (it would be between a and c)
+  });
+  it('keeps a conversation as old as the newest page\'s last one (it may simply be next), and takes a whole mailbox as it is', () => {
+    expect(ids(mergeNewest([t('a', 90), t('b', 80), t('x', 80), t('c', 70)], [t('a', 90), t('b', 80)], false))).toEqual(['a', 'b', 'x', 'c']);
+    expect(ids(mergeNewest([t('a', 90), t('b', 80), t('c', 70)], [t('a', 90)], true))).toEqual(['a']);
+    expect(mergeNewest([t('a', 90)], [], false)).toEqual([]);
   });
 });

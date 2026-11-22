@@ -308,5 +308,14 @@ export function layoutDay(events: HubEvent[], day: string, zone: string): Placed
   if (group.length) close();
   return items.map(({ event, top, height, column, columns }) => ({ event, top, height, column, columns }));
 }
+/** The list after the server's newest page was read again while the reader is further down it: the newest page as it is now, then what was already loaded below it.
+ *  New mail joins at the top, what changed is shown as it is now, and nothing below is thrown away (the list keeps the reader's place when rows are added above).
+ *  A conversation that was in the list within the newest page's span of time and is not in that page any more has left this mailbox (archived, moved or deleted
+ *  somewhere else): it goes. `whole`: the newest page is the entire mailbox. */
+export function mergeNewest(loaded: Thread[], newest: Thread[], whole: boolean): Thread[] {
+  if (whole || !newest.length) return newest;
+  const there = new Set(newest.map(threadKey)); const until = newest[newest.length - 1].last_epoch;
+  return [...newest, ...loaded.filter(t => !there.has(threadKey(t)) && t.last_epoch <= until)];
+}
 export const eventKey = (e: { connection_id: string; calendar_id: string; id: string }) => `${e.connection_id}\u0000${e.calendar_id}\u0000${e.id}`;
 export const threadKey = (t: { connection_id: string; id: string }) => `${t.connection_id}\u0000${t.id}`;

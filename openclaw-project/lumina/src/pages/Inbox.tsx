@@ -15,7 +15,7 @@ import MailSide, { MailSettingsSheet } from '../components/hub/MailSide';
 import Reader, { Mark, type ReaderActions } from '../components/hub/Reader';
 import { usePulse } from '../components/hub/usePulse';
 import { ApiError } from '../lib/api';
-import { browserZone, failed, fullTime, hub, LABEL_WORDS, linkWords, listTime, people, personName, problemWords, quoteOf, threadKey, validZone,
+import { browserZone, failed, fullTime, hub, LABEL_WORDS, linkWords, listTime, mergeNewest, people, personName, problemWords, quoteOf, threadKey, validZone,
   replySubject, type Draft, type HubAccount, type HubAction, type Message, type OrganizeOp, type Overview, type Thread } from '../lib/hub';
 import { useData } from '../state/data';
 import '../styles/hub.css';
@@ -110,7 +110,8 @@ export default function Inbox() {
   const filters = useMemo(() => ({ label, accounts: providerLabel ? [providerLabel.account] : only ? [only] : undefined, provider_label: providerLabel?.id, unread: unread || undefined,
     attachments: attachments || undefined, q: query || undefined, limit: 50 }), [label, providerLabel, only, unread, attachments, query]);
   const filterKey = JSON.stringify(filters);
-  const further = useRef(false); const [fresh, setFresh] = useState(false);
+  const further = useRef(false);
+  const shownThread = useRef<string | null>(null); const listRef = useRef<Thread[] | null>(null); listRef.current = threads;
   const loadDrafts = useCallback(async () => {
     try { const r = await hub.drafts(); setLuminaDrafts(r.drafts); } catch { setLuminaDrafts(prev => prev ?? []); }
   }, []);
@@ -119,15 +120,34 @@ export default function Inbox() {
     try {
       const r = await hub.threads({ ...filters, cursor });
       if (mine !== request.current) return;                              // a newer filter was chosen while this one was on its way
-      setThreads(prev => (cursor && prev ? [...prev, ...r.threads.filter(t => !prev.some(p => threadKey(p) === threadKey(t)))] : r.threads)); setNext(r.next); further.current = !!cursor; if (!cursor) setFresh(false);
+      setThreads(prev => (cursor && prev ? [...prev, ...r.threads.filter(t => !prev.some(p => threadKey(p) === threadKey(t)))] : r.threads)); setNext(r.next); further.current = !!cursor;
     } catch (e) { if (mine === request.current) { setErr(failed(e)); setThreads(prev => prev ?? []); } }
     finally { if (mine === request.current) setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey]);
   useEffect(() => { if (on) { setOlder(null); setPicked(new Set()); setThreads(null); void load(); } }, [load, on]);
+  // Keeping the list current, as a mail program does: the newest page is read again and laid over what is on screen. New mail joins at the top by itself, whatever
+  // the reader has scrolled to (the list keeps their place when rows are added above), and what they had loaded further down stays. Nothing is asked, nothing jumps.
+  // The open conversation is read again when it got a new message, so an answer that arrives while it is open shows in it.
+  const shown = useRef<Opened | null>(null);
+  const catchUp = useCallback(async () => {
+    const mine = request.current; if (listRef.current === null) return;  // the list itself is still on its way
+    let r: Awaited<ReturnType<typeof hub.threads>>;
+    try { r = await hub.threads({ ...filters }); } catch { return; }      // a missed beat: the next one tries again
+    if (mine !== request.current) return;                                // another mailbox or a search was chosen meanwhile, or a further page arrived
+    setThreads(prev => (prev && further.current ? mergeNewest(prev, r.threads, !r.next) : r.threads));
+    if (!further.current || !r.next) { setNext(r.next); if (!r.next) further.current = false; }
+    const open = shown.current; const now = open && r.threads.find(t => threadKey(t) === threadKey(open.thread));
+    if (!open || !now) return;
+    const k = threadKey(now);
+    if (now.message_count === open.thread.message_count && now.last_epoch === open.thread.last_epoch) { setOpened(o => (o && threadKey(o.thread) === k ? { ...o, thread: now } : o)); return; }
+    cache.current.delete(k);
+    hub.thread(now.connection_id, now.id).then(again => { cache.current.set(k, again); if (shownThread.current === k) setOpened(again); }).catch(() => undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey]);
   // Anything that reads the list again a moment later reads it for the mailbox and filters shown THEN, not for the ones that were shown when it was asked to (a list
   // read late for the mailbox the customer had just left was drawn under the new mailbox's name).
-  const latestLoad = useRef(load); latestLoad.current = load;
+  const latestLoad = useRef(catchUp); latestLoad.current = catchUp;
   useEffect(() => { if (on) void loadDrafts(); }, [on, loadDrafts]);
 
   const fetchThread = useCallback(async (t: Thread) => {
@@ -135,10 +155,8 @@ export default function Inbox() {
     const r = await hub.thread(t.connection_id, t.id); cache.current.set(k, r); if (cache.current.size > 40) cache.current.delete(cache.current.keys().next().value!);
     return r;
   }, []);
-  const shownThread = useRef<string | null>(null); const listRef = useRef<Thread[] | null>(null); listRef.current = threads;
-  // Live: when anything changed at the server, the accounts and the first page of the list are loaded again, quietly. New mail joins at the top while the rows the reader
-  // is looking at stay where they are. If the customer has paged further down, the list is left as it is and a line offers the new mail instead.
-  usePulse(on, () => { void loadOverview(); if (further.current) setFresh(true); else void latestLoad.current(); void loadDrafts(); });
+  // Live: when anything changed at the server, the accounts and the list are brought up to date, quietly (catchUp above).
+  usePulse(on, () => { void loadOverview(); void latestLoad.current(); void loadDrafts(); });
 
   const reset = () => { setOpenErr(''); setOpenDraft(null); setReplying(null); setReplyingId(null); };
   const open = useCallback(async (t: Thread) => {
@@ -252,6 +270,7 @@ export default function Inbox() {
   };
 
   const openThread = opened && selected === threadKey(opened.thread) ? opened : null;
+  shown.current = openThread;
   const openAccount = byId[(openThread?.thread ?? threads?.find(t => threadKey(t) === selected))?.connection_id ?? ''];
   const startReply = (all = false) => { if (openThread) setReplying(replyTo(openThread, byId[openThread.thread.connection_id]?.identity, zone, all)); };
   const startForward = () => { if (openThread) compose(forwardOf(openThread, zone)); };
@@ -398,7 +417,6 @@ export default function Inbox() {
   const status = <>
     {err && <p className="mail-status warning" role="alert"><span>{err}</span><button type="button" className="iconbtn small ghost" aria-label="Dismiss" onClick={() => setErr('')}><I.Close width={14} height={14} /></button></p>}
     {changed && <p className="mail-status" role="status"><span>{changed.words}</span>{changed.actions.length > 0 && changed.actions.every(a => a.can_undo) && <button type="button" className="btn small" onClick={undoChange}>Undo</button>}</p>}
-    {fresh && <p className="mail-status" role="status"><span>There is new mail.</span><button type="button" className="btn small" onClick={() => { void load(); }}>Show it</button></p>}
   </>;
 
   const nothing = view && !accounts.length ? (
