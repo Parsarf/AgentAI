@@ -42,7 +42,9 @@ def build(store):
                 AND {request_states.live_run()} AND v.state='active' LIMIT 8""", (account,)).fetchall()
         selections = {json.loads(r['context_json'] or '{}').get('model_selection') for r in rows}
         if not rows or len(selections) != 1:        # no admitted task, or live tasks that were admitted on different routes: no model call may be attributed to either
-            raise model_keys.RelayError(403, 'No single admitted task owns this model call.', 'admission_mismatch')
+            # 409, not 403: the runtime reads a 401 or 403 from its model provider as a bad key and disables the key for about a minute, so the customer's NEXT message
+            # fails at once (production 2026-11-22; proven on the real runtime: tests/e2e test_a_refused_model_call_does_not_disable_the_key_for_the_next_message).
+            raise model_keys.RelayError(409, 'No single admitted task owns this model call.', 'admission_mismatch')
         selected = next(iter(selections))
         # Existing requests admitted before the snapshot release retain compatibility.
         return selected if isinstance(selected, str) else wiring.model_key_store(sealed=False).choices(account)['selected']

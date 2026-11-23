@@ -68,7 +68,7 @@ Update the program itself by installing it again; it is not replaced by its own 
 
 ## Not covered
 
-The browse runner in `/opt/agentai-browse` (`openclaw-project/browse`), Caddy, systemd unit files, environment files and the cell images. Those still need a manual step.
+Caddy, systemd unit files, environment files and the cell images. Those still need a manual step. The browse runner itself is covered since 2026-11-22: each release carries `agentai_platform/browse/hosted_runner.mjs` and the browser service mounts it over the installed one; only the runner's `node_modules` in `/opt/agentai-browse/runner` are still installed by hand, when `browse/package.json` changes.
 
 ## Faster and safer (2026-11-16)
 

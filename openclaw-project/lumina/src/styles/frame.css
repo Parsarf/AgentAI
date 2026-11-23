@@ -147,6 +147,29 @@ th[aria-sort='ascending'] .table-sort::after { content: ' ↑'; } th[aria-sort='
 .wsp .chatpage { --chrome: calc(2 * var(--frame-gap) + var(--toolbar-h) + var(--space-2) + 2px); padding-top: 0; }
 .w-compact .wsp .chatpage { --chrome: calc(2 * var(--frame-gap) + var(--toolbar-h) + var(--space-2) + 2px + var(--bottom-bar-h)); }
 .wsp .chatpage .dock { background: linear-gradient(180deg, transparent, var(--surface-canvas) 30%); }
+/* Lumina's browser beside the conversation (components/BrowserPane.tsx). The conversation scrolls with the page; the pane stays in view beside it, as tall as the window
+   allows. --pane-w is the width the person gave it. `pane-full`: the chat is hidden (their choice, or a canvas too narrow for both) and the browser has the canvas. */
+.wsp .chatpage.with-pane { display: flex; align-items: flex-start; gap: 0; }
+.chatpage.with-pane .thread-col { flex: 1 1 0; min-width: 0; }
+.chatpage.with-pane .thread-col[hidden] { display: none; }
+.chat-pane { flex: 0 0 var(--pane-w, 560px); min-width: 0; position: sticky; top: calc(var(--toolbar-h) + var(--space-3)); height: calc(100dvh - var(--chrome) - var(--space-3)); display: flex; flex-direction: column;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); overflow: hidden; }
+.chatpage.pane-full .chat-pane { flex: 1 1 auto; }
+.chat-pane-head { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3); border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.chat-pane-head h2 { flex: none; color: var(--text-primary); font-size: var(--text-base); font-weight: var(--weight-semibold); white-space: nowrap; }
+.chat-pane-host { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+.chat-pane-live { flex: none; }
+.chat-pane-acts { margin-left: auto; flex: none; display: flex; align-items: center; gap: var(--space-1); }
+.chat-pane-acts .btn { gap: 6px; }
+.chat-pane-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--space-3); }
+.chat-pane-body .ws-stage { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.chat-pane-split { flex: 0 0 12px; align-self: stretch; position: sticky; top: calc(var(--toolbar-h) + var(--space-3)); height: calc(100dvh - var(--chrome) - var(--space-3)); cursor: col-resize; touch-action: none; outline: 0; }
+.chat-pane-split::after { content: ''; display: block; width: 2px; height: calc(100% - 2 * var(--space-5)); margin: var(--space-5) auto; border-radius: 2px; background: transparent; transition: background var(--dur-fast) var(--ease); }
+.chat-pane-split:hover::after, :root[data-resizing='true'] .chat-pane-split::after { background: var(--accent-line); }
+.chat-pane-split:focus-visible::after { background: var(--accent); }
+.chat-browser-toggle { gap: 6px; }
+.chat-browser-toggle[aria-pressed='true'] { border-color: var(--accent-line); background: var(--accent-soft); }
+.chat-browser-toggle .dot.live { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
 .w-compact .wsp .chatpage .dock { bottom: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom)); }
 .chats-column { display: flex; flex-direction: column; gap: var(--space-2); min-height: 100%; }
 .chats-column .newchat { width: 100%; }

@@ -1,16 +1,25 @@
 # Steps to do by hand when this branch is deployed
 
-## Browsing reliability (2026-11-21): the runner on the server is a copy made by hand
+## The browser's runner travels with each release (from the release after `d435fc1`)
 
-A merge to `main` updates the Python side of the browser service and restarts `agentai-browse` by itself. **The runner in `/opt/agentai-browse/runner` is not updated by a deploy**
-(`AUTO_DEPLOY.md`, "Not covered"), and most of the page-reading fixes of this change are in `browse/runner.mjs`. Until it is copied, the new Python runs against the old runner: it
-reads the runner's new fields with `.get`, so tasks run as before, without the fixes. To install it:
+**Done on 2026-11-22:** the runner of release `d435fc1` was installed by hand in `/opt/agentai-browse/runner` (its sha256 begins `e3794d35`; the one before it is beside it as
+`runner.mjs.bak-20261122-pre-reliability`).
 
-    install -m 0644 /opt/agentai-supervisor/current/browse/runner.mjs /opt/agentai-browse/runner/runner.mjs && systemctl restart agentai-browse
+From the next release on there is nothing to copy: the platform package carries its own `agentai_platform/browse/hosted_runner.mjs` (a generated copy of `browse/runner.mjs`,
+kept identical by `browse/sync-page-scripts.py --check`, which the tests run), and the browser service mounts it over the installed `runner.mjs` in every stage. What still
+needs a hand, rarely: the runner's dependencies (`/opt/agentai-browse/runner/node_modules`) when `browse/package.json` or its lockfile changes, and the stage image.
 
-(the path of the release's copy may differ: use the `browse/runner.mjs` of the deployed release; `package.json` and the lockfile did not change, so `node_modules` stays).
-Keep the old file beside it for a rollback. The new owner switch `browser_press_approval` is **off** after the deploy: nothing about what the browser may press changes until the
-owner turns it on (`plans/product/FEATURE_SWITCHES.md`). The browser extension was not repackaged: it keeps its 0.3.0 page script until a new package is built and published.
+After that deploy, check once: `journalctl -u agentai-browse` shows it started, and a browser task's `trace.jsonl` has `"cmd": "open"` answered by the new runner
+(a page that loads slowly is opened and marked `still_loading`, not failed).
+
+The stage now runs with two processors and 2 GiB (`service.stage_argv`). The owner switch `browser_press_approval` is **off**.
+
+## Cells get two new runtime settings at their next start
+
+`lifecycle/cell_config.py` now writes `tools.toolSearch.mode = "directory"` (a tool called by its plain name runs) and `skills.workshop.autonomous.mode = "off"` (no
+background model call that no task pays for). Both were validated against OpenClaw 2026.9.6 and run through `tests/e2e/test_native_e2e.py`. A cell picks them up when it is
+next started; the deploy restarts the supervisor, and a cell that is already running keeps its old settings until then. To confirm on a cell:
+`docker -H unix:///run/agentai-cells/docker.sock exec <cell> node -e "const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openclaw/openclaw.json'));console.log(c.tools.toolSearch,c.skills)"`.
 
 **Done on 2026-11-16 (release `8327634`):** the privacy wording is published, the connector key file is installed (`/var/lib/agentai-platform/connector.key`, path in `accounts.env`), the three timers are enabled, the two switch facts are recorded, and the live proof passed all eight gates. The retention sweeper's first run removed 1,011 activity records older than 30 days. Still open: back up the connector key file with the other keys; the `--hour` form of the handoff gate; one offboarding of a throwaway account that has a real assistant before `account_self_service` is turned on. The steps below are kept as the record of what was done.
 

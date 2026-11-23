@@ -65,7 +65,15 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL,
     deny = set((config.get('tools') or {}).get('deny') or []) | set(DENIED_TOOLS)
     if not on('tool_ceilings'):
         deny.discard('browser')                  # switched off for this account: the assistant may use the cell's browser tool itself, outside Lumina's browser rules
-    config['tools'] = {**(config.get('tools') or {}), 'deny': sorted(deny)}
+    # How tools reach the model. Left unset, the runtime hides every tool's schema behind tool_search / tool_describe / tool_call, and a tool called by its plain name is
+    # refused ("Tool web_fetch not found", production 2026-11-22, in every browser task: Lumina's own messages tell the assistant to use web_fetch and web_search). In
+    # `directory` mode the runtime still keeps the schemas out of the prompt, and a call to a tool's exact name is run as that tool.
+    config['tools'] = {**(config.get('tools') or {}), 'deny': sorted(deny), 'toolSearch': {'mode': 'directory'}}
+    # No model call without a task that pays for it. Left on (`auto`, the runtime's default), a background "experience review" runs a model turn some seconds after a long
+    # task ended. With no task running, Lumina's gateway refuses that call (403: no admitted task owns it), the runtime takes the refusal for a bad key and disables the key
+    # for about a minute, and the customer's next message fails at once (production 2026-11-22). With a task running, the review would be charged to that task, unseen.
+    # The skills a cell already wrote stay and are still read; Lumina's own skills (agent_rules.py) are the ones kept in step with the product.
+    config['skills'] = {**(config.get('skills') or {}), 'workshop': {**((config.get('skills') or {}).get('workshop') or {}), 'autonomous': {'mode': 'off'}}}
     # The address policy is never inherited from an earlier config: whatever a cell had, its browser is held to the strict default.
     config['browser'] = {**{k: v for k, v in (config.get('browser') or {}).items() if k != 'ssrfPolicy'}, **NATIVE_BROWSER} if native_browser else {**(config.get('browser') or {}), 'enabled': False}
     if native_browser and not on('ssrf_guard'):

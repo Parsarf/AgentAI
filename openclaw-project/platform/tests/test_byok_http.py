@@ -72,7 +72,7 @@ class Http(unittest.TestCase):
     def test_errors_use_the_openai_shape_and_say_what_to_do(self):
         port = self.start(); self.on = False
         status, _, data = self.request(port, 'POST', '/byok/v1/chat/completions', self.CHAT)
-        body = json.loads(data); self.assertEqual((status, body['error']['code']), (403, 'not_enabled')); self.assertIn('message', body['error'])
+        body = json.loads(data); self.assertEqual((status, body['error']['code']), (409, 'not_enabled')); self.assertIn('message', body['error'])
         self.on = True
         with self.store._txn(write=True) as db:
             db['accounts']['acct'] = {'profiles': {}, 'selected': 'key:missing'}
@@ -112,7 +112,7 @@ class Http(unittest.TestCase):
         self.model_relay.admission = lambda account, personal: False
         for path in ('/byok/v1/chat/completions', '/model/v1/chat/completions'):
             status, _, data = self.request(port, 'POST', path, self.CHAT)
-            self.assertEqual((status, json.loads(data)['error']['code']), (403, 'admission_mismatch'))
+            self.assertEqual((status, json.loads(data)['error']['code']), (409, 'admission_mismatch'))
         self.assertEqual(self.up.requests, [])
 
     def test_bad_sizes_and_bodies_are_refused_before_anything_is_forwarded(self):
@@ -151,9 +151,6 @@ class Http(unittest.TestCase):
         self.assertEqual(self.model_relay._busy.get('acct', 0), 0)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
     def test_selected_model_transport_switches_keys_and_lumina_without_restart(self):
         port = self.start()
         status, _, _ = self.request(port, 'POST', '/model/v1/chat/completions', self.CHAT)
@@ -171,5 +168,9 @@ if __name__ == '__main__':
         self.assertEqual(json.loads(listed[2])['data'][0]['id'], 'selected')
         before = len(self.up.requests)
         self.model_relay.admission = lambda account, personal: False
-        self.assertEqual(self.request(port, 'POST', '/model/v1/chat/completions', self.CHAT)[0], 403)
+        self.assertEqual(self.request(port, 'POST', '/model/v1/chat/completions', self.CHAT)[0], 409)       # refused as this one call, not as a bad key (model_keys.RELAY_REFUSAL)
         self.assertEqual(len(self.up.requests), before)
+
+
+if __name__ == '__main__':
+    unittest.main()

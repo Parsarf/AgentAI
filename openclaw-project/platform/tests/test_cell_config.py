@@ -22,6 +22,13 @@ class CellConfigChecks(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup); self.root = Path(self.tmp.name)
 
+    def test_a_cell_runs_a_tool_by_its_plain_name_and_makes_no_model_call_that_no_task_pays_for(self):
+        cfg = patch({'gateway': {'mode': 'local'}, 'tools': {'toolSearch': True, 'web': {'search': {'enabled': True}}}, 'skills': {'workshop': {'autonomous': {'mode': 'auto'}, 'kept': 1}, 'other': 2}})
+        self.assertEqual(cfg['tools']['toolSearch'], {'mode': 'directory'})                 # whatever a cell had: "web_fetch" called by name is run, not answered "Tool web_fetch not found"
+        self.assertEqual(cfg['tools']['web'], {'search': {'enabled': True}})
+        self.assertEqual(cfg['skills'], {'workshop': {'autonomous': {'mode': 'off'}, 'kept': 1}, 'other': 2})     # no background review after a task: its model call had no task to belong to
+        self.assertEqual(patch({})['skills']['workshop']['autonomous']['mode'], 'off')
+
     def test_patch_routes_the_cell_to_the_host_relay_with_an_env_key(self):
         cfg = patch({'gateway': {'mode': 'local'}})
         provider = cfg['models']['providers']['litellm']

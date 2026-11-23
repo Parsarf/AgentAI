@@ -260,6 +260,46 @@ class AButtonOnlyTheCustomerMayAllow(unittest.TestCase):
         self.assertEqual(r.status, 'handoff')
 
 
+class WhatAssistantsActuallySend(unittest.TestCase):
+    """Production, 2026-11-22: the first call of every browser task was refused. The runtime keeps tool schemas out of the prompt, so the assistant guessed the names."""
+    def test_a_task_is_taken_with_the_names_assistants_use_for_the_address_and_the_steps(self):
+        from agentai_platform.browse.adapter import TOOL as BROWSER_TOOL, BadTask, clean_task
+        sent = {'task': 'Go to clothes.example and find the socks collection.', 'url': 'https://www.clothes.example', 'done_when': 'A list is reported.'}      # the shape of the call that was refused
+        t = clean_task(sent)
+        self.assertEqual((t['site'], t['start_url'], t['done_when']), ('clothes.example', 'https://www.clothes.example/', 'A list is reported.'))
+        self.assertEqual(clean_task({'goal': 'List the new arrivals and their prices', 'website': '"shop.example/collections/new"'})['start_url'], 'https://shop.example/collections/new')
+        self.assertEqual(clean_task({'task': 'Find the cheapest paddle on https://shop.example/paddles?sort=price and report it.'})['start_url'], 'https://shop.example/paddles?sort=price')   # an address written in the task
+        self.assertEqual(clean_task({'task': 'List the paddles', 'site': 'shop.example', 'steps': '1. Open the page.\n2. Read the list.\n- Report names and prices.'})['steps'],
+                         ['Open the page.', 'Read the list.', 'Report names and prices.'])
+        many = clean_task({'task': 'List the paddles', 'site': 'shop.example', 'steps': ['Open the shop'] * 30 + ['', 7]})['steps']
+        self.assertEqual(len(many), 12)                                                           # too many steps are cut, an unreadable one is left out: neither refuses the task
+        self.assertEqual(BROWSER_TOOL['inputSchema']['required'], ['task'])                       # the runtime refuses a call that breaks the schema before Lumina can read it
+
+    def test_what_may_be_opened_is_exactly_what_it_was(self):
+        from agentai_platform.browse.adapter import BadTask, clean_task
+        for bad in ({'task': 'do the thing on the internet please'},                              # no address anywhere
+                    {'task': 'Open the admin page', 'url': 'http://user:pw@host.example/'}, {'task': 'Open the local page', 'url': 'http://127.0.0.1/'},
+                    {'task': 'Open the internal page', 'site': 'http://intranet/'}, {'task': 'Open the file listing', 'url': 'file:///etc/passwd'},
+                    {'task': 'Open the page on the port', 'site': 'shop.example:8443'}, {'task': 'short', 'site': 'shop.example'}, {'site': 'shop.example'}, 'not arguments'):
+            with self.assertRaises(BadTask, msg=repr(bad)): clean_task(bad)
+
+    def test_a_step_is_read_in_its_close_spellings_and_a_refusal_says_what_to_send(self):
+        from agentai_platform.browse.adapter import STEP as STEP_TOOL, BadTask, clean_step
+        self.assertEqual(clean_step({'action': 'type', 'ref': 'c12', 'text': 'socks'}), {'action': 'type', 'value': 'socks', 'ref': 12})
+        self.assertEqual(clean_step({'action': 'scroll_down', 'ref': 3}), {'action': 'scroll', 'value': 'down'})        # a number left on a scroll is dropped, not a reason to refuse
+        self.assertEqual(clean_step({'action': 'press', 'key': 'enter'}), {'action': 'press', 'value': 'Enter'})
+        self.assertEqual(clean_step({'action': 'Scroll', 'direction': 'UP'}), {'action': 'scroll', 'value': 'up'})
+        self.assertEqual(clean_step({'action': 'finish', 'result': 'Two styles, both out of stock.'}), {'action': 'done', 'answer': 'Two styles, both out of stock.'})
+        self.assertEqual(clean_step({'action': 'ask', 'question': 'Which size?', 'field': 'size', 'options': ['c4', 5, '[6]']}), {'action': 'ask', 'question': 'Which size?', 'field': 'size', 'options': [4, 5, 6]})
+        for bad in ({'action': 'navigate', 'value': 'https://evil.example/'}, {'action': 'click', 'ref': 'the blue one'}, {'action': 'type', 'ref': 2, 'value': ['x']}, {}, None):
+            with self.assertRaises(BadTask, msg=repr(bad)): clean_step(bad)
+        self.assertNotIn('enum', STEP_TOOL['inputSchema']['properties']['action'])
+        c = cand.build('[1] <input type=text> "Search"\n[2] <button> "Add to cart"')
+        for step, says in (('{"action":"click","ref":9}', 'there is no control 9 in the list above'), ('{"action":"click"}', 'click needs ref'), ('{"action":"type","ref":2,"value":"x"}', 'control 2 takes click, not type'),
+                           ('{"action":"type","ref":1}', 'type needs value'), ('{"action":"press","value":"F5"}', 'press takes value Enter, Tab or Escape')):
+            with self.assertRaisesRegex(ValueError, says): parse_decision(step, c, 'agent')
+
+
 class ALongTakeOverCostsLess(unittest.TestCase):
     def test_once_the_assistant_is_working_through_the_task_it_gets_the_window_not_the_whole_page_again(self):
         page = {'url': URL, 'title': 'T', 'text': 'in the window\n[below the window]\nfar below', 'full': 'F' * 9000, 'full_at': 0}

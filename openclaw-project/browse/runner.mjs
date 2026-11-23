@@ -11,6 +11,10 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 const CHROME = process.env.BROWSE_CHROME || '/usr/bin/chromium';
 const OUT = process.env.BROWSE_OUT || '/tmp/out';
 const ALLOW_LOOPBACK = process.env.BROWSE_ALLOW_LOOPBACK === '1';   // tests only; never set in the stage
+// Opening a page: how long the site has to answer at all, and how long the page then has to load before the task goes on with what is drawn. (The host waits a little
+// longer than both together: platform/agentai_platform/browse/session.py DEADLINES.) The variables are for tests.
+const OPEN_ANSWER_MS = Number(process.env.BROWSE_OPEN_ANSWER_MS) || 30000;
+const OPEN_LOAD_MS = Number(process.env.BROWSE_OPEN_LOAD_MS) || 25000;
 const MAX_ELEMENTS = 80, MAX_TEXT = 6000, MAX_PAGES = 3, MAX_VALUE = 500;
 const KEYS = new Set(['Enter', 'Tab', 'Escape']);
 const TAKEOVER_KEYS = new Set(['Backspace', 'Delete', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp']);   // what the customer's own keyboard may send; no shortcuts
@@ -335,9 +339,9 @@ export class Runner {
   async fp() { try { return createHash('sha1').update(await this.page.evaluate(fingerprint, SELECTOR)).digest('hex').slice(0, 12); } catch { return null; } }   // null = could not tell (page changing under us)
   /** Wait until the page has stopped changing, not until its network is silent: most real sites never go silent (analytics, ads, long polls), so that wait ran its full 2.5 s
    *  on every page opened and after many steps. The page counts as still when it has loaded and two looks 150 ms apart see the same amount of it; never longer than `ms`. */
-  async settle(ms = 2500) {
+  async settle(ms = 2500, waitLoad = true) {
     const until = Date.now() + ms;
-    try { await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }); } catch { /* slow pages are fine */ }
+    if (waitLoad) { try { await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }); } catch { /* slow pages are fine */ } }    // not again for a page whose open already ran out of loading time
     let last = null;
     for (;;) {
       const now = await this.page.evaluate(() => document.readyState + '|' + document.getElementsByTagName('*').length + '|' + ((document.body && document.body.innerText) || '').length).catch(() => null);
@@ -374,8 +378,20 @@ export class Runner {
     switch (msg.cmd) {
       case 'open': {
         if (!urlAllowed(msg.url, ALLOW_LOOPBACK)) return { ok: false, error: 'url_blocked' };
-        try { await this.page.goto(msg.url, { waitUntil: 'domcontentloaded' }); } catch (e) { return { ok: false, error: 'navigation_failed', detail: String(e.message || e).split('\n')[0].slice(0, 160) }; }
-        await this.settle(); return { ok: true, url: this.page.url(), title: (await this.page.title()).slice(0, 120) };
+        // A page is open once the site has answered. How long its own scripts then take is the page's business, not a failure: one limit for both ("content loaded within
+        // 20 s") failed a heavy shop whose answer came in under a second, in a stage with one processor (production 2026-11-22, "navigation_failed"). So: wait for the
+        // answer; then give the page time to load, and go on with what it has drawn when that time is up. The snapshot waits for something to be drawn anyway.
+        try { await this.page.goto(msg.url, { waitUntil: 'commit', timeout: OPEN_ANSWER_MS }); }
+        catch (e) {
+          // The tab is now on its way to the browser's own error page, and an open sent to it meanwhile is "interrupted by another navigation" and fails as well: the host's
+          // second try, and every open after it, could never work (found 2026-11-22; it was so since the first release). The task carries on in a fresh tab of the same
+          // browser (same cookies, same sign-ins), and the broken one is closed.
+          const broken = this.page;
+          try { this.page = this.prepare(await this.context.newPage()); await broken.close().catch(() => {}); } catch { this.page = broken; }
+          return { ok: false, error: 'navigation_failed', detail: String(e.message || e).split('\n')[0].slice(0, 160) };
+        }
+        const loaded = await this.page.waitForLoadState('domcontentloaded', { timeout: OPEN_LOAD_MS }).then(() => true, () => false);
+        await this.settle(2500, loaded); return { ok: true, url: this.page.url(), title: (await this.page.title().catch(() => '')).slice(0, 120), ...(loaded ? {} : { still_loading: true }) };
       }
       case 'snapshot': {
         await this.settle(); await this.drawn(); const d = await this.page.evaluate(describe, { sel: SELECTOR, max: MAX_ELEMENTS });
@@ -488,7 +504,7 @@ async function main() {
     if (msg.cmd === 'close') { await runner.stop(); console.log(JSON.stringify({ id: msg.id, ok: true })); process.exit(0); }
     // A page whose own script never yields makes a read of it hang for ever. Each command has a limit a little under the host's, so the host gets an answer it can act on
     // (look again, reload) instead of losing the whole task to a silence.
-    const limit = { open: 36000, snapshot: 16000, act: 27000, view: 12000, screenshot: 12000, probe: 6000, xy: 18000 }[msg.cmd] || 16000;
+    const limit = { open: OPEN_ANSWER_MS + OPEN_LOAD_MS + 10000, snapshot: 16000, act: 27000, view: 12000, screenshot: 12000, probe: 6000, xy: 18000 }[msg.cmd] || 16000;
     let res; let timer;
     try { res = await Promise.race([runner.handle(msg), new Promise(resolve => { timer = setTimeout(() => resolve({ ok: false, error: 'timeout' }), limit); })]); }
     catch (e) { res = { ok: false, error: 'runner_error' }; }

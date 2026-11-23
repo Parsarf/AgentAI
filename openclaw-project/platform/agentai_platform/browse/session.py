@@ -65,7 +65,9 @@ class ProcessTransport:
 
 
 class Session:
-    DEADLINES = {'open': 40, 'attach': 20, 'snapshot': 20, 'act': 30, 'screenshot': 20, 'view': 20, 'probe': 10}
+    # `open` is longer than the runner's own limit for it (30 s for the site to answer, 25 s for the page to load, 10 s to spare: browse/runner.mjs), so the runner's answer,
+    # not a silence, is what ends a slow open.
+    DEADLINES = {'open': 75, 'attach': 20, 'snapshot': 20, 'act': 30, 'screenshot': 20, 'view': 20, 'probe': 10}
     READS = frozenset({'snapshot', 'view', 'screenshot', 'probe'})      # commands that change nothing on the page: safe to send again
     MAX_RESTARTS = 1
 

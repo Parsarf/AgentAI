@@ -338,7 +338,7 @@ class RelayChecks(Base):
         self.assertEqual(self.post({'jsonrpc': '2.0', 'method': 'notifications/initialized'})[0], 202)
         status, listed = self.post({'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'})
         self.assertEqual([t['name'] for t in listed['result']['tools']], ['lumina_browser', 'lumina_browser_step'])
-        self.assertEqual(listed['result']['tools'][0]['inputSchema']['required'], ['task', 'site'])
+        self.assertEqual(listed['result']['tools'][0]['inputSchema']['required'], ['task'])       # only what no call can do without: the runtime refuses a schema break before Lumina can read the call (an address sent as `url` is found by clean_task)
         self.assertEqual(listed['result']['tools'][1]['inputSchema']['required'], ['action'])
         self.assertEqual(self.post({'jsonrpc': '2.0', 'id': 3, 'method': 'ping'})[1]['result'], {})
         self.assertEqual(self.post({'jsonrpc': '2.0', 'id': 4, 'method': 'resources/list'})[1]['error']['code'], -32601)

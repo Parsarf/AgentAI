@@ -64,6 +64,13 @@ class ModelKeyError(ValueError):
     """Something the customer entered is not acceptable. The message is written for them."""
 
 
+# The status for "this call is not allowed right now" (no task owns it, the selection changed, the feature is off). It must not be 401 or 403: OpenClaw reads those from a model
+# provider as a bad credential and puts the key in a cooldown of about a minute, and every message the customer sends in that minute fails before it reaches Lumina
+# (production 2026-11-22: a background call was refused, and the customer's next task failed 10 seconds later). 402 is read as a billing failure (ten minutes). 409 is read
+# as this one call failing, which is what it is. Proven on the real runtime: tests/e2e/test_native_e2e.py.
+RELAY_REFUSAL = 409
+
+
 class RelayError(Exception):
     """A call could not be forwarded. `status` and `message` go back to the assistant in the OpenAI error shape."""
 
@@ -641,7 +648,7 @@ class ModelRelay:
 
     def _config(self, account, choice=None):
         if not self.enabled(account):
-            raise RelayError(403, 'Using your own model is not switched on for this account.', 'not_enabled')
+            raise RelayError(409, 'Using your own model is not switched on for this account.', 'not_enabled')      # 409, never 401/403: those make the runtime disable the cell's key (see RELAY_REFUSAL below)
         try:
             return self.store.open(account, choice)
         except ModelKeyError:
@@ -662,7 +669,7 @@ class ModelRelay:
             except Exception:
                 raise RelayError(503, 'Task admission could not be checked.', 'admission_unavailable') from None
             if not allowed:
-                raise RelayError(403, 'This model selection does not match an admitted live task. Start a new task after choosing your model.', 'admission_mismatch')
+                raise RelayError(RELAY_REFUSAL, 'This model selection does not match an admitted live task. Start a new task after choosing your model.', 'admission_mismatch')
         if selected.startswith('key:'):
             # Do not fall back to a Lumina-funded model when a personal key fails.
             return self.chat(account, raw, choice=selected)

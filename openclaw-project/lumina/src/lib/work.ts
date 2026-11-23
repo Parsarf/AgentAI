@@ -47,6 +47,8 @@ export interface Row {
   key: string; kind: 'tool' | 'note' | 'error' | 'approval' | 'file'; category: string; label: string; detail: string; output: string;
   status: 'running' | 'done' | 'failed' | 'note' | 'waiting' | 'approved' | 'declined' | 'expired'; at: number; ended_at: number | null; first: number; seq: number; group: string | null;
 }
+/** Where a task's browser is shown: beside its conversation (the chat opens with the browser as a pane on the right), or on the task's own page when it has no chat. */
+export const browserPath = (task: { id: string; conversation_id: string | null }) => (task.conversation_id ? `/chat/${task.conversation_id}?browser=${task.id}` : `/live/${task.id}`);
 export interface Listing { tasks: TaskSummary[]; attention: number; rev: string }
 export interface Detail { task: TaskView; rows: Row[]; cursor: number; trimmed?: number }
 /** The reply being written right now. Never stored: the saved message replaces it. */

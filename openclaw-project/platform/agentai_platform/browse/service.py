@@ -404,8 +404,8 @@ class BrowseService:
                         raise ValueError('ask without a question')
                     return d
                 except ValueError as exc:
-                    problem = str(exc)[:80]
-                    job.trace.emit('agent', what='invalid step', why=problem)
+                    problem = str(exc)[:200]                    # the whole sentence: it says which number or which argument was wrong, so the next step can be right
+                    job.trace.emit('agent', what='invalid step', why=problem[:80])
             return Decision('stop', 'rule', 'the assistant sent steps that could not be used')
         return gate
 
@@ -745,11 +745,20 @@ def serve(service, path, *, allowed_uids, group_gid=None, peer_uid=linux_peer_ui
     return server
 
 
-def stage_argv(job_id, out_dir, runner_dir, image, *, name=None):
-    """The fixed, hardened command for one browser stage. Nothing customer-supplied reaches it (job id is hex; paths are host-made)."""
+HOSTED_RUNNER = Path(__file__).with_name('hosted_runner.mjs')       # this release's own copy of browse/runner.mjs (kept by browse/sync-page-scripts.py)
+
+
+def stage_argv(job_id, out_dir, runner_dir, image, *, name=None, runner_file=None):
+    """The fixed, hardened command for one browser stage. Nothing customer-supplied reaches it (job id is hex; paths are host-made).
+
+    `runner_dir` holds the runner's dependencies (node_modules) and an installed runner.mjs. `runner_file`, when given, is mounted over that runner.mjs: the release's own
+    copy, so the runner can never be older or newer than the service that talks to it.
+    Two processors and 2 GiB: with one processor a heavy shop's home page took over 40 seconds to open and read (measured on the server, 2026-11-22; 25 s with two), which
+    is the difference between a task that works and "could not open the page". One stage runs at a time, on a four-core host."""
     if not REQUEST_ID.fullmatch(job_id):
         raise ValueError('invalid job id')
+    own = ['-v', f'{runner_file}:/job/runner.mjs:ro'] if runner_file else []
     return ['docker', 'run', '--rm', '-i', '--name', name or f'lumina-browse-{job_id[:12]}', '--read-only',
             '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '256',
-            '--memory', '1536m', '--cpus', '1', '--user', '1000:1000', '-v', f'{runner_dir}:/job:ro', '-v', f'{out_dir}:/out:rw', '-w', '/job',
+            '--memory', '2g', '--cpus', '2', '--user', '1000:1000', '-v', f'{runner_dir}:/job:ro', *own, '-v', f'{out_dir}:/out:rw', '-w', '/job',
             '-e', 'HOME=/tmp/h', '-e', 'BROWSE_OUT=/out', '-e', 'BROWSE_CHROME=/usr/bin/chromium', '--entrypoint', 'node', image, 'runner.mjs']

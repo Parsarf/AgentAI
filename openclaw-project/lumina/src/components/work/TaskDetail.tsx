@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Message } from '../../lib/conversations';
-import { type Row, type TaskView } from '../../lib/work';
+import { browserPath, type Row, type TaskView } from '../../lib/work';
 import AgentResponse from '../response/AgentResponse';
 import { Checklist, Timeline } from './parts';
 
@@ -22,7 +22,7 @@ export default function TaskDetail({ task, rows, notes = [], links = true }: { t
           <div className="wk-notes">{notes.map(m => <div key={m.id} className="bubble agent"><AgentResponse content={m.content} /></div>)}</div></section>)}
       {links && (task.browser || true) && (
         <p className="wk-links">
-          {task.browser && <Link className="btn small" to={`/live/${task.id}`}>{task.browser.live ? 'Open the browser' : 'Open the workspace'}</Link>}
+          {task.browser && <Link className="btn small" to={task.browser.live ? browserPath(task) : `/live/${task.id}`}>{task.browser.live ? 'Open the browser' : 'Open the workspace'}</Link>}
           <Link className="btn tertiary small" to={`/activity/${task.id}`}>Full record</Link>
         </p>)}
       <p className="wk-fine">Shows searches, pages, commands and file names. File contents and secrets are never shown.</p>
