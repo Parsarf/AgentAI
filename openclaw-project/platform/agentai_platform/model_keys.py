@@ -445,15 +445,21 @@ def probe(endpoint: Endpoint, model: str, key: str, *, resolver=socket.getaddrin
 
 
 # --------------------------------------------------------------------------------------------------------------------- the relay
+USAGE = re.compile(rb'"usage"\s*:\s*(\{(?:[^{}]|\{[^{}]*\})*\})')      # the usage object a provider ends its reply with (one level of nesting: its token details)
+TAIL_BYTES = 4096
+
+
 class Upstream:
     def __init__(self, status, content_type, conn, resp, prefix=b''):
         self.status, self.content_type, self._conn, self._resp, self.sent = status, content_type, conn, resp, 0
         self._prefix = prefix
+        self.tail = b''             # the last few KB that went by: where a provider reports the token counts. Never stored; only the numbers are read from it (usage)
 
     def chunks(self, size=16384):
         try:
             if self._prefix:
                 self.sent += len(self._prefix)
+                self.tail = self._prefix[-TAIL_BYTES:]
                 yield self._prefix
                 self._prefix = b''
             while True:
@@ -463,9 +469,28 @@ class Upstream:
                 self.sent += len(data)
                 if self.sent > MAX_REPLY_BYTES:
                     return
+                self.tail = (self.tail + data)[-TAIL_BYTES:]
                 yield data
         finally:
             self.close()
+
+    def usage(self) -> dict:
+        """The token counts the provider reported at the end of its reply, when it did: {'input', 'output', 'cached'}, each an int or None. Numbers only."""
+        out = {'input': None, 'output': None, 'cached': None}
+        found = USAGE.findall(self.tail)
+        if not found:
+            return out
+        try:
+            usage = json.loads(found[-1])
+        except ValueError:
+            return out
+        def number(*values):
+            return next((v for v in values if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 10**9), None)
+        details = usage.get('prompt_tokens_details') if isinstance(usage.get('prompt_tokens_details'), dict) else {}
+        out['input'] = number(usage.get('prompt_tokens'), usage.get('input_tokens'))
+        out['output'] = number(usage.get('completion_tokens'), usage.get('output_tokens'))
+        out['cached'] = number(details.get('cached_tokens'), usage.get('cache_read_input_tokens'))
+        return out
 
     def close(self):
         close_upstream(self._conn, self._resp)
@@ -622,8 +647,10 @@ class ModelRelay:
     """The logic behind /byok/v1 (the HTTP wrapper is in tool_relay.py): who the caller is has already been established."""
 
     def __init__(self, store: ModelKeyStore, enabled, *, resolver=socket.getaddrinfo, public=is_public, context=None, clock=time.monotonic, admission=None, selection=None,
-                 sleep=time.sleep, jitter=None, waiting=None, limiter=None):
+                 sleep=time.sleep, jitter=None, waiting=None, limiter=None, record=None):
         self.sleep, self.jitter = sleep, jitter if jitter is not None else random.random       # injectable so tests do not wait
+        self.record = record         # callable(account, call): one model call ended (status, the relay's code, times, token counts; never content); None = keep nothing
+        self._call = threading.local()      # the call this thread is serving: its route and how long it has waited for the provider
         self.waiting = waiting       # callable(account, seconds, first, own): the task is waiting for the model provider (shown in the customer's timeline); None = say nothing
         self.limiter = limiter or RouteLimiter()       # what each (account, route) has been told by its provider: shared by every call, so concurrent calls wait once together
         self.admission = admission
@@ -658,6 +685,42 @@ class ModelRelay:
         return http.client.HTTPConnection('10.77.0.1', 4000, timeout=READ_SECONDS)
 
     def selected_chat(self, account, credential, raw):
+        """One model call for the account's admitted task, measured: when it ends (refused here, or its reply fully passed on) `record` is told its route, final status, the
+        relay's own code, how long it waited for a busy provider, how long until the answer began and until it ended, and the token counts the provider reported."""
+        call = self._call
+        call.route, call.waited = 'lumina', 0.0
+        if self.record is None:
+            return self._selected_chat(account, credential, raw)
+        started = self.clock()
+        try:
+            up = self._selected_chat(account, credential, raw)
+        except RelayError as exc:
+            self._note(account, call.route, exc.status, exc.code, call.waited, started, None, None)
+            raise
+        answered, route, waited = self.clock(), call.route, call.waited
+        inner, noted = up.close, []
+        def close():
+            inner()
+            if not noted:
+                noted.append(True)
+                self._note(account, route, up.status, '', waited, started, answered, up)
+        up.close = close
+        return up
+
+    def _note(self, account, route, status, code, waited, started, answered, up):
+        if self.record is None:
+            return
+        try:
+            now = self.clock()
+            usage = up.usage() if up is not None else {}
+            self.record(account, {'route': route, 'status': int(status), 'code': str(code or '')[:60], 'waited_ms': int(waited * 1000),
+                                  'answer_ms': int(((answered if answered is not None else now) - started) * 1000), 'total_ms': int((now - started) * 1000),
+                                  'reply_bytes': up.sent if up is not None else 0, 'input_tokens': usage.get('input'), 'output_tokens': usage.get('output'),
+                                  'cached_tokens': usage.get('cached')})
+        except Exception:
+            pass                     # measuring a call never changes how it ends
+
+    def _selected_chat(self, account, credential, raw):
         from .model_catalog import find
         try:
             selected = self.selection(account) if self.selection is not None else self.store.choices(account)['selected']
@@ -672,6 +735,7 @@ class ModelRelay:
                 raise RelayError(RELAY_REFUSAL, 'This model selection does not match an admitted live task. Start a new task after choosing your model.', 'admission_mismatch')
         if selected.startswith('key:'):
             # Do not fall back to a Lumina-funded model when a personal key fails.
+            self._call.route = 'own'
             return self.chat(account, raw, choice=selected)
         target = find(selected)
         if target is None:
@@ -751,6 +815,7 @@ class ModelRelay:
     def _tell_waiting(self, account, seconds, *, first, own):
         """The task is waiting for a model provider: `first` is the first pause of this call (the timeline says so once per call), `seconds` is this pause (the task's time limit is
         extended by it, so a wait never uses up the run's own time), `own` says whose limit it is (the customer's own provider, or Lumina's route)."""
+        self._call.waited = getattr(self._call, 'waited', 0.0) + float(seconds or 0)
         if self.waiting is None:
             return
         try:

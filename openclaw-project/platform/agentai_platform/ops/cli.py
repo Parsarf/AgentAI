@@ -1,6 +1,7 @@
 """Operator entry point: python3 -m agentai_platform.ops.cli <command> [--config PATH]
 
 backup | monitor | watchdog | check | inventory | diagnostics     (run on the host)
+reliability [--days N] [--json]                                   (what customers' tasks ran into, by feature; read only)
 fetch | restore-account                                           (owner/drill side; needs the private identity file)
 """
 import argparse
@@ -17,9 +18,10 @@ from .monitor import Monitor
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ops')
-    p.add_argument('command', choices=['backup', 'monitor', 'watchdog', 'check', 'inventory', 'diagnostics', 'verify', 'fetch', 'restore-account'])
+    p.add_argument('command', choices=['backup', 'monitor', 'watchdog', 'check', 'inventory', 'diagnostics', 'reliability', 'verify', 'fetch', 'restore-account'])
     p.add_argument('--config', default='/etc/agentai-ops/config.json'); p.add_argument('--set'); p.add_argument('--identity'); p.add_argument('--out')
     p.add_argument('--account'); p.add_argument('--live-db'); p.add_argument('--no-alert', action='store_true')
+    p.add_argument('--days', type=int, default=30); p.add_argument('--json', action='store_true')
     a = p.parse_args(argv)
     cfg = hostconfig.load(a.config)
     if a.command == 'inventory':
@@ -46,6 +48,9 @@ def main(argv=None):
             ok = mon.watchdog(cfg['monitor_status'], 'monitor', 1800) & mon.watchdog(cfg['backup_status'], 'backup', 2 * 86400); return 0 if ok else 1
         if not a.no_alert: mon.watchdog(cfg['backup_status'], 'backup', 2 * 86400)   # and the backup job must have reported
         status = mon.run(); print(json.dumps({'overall': status['overall'], 'counts': status['counts'], 'correlation_id': status['correlation_id']})); return 0 if status['overall'] in ('ok', 'unknown') else 1
+    if a.command == 'reliability':
+        from . import reliability_report
+        print(reliability_report.main(cfg['app_db'], days=max(1, min(a.days, 365)), as_json=a.json)); return 0
     if a.command == 'diagnostics':
         print(json.dumps(diagnostics.collect(cfg['app_db'], monitor_status=_json(cfg['monitor_status']), backup_status=_json(cfg['backup_status'])), indent=2)); return 0
     dest = hostconfig.destinations(cfg)[0]

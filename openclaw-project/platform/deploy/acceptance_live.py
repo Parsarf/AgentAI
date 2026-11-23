@@ -100,6 +100,8 @@ def main():
     request = None
     if conversation:
         request = (post(c, f'/v1/conversations/{conversation}/send', {'message': 'Reply with exactly the word: ok', 'key': uuid.uuid4().hex, 'mode': 'text'}).json().get('request') or {}).get('id')
+        if request:
+            sql('UPDATE customer_requests SET probe=1 WHERE account_id=%s AND id=%s', [A, request])      # a probe, not a person: the reliability report counts it apart
     end, row = time.time() + wait, None
     while request and time.time() < end:
         row = sql('SELECT state,outcome,versions_json FROM customer_requests WHERE id=%s', [request])

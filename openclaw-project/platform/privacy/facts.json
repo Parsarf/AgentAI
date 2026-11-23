@@ -4,7 +4,7 @@
  "contact_email": "raouparsa@gmail.com",
  "policy_file": "deploy/vercel/public/privacy.html",
  "policy_url": "https://getlumina.pro/privacy",
- "policy_updated": "2026-11-20",
+ "policy_updated": "2026-11-23",
  "derived": {
   "retention": {
    "browse_pictures_and_trace_hours": 24.0,
@@ -21,6 +21,7 @@
      "download_tickets": 1,
      "browser_pictures": 1,
      "task_checks": 90,
+     "diagnostics": 30,
      "meeting_proposals": 30,
      "sent_drafts": 30,
      "mail_bodies": 90,
@@ -37,6 +38,7 @@
      "audit",
      "connection_setup",
      "connector_records",
+     "diagnostics",
      "download_tickets",
      "events",
      "exports",
@@ -119,8 +121,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "b6fbc74e3e4a2d848d22ff2fe00e05cfa62a10b18219266cc4c6cdc7ed6d9c8f",
-  "schema_columns": 1140,
+  "schema_sha256": "a8619e9338f633613faefbde8e5ea30505110fb9d4c40cf1ec64b680161d6dc9",
+  "schema_columns": 1167,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -298,7 +300,7 @@
   "tabGroups",
   "storage",
   "wss://backend.getlumina.pro",
-  "20 November 2026",
+  "23 November 2026",
   "6,000",
   "80 controls",
   "until you ask us to delete",
@@ -361,7 +363,9 @@
   "Calendar feeds",
   "stored encrypted and not shown again",
   "A draft that was sent is removed 30 days",
-  "The calendar feeds you add"
+  "The calendar feeds you add",
+  "Why a task or one of its steps did not finish",
+  "how long requests to the AI model took"
  ],
  "policy_must_not_say": [
   "OpenRouter",
@@ -505,6 +509,11 @@
    "date": "2026-11-20",
    "by": "Claude Code, roadmap Phase 6 (#D8: Microsoft), approved by the owner on 2026-11-20 (\"do everything\")",
    "note": "Microsoft (Outlook.com and work or school Microsoft 365 accounts) added to the policy as a source and recipient, the same way as Google: what is copied, sending, organizing (folders, categories, flags, Deleted Items), calendar changes, revoking access, and a recipients entry. graph.microsoft.com and login.microsoftonline.com now customer_data true, in_policy Microsoft. Meeting times stay Google-only (Microsoft has no live free/busy in the adapter). To be published before AGENTAI_MICROSOFT_CLIENT_ID is set on the server."
+  },
+  {
+   "date": "2026-11-23",
+   "by": "Claude Code, reliability plan Part 1 (plans/product/reliability-plan.md); wording shown to the owner with the pull request, to be published only with their approval",
+   "note": "Two new tables, kept 30 days (retention rule diagnostics): faults (why a task or a step did not finish: a reason code from a fixed list, who must act, a status number, an exception type, a state name) and model_calls (per request to the model: route lumina or own, HTTP status, times in milliseconds, the token counts the provider reported). Neither holds the text of a message, a page, a reply, an address or a name: faults.facts() keeps only numbers and single tokens, and a test feeds it page text. A new kind of data about a customer's tasks, so the policy gained one line under \"What we collect\" and one row under \"How long we keep it\". No new recipient: both stay in our own database. New column customer_requests.probe marks the deploy's own acceptance request (no customer data). Deleting a chat removes the rows of its tasks."
   }
  ],
  "assistant_recipients": {

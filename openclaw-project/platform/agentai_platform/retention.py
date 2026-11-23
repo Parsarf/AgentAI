@@ -54,6 +54,8 @@ RULES: tuple[Rule, ...] = (
          note='The passages and the parsed text are in a database of their own on our server. Removing a source deletes them at once; an attachment\'s file itself is not kept.'),
     Rule('task_checks', 'What your assistant checked during a task: which claims matched their sources, and which searches were complete', 90, 'from when the check was made',
          'sweeper', ('knowledge_checks',), note='They hold ids and fixed words, never the text of a claim or a document.'),
+    Rule('diagnostics', 'Why a task or a step did not finish, and how long each model call took: a reason code, a status number, timings', 30, 'from when it happened',
+         'sweeper', ('faults', 'model_calls'), note='They hold codes and numbers, never the text of a message, a page or a reply. Deleting a chat removes those of its tasks.'),
     Rule('commitments', 'Decisions and commitments, and the ones suggested to you', None, 'until you delete them or your account', 'customer', ('commitments',),
          change='Close or drop them in Commitments.'),
     Rule('meeting_proposals', 'Times your assistant found for a meeting (who it is with and the suggested times)', 30, 'from when it was last changed', 'sweeper',
@@ -173,6 +175,9 @@ def sweep(store, *, now=None, storage=None) -> dict:
             done['schedule_runs'] = con.execute("DELETE FROM schedule_runs WHERE day<? AND state NOT IN ('firing','started')", (day,)).rowcount
             done['spend_marks'] = con.execute('DELETE FROM spend_marks WHERE epoch<?', (epoch(BY_KEY['spend_marks'].days),)).rowcount
             done['task_checks'] = con.execute('DELETE FROM knowledge_checks WHERE created_epoch<?', (epoch(BY_KEY['task_checks'].days),)).rowcount
+            old = epoch(BY_KEY['diagnostics'].days)
+            done['diagnostics'] = (con.execute('DELETE FROM faults WHERE created_epoch<?', (old,)).rowcount
+                                   + con.execute('DELETE FROM model_calls WHERE created_epoch<?', (old,)).rowcount)
             done['meeting_proposals'] = con.execute('DELETE FROM meeting_proposals WHERE updated_epoch<?', (epoch(BY_KEY['meeting_proposals'].days),)).rowcount
             done['sent_drafts'] = con.execute("""DELETE FROM hub_drafts WHERE sent_action_id IN (SELECT id FROM actions WHERE actions.account_id=hub_drafts.account_id
                 AND state='done' AND coalesce(executed_epoch,updated_epoch)<?)""", (epoch(BY_KEY['sent_drafts'].days),)).rowcount

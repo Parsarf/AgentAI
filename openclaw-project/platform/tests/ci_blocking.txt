@@ -68,3 +68,4 @@ test_mail_writes
 test_ics_feed
 test_write_routes
 test_microsoft_hub
+test_faults

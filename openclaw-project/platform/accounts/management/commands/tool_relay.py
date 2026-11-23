@@ -62,7 +62,9 @@ def build(store):
             if first:
                 words = 'Your own model provider asked for a short wait (its limit, not Lumina\'s). Carrying on in a moment.' if own else 'Waiting a moment for the model provider, then carrying on.'
                 events.append(account, row['id'], 'progress', {'summary': words, 'step': 'working'}, 'gateway')
-    own_models = model_keys.ModelRelay(wiring.model_key_store(), wiring.own_model_on, admission=selection_admitted, selection=selected_route, waiting=provider_wait)
+    from agentai_platform import model_calls
+    own_models = model_keys.ModelRelay(wiring.model_key_store(), wiring.own_model_on, admission=selection_admitted, selection=selected_route, waiting=provider_wait,
+                                       record=lambda account, call: model_calls.note(store, account, call))
     memory = wiring.memory_service(store)                         # None unless fully configured; the tools then do not exist for anyone
     files = None                                                  # the file tool exists only where files can be stored at all
     if wiring.storage_ready():
