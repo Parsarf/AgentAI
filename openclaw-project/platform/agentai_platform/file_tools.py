@@ -17,8 +17,10 @@ from __future__ import annotations
 import base64
 import copy
 import io
+import logging
 import zipfile
 
+from . import faults
 from .adapters import CapabilityUnavailable
 from .artifacts import NAME_LIMIT, base_name, media_for, safe_name
 from .lifecycle.types import Conflict
@@ -26,10 +28,13 @@ from .lifecycle.workspace import MAX_FILE_BYTES, is_program, safe_path
 from .render.client import RenderRefused
 from .render.engine import TARGETS
 
+log = logging.getLogger(__name__)
 NAME = 'lumina_file_deliver'
 FORMATS = (*TARGETS, 'zip')
 MAX_INCLUDE = 20
 MAX_TOTAL_BYTES = 60 * 1024 * 1024
+WORKSPACE = '/home/node/.openclaw/workspace/'        # where the assistant's own tools see the workspace: a path it gives in that form is the same file
+LISTED = 30                                          # how many of the workspace's files a "not found" reply names
 PREVIEWABLE = {'pdf', 'docx', 'odt', 'rtf', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'odp', 'png', 'jpg', 'jpeg', 'webp', 'gif'}
 
 TOOL = {'name': NAME, 'description': (
@@ -47,6 +52,21 @@ TOOL = {'name': NAME, 'description': (
         'name': {'type': 'string', 'minLength': 1, 'maxLength': 120, 'description': 'The file name the customer sees, for example "Q3 report.pdf". Defaults to the name of "path" with the right ending.'},
         'include': {'type': 'array', 'maxItems': MAX_INCLUDE, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 240},
                     'description': 'Other workspace files this one needs (images used by a document), or the other files to pack when converting to zip.'}}}}
+
+
+class Missing(ValueError):
+    """The file asked for is not in the workspace (as opposed to a call that could not be read)."""
+
+
+def workspace_path(path):
+    """The path as the workspace knows it. The assistant's own tools show it the workspace under an absolute folder, and it gave that form in a third of the calls that
+    were refused for their path (production, 15 Nov): the same file, so the folder is dropped instead of refusing the call."""
+    if isinstance(path, str):
+        path = path.strip()
+        for prefix in (WORKSPACE, '~/.openclaw/workspace/', './'):
+            if path.startswith(prefix):
+                path = path[len(prefix):]
+    return path
 
 
 def human(size: int) -> str:
@@ -76,8 +96,24 @@ class FileTools:
     def _read(self, gateway, path):
         info = gateway.workspace_stat(path)
         if 'size' not in info:
-            raise ValueError(f'"{path}" cannot be delivered: {info.get("reason", "not found")}.')
+            reason = info.get('reason', 'not found')
+            if reason != 'not found':
+                raise ValueError(f'"{path}" cannot be delivered: {reason}.')
+            raise Missing(f'"{path}" cannot be delivered: not found. ' + self._holds(gateway))
         return gateway.workspace_read(path, info['size'])
+
+    @staticmethod
+    def _holds(gateway):
+        """What the workspace does hold, for a call that named a file that is not there: the assistant then picks a real path instead of guessing a second name."""
+        try:
+            files, _ = gateway.workspace_scan(0)
+        except Exception:
+            return 'Write the file first, then call this with the path you wrote it to.'
+        names = [f['path'] for f in files][:LISTED]
+        if not names:
+            return 'Your workspace holds no file that can be delivered yet: write the file first, then call this with the path you wrote it to.'
+        return ('Files in your workspace that can be delivered: ' + ', '.join(f'"{n}"' for n in names) + ('' if len(files) <= LISTED else ', and more')
+                + '. Use one of these paths exactly, or write the file first.')
 
     @staticmethod
     def _zip(files):
@@ -114,14 +150,16 @@ class FileTools:
     def call(self, account, arguments, closed=lambda: False, *, name, request_id=None):
         try:
             if name != NAME or not self.enabled(account):
-                return 'Delivering files is not available.', True
+                return 'Delivering files is not available.', faults.Fault('tool.switched_off')
             if not request_id:
-                return 'This call does not belong to a running task. Nothing was delivered.', True
+                return 'This call does not belong to a running task. Nothing was delivered.', faults.Fault('tool.not_admitted')
             if not isinstance(arguments, dict) or not set(arguments) <= {'path', 'convert_to', 'name', 'include'}:
                 raise ValueError('Give a "path", and optionally "convert_to", "name" and "include".')
-            path, target, include = arguments.get('path'), arguments.get('convert_to'), arguments.get('include') or []
+            path, target, include = workspace_path(arguments.get('path')), arguments.get('convert_to'), arguments.get('include') or []
+            include = [workspace_path(p) for p in include] if isinstance(include, list) else include
             if safe_path(path) is None:
-                raise ValueError('Give "path" as a file inside your workspace, for example "report.md". Folders named tmp or scratch are never delivered.')
+                raise ValueError('Give "path" as a file inside your workspace, relative to the workspace folder, for example "report.md" or "out/sales.csv". '
+                                 'Folders named tmp or scratch are never delivered.')
             if target is not None and target not in FORMATS:
                 raise ValueError('"convert_to" must be one of: ' + ', '.join(FORMATS) + '.')
             if not isinstance(include, list) or len(include) > MAX_INCLUDE or any(safe_path(p) is None for p in include):
@@ -134,7 +172,7 @@ class FileTools:
             shown = self._shown_name(path, arguments.get('name'), target or source_kind)
             project = self._project(account, request_id)
             if project is None:
-                return 'This call does not belong to a running task. Nothing was delivered.', True
+                return 'This call does not belong to a running task. Nothing was delivered.', faults.Fault('tool.not_admitted')
             gateway = self.gateway_for(account)
             files = {}
             for item in dict.fromkeys([path, *include]):
@@ -142,29 +180,29 @@ class FileTools:
                 if sum(len(d) for d in files.values()) > MAX_TOTAL_BYTES:
                     raise ValueError('These files are too large together (the limit is 60 MB).')
             if closed():
-                return 'The connection closed; nothing was delivered.', True
+                return 'The connection closed; nothing was delivered.', faults.Fault('tool.stopped_with_task', effect='nothing_changed')
             data, shot, pages = files[path], None, None
             if target == 'zip':
                 data = self._zip(files)
             elif target is not None:
                 if self.renderer is None:
                     return (f'Converting to .{target} is not available right now. Nothing was delivered. Deliver the file as it is (leave out "convert_to"), '
-                            'or tell the customer this format cannot be made at the moment.'), True
+                            'or tell the customer this format cannot be made at the moment.'), faults.Fault('tool.unavailable')
                 made = self.renderer.convert(path, target, files)
                 data, shot, pages = made['data'], made['preview'], made['pages']
                 if not data:
-                    return 'The conversion produced nothing. Nothing was delivered.', True
+                    return 'The conversion produced nothing. Nothing was delivered.', faults.Fault('tool.failed', effect='nothing_changed')
             elif self.renderer is not None and source_kind in PREVIEWABLE and len(data) <= 20 * 1024 * 1024:
                 try:
                     shot = self.renderer.convert(path, None, {path: data})['preview']
                 except (RenderRefused, CapabilityUnavailable):
                     shot = None                                        # the picture is a courtesy; the file is delivered either way
             if len(data) > MAX_FILE_BYTES:
-                return f'The file is {human(len(data))}; the limit for one file is 50 MB. Nothing was delivered.', True
+                return f'The file is {human(len(data))}; the limit for one file is 50 MB. Nothing was delivered.', faults.Fault('tool.limit')
             if is_program(shown, data[:8]):
-                return 'Programs and installers are not delivered. Nothing was delivered.', True
+                return 'Programs and installers are not delivered. Nothing was delivered.', faults.Fault('tool.refused')
             if closed():
-                return 'The connection closed; nothing was delivered.', True
+                return 'The connection closed; nothing was delivered.', faults.Fault('tool.stopped_with_task', effect='nothing_changed')
             saved = self.artifacts.capture_or_version(account_id=account, project_id=project, task_id=request_id, name=shown, media_type=media_for(shown), data=data)
             if saved is None:
                 return f'"{shown}" is already delivered and has not changed. The customer has it under this conversation and in Files.', False
@@ -181,13 +219,16 @@ class FileTools:
                     + ('The picture shows its first page: check it. If something is wrong, fix your source and call again with the same name.' if shot
                        else 'No preview is available for this format.'))
             return (text, False, base64.b64encode(shot).decode()) if shot else (text, False)
+        except Missing as error:
+            return str(error) + ' Nothing was delivered.', faults.Fault('tool.not_found')
         except ValueError as error:
-            return (str(error) or 'Invalid request.') + ' Nothing was delivered.', True
+            return (str(error) or 'Invalid request.') + ' Nothing was delivered.', faults.Fault('tool.bad_arguments')
         except RenderRefused as error:
-            return f'The file could not be converted: {error}. Nothing was delivered. Fix the source file, or deliver it in another format.', True
+            return f'The file could not be converted: {error}. Nothing was delivered. Fix the source file, or deliver it in another format.', faults.Fault('file.not_converted')
         except Conflict:
-            return 'The customer\'s storage is full. Nothing was delivered. Tell them to delete files they no longer need in Files.', True
+            return 'The customer\'s storage is full. Nothing was delivered. Tell them to delete files they no longer need in Files.', faults.Fault('tool.storage_full')
         except CapabilityUnavailable:
-            return 'The file could not be read or converted right now. Nothing was delivered. Try once more; if it fails again, tell the customer.', True
-        except Exception:
-            return 'Something went wrong. Nothing was delivered.', True
+            return 'The file could not be read or converted right now. Nothing was delivered. Try once more; if it fails again, tell the customer.', faults.Fault('tool.not_answering')
+        except Exception as error:
+            log.error('file delivery failed exception=%s', type(error).__name__)       # the type only: a message or a traceback can carry a file name
+            return 'Something went wrong. Nothing was delivered.', faults.Fault('tool.failed')

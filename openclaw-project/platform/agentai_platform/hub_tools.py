@@ -21,6 +21,7 @@ from __future__ import annotations
 import copy
 import json
 import time
+from . import faults
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from urllib.parse import urlencode
@@ -245,18 +246,18 @@ class HubTools:
         """-> (text, is_error). Every refusal is a fixed sentence; nothing from a mailbox or a provider is passed on as an error."""
         try:
             if name not in self.names or not self.enabled(account):
-                return 'Mail and calendar are not available.', True
+                return 'Mail and calendar are not available.', faults.Fault('tool.switched_off')
             principal = self._principal(account, request_id) if request_id else None
             if principal is None:
-                return 'This call does not belong to a running task. Nothing was read.', True
+                return 'This call does not belong to a running task. Nothing was read.', faults.Fault('tool.not_admitted')
             if not isinstance(arguments, dict):
-                return 'Invalid arguments. Nothing was read.', True
+                return 'Invalid arguments. Nothing was read.', faults.Fault('tool.bad_arguments')
             if name in WRITES:
                 if not self.writes(account):
-                    return 'Changing calendars is not switched on. Nothing was prepared. Tell the customer what you would have done.', True
+                    return 'Changing calendars is not switched on. Nothing was prepared. Tell the customer what you would have done.', faults.Fault('tool.switched_off')
                 return self._prepare(principal, name, arguments, request_id)
             if name in MEETINGS and not meetings_on():
-                return 'Finding meeting times is not switched on yet. Use lumina_calendar_free and offer times yourself. Nothing was stored.', True
+                return 'Finding meeting times is not switched on yet. Use lumina_calendar_free and offer times yourself. Nothing was stored.', faults.Fault('tool.switched_off')
             if name == MEETING_TIMES:
                 return self._out(self._meeting_times(principal, arguments, request_id)), False
             if name == MEETING_WAIT:
@@ -267,11 +268,11 @@ class HubTools:
                        FREE: self._free, CONFLICTS: self._conflicts}[name]
             return self._out(handler(principal, arguments)), False
         except ConnectorFault as fault:
-            return fault.words, True
+            return fault.words, faults.of_connector(fault)
         except NotFound:
-            return 'That account, thread or event does not exist for this customer. Check the ids with lumina_mail_accounts and the search tools.', True
+            return 'That account, thread or event does not exist for this customer. Check the ids with lumina_mail_accounts and the search tools.', faults.Fault('tool.not_found')
         except (ValueError, KeyError, TypeError):
-            return 'That could not be read with what was given. Check the ids and that days are written as YYYY-MM-DD.', True
+            return 'That could not be read with what was given. Check the ids and that days are written as YYYY-MM-DD.', faults.Fault('tool.bad_arguments')
 
     # -- shared ---------------------------------------------------------------------------------------------------------------------------------
     def _zone(self, principal):
@@ -464,11 +465,11 @@ class HubTools:
             series, scope = a.get('series'), a.get('scope')
             if series and scope not in ('this', 'following', 'all'):
                 return ('This is an occurrence of a repeating event. Ask the customer whether they mean only this occurrence, this and every later one, or the whole series, '
-                        'then prepare it again with that scope. Nothing was prepared.'), True
+                        'then prepare it again with that scope. Nothing was prepared.'), faults.Fault('tool.bad_arguments')
             cal, event, notify = str(a['calendar']), str(a['event']), bool(a.get('notify', True))
             if name == RESPOND:
                 if scope == 'following':
-                    return 'An answer is for one occurrence or the whole series. Nothing was prepared.', True
+                    return 'An answer is for one occurrence or the whole series. Nothing was prepared.', faults.Fault('tool.bad_arguments')
                 payload, kind = {'event': f"{cal}|{series if scope == 'all' else event}", 'response': str(a['response']), 'notify': notify}, 'event.respond'
                 if a.get('note'):
                     payload['note'] = str(a['note'])
@@ -499,8 +500,8 @@ class HubTools:
             missing = next((acc['capabilities']['missing'].get(capability) for acc in self.hub.accounts(principal) if acc['id'] == a.get('account')), None)
             if fault.kind == 'refused' and missing:
                 return ('This account has not given Lumina permission to change its calendar yet. Nothing was prepared. Tell the customer they can allow it in the Calendar '
-                        'page ("Allow changes"), then ask again.'), True
-            return fault.words + ' Nothing was prepared.', True
+                        'page ("Allow changes"), then ask again.'), faults.Fault('tool.needs_permission')
+            return fault.words + ' Nothing was prepared.', faults.of_connector(fault)
         preview = action['preview']
         return self._out({'prepared': preview['summary'], 'details': [f"{c['field']}: {c['after'] if c['after'] is not None else c['before']}" for c in preview['changes']],
                           'can_be_undone': preview['can_undo'], 'state': 'NOT DONE. Waiting for the customer\'s approval of exactly this. Tell them in one sentence what you '
@@ -517,16 +518,16 @@ class HubTools:
                 kind, payload = self.hub.organize_payload(principal, connection, list(a.get('threads') or []), str(a['op']), label=a.get('label'))
                 action = self.actions.propose(principal, connection, kind, payload, request_id=request_id)
         except NotFound:
-            return 'That draft or those conversations do not exist for this customer (a draft that is already being sent is not a draft any more). Nothing was prepared.', True
+            return 'That draft or those conversations do not exist for this customer (a draft that is already being sent is not a draft any more). Nothing was prepared.', faults.Fault('tool.not_found')
         except ValueError as reason:
-            return f'{reason} Nothing was prepared.', True
+            return f'{reason} Nothing was prepared.', faults.Fault('tool.bad_arguments')
         except ConnectorFault as fault:
             capability = 'send' if name == MAIL_SEND else ('mark_read' if a.get('op') in ('read', 'unread') else 'organize')
             missing = next((acc['capabilities']['missing'].get(capability) for acc in self.hub.accounts(principal) if acc['id'] == (connection if name == MAIL_SEND else a.get('account'))), None)
             if fault.kind == 'refused' and missing:
                 return ('This account has not given Lumina permission for that yet. Nothing was prepared. Tell the customer they can allow it in Mail ("Allow changes"), '
-                        'then ask again.'), True
-            return fault.words + ' Nothing was prepared.', True
+                        'then ask again.'), faults.Fault('tool.needs_permission')
+            return fault.words + ' Nothing was prepared.', faults.of_connector(fault)
         preview = action['preview']
         return self._out({'prepared': preview['summary'], 'details': [f"{c['field']}: {c['after'] if c['after'] is not None else c['before']}" for c in preview['changes']][:12],
                           'can_be_undone': preview['can_undo'], 'state': 'NOT DONE. Waiting for the customer\'s approval of exactly this. Tell them in one sentence what you '

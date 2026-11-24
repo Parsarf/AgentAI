@@ -45,7 +45,7 @@ class ConnectionChecks(unittest.TestCase):
         self.assertEqual(self.service.catalog('b'),[])
         name=namespaced(cid,'echo')
         pending=self.service.call('a',name,{'text':'hello'},'r1')
-        self.assertTrue(pending['isError']);self.assertEqual(self.fixture.calls,[])
+        self.assertEqual(pending['_fault'].reason,'tool.approval_needed');self.assertFalse(pending['isError']);self.assertEqual(self.fixture.calls,[])      # asking first is an expected stop, not an error (reliability plan, Part 3)
         call=self.service.listing(self.a)['pending_calls'][0]
         with self.assertRaises(NotFound):self.service.approve(self.b,call['id'],True)
         self.approve()
@@ -77,7 +77,7 @@ class ConnectionChecks(unittest.TestCase):
         with self.assertRaises(ConnectionError):self.service.set_auto_approve(self.a,cid,{'echo':True})   # a tool must be enabled first
         self.service.update(self.a,cid,tools={'echo':True})
         self.assertFalse(self.service.listing(self.a)['connections'][0]['tools'][0]['auto_approve'])
-        self.assertTrue(self.service.call('a',name,{'text':'x'},'r1')['isError'])                          # default is still to ask
+        self.assertEqual(self.service.call('a',name,{'text':'x'},'r1')['_fault'].reason,'tool.approval_needed')     # default is still to ask
         with self.assertRaises(NotFound):self.service.set_auto_approve(self.b,cid,{'echo':True})
         self.service.set_auto_approve(self.a,cid,{'echo':True})
         result=self.service.call('a',name,{'text':'hi'},'r2')
@@ -92,7 +92,7 @@ class ConnectionChecks(unittest.TestCase):
         self.fixture.tools[0]['description']='Changed definition';self.service.test(self.a,cid)           # a changed tool must be reviewed again
         self.service.update(self.a,cid,tools={'echo':True})
         self.assertFalse(self.service.listing(self.a)['connections'][0]['tools'][0]['auto_approve'])
-        self.assertTrue(self.service.call('a',name,{'text':'z'},'r4')['isError'])
+        self.assertEqual(self.service.call('a',name,{'text':'z'},'r4')['_fault'].reason,'tool.approval_needed')
     def test_changed_tools_are_disabled_and_removed_without_deployment(self):
         cid=self.connect();self.service.update(self.a,cid,tools={'echo':True})
         self.fixture.tools[0]['description']='Changed definition'

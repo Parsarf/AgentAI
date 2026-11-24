@@ -57,7 +57,7 @@ class ActivityChecks(unittest.TestCase):
 
     def test_payload_passes_event_allowlist(self):
         for item in activity.extract(ROWS):
-            normalize('activity', {k: v for k, v in item.items() if k not in ('run_id', 'after')})      # run_id only scopes the call to its run; the driver does not publish it
+            normalize('activity', {k: v for k, v in item.items() if k not in ('run_id', 'after', 'own')})      # run_id only scopes the call to its run, `own` says whose tool it was; the driver does not publish them (chat_driver._step)
 
     def test_native_gateway_exposes_activity_without_changing_rows(self):
         gw = NativeGateway(lambda m, p: {'hello': {}, 'protocol': 4, 'methods': ['chat.send', 'chat.history', 'chat.abort']} if m == 'hello' else

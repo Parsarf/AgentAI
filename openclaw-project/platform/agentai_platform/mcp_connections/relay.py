@@ -1,5 +1,6 @@
 """Account-scoped tools behind the existing authenticated, admitted-task relay."""
 import json, logging
+from .. import faults
 from ..security import NotFound
 from .network import ConnectionError
 from .service import NAMESPACE
@@ -47,6 +48,19 @@ def directory(tools, direct, tool=None, query=None):
     lines = [f"- {t['name']} | {t['tool']} ({t['recipient']}){' [direct]' if t['name'] in direct else ''}: {_line(t['description'], 120)}" for t in tools[:LIST_LINES]]
     more = f'\n... {len(tools) - LIST_LINES} more; narrow the list with lumina_mcp_discover {{"query": "text"}}.' if len(tools) > LIST_LINES else ''
     return HEADER + (f'\n{len(tools)} enabled tool(s):\n' + '\n'.join(lines) + more if tools else '\nNo enabled tool' + (' matches that search.' if query else 's. The customer can enable tools in Integrations.'))
+
+
+# Why a call to a connected service did not run, by the code the connection layer gives (network.ConnectionError.code). `_fault` travels beside the result to the tool
+# relay, which records it and takes it out before the assistant sees the result. A code that is not here is `tool.remote_error`.
+REASONS = {
+    'invalid_arguments': 'tool.bad_arguments', 'ambiguous_tool': 'tool.bad_arguments', 'invalid_url': 'tool.bad_arguments', 'invalid_name': 'tool.bad_arguments',
+    'invalid_transport': 'tool.bad_arguments', 'tool_removed': 'tool.not_found', 'tool_unusable': 'tool.refused', 'redirect_refused': 'tool.refused',
+    'credential_destination': 'tool.refused', 'tool_disabled': 'tool.needs_permission', 'tool_changed': 'tool.needs_permission', 'confirmation_required': 'tool.needs_permission',
+    'disabled': 'tool.needs_permission', 'authentication_required': 'connector.needs_customer', 'call_authorization_lost': 'connector.needs_customer',
+    'oauth_required': 'connector.needs_customer', 'oauth_setup_required': 'tool.unavailable', 'approval_expired': 'tool.approval_declined', 'approval_rejected': 'tool.approval_declined',
+    'approval_limit': 'tool.limit', 'connection_limit': 'tool.limit', 'tool_limit': 'tool.limit', 'busy': 'tool.busy', 'cancelled': 'tool.stopped_with_task',
+    'connection_changed': 'connector.conflict', 'timeout': 'connector.retry_later', 'uncertain_result': 'tool.unknown_outcome',
+}
 
 
 class RemoteTools:
@@ -108,9 +122,9 @@ class RemoteTools:
                 name, arguments = arguments['tool'], arguments['arguments']
             return self.service.call(account, name, arguments, request_id, closed=closed)
         except ConnectionError as error:
-            return {'content': [{'type': 'text', 'text': error.message}], 'isError': True}
+            return {'content': [{'type': 'text', 'text': error.message}], 'isError': True, '_fault': faults.Fault(REASONS.get(error.code, 'tool.remote_error'), {'code': error.code})}
         except (ValueError, TypeError, NotFound):
-            return {'content': [{'type': 'text', 'text': 'Invalid remote tool call. Nothing was started.'}], 'isError': True}
-        except Exception:
+            return {'content': [{'type': 'text', 'text': 'Invalid remote tool call. Nothing was started.'}], 'isError': True, '_fault': faults.Fault('tool.bad_arguments')}
+        except Exception as error:
             log.error('mcp_relay_error tool=%s', name)          # an unexpected failure must reach the assistant as a message, never as a dropped connection
-            return {'content': [{'type': 'text', 'text': 'The MCP operation failed unexpectedly. Check the connection in Integrations before retrying; do not repeat a remote action with an uncertain outcome.'}], 'isError': True}
+            return {'_fault': faults.Fault('tool.unknown_outcome', {'exception': type(error).__name__}), 'content': [{'type': 'text', 'text': 'The MCP operation failed unexpectedly. Check the connection in Integrations before retrying; do not repeat a remote action with an uncertain outcome.'}], 'isError': True}

@@ -12,6 +12,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from agentai_platform import faults
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.artifacts import ArtifactService, media_for, safe_name
 from agentai_platform.events import EventService
@@ -406,8 +407,8 @@ class FileToolChecks(Base):
         for arguments, expected in cases:
             text, bad = tools.call('a', arguments, name=NAME, request_id='t-a')[:2]
             self.assertTrue(bad, arguments); self.assertIn(expected, text, arguments); self.assertIn('Nothing was delivered', text, arguments)
-        self.assertEqual(tools.call('a', {'path': 'report.md'}, name=NAME, request_id=None)[1], True)       # no admitted task behind the call
-        self.assertEqual(tools.call('a', {'path': 'report.md'}, name=NAME, request_id='t-b')[1], True)      # a task of another account
+        self.assertEqual(tools.call('a', {'path': 'report.md'}, name=NAME, request_id=None)[1].reason, 'tool.not_admitted')       # no admitted task behind the call
+        self.assertEqual(tools.call('a', {'path': 'report.md'}, name=NAME, request_id='t-b')[1].reason, 'tool.not_admitted')      # a task of another account
         self.assertTrue(tools.call('a', {'path': 'report.md'}, lambda: True, name=NAME, request_id='t-a')[1])
         for error, expected in ((RenderRefused('The document converter could not read this file'), 'could not be converted: The document converter could not read this file'),
                                 (CapabilityUnavailable('down'), 'could not be read or converted right now')):
@@ -417,7 +418,7 @@ class FileToolChecks(Base):
         self.assertEqual(self.listed(), {})
         self.assertEqual(self.on_disk(), [])
         off = self.tools(files, Renderer(), enabled=lambda account: False)
-        self.assertEqual(off.call('a', {'path': 'report.md'}, name=NAME, request_id='t-a'), ('Delivering files is not available.', True))
+        self.assertEqual(off.call('a', {'path': 'report.md'}, name=NAME, request_id='t-a'), ('Delivering files is not available.', faults.Fault('tool.switched_off')))
 
     def test_a_converted_program_or_an_oversized_result_is_not_delivered(self):
         tools = self.tools({'a': {'page.html': b'<p>x</p>'}}, Renderer(data=b'MZ\x90\x00 not a picture'))

@@ -22,6 +22,7 @@ import copy
 import json
 import re
 import time
+from . import faults
 from urllib.parse import urlencode
 
 from .adapters import CapabilityUnavailable
@@ -165,26 +166,26 @@ class KnowledgeTools:
     def call(self, account, arguments, closed=lambda: False, *, name, request_id=None):
         try:
             if name not in self.names or not self._on(account, name):
-                return 'This tool is not available for this customer.', True
+                return 'This tool is not available for this customer.', faults.Fault('tool.switched_off')
             principal, project = self._principal(account, request_id) if request_id else (None, None)
             if principal is None:
-                return 'This call does not belong to a running task. Nothing was read or changed.', True
+                return 'This call does not belong to a running task. Nothing was read or changed.', faults.Fault('tool.not_admitted')
             if not isinstance(arguments, dict):
-                return 'Invalid arguments. Nothing was read or changed.', True
+                return 'Invalid arguments. Nothing was read or changed.', faults.Fault('tool.bad_arguments')
             handler = getattr(self, '_' + name.replace('lumina_', ''))
             return self._out(handler(principal, project, request_id, arguments)), False
         except ConnectorFault as fault:
-            return fault.words, True
+            return fault.words, faults.of_connector(fault)
         except NotFound:
-            return 'That source, passage, message or event does not exist for this customer, or cannot be read. Check the ids with the listing tools.', True
+            return 'That source, passage, message or event does not exist for this customer, or cannot be read. Check the ids with the listing tools.', faults.Fault('tool.not_found')
         except PermissionError:
-            return 'Only the customer can do that, in the app. Nothing was changed.', True
+            return 'Only the customer can do that, in the app. Nothing was changed.', faults.Fault('tool.refused')
         except Conflict as exc:
-            return f'Not done: {exc}.', True
+            return f'Not done: {exc}.', faults.Fault('tool.out_of_turn')
         except CapabilityUnavailable:
-            return 'The customer\'s documents cannot be searched or read just now. Say so, and carry on without them if you can.', True
+            return 'The customer\'s documents cannot be searched or read just now. Say so, and carry on without them if you can.', faults.Fault('tool.not_answering')
         except (ValueError, KeyError, TypeError):
-            return 'That could not be done with what was given. Check the ids and the formats in the tool description.', True
+            return 'That could not be done with what was given. Check the ids and the formats in the tool description.', faults.Fault('tool.bad_arguments')
 
     # -- knowledge -----------------------------------------------------------------------------------------------------------------------------------
     def _knowledge_search(self, p, project, rid, a):

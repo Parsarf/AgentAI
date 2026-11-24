@@ -567,6 +567,26 @@ class NativeEndToEnd(unittest.TestCase):
         events = [e['payload'] for e in S.events.events(S.principals['a'], sent['id'])['events']]
         self.assertFalse([p for p in events if 'not found' in str(p.get('output', '')) or 'could not be read' in str(p.get('output', ''))])
 
+    def test_a_tool_call_lumina_refuses_shows_its_reason_on_the_step_whichever_way_it_was_called(self):
+        """Reliability plan, Part 3. The tool relay records why a call did not do what was asked, under the runtime's own id for the call; the driver finds it by that id when
+        it shows the step. That only holds if the id the cell's hook proves a call with is the id the runtime's history gives the same call, for both ways a tool is reached
+        (its plain name, and the `tool_call` wrapper). Proven here on the real runtime. The step's output is the tool's own words: the runtime wraps them in a notice to
+        the model, which used to be all a customer saw of a failed step."""
+        S = self.S
+        for scenario, key in (('SCENARIO:badsite_plain', 'k-badsite-plain'), ('SCENARIO:badsite', 'k-badsite')):
+            with self.subTest(scenario=scenario):
+                sent, row = self.run_to_end('a', f'What are the opening hours? {scenario}', key)
+                self.assertEqual(row['state'], 'completed')                                         # the assistant read the refusal and answered: a failed step is not a failed task
+                recorded = S.rows("SELECT reason,kind,actor,expected,detail_json FROM faults WHERE request_id=?", (sent['id'],))
+                self.assertEqual([(r['reason'], r['kind'], r['actor'], r['expected'], json.loads(r['detail_json'])['tool']) for r in recorded],
+                                 [('tool.bad_arguments', 'invalid', 'assistant', 0, 'lumina_browser')])
+                steps = [e['payload'] for e in S.events.events(S.principals['a'], sent['id'])['events'] if e['kind'] == 'activity' and e['payload'].get('status') == 'failed']
+                self.assertTrue(steps)
+                self.assertEqual({p.get('reason') for p in steps}, {'tool.bad_arguments'})
+                self.assertIn('The browser task could not be read (site', steps[-1]['output'])
+                self.assertNotIn('SECURITY NOTICE', steps[-1]['output'])
+                self.assertEqual([c for c in S.browse.calls if c[0] == 'start' and c[1]['request_id'] == sent['id']], [])      # nothing was opened
+
     def test_a_model_call_the_provider_refuses_gives_the_task_one_reason_and_the_runtimes_words_are_not_a_reply(self):
         """Reliability plan, Part 2. The real runtime writes its own words for a failed model call as the run's last assistant message, marked as ended by an error
         ("LLM request failed (..., HTTP 404)."). Lumina must not show that as the assistant's reply, and it takes the status number in it as the fact that decides the one

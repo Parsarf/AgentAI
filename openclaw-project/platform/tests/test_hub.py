@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from agentai_platform import retention
+from agentai_platform import faults, retention
 from agentai_platform.connector_kit import ProviderError
 from agentai_platform.hub_html import sanitize
 from agentai_platform.security import NotFound
@@ -562,7 +562,7 @@ class Tools(Both):
         self.assertTrue(self.tools.call('a', {}, name='lumina_mail_search', request_id='req-b')[1])                   # a task of another account
         self.assertTrue(self.tools.call('a', {}, name='lumina_mail_search', request_id=None)[1])
         self.on = False
-        self.assertEqual(self.call('lumina_mail_search'), ('Mail and calendar are not available.', True))
+        self.assertEqual(self.call('lumina_mail_search'), ('Mail and calendar are not available.', faults.Fault('tool.switched_off')))
 
     def test_every_tool_only_reads_and_belongs_to_a_permission_and_a_policy_group(self):
         from agentai_platform import organizations, permissions

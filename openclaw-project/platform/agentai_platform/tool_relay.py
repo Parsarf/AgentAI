@@ -8,6 +8,10 @@ not a hole:
 * Only the registered browser and progress tools exist, and a call is only served for the calling account's own running request (browse/adapter.py): nothing a cell sends can name another account.
 * One tool call at a time per account, bounded request size, and a call whose connection drops is stopped: Stop and a stopped run reach the browser job.
 
+Every call that did not do what was asked leaves its reason here (reliability plan, Part 3): the tool says why with a registered fault (faults.py), and this relay records
+it with the account, the request and the call, because every call passes here whatever way it reached the runtime. The assistant is told `isError` only for a fault that is
+an error; an expected stop (approval needed, a limit, stopped with the task) is a normal reply that says what happens next.
+
 Nothing about content is logged; counts and states only.
 """
 from __future__ import annotations
@@ -20,7 +24,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import request_states
+from . import faults, request_states
 from .adapters import CapabilityUnavailable
 from .browse.adapter import STEP, STEP_NAME, TOOL, TOOL_NAME, BrowserTool
 from .model_keys import RELAY_PREFIX, SELECTION_PREFIX, SELECTION_MODEL
@@ -32,6 +36,7 @@ IDENTIFY_TTL = 60
 FAIL_LIMIT = 20                     # refused credentials per source address per minute before it is told to slow down
 TOOLS = {TOOL_NAME: TOOL, STEP_NAME: STEP}
 log = logging.getLogger('agentai.tools')
+ORIGIN_DOWN = frozenset({'origin_service_unavailable', 'proof_unavailable'})       # Lumina could not check the proof at all: ours to fix, not a call out of place
 ORIGIN_STATUSES = frozenset({'verified', 'invalid_arguments', 'proof_missing', 'proof_invalid', 'proof_expired', 'argument_mismatch', 'proof_missing_or_consumed', 'proof_unavailable'})
 
 
@@ -63,6 +68,9 @@ class Identity:
         return account
 
 
+NO_ACTION = 'This tool is not available.'
+
+
 class ToolPermit:
     """May this tool run for this task? Two questions, both read from the database at the moment of the call: does the person the task belongs to hold a role that includes
     the tool's action (permissions.TOOL_ACTIONS), and does their organization allow this kind of tool (organizations.tool_allowed). A tool no row names is refused: a new tool
@@ -83,7 +91,7 @@ class ToolPermit:
         from . import organizations, permissions
         action = permissions.tool_action(name)
         if action is None:
-            return 'This tool is not available.'
+            return NO_ACTION                                # a tool nobody gave an action: a mistake in Lumina, which the relay records as one
         with self.store.connect() as con:
             if not organizations.tool_allowed(con, account, name):
                 return 'Your organization does not allow this tool. Nothing was done. Tell the customer, and carry on without it if you can.'
@@ -169,13 +177,16 @@ class Relay:
             location_call = self.location is not None and name == 'lumina_request_location'
             busy_key = (account, 'location' if location_call else 'remote' if remote_call else 'memory' if memory_call else 'files' if files_call else 'show' if show_call else 'connectors' if connector_call else 'hub' if hub_call else 'knowledge' if knowledge_call else 'progress' if name == PROGRESS_NAME else 'browser')
             with self._guard:
-                if busy_key in self._busy:
-                    return self._ok(rid, self._result('Another tool call is still running for this task. Wait for it to finish.', True))
-                self._busy.add(busy_key)
+                taken = busy_key in self._busy
+                if not taken:
+                    self._busy.add(busy_key)
+            if taken:                                               # answered outside the guard: recording it must not hold up the other calls
+                return self._ok(rid, self._answer(account, None, name, None, 'Another tool call is still running for this task. Wait for it to finish, then send this call again.',
+                                                  faults.Fault('tool.busy')))
             try:
                 handler = self.location if location_call else self.remote if remote_call else self.memory if memory_call else self.files if files_call else self.show if show_call else self.connectors if connector_call else self.hub if hub_call else self.knowledge if knowledge_call else self.progress if name == PROGRESS_NAME else self.tool
                 arguments = params.get('arguments') or {}
-                bound = {}
+                bound, call_id, origin = {}, None, None
                 if self.origin is not None:
                     try:
                         origin = self.origin(account, name, arguments)
@@ -188,16 +199,19 @@ class Relay:
                             status = 'admission_mismatch'
                     except (CapabilityUnavailable, ValueError, TypeError):
                         request_id, status = None, 'origin_service_unavailable'
+                    call_id = origin.get('call_id') if isinstance(origin, dict) else None
                     if not request_id:
                         log.warning('tool_ownership_refused tool=%s reason=%s', name, status)
-                        return self._ok(rid, self._result('This tool call does not belong to an admitted live task. Nothing was started or changed. Do not retry this call in another task.', True))
+                        return self._ok(rid, self._answer(account, None, name, call_id, 'This tool call does not belong to an admitted live task. Nothing was started or changed. Do not retry this call in another task.',
+                                                          faults.Fault('tool.origin_unavailable' if status in ORIGIN_DOWN else 'tool.not_admitted', {'code': status})))
                     bound['request_id'] = request_id
                 arguments = {k: v for k, v in arguments.items() if k != '_lumina_origin'}
                 if self.permit is not None:
                     refusal = self.permit.refusal(account, bound.get('request_id'), name)
                     if refusal:
                         log.warning('tool_not_permitted tool=%s', name)
-                        return self._ok(rid, self._result(refusal, True))
+                        return self._ok(rid, self._answer(account, bound.get('request_id'), name, call_id, refusal,
+                                                          faults.Fault('tool.failed' if refusal == NO_ACTION else 'tool.not_permitted')))
                 if remote_call and self.origin is not None:
                     # Continue checking admission while a remote operation is in flight.
                     def remote_closed():
@@ -209,11 +223,29 @@ class Relay:
             finally:
                 with self._guard:
                     self._busy.discard(busy_key)
-            if remote_call:
-                return self._ok(rid, result)
-            text, is_error, *image = result
-            return self._ok(rid, self._result(text, is_error, image[0] if image else None))
+            if remote_call:                                         # a connected service's tool answers in the protocol's own shape; why it did not work travels beside it
+                problem = result.pop('_fault', None) or (faults.Fault('tool.remote_error') if result.get('isError') else None)
+                return self._ok(rid, self._noted(account, bound.get('request_id'), name, call_id, result, problem))
+            text, problem, *image = result
+            return self._ok(rid, self._answer(account, bound.get('request_id'), name, call_id, text, problem, image[0] if image else None))
         return self._error(rid, -32601, 'method not found')
+
+    def _answer(self, account, request_id, name, call_id, text, problem, image=None):
+        return self._noted(account, request_id, name, call_id, self._result(text, False, image), problem)
+
+    def _noted(self, account, request_id, name, call_id, result, problem):
+        """The result as the assistant gets it, with the reason recorded when the call did not do what was asked. `problem` is what the tool put in the second place of its
+        answer: False, a faults.Fault, or a bare True from a tool that does not say why yet (counted as `tool.failed`)."""
+        fault = faults.of_tool_reply(problem, name, call_id)
+        result['isError'] = faults.is_error(fault)
+        if fault is not None:
+            (log.info if fault.expected else log.error)('tool_fault tool=%s reason=%s request=%s', fault.detail.get('tool'), fault.reason, request_id or '-')
+            store = getattr(self.tool, 'store', None)                   # the relay's one handle on the application database is the browser tool's
+            if store is not None:
+                faults.record(store, account, fault, request_id=request_id)
+            # The same facts for a caller that is a program, not a reader (section 4b): what kind of failure, whether it may be tried again, what was changed.
+            result['_meta'] = {**(result.get('_meta') or {}), 'lumina/fault': {'reason': fault.reason, 'kind': fault.kind, 'retry': fault.retry, 'effect': fault.what_changed}}
+        return result
 
     def _owner(self, account, origin):
         if not isinstance(origin, dict) or not all(isinstance(origin.get(k), str) and origin[k] for k in ('session_key', 'run_id', 'call_id')):

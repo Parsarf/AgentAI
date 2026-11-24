@@ -12,6 +12,8 @@ import json
 import sqlite3
 import time
 
+from ..faults import STEP
+
 BAD = ('failed', 'partial', 'blocked')
 LIVE_BROWSER = ('queued', 'running', 'handoff', 'paused', 'asking')
 
@@ -46,23 +48,41 @@ def _reasons(con, since):
     out = {'errors': [], 'expected_stops': [], 'unclassified': 0, 'bad_endings_without_a_reason': None}
     if not _has(con, 'faults'):
         return out
-    for reason, kind, actor, expected, count, requests in con.execute("""SELECT reason,kind,actor,expected,count(*),count(DISTINCT request_id) FROM faults WHERE created_epoch>=?
-            GROUP BY reason,kind,actor,expected ORDER BY count(*) DESC, reason""", (since,)):
+    for reason, kind, actor, expected, count, requests in con.execute(f"""SELECT reason,kind,actor,expected,count(*),count(DISTINCT request_id) FROM faults WHERE created_epoch>=?
+            AND NOT ({STEP}) GROUP BY reason,kind,actor,expected ORDER BY count(*) DESC, reason""", (since,)):
         out['expected_stops' if expected else 'errors'].append({'reason': reason, 'kind': kind, 'actor': actor, 'count': count, 'requests': requests})
         if reason.endswith('.unclassified'):
             out['unclassified'] += count
     probe = 'AND r.probe=0' if _has(con, 'customer_requests', 'probe') else ''
     out['bad_endings_without_a_reason'] = con.execute(f"""SELECT count(*) FROM customer_requests r WHERE r.created_epoch>=? {probe} AND r.outcome IN ('failed','partial','blocked')
-        AND NOT EXISTS (SELECT 1 FROM faults f WHERE f.account_id=r.account_id AND f.request_id=r.id)""", (since,)).fetchone()[0]
+        AND NOT EXISTS (SELECT 1 FROM faults f WHERE f.account_id=r.account_id AND f.request_id=r.id AND NOT ({STEP.replace('detail_json', 'f.detail_json')}))""", (since,)).fetchone()[0]
+    return out
+
+
+def _steps(con, since):
+    """Single tool calls that did not do what was asked (Part 3), by tool and reason: errors and expected stops apart. A step that failed is not a task that failed (the
+    assistant often corrects itself), so these are never in the task rate above. `wrong_arguments` per tool is the measure of how well that tool's description works."""
+    out = {'errors': [], 'expected_stops': [], 'wrong_arguments_by_tool': {}, 'unexplained': 0}
+    if not _has(con, 'faults'):
+        return out
+    for tool, reason, kind, actor, expected, count in con.execute(f"""SELECT json_extract(detail_json,'$.tool'),reason,kind,actor,expected,count(*) FROM faults
+            WHERE created_epoch>=? AND {STEP} GROUP BY 1,2,3,4,5 ORDER BY count(*) DESC, 1, 2""", (since,)):
+        out['expected_stops' if expected else 'errors'].append({'tool': tool, 'reason': reason, 'kind': kind, 'actor': actor, 'count': count})
+        if reason == 'tool.bad_arguments':
+            out['wrong_arguments_by_tool'][tool] = out['wrong_arguments_by_tool'].get(tool, 0) + count
+        if reason in ('tool.failed', 'runtime.tool_failed'):
+            out['unexplained'] += count
     return out
 
 
 def _tools(con, since_iso):
-    """Finished tool calls by tool, from the timeline: how many, and how many failed. The browser tool's own mirror of a call (source `router`) is the same call twice."""
+    """Finished tool calls by tool, from the timeline: how many, and how many failed. The browser tool's own mirror of a call (source `router`) is the same call twice, and
+    a call whose row was written again when its task closed is still one call."""
     if not _has(con, 'events'):
         return []
     rows = {}
-    for tool, status, count in con.execute("""SELECT json_extract(public_payload,'$.tool'), json_extract(public_payload,'$.status'), count(*) FROM events
+    for tool, status, count in con.execute("""SELECT json_extract(public_payload,'$.tool'), json_extract(public_payload,'$.status'),
+            count(DISTINCT task_id || ' ' || coalesce(json_extract(public_payload,'$.ref'), id)) FROM events
             WHERE kind='activity' AND created_at>=? AND json_extract(public_payload,'$.status') IN ('done','failed')
             AND coalesce(json_extract(public_payload,'$.source'),'')<>'router' GROUP BY 1,2""", (since_iso,)):
         name = str(tool or 'unknown').replace('lumina__', '')
@@ -133,7 +153,7 @@ def build(db_path, *, days=30, now=None) -> dict:
     since_iso = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(since))
     con = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True, timeout=5)
     try:
-        return {'days': days, 'until_epoch': now, 'requests': _requests(con, since), 'reasons': _reasons(con, since), 'tools': _tools(con, since_iso),
+        return {'days': days, 'until_epoch': now, 'requests': _requests(con, since), 'reasons': _reasons(con, since), 'tools': _tools(con, since_iso), 'steps': _steps(con, since),
                 'browser': _browser(con, since, now), 'model_calls': _model_calls(con, since), 'starts': _starts(con, since), 'connected_service_changes': _changes(con, since)}
     finally:
         con.close()
@@ -162,6 +182,16 @@ def text(report) -> str:
     lines.append('')
     lines.append('Tool calls (finished, failed):')
     lines += [f"  {t['finished']:4}  {t['failed']:4}  {t['tool']}" + (f"  ({100 * t['failed'] / t['finished']:.0f}%)" if t['failed'] else '') for t in report['tools']] or ['  none']
+    steps = report.get('steps') or {}
+    if steps.get('errors') or steps.get('expected_stops'):
+        lines.append('')
+        lines.append('Steps that did not do what was asked, by reason (a failed step is not a failed task):')
+        lines += [f"  {s['count']:4}  {s['tool']}  {s['reason']}  [{s['kind']}, acts: {s['actor']}]" for s in steps['errors']] or ['  no errors']
+        if steps['expected_stops']:
+            lines.append('  Expected stops: ' + ', '.join(f"{s['tool']} {s['reason']} x{s['count']}" for s in steps['expected_stops']))
+        if steps['wrong_arguments_by_tool']:
+            lines.append('  Wrong arguments, by tool: ' + ', '.join(f'{tool} x{count}' for tool, count in sorted(steps['wrong_arguments_by_tool'].items(), key=lambda kv: -kv[1])))
+        lines.append(f"  Steps with no reason of their own: {steps['unexplained']}.")
     browser = report['browser']
     if browser:
         lines.append('')

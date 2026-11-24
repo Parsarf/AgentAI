@@ -18,6 +18,7 @@ import json
 import time
 import uuid
 
+from . import faults
 from .genui import document
 from .genui.schema import SpecError
 from .lifecycle.coordinator import Coordinator
@@ -84,23 +85,23 @@ class ShowTools:
     def call(self, account, arguments, closed=lambda: False, *, name, request_id=None):
         try:
             if name != NAME or not self.enabled(account):
-                return 'Showing visuals is not available.', True
+                return 'Showing visuals is not available.', faults.Fault('tool.switched_off')
             if not request_id:
-                return 'This call does not belong to a running task. Nothing was shown.', True
+                return 'This call does not belong to a running task. Nothing was shown.', faults.Fault('tool.not_admitted')
             if not isinstance(arguments, dict) or not set(arguments) <= {'blocks', 'datasets'} or not isinstance(arguments.get('blocks'), list):
-                return 'Give "blocks" (a list of {"id", "type", "props"}) and optionally "datasets". Nothing was shown.', True
+                return 'Give "blocks" (a list of {"id", "type", "props"}) and optionally "datasets". Nothing was shown.', faults.Fault('tool.bad_arguments')
             conversation, tier = self._request(account, request_id)
             if conversation is None:
-                return 'This call does not belong to a running task. Nothing was shown.', True
+                return 'This call does not belong to a running task. Nothing was shown.', faults.Fault('tool.not_admitted')
             if tier == 'basic':
                 return ('The customer chose plain answers (or is not in the Lumina app), so visuals are not shown here. Nothing was shown. '
-                        'Give the same information in your reply as text; a small table in Markdown is fine.'), True
+                        'Give the same information in your reply as text; a small table in Markdown is fine.'), faults.Fault('tool.switched_off')
             blocks, datasets = arguments['blocks'], arguments.get('datasets') or {}
             if not isinstance(datasets, dict):
-                return '"datasets" is an object: {"name": {"columns": [...], "rows": [...]}}. Nothing was shown.', True
+                return '"datasets" is an object: {"name": {"columns": [...], "rows": [...]}}. Nothing was shown.', faults.Fault('tool.bad_arguments')
             limits = document.registry()['limits']
             if not 1 <= len(blocks) <= limits['blocks']:
-                return f'Give 1 to {limits["blocks"]} blocks. Nothing was shown.', True
+                return f'Give 1 to {limits["blocks"]} blocks. Nothing was shown.', faults.Fault('tool.bad_arguments')
             # Every problem at once, by block: the lenient path (a bad block quietly becoming text) is for old stored answers, not for a live call.
             problems, seen = [], set()
             for key, value in datasets.items():
@@ -125,21 +126,21 @@ class ShowTools:
                     problems.append(f'{label}: not a valid block; a block is {{"id", "type", "props"}}')
             if problems:
                 return ('Nothing was shown. Fix these and call again:\n- ' + '\n- '.join(problems[:12]) +
-                        '\nThe lumina-show skill has an accepted example of each common component; lumina-ui/components/<type>.json has the others.'), True
+                        '\nThe lumina-show skill has an accepted example of each common component; lumina-ui/components/<type>.json has the others.'), faults.Fault('tool.bad_arguments')
             try:
                 doc = document.validate_document({'responseId': 'show-' + uuid.uuid4().hex[:12], 'blocks': blocks, 'datasets': datasets}, tier)
             except SpecError as error:
-                return f'Nothing was shown: {str(error)[:200]}. Show less in one call, or deliver the data as a file.', True
+                return f'Nothing was shown: {str(error)[:200]}. Show less in one call, or deliver the data as a file.', faults.Fault('tool.bad_arguments')
             if closed():
-                return 'The connection closed; nothing was shown.', True
+                return 'The connection closed; nothing was shown.', faults.Fault('tool.stopped_with_task', effect='nothing_changed')
             with self.coordinator.transaction() as con:
                 made = con.execute("SELECT count(*) FROM data_blocks WHERE account_id=? AND source_request_id=? AND kind='document'", (account, request_id)).fetchone()[0]
                 if made >= MAX_PER_TASK:
-                    return f'This task already shows {MAX_PER_TASK} visuals, which is the limit. Nothing more was shown.', True
+                    return f'This task already shows {MAX_PER_TASK} visuals, which is the limit. Nothing more was shown.', faults.Fault('tool.limit')
                 position = con.execute('SELECT coalesce(max(position),-1)+1 FROM data_blocks WHERE account_id=? AND source_request_id=?', (account, request_id)).fetchone()[0]
                 con.execute('INSERT INTO data_blocks(account_id,id,conversation_id,anchor_message_id,kind,spec_json,source_request_id,position,created_epoch) VALUES (?,?,?,?,?,?,?,?,?)',
                             (account, uuid.uuid4().hex, conversation, None, 'document', json.dumps(dict(doc, type='document')), request_id, position, int(self.clock())))
             kinds = ', '.join(dict.fromkeys(b['type'] for b in doc['blocks']))
             return (f'Shown to the customer under your reply: {kinds}. Do not repeat its contents in your text; say in a sentence or two what it shows and what you conclude.'), False
         except Exception:
-            return 'Something went wrong. Nothing was shown.', True
+            return 'Something went wrong. Nothing was shown.', faults.Fault('tool.failed')

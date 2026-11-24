@@ -5,9 +5,11 @@ redacted items for the Activity window. Nothing raw leaves here: only a fixed se
 (query, address, command, path) and, for commands only, a trimmed redacted output. File contents are never shown.
 """
 from __future__ import annotations
+import json
 import re
 from urllib.parse import urlsplit
 
+from . import faults
 from .events import redact
 
 MAX_DETAIL = 300
@@ -108,11 +110,60 @@ def describe(name, args):
     return 'other', f'Used {label}', ''
 
 
+# The runtime wraps what a tool outside it answered (Lumina's tools, a fetched page) in a notice for the model and a marked block. That notice is the runtime talking to the
+# model: stored as the step's output it filled the whole 1,200 characters, so every failed step of a Lumina tool showed the customer "SECURITY NOTICE: The following
+# content is from an EXTERNAL, UNTRUSTED source" and nothing of why it failed (production, 30 days to 2026-11-24: 134 of 194 failed steps).
+_BLOCK = re.compile(r'<<<EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>\s*(.*?)\s*(?:<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>|\Z)', re.S)
+_NOTICE = 'SECURITY NOTICE:'
+
+
+def _json(text):
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def own_words(text) -> str:
+    """What the tool itself said, out of the runtime's wrapping. Three layers are taken off, each only when it is there: the `tool_call` wrapper's {"error": ...}, the marked
+    block with its "Source: ..." head, and the {"tool", "result": {"content": [...]}} record of a tool the runtime reached over MCP. Text that is not wrapped comes back as
+    it is. What a page said after "Web fetch failed (403):" is itself wrapped in a second notice and is dropped with it: only the tool's own words are kept."""
+    text = str(text or '')
+    outer = _json(text)
+    if outer is not None and isinstance(outer.get('error'), str):
+        text = outer['error']
+    found = _BLOCK.search(text)
+    if found:
+        text = found.group(1)
+        head, rule, rest = text.partition('\n---\n')
+        if rule and head.startswith('Source:') and '\n' not in head:
+            text = rest
+        inner = _json(text)
+        if inner is None and text.lstrip().startswith('{'):           # the record was cut short by the runtime's own limit: the first text of the result is still readable
+            cut = re.search(r'"text":\s*("(?:[^"\\]|\\.)*")', text)
+            if cut:
+                try:
+                    text = json.loads(cut.group(1))
+                except ValueError:
+                    pass
+        elif inner is not None:
+            result = inner.get('result') if isinstance(inner.get('result'), dict) else inner
+            said = _text(result.get('content'))
+            if said:
+                text = said
+    at = text.find(_NOTICE)
+    if at >= 0:
+        text = text[:at].rstrip(' :\n')
+    return text.strip()
+
+
 def extract(raw_messages):
     """Raw runtime history rows -> [{ref, tool, category, label, detail, output, status}] in call order.
 
     status is 'running' until the matching result row is present, then 'done' or 'failed'. `run_id` and `after` (the input it followed) say whose call it was (not part of what is shown):
-    the driver keeps only the calls of the runs and inputs it owns.
+    the driver keeps only the calls of the runs and inputs it owns. A failed call also carries `reason`: the registered reason read from what the runtime said about it
+    (faults.of_runtime_tool). For one of Lumina's own tools (`own`) the driver replaces it with the reason the tool relay recorded when the call was made, which is a fact.
     """
     calls, order = {}, []
     for message in raw_messages or []:
@@ -136,7 +187,7 @@ def extract(raw_messages):
                 if name in HIDDEN:
                     continue
                 category, label, detail = describe(name, args)
-                calls[ref] = {'ref': ref, 'tool': clean(name, 40), 'category': category, 'label': label,
+                calls[ref] = {'ref': ref, 'tool': clean(name, 40), 'category': category, 'label': label, 'own': str(name or '').startswith('lumina_'),
                               'detail': detail, 'output': '', 'status': 'running', 'run_id': (message.get('__openclaw') or {}).get('runId'), 'after': message.get('__after')}
                 order.append(ref)
         elif role in ('toolResult', 'tool'):
@@ -146,5 +197,8 @@ def extract(raw_messages):
                 continue
             item['status'] = 'failed' if message.get('isError') or message.get('is_error') else 'done'
             if item['category'] == 'command' or item['status'] == 'failed':
-                item['output'] = clean(_text(content), MAX_OUTPUT)
+                said = own_words(_text(content))
+                item['output'] = clean(said, MAX_OUTPUT)
+                if item['status'] == 'failed':
+                    item['reason'] = faults.of_runtime_tool(item['tool'], said).reason
     return [calls[ref] for ref in order]

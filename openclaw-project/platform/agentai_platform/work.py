@@ -29,6 +29,7 @@ import time
 
 from . import request_states
 from .browse import job_states
+from .faults_registry import REASONS
 from .security import NotFound, Principal
 
 NOISE = re.compile(r'transcript update|^runtime accepted|^dispatched to', re.I)
@@ -150,7 +151,8 @@ def timeline(events) -> list[dict]:
 
     A tool call is ONE row: its 'running' event opens it and the matching 'done'/'failed' event closes it, wherever that lands among other calls, so calls that
     overlap in time are each shown truthfully (`group` names the set that ran together). `seq` is the newest event that touched the row: the cursor read
-    returns a row again when it changes."""
+    returns a row again when it changes. A call that did not do what was asked carries `reason` (a registered code) and `why`, the one sentence the customer reads for it
+    (faults_registry.py): the row says why, in Lumina's words, instead of leaving the tool's reply to the assistant as the only explanation."""
     rows, by_ref, open_refs, group_of = [], {}, [], {}
     for e in events:
         p, seq, at = e.get('payload') or {}, e['sequence'], _ms(e.get('created_at'))
@@ -162,9 +164,11 @@ def timeline(events) -> list[dict]:
             status = p.get('status') if p.get('status') in ('done', 'failed') else 'running'
             category = _text(p.get('category'), 20) or 'other'
             at_index = by_ref.get(ref)
+            reason = p.get('reason') if p.get('reason') in REASONS else ''
             if at_index is None:
                 row = {'key': ref, 'kind': 'tool', 'category': category, 'label': _text(p.get('label'), 80) or 'Used a tool', 'detail': _text(p.get('detail'), 400),
-                       'output': _text(p.get('output'), 1500), 'status': status, 'at': at, 'ended_at': at if status != 'running' else None, 'first': seq, 'seq': seq, 'group': None}
+                       'output': _text(p.get('output'), 1500), 'status': status, 'at': at, 'ended_at': at if status != 'running' else None, 'first': seq, 'seq': seq, 'group': None,
+                       'reason': reason, 'why': REASONS[reason].customer if reason else ''}
                 by_ref[ref] = len(rows)
                 rows.append(row)
                 if open_refs:                                    # it started while another call was still running: they ran together
@@ -177,6 +181,8 @@ def timeline(events) -> list[dict]:
             else:
                 row = rows[at_index]
                 row.update(status=status, seq=seq, output=_text(p.get('output'), 1500) or row['output'], detail=_text(p.get('detail'), 400) or row['detail'])
+                if reason:
+                    row.update(reason=reason, why=REASONS[reason].customer)
                 if status != 'running':
                     row['ended_at'] = at
                     if ref in open_refs:

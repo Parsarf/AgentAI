@@ -8,6 +8,7 @@ import json
 import math
 import time
 import uuid
+from . import faults
 from . import request_states
 from .lifecycle.coordinator import Coordinator, identifier
 from .security import NotFound
@@ -136,7 +137,7 @@ class LocationTool:
 
     def call(self, account, arguments, closed=lambda: False, *, name=NAME, request_id=None):
         if name != NAME or arguments or not request_id:
-            return json.dumps({'status': 'unavailable', 'reason': 'An admitted task is required.'}), True
+            return json.dumps({'status': 'unavailable', 'reason': 'An admitted task is required.'}), faults.Fault('tool.not_admitted')
         try:
             self.locations.start(account, request_id)
             while True:

@@ -36,6 +36,7 @@ function TimelineRow({ r, live }: { r: Row; live: boolean }) {
           {!running && r.status === 'running' && <span className="wk-row-end">no result was recorded</span>}
           {ROW_END[r.status] && <span className="wk-row-end">{ROW_END[r.status]}</span>}{took(r) && <span className="wk-row-took">{took(r)}</span>}</p>
         {r.detail && <code className="wk-row-detail">{r.detail}</code>}
+        {r.why && <p className="wk-row-why">{r.why}</p>}
         {r.output && <details className="wk-row-out"><summary>Output</summary><pre tabIndex={0}>{r.output}</pre></details>}
       </div>
     </li>);

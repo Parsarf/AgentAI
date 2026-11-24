@@ -416,7 +416,7 @@ class RelayChecks(Base):
         first = threading.Thread(target=lambda: relay.handle('a', {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'lumina_browser', 'arguments': {}}}))
         first.start(); gate.wait(5)
         second = relay.handle('a', {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'lumina_browser', 'arguments': {}}})
-        self.assertTrue(second['result']['isError']); self.assertIn('still running', second['result']['content'][0]['text'])
+        self.assertFalse(second['result']['isError']); self.assertIn('still running', second['result']['content'][0]['text'])      # told to wait, which is not a failure (reliability plan, Part 3)
         self.assertFalse(relay.handle('b', {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'lumina_browser', 'arguments': {}}}) is None)
         release.set(); first.join(5)
 

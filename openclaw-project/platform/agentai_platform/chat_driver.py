@@ -684,8 +684,31 @@ class ChatDriver:
             if key in seen:
                 continue
             seen.add(key)
-            self._emit(claim, 'activity', {k: v for k, v in item.items() if k not in ('run_id', 'after')}, 'gateway')
+            self._emit(claim, 'activity', self._step(claim, item), 'gateway')
         return added
+
+    def _step(self, claim, item):
+        """One tool call as the timeline keeps it, with the reason when it did not do what was asked (reliability plan, Part 3).
+
+        For one of Lumina's own tools the reason is the one the tool relay recorded when the call was made, found by the call's own id: a fact, also for a call that was not an
+        error (approval needed, stopped with the task). For the runtime's own tools, and for a call that never reached the relay, it is read from what the runtime said, and
+        recorded here, once per call. Finding or recording a reason never stops the step from being shown."""
+        shown = {k: v for k, v in item.items() if k not in ('run_id', 'after', 'own', 'reason')}
+        if item['status'] == 'running':
+            return shown
+        try:
+            with self.store.connect() as con:
+                recorded = faults.for_call(con, claim.account_id, claim.request_id, item['ref'])
+            if recorded is None and item['status'] == 'failed':
+                read = faults.of_runtime_tool(item['tool'], item.get('output'))
+                read = faults.Fault(read.reason, {**read.detail, 'call': faults.call_mark(item['ref'])})
+                faults.record(self.store, claim.account_id, read, request_id=claim.request_id, now=int(self.clock()))
+                recorded = read.reason
+            if recorded:
+                shown['reason'] = recorded
+        except Exception:
+            log.error('step reason not found request=%s', claim.request_id)
+        return shown
 
     def _absorb(self, con, claim, rows):
         added = 0
