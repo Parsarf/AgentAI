@@ -69,3 +69,4 @@ test_ics_feed
 test_write_routes
 test_microsoft_hub
 test_faults
+test_acceptance_live
