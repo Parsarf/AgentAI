@@ -190,6 +190,31 @@ describe('pending assistant reply', () => {
   });
 });
 
+describe('a task that stopped', () => {
+  const thread = (messages: object[]) => vi.fn(async (url: string) => {
+    if (url === '/v1/csrf') return ok({ csrf_token: 't' });
+    if (url.endsWith('/blocks')) return ok({ blocks: [] });
+    if (url.includes('/messages')) return ok({ messages: url.includes('after=') ? [] : messages, tasks: [{ id: 'r', state: 'completed', created_epoch: 0 }] });
+    return ok({ conversation: { id: 'a', title: 'Saved' } });
+  });
+  const stopped = [{ ...msg(1, 'Find the cheapest flight', 'customer'), request_id: 'r' },
+    { ...msg(2, 'This task stopped. The page did not answer in time, so the browser stopped. Send a follow-up to continue or change direction.', 'system'), request_id: 'r', terminal: 1 }];
+  it('says why once: the status under the message, not also the platform notice above it', async () => {
+    vi.stubGlobal('fetch', thread(stopped));
+    hold(view({ id: 'r', conversation_id: 'a', state: 'completed', phase: 'ended', label: 'Partly done', tone: 'unsure', outcome: 'partial', verification: 'unverified', steps: 2,
+      note: 'The page did not answer in time, so the browser stopped. What it had done up to then is kept.' }));
+    const { container } = mount();
+    expect(await screen.findByText('The page did not answer in time, so the browser stopped. What it had done up to then is kept.')).toBeTruthy();
+    expect(screen.queryByText(/^This task stopped\./)).toBeNull();
+    expect(container.querySelectorAll('.wk-strip')).toHaveLength(1);
+  });
+  it('keeps the notice when there is no status to read it from', async () => {
+    vi.stubGlobal('fetch', thread(stopped));                                                              // the task is not in the shared state (an old chat)
+    mount();
+    expect(await screen.findByText(/^This task stopped\./)).toBeTruthy();
+  });
+});
+
 describe('runnable app deliveries', () => {
   it('keeps an app visible when the assistant adds a later summary for the same completed request', async () => {
     const app = { version: 1, title: 'Saved calculator', runtime: 'html', code: '<button>Calculate</button>' };

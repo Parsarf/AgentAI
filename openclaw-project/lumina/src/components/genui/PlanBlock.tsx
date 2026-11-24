@@ -6,10 +6,10 @@ import { api, ApiError } from '../../lib/api';
 import * as P from '../../lib/genui/plan';
 import type { Block, Phase, PhaseRun, Plan } from '../../lib/genui/schema';
 import { elapsed } from '../../lib/format';
-import { phase as phaseOf } from '../../lib/tasks';
 import { useData } from '../../state/data';
 import * as I from '../Icons';
 import PlanAdaptation from './PlanAdaptation';
+import { useWorkOptional } from '../../state/work';
 import { Saved } from './Saved';
 import { useAutosave } from './useAutosave';
 
@@ -23,7 +23,11 @@ function Card(props: {
   const [asking, setAsking] = useState<null | 'before' | 'after'>(null); const [newTitle, setNewTitle] = useState(''); const [removing, setRemoving] = useState(false);
   const deps = P.dependents(plan, p.id);
   const set = (patch: Partial<Phase>) => props.onChange(P.updatePhase(plan, p.id, patch));
-  const state = props.run ? RUN_LABEL[props.run.state] : !p.enabled ? 'Off' : p.requiresApproval ? 'Approval gate' : p.optional ? 'Optional' : 'On';
+  // A phase that ran is a task of its own: where the shared task state knows it, the badge says what every other screen says about that task ("Waiting for your
+  // permission", "Partly done", "Done · not confirmed"), not one of the plan's own five words. A phase that has not run yet has no task, and keeps the plan's words.
+  const work = useWorkOptional(); const rid = props.run?.request_id;
+  const shared = rid && props.run && ['running', 'completed', 'failed'].includes(props.run.state) ? (work?.details?.[rid]?.task ?? work?.tasks.find(t => t.id === rid)) : undefined;
+  const state = props.run ? shared?.label ?? RUN_LABEL[props.run.state] : !p.enabled ? 'Off' : p.requiresApproval ? 'Approval gate' : p.optional ? 'Optional' : 'On';
   return (
     <div className={`phase${p.enabled ? '' : ' off'}${issue ? ' bad' : ''}${props.dragging ? ' dragging' : ''}`} draggable={!locked && !open}
          onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; props.onDragStart(); }} onDragOver={e => { if (!locked) e.preventDefault(); }}

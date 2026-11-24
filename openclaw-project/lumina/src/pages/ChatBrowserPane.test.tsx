@@ -18,7 +18,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url === '/v1/csrf') return ok({ csrf_token: 't' });
     if (url === '/v1/devices') return ok({ available: false });
-    if (url.startsWith('/v1/browse/')) return ok({ request_id: url.split('/')[3].split('?')[0], goal: 'Find the paddle', status: 'running', takeover: false, created_epoch: 100, url: 'https://shop.example/', events: [], pending_action: null });
+    if (url.startsWith('/v1/browse/')) return ok({ request_id: url.split('/')[3].split('?')[0], goal: 'Find the paddle', status: 'running', live: true, takeover: false, created_epoch: 100, url: 'https://shop.example/', events: [], pending_action: null });
     if (url.endsWith('/blocks')) return ok({ blocks: [] });
     if (url.includes('/messages')) return ok({ messages: [{ id: 1, content: 'find me a paddle', provenance: 'customer', request_id: 't1', created_at: '' }], tasks: [] });
     if (url === '/v1/files') return ok({ files: [] });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ago, displayName, elapsed, greeting, title } from './format';
-import { isActive, phase } from './tasks';
+import { isActive } from './tasks';
 
 describe('format', () => {
   it('greets by local hour', () => {
@@ -29,11 +29,8 @@ describe('format', () => {
 
 describe('tasks', () => {
   const row = (state: string, created = 1) => ({ id: state + created, message: 'm', state, cancel_requested: 0, result: null, created_epoch: created });
-  it('maps backend states honestly', () => {
-    expect(['waiting', 'starting', 'running', 'uncertain', 'completed', 'failed', 'cancelled'].map(phase))
-      .toEqual(['queued', 'running', 'running', 'running', 'completed', 'failed', 'cancelled']);
-  });
-  it('calls an unfinished request active unless it is held', () => {
+  it('calls an unfinished request active unless it is held, and knows every state the server names', () => {
+    expect(['waiting', 'starting', 'running', 'uncertain', 'completed', 'failed', 'cancelled'].map(state => isActive({ state }))).toEqual([true, true, true, true, false, false, false]);
     expect(isActive({ state: 'running' })).toBe(true); expect(isActive({ state: 'waiting', paused: true })).toBe(false); expect(isActive({ state: 'completed' })).toBe(false);
   });
 });

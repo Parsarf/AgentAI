@@ -635,6 +635,8 @@ class TerminationNoticeChecks(Base):
         self.assertIn('Stopped at your request', notices[0]['content'])
         self.assertIn('follow-up', notices[0]['content'])
         self.assertEqual(self.chat.messages(self.a, 'c-a')['messages'][-1]['provenance'], 'system')
+        # The notice is marked as the platform's own, so a screen that shows the task's status with its reason can leave it out and say why once (reliability plan, Part 5).
+        self.assertEqual([(m['provenance'], bool(m['terminal'])) for m in self.chat.messages(self.a, 'c-a')['messages']], [('customer', False), ('system', True)])
         self.say('continue carefully', key='next')
         claim = self.queue.claim(owner='w', capacity=OK)
         outgoing = self.driver._outgoing(claim, self.driver._admit(claim))

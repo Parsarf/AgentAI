@@ -21,7 +21,7 @@ function setup(raw: unknown, over: { deploy?: string; host?: Partial<Host> } = {
   const host: Host = { send: vi.fn(async () => {}), phase: vi.fn(async () => {}), retryRequest: vi.fn(async () => {}), navigate: vi.fn(), download: vi.fn(async () => {}),
     phaseState: (b, p) => (b === 'plan_demo' ? ((plan(over.deploy ?? 'awaiting_approval').run[p]?.state ?? null) as any) : null), ...over.host };
   const exec: ExecutionProvider = { label: 'Sample data', request: id => (id === 'fixture_run' ? { id, state: 'completed', result: 'Compared (sample)', created_epoch: 0 } : undefined),
-    plan: id => (id === 'plan_demo' ? plan(over.deploy ?? 'awaiting_approval') : undefined), useActivity: () => ({ rows: [{ key: 'k', category: 'search', label: 'Searched', detail: 'x', output: 'out', status: 'done', at: '' }], err: '' }) };
+    plan: id => (id === 'plan_demo' ? plan(over.deploy ?? 'awaiting_approval') : undefined), useActivity: () => ({ rows: [{ key: 'k', category: 'search', label: 'Searched', detail: 'x', output: 'out', status: 'done' }], err: '' }) };
   const utils = render(<GenDocumentView doc={doc(raw)} exec={exec} host={host} scope="t" onDiagnostic={() => {}} />);
   return { host, ...utils };
 }
@@ -232,6 +232,20 @@ describe('agent actions end to end', () => {
   it('agent widgets read real state from the provider and say when a task is not in this chat', () => {
     setup({ version: '1.0', responseId: 'r', blocks: [{ id: 'a', type: 'agent_status', props: { requestId: 'fixture_run' } }, { id: 'b', type: 'agent_status', props: { requestId: 'someoneelses1' } }, { id: 'c', type: 'completion_summary', props: { requestId: 'fixture_run' } }] });
     expect(screen.getAllByText('Done').length).toBeGreaterThan(0); expect(screen.getByText('That task is not part of this chat.')).toBeTruthy(); expect(screen.getByText('Compared (sample)')).toBeTruthy();
+  });
+  it('a task\'s standing is the shared status line where there is one, and its steps are the shared rows with their reasons', () => {
+    const exec: ExecutionProvider = { request: id => ({ id, state: 'completed', result: null, created_epoch: 0 }), plan: () => undefined,
+      status: () => ({ label: 'Done · not confirmed', tone: 'unsure' }),
+      useActivity: () => ({ err: '', rows: [
+        { key: 'a', category: 'other', label: 'Prepared a file for you', detail: '', output: '', status: 'failed', why: 'The assistant asked for something that is not there (a file, a message or an item). Nothing was changed.' },
+        { key: 'b', category: 'browse', label: 'Used the browser', detail: 'shop.example', output: '', status: 'done', steps: [{ label: 'Clicked “Men”', status: 'done', at: 1 }, { label: 'Scrolled', status: 'done', at: 2 }] }] }) };
+    render(<GenDocumentView doc={doc({ version: '1.0', responseId: 'r', blocks: [{ id: 'a', type: 'agent_status', props: { requestId: 'fixture_run' } }, { id: 'b', type: 'execution_timeline', props: { requestId: 'fixture_run' } }] })}
+      exec={exec} host={{} as Host} scope="t" onDiagnostic={() => {}} />);
+    expect(screen.getAllByText('Done · not confirmed').length).toBe(2);                                   // not the five raw words: what every other screen says
+    expect(document.querySelectorAll('.gen-pill.warning').length).toBe(2);                                // and never plain success for a result nothing confirmed
+    expect(screen.getByText('The assistant asked for something that is not there (a file, a message or an item). Nothing was changed.')).toBeTruthy();
+    expect(screen.getByText(/did not work/)).toBeTruthy();
+    expect(Array.from(screen.getByRole('list', { name: 'Steps in the browser' }).querySelectorAll('li')).map(li => li.textContent)).toEqual(['Clicked “Men”', 'Scrolled']);
   });
   it('error_retry offers retry only for a failed step', async () => {
     const { host } = setup({ version: '1.0', responseId: 'r', blocks: [{ id: 'e', type: 'error_retry', props: { planBlockId: 'plan_demo', phaseId: 'checks' } }] }, { host: { phaseState: () => 'failed' } });

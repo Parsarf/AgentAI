@@ -2,17 +2,16 @@
 // Route: /app/gen-gallery. Uses a sandbox host (no network): approvals change local sample state only, and the page says so.
 import { useMemo, useState } from 'react';
 import { GenDocumentView, Fallback } from './components/Renderer';
-import type { ExecutionProvider, Host, PlanInfo } from './components/context';
+import type { ExecutionProvider, Host, PlanInfo, StepRow } from './components/context';
 import { parseDocument, type GenDocument } from './protocol';
 import { ALL_PARTS, SAMPLE_CONVERSATION, SAMPLE_NOTE } from './fixtures';
 import { MANIFEST, categories, search, type Status } from './manifest';
 import { DENSITY } from './variants';
-import type { ActivityItem } from '../lib/activity';
 
-const ROWS: ActivityItem[] = [
-  { key: 'r1', category: 'search', label: 'Searched the web', detail: 'pricing for the three options', output: '', status: 'done', at: '' },
-  { key: 'r2', category: 'read', label: 'Opened a page', detail: 'example.com/pricing', output: 'Plan A costs $95 per month.', status: 'done', at: '' },
-  { key: 'r3', category: 'command', label: 'Ran a check', detail: 'npm test', output: '12 passed', status: 'running', at: '' },
+const ROWS: StepRow[] = [
+  { key: 'r1', category: 'search', label: 'Searched the web', detail: 'pricing for the three options', output: '', status: 'done' },
+  { key: 'r2', category: 'read', label: 'Opened a page', detail: 'example.com/pricing', output: 'Plan A costs $95 per month.', status: 'done' },
+  { key: 'r3', category: 'command', label: 'Ran a check', detail: 'npm test', output: '12 passed', status: 'running' },
 ];
 const mkPlan = (deploy: string): PlanInfo => ({ id: 'plan_demo', title: 'Launch the site (sample)', phases: [{ id: 'build', title: 'Build the site' }, { id: 'checks', title: 'Run checks', description: 'Fails in this sample so the retry state is visible.' }, { id: 'deploy', title: 'Publish to production', description: 'Makes the site public.' }],
   run: { build: { state: 'completed', summary: 'Built.' }, checks: { state: 'failed', summary: 'One check failed (sample).' }, deploy: { state: deploy as any, summary: null } }, run_status: 'running' });

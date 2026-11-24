@@ -6,7 +6,7 @@ from django.http import HttpResponse, JsonResponse
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.browse import job_states, sessions as browse_sessions
 from agentai_platform.browse.client import BrowseJobUnknown
-from agentai_platform import saved, vault
+from agentai_platform import request_states, saved, vault
 from agentai_platform.live import ticket as live_ticket
 from . import wiring
 from .services import Denied, rate
@@ -88,7 +88,13 @@ def run(request, request_id):
             events = [{'n': r['n'], 'kind': r['kind'], **_shown(json.loads(r['data_json']))} for r in con.execute(
                 'SELECT n,kind,data_json FROM browse_steps WHERE account_id=? AND request_id=? AND n>? ORDER BY n LIMIT 200', (request.account_id, request_id, since)).fetchall()]
     pending = json.loads(row['pending_json']) if row.get('pending_json') else None
-    return JsonResponse({**_public(row), 'answer': row['answer'], 'reason': row['reason'], 'takeover': takeover, 'needs_you': needs_you, 'pending_action': pending, 'question': question, 'events': events})
+    # `live`: the page is still alive AND the task it belongs to is still going. The app used to work this out itself from its own copy of the live states, and had to
+    # overrule a record that still said "running" after its task had ended; the answer is one fact, given here (reliability plan, Part 5).
+    with wiring.store().connect() as con:
+        owner = con.execute('SELECT state FROM customer_requests WHERE account_id=? AND id=?', (request.account_id, request_id)).fetchone()
+    alive = row['status'] in LIVE and bool(owner) and owner['state'] in request_states.ACTIVE
+    return JsonResponse({**_public(row), 'live': alive, 'answer': row['answer'], 'reason': row['reason'], 'takeover': takeover and alive, 'needs_you': needs_you if alive else None,
+                         'pending_action': pending, 'question': question if alive else None, 'events': events})
 
 
 @endpoint(['GET'])

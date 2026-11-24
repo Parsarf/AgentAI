@@ -7,6 +7,7 @@ import { reportDiagnostic } from './diagnostics';
 import type { RequestRow } from '../lib/api';
 import type { Block as StoredBlock, Phase, PhaseRun } from '../lib/genui/schema';
 import { useActivity } from '../lib/useActivity';
+import { useWorkOptional } from '../state/work';
 import { getAnswerStyle } from '../lib/answerStyle';
 import { parseDocument } from './protocol';
 import { GenDocumentView } from './components/Renderer';
@@ -31,13 +32,15 @@ export default function GenBlock({ block, bridge }: { block: StoredBlock; bridge
   const version = useRef(block.version); if (version.current !== block.version) revision.current = (block as any).state_revision ?? 1; version.current = block.version;
   const doc = useMemo(() => parseDocument(block.spec), [block.spec]);
   useEffect(() => { if ('error' in doc) reportDiagnostic(block.id, block.version, 'invalid_document', 'validation'); }, [doc, block.id, block.version]);
+  const work = useWorkOptional();
   const exec = useMemo<ExecutionProvider>(() => ({
     request: (id): RequestInfo | undefined => { const r = bridge.tasks.find(t => t.id === id); return r && { id: r.id, state: r.state, result: r.result, message: r.message, outcome: r.outcome, outcome_note: r.outcome_note, created_epoch: r.created_epoch }; },
     planEditor: id => { const b = bridge.blocks.find(b => b.id === id && b.kind === 'task_plan'); const parsed = planSpec.safeParse(b?.spec); return b && parsed.success ? <PlanBlock block={b} original={parsed.data} onChanged={bridge.reload} /> : null; },
     plan: id => planOf(bridge.blocks.find(b => b.id === id)),
     useSnapshot: useTaskSnapshot,
     useActivity: (requestId, live) => useActivity(requestId, live),       // eslint-disable-line react-hooks/rules-of-hooks
-  }), [bridge.tasks, bridge.blocks]);
+    status: id => { const t = work?.details?.[id]?.task ?? work?.tasks.find(x => x.id === id); return t && { label: t.label, tone: t.tone }; },
+  }), [bridge.tasks, bridge.blocks, work?.details, work?.tasks]);
   const host = useMemo<Host>(() => ({
     artifactVersion: block.version,
     initialState: block.state as any,

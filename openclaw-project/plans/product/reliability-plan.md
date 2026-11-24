@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Part 4 is built (branch `reliability-4-state`). Parts 5 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Part 4 is LIVE (#100). Part 5 is built (branch `reliability-5-clients`). Parts 6 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -275,7 +275,7 @@ Two pull requests: tools, then browser.
 
 ### Part 4 - The state picture, server (H, part of I)
 
-**Built 2026-11-24** (branch `reliability-4-state`), with the few lines the app needs to show it. Read first from a real browser task on the server: 114 s of
+**Built and live 2026-11-24** (PR #100, release `c26f03f`), with the few lines the app needs to show it. Read first from a real browser task on the server: 114 s of
 "Getting your assistant ready" with no figure, 60 s of "Thinking" on the first model turn, and every step the assistant took in the browser shown twice ("Used the
 browser" beside "Clicked “Filters” · Assistant").
 
@@ -328,6 +328,33 @@ The plan as written:
   duplicates `lumina_task_update`; both would add a second source of truth.
 
 ### Part 5 - The state picture, clients (I)
+
+**Built 2026-11-24** (branch `reliability-5-clients`).
+
+- **The blocks inside an answer read the shared picture.** Their status is the server's one status line and tone (they had five words of their own, so a task
+  waiting for the customer read "Working" and an unconfirmed result read "Done"), and their steps are the server's timeline rows, with each failed step's reason
+  and the browser's steps inside their call. The app's own copy of the timeline (`lib/activity.ts`, built from raw events) is deleted.
+- **A plan's phase that ran** says what the shared state says about its task; a phase with no task yet keeps the plan's words.
+- **The second phase type is gone** (`lib/tasks.ts` keeps one question: is this request unfinished).
+- **Whether the browser is live is one answer, the server's** (`/v1/browse/<id>` now carries `live`: the page is alive and its task is still going). The app's
+  own list of live states and its overruling of a stale "running" are removed.
+- **The reason is read once** (the item left over from Part 2): the chat's messages mark the platform's "This task stopped..." notice, and the chat leaves it out
+  where the task's status, with the same reason, is shown under the message. Where there is no status to read it from, the notice stays.
+- **The tab says "Needs you" and "Done"** in its title and by a dot on its icon: while a task waits for the person, and when a task that was going ended while
+  the tab was not being looked at (until it is looked at).
+
+Looked at and left as they are:
+
+- **The Chrome side panel** already reads the server's status line.
+- **Telegram**: no chat is linked on production, no message has ever come from it, and replies are not sent back to it. Its texts still say "Agent execution is
+  offline", which is untrue; they belong to the Telegram work of Phase 7, not to a status vocabulary nobody reads.
+- **Long jobs** (`LongJobs.tsx`) describe a job of many turns, not one task: there is no task status line to read.
+- **The "Stopped:" line under a reply** stays: it is the only place a surface without a status of its own would read why.
+
+Still open in this part: the app's poll of `/v1/browse/<id>` (it also carries the page's pictures, the question and the control state, so taking it out means
+moving those into the task picture first).
+
+The plan as written:
 
 - One vocabulary: the in-answer components (`gen/components/agent.tsx`), `PlanBlock`, `LongJobs`, the Chrome side panel and Telegram's status text read the
   shared label and gain "waiting for you", "partly done", "not confirmed".

@@ -6,10 +6,8 @@ export interface BrowserQuestion {
   options: { id: string; label: string; item?: string }[];
   fields?: { id: string; label: string; key: string; sensitive: boolean; input_type: string; prefill?: string }[];
 }
-export interface RunDetail extends RunRow { answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; needs_you?: string | null; pending_action: { label?: string } | null; question?: BrowserQuestion | null; events: RunEvent[] }
+export interface RunDetail extends RunRow { /** The page is alive and its task is still going: the server's answer, the only one used. */ live?: boolean; answer: string | null; reason: string | null; takeover: boolean; pausing?: boolean; needs_you?: string | null; pending_action: { label?: string } | null; question?: BrowserQuestion | null; events: RunEvent[] }
 
-/** Browser-task states in which the page is still alive: the live picture is worth showing. */
-export const LIVE_STATES = ['queued', 'running', 'handoff', 'paused', 'asking'];      // the server's list: platform/agentai_platform/browse/job_states.py LIVE
 export const VIEW = { w: 1280, h: 800 };                        // the browser window the agent sees; clicks are mapped into it
 /** Pixel position inside the shown picture -> browser window coordinates (the picture may be scaled, but keeps the window's shape). */
 export const toBrowser = (clientX: number, clientY: number, r: { left: number; top: number; width: number; height: number }) =>

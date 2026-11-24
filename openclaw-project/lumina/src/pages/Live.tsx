@@ -3,7 +3,7 @@ import FrameWorkspace from '../components/frame/Workspace';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import * as I from '../components/Icons';
-import { LIVE_STATES, keyAction, type RunDetail, type RunEvent } from '../lib/live';
+import { keyAction, type RunDetail, type RunEvent } from '../lib/live';
 import { isOpen, needLine, verdict, type Approval, type TaskView } from '../lib/work';
 import { useData } from '../state/data';
 import { useTask, useWork } from '../state/work';
@@ -25,16 +25,15 @@ export function BrowserStage({ task }: { task: TaskView }) {
   const load = useCallback(async () => {
     try {
       const r = { ...await api<RunDetail>('GET', `/v1/browse/${id}?since=${since.current}`) };
-      if (!taskLive && LIVE_STATES.includes(r.status)) { r.status = task.outcome === 'completed' ? 'done' : task.outcome ?? 'done'; r.takeover = false; }      // the task is over: so is its browser
       if (r.events.length) { since.current = Math.max(since.current, ...r.events.map(e => e.n)); setEvents(old => [...old, ...r.events.filter(e => !old.some(o => o.n === e.n))]); setStamp(Date.now()); }
       setRun(r); setErr('');
     } catch (e) { if (!(e instanceof ApiError && e.status === 404)) setErr('Could not refresh the browser. Retrying…'); }
-  }, [id, taskLive, task.outcome]);
+  }, [id]);
   useEffect(() => { since.current = 0; setEvents([]); setRun(null); setErr(''); }, [id]);
   useEffect(() => { void load(); }, [load, task.browser?.status]);
 
   runStatus.current = run?.status;
-  const browseLive = !!run && LIVE_STATES.includes(run.status) && taskLive;
+  const browseLive = !!run?.live && taskLive;       // whether the browser is live is the server's answer (and never while the task itself is over here)
   useEffect(() => { if (!browseLive) return; const t = setInterval(load, run?.pausing || run?.status === 'paused' || run?.status === 'asking' ? 800 : 2000); return () => clearInterval(t); }, [browseLive, load, run?.pausing, run?.status]);
   useEffect(() => () => clearTimeout(flushTimer.current), []);
 
@@ -93,7 +92,7 @@ export function BrowserStage({ task }: { task: TaskView }) {
       <div className="live-stage" tabIndex={driving ? 0 : -1} onKeyDown={onKey} aria-label={driving ? 'The page you are controlling. Click to point, type to enter text.' : undefined}>
         <LiveScreen id={id} enabled={browseLive} fallback={fallback} interactive={driving} onPoint={p => { void flush(); void send({ action: 'click', ...p }); }} onWheel={dir => void send({ action: 'scroll', text: dir })} />
       </div>
-      {run?.status === 'handoff' && !run.takeover && <p className="muted ws-note">The take-over window has closed.</p>}
+      {browseLive && run?.status === 'handoff' && !run.takeover && <p className="muted ws-note">The take-over window has closed.</p>}
       {!browseLive && run && <p className="faint small ws-note">{fallback ? 'The last picture saved for this task. Pictures are kept for 24 hours.' : 'This task’s browser has closed.'}</p>}
       {err && <p className="err small ws-note" role="alert">{err}</p>}
       {run?.reason && <p className="ws-note">{run.reason}</p>}
