@@ -347,6 +347,45 @@ class Released(Base):
         self.assertEqual(self.rows('SELECT count(*) FROM faults')[0][0], 0)
 
 
+class Orphans(Base):
+    """A browser record still marked alive after its request ended is ended by the worker (production held eight, the oldest three weeks old)."""
+    def record(self, request_id, status, age, state='completed'):
+        with self.store.connect() as con:
+            con.execute("""INSERT INTO customer_requests(account_id,id,actor_id,project_id,idempotency_key,payload_hash,message,state,created_epoch) VALUES ('a',?,?,?,?,?,?,?,?)""",
+                        (request_id, 'actor-a', 'p-a', request_id, 'h', 'm', state, self.now - age - 60))
+            con.execute('INSERT INTO browse_runs(account_id,request_id,goal,status,reason,pending_json,created_epoch,updated_epoch) VALUES (?,?,?,?,?,?,?,?)',
+                        ('a', request_id, 'goal', status, '', '{"label":"Checkout"}' if status == 'handoff' else None, self.now - age - 30, self.now - age))
+            con.execute('INSERT INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)', ('a', request_id, 1, 'opened', '{}', self.now - age))
+
+    def status(self, request_id):
+        return tuple(self.rows('SELECT status,reason,pending_json FROM browse_runs WHERE request_id=?', (request_id,))[0])
+
+    def test_only_a_record_whose_request_ended_long_enough_ago_is_ended_and_its_history_is_kept(self):
+        from agentai_platform.browse import job_states
+        self.record('old-running', 'running', 3600)
+        self.record('old-handoff', 'handoff', 3600, state='cancelled')
+        self.record('just-ended', 'running', 120)                       # inside a hand-off window: left alone
+        self.record('still-going', 'running', 3600, state='running')    # its request is alive: never touched
+        self.record('finished', 'done', 3600)
+        with self.store.connect() as con:
+            self.assertEqual(job_states.close_orphans(con, now=self.now), 2)
+            self.assertEqual(job_states.close_orphans(con, now=self.now), 0)             # and only once
+        self.assertEqual(self.status('old-running'), ('cancelled', job_states.ORPHAN_REASON, None))
+        self.assertEqual(self.status('old-handoff'), ('cancelled', job_states.ORPHAN_REASON, None))
+        self.assertEqual([self.status(r)[0] for r in ('just-ended', 'still-going', 'finished')], ['running', 'running', 'done'])
+        steps = [(r['n'], r['kind']) for r in self.rows('SELECT n,kind FROM browse_steps WHERE request_id=? ORDER BY n', ('old-running',))]
+        self.assertEqual(steps, [(1, 'opened'), (2, 'status')])                           # what it did is still there, with how it ended after it
+
+    def test_the_worker_does_it_by_itself_and_the_monitor_s_count_goes_to_zero(self):
+        from agentai_platform.ops.hostprobe import HostProbe
+        self.record('old-running', 'running', 3600)
+        probe = HostProbe({'app_db': str(self.store.path)}, None, clock=lambda: self.now)
+        self.assertEqual(probe.task_facts()['stale_children'], 1)
+        self.assertEqual(self.worker.tick().get('browser_records_closed'), 1)
+        self.assertEqual(probe.task_facts()['stale_children'], 0)
+        self.assertNotIn('browser_records_closed', self.worker.tick())                    # not looked for again on the very next tick
+
+
 class Kept(Base):
     def test_both_tables_have_a_retention_rule_and_are_swept_after_thirty_days(self):
         with self.store.connect() as con:

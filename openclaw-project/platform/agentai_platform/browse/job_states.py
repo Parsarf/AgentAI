@@ -55,6 +55,29 @@ def record(con, account_id, request_id, polled, *, offset=0, spent_before=0, now
                     (account_id, request_id, e['n'] + offset, e['kind'], json.dumps({k: v for k, v in e.items() if k not in ('n', 'kind')}), now))
 
 
+ORPHAN_SECONDS = 900             # longer than any wait a job may still be in after its request ended (a hand-off window is ten minutes)
+ORPHAN_REASON = 'The browser was stopped because the task had ended.'
+
+
+def close_orphans(con, *, now, settle=ORPHAN_SECONDS) -> int:
+    """End every browser record that is still marked alive although its request ended more than `settle` seconds ago. -> how many were ended.
+
+    A record is the request's copy of what the browse service last said, written by whoever was looking. When the request ended and nobody looked again (a stop that did
+    not reach the job's record, a worker that died between the two), the copy said `running` for ever: production held eight of these, the oldest three weeks old, and the
+    live page of such a task showed a browser that was not there. The request is over, so no job can still be working for it: the record ends as `cancelled` with a reason
+    that says why, and its history is untouched. Run by the request worker every few minutes; it is a safety net, not the way a job normally ends."""
+    import json
+    rows = con.execute(f"""SELECT b.account_id,b.request_id FROM browse_runs b JOIN customer_requests r ON r.account_id=b.account_id AND r.id=b.request_id
+        WHERE b.status IN {sql_list(LIVE)} AND b.updated_epoch<=? AND r.state IN ('completed','failed','cancelled')""", (now - settle,)).fetchall()
+    for account_id, request_id in rows:
+        con.execute(f'UPDATE browse_runs SET status=?,reason=?,pending_json=NULL,updated_epoch=? WHERE account_id=? AND request_id=? AND status IN {sql_list(LIVE)}',
+                    ('cancelled', ORPHAN_REASON, now, account_id, request_id))
+        n = int(con.execute('SELECT COALESCE(MAX(n),0) FROM browse_steps WHERE account_id=? AND request_id=?', (account_id, request_id)).fetchone()[0]) + 1
+        con.execute('INSERT OR IGNORE INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)',
+                    (account_id, request_id, n, 'status', json.dumps({'state': 'cancelled', 'reason': ORPHAN_REASON}), now))
+    return len(rows)
+
+
 def mark_interrupted(con, account_id, request_id, *, now) -> bool:
     """The service no longer knows a job the record says is alive: it restarted. The record ends as `interrupted` with its history untouched. -> True when it was changed.
     Never touches a finished record, or one young enough to be a job that is still being started."""

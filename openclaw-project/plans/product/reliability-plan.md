@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-23): Part 1 BUILT (PR #90, waiting for the owner's merge and approval of two policy lines); Part 2's server side BUILT on top of it (PR #91); the false "partly done" label of Part 3 fixed on top of that (branch `reliability-3a-released`); the rest not started.** Written from the production records, the code at `44aebf1` (deployed), the architecture notes in
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C). The rest of Part 3 and Parts 4 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -187,10 +187,18 @@ The plan as written:
 
 ### Part 3 - Tools and the browser follow the contract (B, C, E, F, G)
 
-**B is built 2026-11-23** (branch `reliability-3a-released`, on top of Part 2; not merged): a browser job that ended because the assistant answered and no step
-was coming is judged like a job that finished, whatever state the loop ended in. Run 395's shape now ends "Done". The rest of this part is not started; it is
-the first part that should wait for Part 1's numbers from the live stack. Found while building: a released job IS recorded when its request ends
-(`_release_waiting_browser_jobs`), so the 8 records left at "running" (C) come from another path, still to be found.
+**B is live** (#92): a browser job that ended because the assistant answered and no step was coming is judged like a job that finished, whatever state the
+loop ended in. Run 395's shape now ends "Done".
+
+**C is built** (2026-11-24): the 8 records left at "running" are all from 1 to 14 November, before the changes that record a job when its request ends; none
+has appeared since. The request worker now ends, every five minutes, any browser record still alive 15 minutes after its request ended
+(`job_states.close_orphans`): the record becomes `cancelled` with the reason "the task had ended", its history kept. That closes the eight old ones at the
+first pass and is the safety net for any path that leaves one behind; no migration is needed.
+
+Seen in the first live numbers (2026-11-24): no model call reports its token counts (0 of 4), so the provider's reply does not carry them at its end. Phase 14's
+baseline needs them; asking the provider for usage in a streamed reply changes what the runtime receives and must be tried on the harness first.
+
+The rest of this part is not started.
 
 The plan as written:
 
