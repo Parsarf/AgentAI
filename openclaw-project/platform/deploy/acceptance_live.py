@@ -95,8 +95,17 @@ def main():
             return unchecked('the owner\'s test account is not on this server (or has more than one customer)')
         raise
     c = client(user)
-    project = c.get('/v1/projects', secure=True).json()['projects'][0]['id']
-    conversation = post(c, '/v1/conversations', {'project_id': project}).json().get('conversation', {}).get('id')
+    # The test chat goes into the first project that has room for one. A project holds a limited number of open chats, and the account is the owner's own: on 2026-11-24 its
+    # first project held exactly that many, the test chat could not be made, and a good release was rolled back for it. A full account is the surroundings, not the release.
+    conversation, refused = None, []
+    for project in [p['id'] for p in c.get('/v1/projects', secure=True).json()['projects']]:
+        made = post(c, '/v1/conversations', {'project_id': project})
+        conversation = (made.json().get('conversation') or {}).get('id') if made.status_code == 200 else None
+        if conversation:
+            break
+        refused.append(made.status_code)
+    if not conversation and refused and all(code == 409 for code in refused) and RESULTS[0]['passed']:
+        return unchecked('every project of the test account is full (no room for the test chat): archive some of its chats')
     request = None
     if conversation:
         request = (post(c, f'/v1/conversations/{conversation}/send', {'message': 'Reply with exactly the word: ok', 'key': uuid.uuid4().hex, 'mode': 'text'}).json().get('request') or {}).get('id')
