@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-23): Part 1 BUILT (branch `reliability-1-record`, waiting for the owner's merge and approval of two policy lines); Parts 2 to 9 not started.** Written from the production records, the code at `44aebf1` (deployed), the architecture notes in
+**Status (2026-11-23): Part 1 BUILT (PR #90, waiting for the owner's merge and approval of two policy lines); Part 2's server side BUILT on top of it (branch `reliability-2-reason`); Parts 3 to 9 not started.** Written from the production records, the code at `44aebf1` (deployed), the architecture notes in
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -159,6 +159,20 @@ The plan as written:
 - Proves: the report reproduces section 1 from the live database.
 
 ### Part 2 - One reason for a chat failure (A, E)
+
+**Server side built 2026-11-23** (branch `reliability-2-reason`, on top of Part 1; not merged). A run the runtime ended in an error now has one reason, taken
+from facts before words: the request's last model call as the relay recorded it, then the status number the runtime puts in its own error message, then the
+runtime's wording. The task's result, the status line's note, the timeline's error row and the notice in the chat all carry that reason's one sentence. The
+runtime's own error text ("LLM request failed (..., HTTP 404).") is no longer copied into the chat as a reply. Proven on the real runtime
+(`tests/e2e`, `test_a_model_call_the_provider_refuses_...`).
+
+Found on the real runtime while building, and different from what its documents say: `agent.wait` returns only a text for a failed run, no structured detail.
+The detail exists on the runtime's `chat` events, which the bridge does not carry. It is not needed: the relay's record and the status number cover it.
+
+Still to do in this part: the app shows the sentence twice next to each other (status line and chat notice; removed with the client work of Part 5), and
+"try again after ..." for a key the runtime has put on hold.
+
+The plan as written:
 
 - The driver builds the fault from the relay's record and `errorDetail`: 429 and 529 `retry_later`; 404 on the model `needs_customer` (their choice of
   model); 401, 402, 403 on Lumina's key `needs_owner`; on the customer's own key `needs_customer`; container stopped `internal`; the runtime's

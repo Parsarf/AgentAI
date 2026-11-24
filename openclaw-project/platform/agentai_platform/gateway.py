@@ -359,6 +359,9 @@ class SyntheticGateway:
         outcome = (self.script(run['message'], run, self) if self.script else None) or {}
         run['tools'] = outcome.get('tools', run['tools'])
         if outcome.get('error'):
+            if outcome.get('error_reply'):      # what the real runtime does as well (proven in tests/e2e): its own words for the failure become the run's last assistant message, marked as ended by an error
+                self.sessions[run['session']].setdefault('stops', {})[run['id']] = 'error'
+                self._row(run['session'], 'agent', str(outcome['error_reply']), run['id'])['stop_reason'] = 'error'
             run.update(state='error', error=outcome['error'])
             return
         text = str(outcome.get('text', 'ack ' + run['id'])).strip()          # the runtime's history trims what the model wrote
