@@ -512,7 +512,7 @@
   },
   {
    "date": "2026-11-23",
-   "by": "Claude Code, reliability plan Part 1 (plans/product/reliability-plan.md); wording shown to the owner with the pull request, to be published only with their approval",
+   "by": "Claude Code, reliability plan Part 1 (plans/product/reliability-plan.md), approved by the owner on 2026-11-23 (\"approve and continue\")",
    "note": "Two new tables, kept 30 days (retention rule diagnostics): faults (why a task or a step did not finish: a reason code from a fixed list, who must act, a status number, an exception type, a state name) and model_calls (per request to the model: route lumina or own, HTTP status, times in milliseconds, the token counts the provider reported). Neither holds the text of a message, a page, a reply, an address or a name: faults.facts() keeps only numbers and single tokens, and a test feeds it page text. A new kind of data about a customer's tasks, so the policy gained one line under \"What we collect\" and one row under \"How long we keep it\". No new recipient: both stay in our own database. New column customer_requests.probe marks the deploy's own acceptance request (no customer data). Deleting a chat removes the rows of its tasks."
   }
  ],
