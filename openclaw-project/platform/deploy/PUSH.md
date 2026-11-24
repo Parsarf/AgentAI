@@ -14,6 +14,10 @@ Nothing here is deployed by a release on its own. Until the steps below are done
    bridge for reply drafts). The `agentai-platform` user must be allowed on the cell bridge socket (it already is: the request worker uses it).
 3. Caddy: add the block marked "Task state stream" from `deploy/caddy/Caddyfile.getlumina` (it must come before the general `/v1` rule) and reload.
 4. Web app environment (`accounts.env`): `AGENTAI_PUSH_PATH=/v1/push`, then restart the app.
+
+The gateway runs the app's code (`agentai_platform/work.py` builds every picture it sends), so it must be restarted with every release. The deploy does that
+(`agentai-deploy`, `OPTIONAL_UNITS`) since 2026-11-24; before, only a rollback did, and the gateway served the task picture of the release it was started on while
+the app's own reads served the current one. The monitor's `releases` check names any service that is not working from the current release.
 5. Check: open a chat, start a task, and look at the Network tab for one `push?...` request of type eventsource that stays open about 45 s and is
    replaced by the next one. `curl -s localhost:18803/v1/push?t=x` answers 403.
 

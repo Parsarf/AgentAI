@@ -19,6 +19,10 @@ RANK = {OK: 0, UNKNOWN: 1, WARN: 2, CRIT: 3}
 REQUIRED_UNITS = ('agentai-platform-app', 'openclaw-dashboard', 'caddy', 'agentai-cells-docker', 'agentai-cells-firewall',
                   'agentai-supervisor-native', 'agentai-lifecycle-worker', 'agentai-cell-bridge', 'agentai-request-worker', 'agentai-tool-relay', 'agentai-model-proxy',
                   'fail2ban', 'docker')
+# Every long-running service that runs the code of a release. After a deploy each of them must be working from the current release: one that was not restarted goes on
+# running the code it was started on, with nothing to show for it (the push gateway did for 22 hours and eleven releases, 2026-11-24).
+RELEASE_UNITS = ('agentai-platform-app', 'agentai-push', 'agentai-request-worker', 'agentai-tool-relay', 'agentai-hub-sync', 'agentai-knowledge', 'agentai-browse',
+                 'agentai-render', 'agentai-lifecycle-worker', 'agentai-supervisor-native', 'agentai-cell-bridge')
 REQUIRED_CONTAINERS = ('openclaw-production-openclaw-gateway-1', 'openclaw-production-litellm-1', 'openclaw-production-postgres-1')
 TIMERS = {'agentai-billing-worker.timer': 300, 'agentai-platform-mail.timer': 600, 'openclaw-ops-backup.timer': 2 * 86400,
           'agentai-ops-backup.timer': 2 * 86400, 'agentai-ops-monitor.timer': 1800}
@@ -47,6 +51,12 @@ class Monitor:
         states = self.probe.service_states(REQUIRED_UNITS)
         bad = [u for u in REQUIRED_UNITS if states.get(u) != 'active']
         return [result('services', CRIT if bad else OK, f'{len(bad)} required service(s) not active: ' + ', '.join(bad) if bad else 'all required services active', inactive=len(bad))]
+
+    def releases(self):
+        stale = self.probe.stale_services(RELEASE_UNITS)
+        named = ', '.join(f'{unit} ({release})' for unit, release in sorted(stale.items()))
+        return [result('releases', WARN if stale else OK, f'{len(stale)} service(s) still run an older release and were not restarted by the deploy: {named}'[:300] if stale
+                       else 'every service runs the current release', stale=len(stale))]
 
     def containers(self):
         states = self.probe.container_health(REQUIRED_CONTAINERS)
@@ -150,7 +160,7 @@ class Monitor:
         worst = max((RANK[s] for s, _ in findings), default=0)
         return [result('pinning', [OK, UNKNOWN, WARN, CRIT][worst], '; '.join(m for _, m in findings)[:300] if findings else 'images and dependencies are pinned by digest/hash', findings=len(findings))]
 
-    CHECKS = ('services', 'containers', 'capacity', 'database', 'queues', 'tasks', 'backups', 'timers', 'certificate', 'cells', 'exposure', 'pinning')
+    CHECKS = ('services', 'releases', 'containers', 'capacity', 'database', 'queues', 'tasks', 'backups', 'timers', 'certificate', 'cells', 'exposure', 'pinning')
 
     def run(self):
         correlation = uuid.uuid4().hex[:12]
