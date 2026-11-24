@@ -20,8 +20,7 @@ class Vocabulary(unittest.TestCase):
         from agentai_platform.browse import adapter
         self.assertIs(svc.FINAL, js.FINAL); self.assertIs(adapter.FINALS, js.FINAL)
         client = (__import__('pathlib').Path(__file__).resolve().parents[2] / 'lumina' / 'src' / 'lib' / 'live.ts').read_text()
-        listed = client.split('export const LIVE_STATES = [')[1].split(']')[0]
-        self.assertEqual(tuple(s.strip().strip("'") for s in listed.split(',')), js.LIVE)       # the web client's list is the server's (it used to lack `asking`)
+        self.assertNotIn('LIVE_STATES', client)        # the web client keeps no list of its own any more (it used to, and lacked `asking`): whether a browser is live is the server's answer (`live` on /v1/browse/<id>)
         self.assertNotIn('STATE_LABEL', client)        # the client no longer words browser states itself: the task's status line comes from work.py and an interruption's reason from the server
 
 

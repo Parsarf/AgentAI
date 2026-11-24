@@ -1,3 +1,4 @@
+import { useTabSignal } from '../lib/useTabSignal';
 import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import LocationRequest from './LocationRequest';
@@ -12,6 +13,7 @@ function Body() {
   const frame = useFrame()!; const { pathname } = useLocation();
   useEffect(() => { frame.setSheet(null); }, [pathname]);   // eslint-disable-line react-hooks/exhaustive-deps -- a sheet belongs to the page it was opened on
   const { app } = useData(); const { tasks } = useWork();
+  useTabSignal(tasks);
   const c = useCommandBar()!; useFrameKeys();
   const compact = frame.placement.widthClass === 'compact';
   return (

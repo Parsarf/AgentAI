@@ -519,7 +519,10 @@ class ChatService:
         self.conversation(principal, conversation_id)
         with self.store.connect() as con:
             self.store._authorize(con, principal)
-            rows = con.execute('''SELECT id,request_id,provenance,content,created_at,surface,(coalesce(native_message_id,'') LIKE 'ui-answer:%') AS ui_answer FROM chat_messages
+            # `terminal`: the platform's own notice that a task stopped (request_queue._terminal_notice). A screen that shows the task's status with its reason beside the
+            # message that asked for it leaves this notice out, so the reason is read once (reliability plan, Parts 2 and 5); a surface with no status of its own shows it.
+            rows = con.execute('''SELECT id,request_id,provenance,content,created_at,surface,(coalesce(native_message_id,'') LIKE 'ui-answer:%') AS ui_answer,
+                    (coalesce(native_message_id,'') LIKE 'lumina-terminal-%') AS terminal FROM chat_messages
                 WHERE account_id=? AND conversation_id=? AND id>? ORDER BY id LIMIT ?''',
                 (principal.account_id, conversation_id, after, limit + 1)).fetchall()
             tasks = con.execute('''SELECT r.id,r.state,r.paused,r.cancel_requested,r.result,r.created_epoch,r.outcome,r.outcome_note,r.verification,r.parked_reason,r.goal_mode,r.continues,

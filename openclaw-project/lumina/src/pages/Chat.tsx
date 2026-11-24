@@ -168,7 +168,7 @@ export default function Chat() {
           {id && !loaded && <p className="muted">Loading…</p>}
           {msgs.map(m => trail.skip.has(m.id) ? null : (
             <div key={m.id} className="turn">
-              {!m.ui_answer && (m.provenance === 'system'
+              {!m.ui_answer && !(m.terminal && mine.some(t => t.id === m.request_id)) && (m.provenance === 'system'      /* the "this task stopped" notice is left out where the task's status is shown below it: that says how it ended and why, once */
                 ? <p className="chat-record">{m.content}</p>      /* something Lumina recorded (a decision you made, a goal carrying on): not a message from you or the assistant */
                 : <div className={`bubble ${m.provenance === 'agent' ? 'agent' : 'you'}`}>{m.provenance === 'agent' ? <AgentResponse content={m.content} /> : <>{m.surface === 'panel' && <small>Sent from the side chat in your browser</small>}<Emojified text={m.content} /></>}</div>)}
               {asks.includes(m.provenance) && m.request_id && byRequest.get(m.request_id) && !msgs.some(next => next.id > m.id && next.request_id === m.request_id && asks.includes(next.provenance)) && (

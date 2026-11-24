@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api';
-import { toActivity, type ActivityItem } from './activity';
-import { useWorkOptional } from '../state/work';
+import type { Row } from './work';
+import { useWorkClientOptional, useWorkOptional } from '../state/work';
 
 export type Ev = { sequence: number; kind: string; created_at?: string; payload?: Record<string, unknown> };
 
-/** Follows one task's event stream by cursor: what it searched, opened, ran and wrote, as it happens. Where the push stream is on, the stream says when the task changed (its steps,
- *  its status line) and that is when this asks for the new events; a slow timer is only a safety net. Without the stream it asks about every 1.5 s while the task works. */
-export function useActivity(taskId: string, active: boolean): { rows: ActivityItem[]; err: string; events: Ev[] } {
+const NO_ROWS: Row[] = [];
+/** One task's record for a block inside an answer. `rows` are the server's own timeline, the same rows every other screen shows (one row per tool call, the browser's steps
+ *  inside their call, each failed step with its reason): this file used to build a second timeline of its own from the raw events, which had none of that. `events` are the
+ *  raw notes, still read by cursor for the blocks that list checkpoints: where the push stream is on, the stream says when the task changed and that is when this asks for the
+ *  new events (a slow timer is only a safety net); without the stream it asks about every 1.5 s while the task works. */
+export function useActivity(taskId: string, active: boolean): { rows: Row[]; err: string; events: Ev[] } {
   const [events, setEvents] = useState<Ev[]>([]); const [err, setErr] = useState(''); const cursor = useRef(0);
-  const work = useWorkOptional(); const streaming = work?.mode === 'stream'; const held = work?.details?.[taskId]?.task;
+  const work = useWorkOptional(); const client = useWorkClientOptional(); const streaming = work?.mode === 'stream'; const held = work?.details?.[taskId]?.task;
+  useEffect(() => (client && taskId ? client.watch(taskId) : undefined), [client, taskId]);       // keep the task's full record current while this block is on screen
   const signal = streaming ? `${held?.steps ?? ''}|${held?.label ?? ''}|${held?.now?.length ?? ''}|${held?.phase ?? ''}|${held?.outcome ?? ''}` : '';
   useEffect(() => { cursor.current = 0; setEvents([]); setErr(''); }, [taskId]);
   useEffect(() => {
@@ -28,6 +32,6 @@ export function useActivity(taskId: string, active: boolean): { rows: ActivityIt
     };
     load(); return () => { stop = true; clearTimeout(timer); };
   }, [taskId, active, streaming, signal]);
-  const rows = useMemo(() => toActivity(events), [events]);
-  return { rows, err, events };
+  const rows = work?.details?.[taskId]?.rows ?? NO_ROWS;
+  return useMemo(() => ({ rows, err, events }), [rows, err, events]);
 }

@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { MemoryRouter } from 'react-router-dom';
 import BlockView from './BlockView';
 import { DataProvider } from '../../state/data';
+import { WorkProvider } from '../../state/work';
 import type { Block } from '../../lib/genui/schema';
 
 const app = { api_version: 't', user: { email: 'a@b.co', role: 'customer' }, assistant: { state: 'ready' }, limits: { max_message_chars: 100 },
@@ -71,6 +72,16 @@ describe('requirements form', () => {
 describe('running plan', () => {
   const gated = { ...planSpec, phases: [ph('analyze'), ph('build', ['analyze'], { requiresApproval: true, description: 'Spend the budget' }), ph('test', ['build'])] };
   const running = (run: any, status: any = 'awaiting_approval') => mk('task_plan', gated, { plan: gated, revision: 2 }, { status: 'launched', run_status: status, run, launched_request_id: 'r' });
+  it('says about a phase that ran what the shared task state says about its task, and keeps the plan\'s words for one that has not', () => {
+    const tasks = [{ id: 'r-analyze', label: 'Done · not confirmed', tone: 'unsure', phase: 'ended' }, { id: 'r-build', label: 'Waiting for your permission', tone: 'attention', phase: 'needs_you' }];
+    const state = { tasks, details: {}, drafts: {}, loaded: true, mode: 'poll', rev: 'x' };
+    const client = { subscribe: () => () => {}, snapshot: () => state, start() {}, stop() {}, watch: () => () => {}, refresh: async () => {} } as any;
+    const b = running({ analyze: { ...done('analysis result'), request_id: 'r-analyze' }, build: { ...pend(), state: 'running', request_id: 'r-build', started_epoch: null }, test: pend() }, 'running');
+    render(<MemoryRouter><DataProvider><WorkProvider client={client}><BlockView block={b} onChanged={() => {}} /></WorkProvider></DataProvider></MemoryRouter>);
+    expect(screen.getByText('Done · not confirmed')).toBeTruthy();                                    // not "Done": nothing confirmed it
+    expect(screen.getByText('Waiting for your permission')).toBeTruthy();                             // not "Running": it is waiting for the person
+    expect(screen.getByText('Queued')).toBeTruthy();                                                  // a phase with no task yet
+  });
   it('shows per-phase states, locks finished phases, and lets future phases be edited via the live endpoint', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     view(running({ analyze: done('analysis result'), build: { ...pend(), state: 'awaiting_approval' }, test: pend() }));

@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.mocked(api).mockImplementation(async method => { if (method === 'POST') return {} as any; if (!fixture.run) throw new ApiError('not_found', 404); return fixture.run; });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
-const run = (over: object) => ({ request_id: 'active', goal: 'Current task', status: 'running', takeover: false, created_epoch: 100, url: 'https://example.com/login', events: [], pending_action: null, ...over });
+const run = (over: object) => ({ request_id: 'active', goal: 'Current task', status: 'running', live: true, takeover: false, created_epoch: 100, url: 'https://example.com/login', events: [], pending_action: null, ...over });
 
 describe('where /live goes', () => {
   it('is not a destination of its own: it opens the task that is going on, or Activity when nothing is', async () => {
@@ -55,6 +55,13 @@ describe('a task without a browser', () => {
     expect(screen.getByText('did not work')).toBeTruthy();                                    // the short mark stays; the sentence beside it is the reason
     expect(screen.getByText('This needs your approval before it runs. Nothing has run yet.')).toBeTruthy();
     expect(document.querySelectorAll('.wk-row-why').length).toBe(2);                           // a step that simply worked says nothing more
+  });
+  it('takes whether the browser is live from the server alone: a record that still says running is not live when the server says it is not', async () => {
+    browsing(); fixture.run = run({ status: 'running', live: false, events: [{ n: 1, kind: 'screenshot', file: 's1.jpg' }] });
+    mount();
+    await screen.findByText(/The last picture saved for this task/);
+    expect(screen.getByTestId('browser-screen').dataset.enabled).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
   });
   it('does not show a call as in progress once the task is over', async () => {
     hold(view({ id: 'active', state: 'failed', phase: 'ended', label: 'Failed', tone: 'bad', outcome: 'failed', verification: 'unverified', note: 'The run ended with an error before it finished.', controls: { retry: true } as any }),
@@ -118,7 +125,7 @@ describe('a task with a browser', () => {
   });
   it('is a record once the task is over: no live picture, no controls, the last saved picture if there is one', async () => {
     browsing({ state: 'completed', phase: 'ended', label: 'Done · not confirmed', tone: 'unsure', outcome: 'completed', verification: 'unverified', browser: { status: 'done', live: false, host: 'example.com' }, controls: {} as any });
-    fixture.run = run({ status: 'running', events: [{ n: 1, kind: 'screenshot', file: 's1.jpg' }] });       // a stale "running" from the browser service must not revive a finished task
+    fixture.run = run({ status: 'running', events: [{ n: 1, kind: 'screenshot', file: 's1.jpg' }] });       // even a browser the server still calls live does not revive a task that is over
     mount();
     await screen.findByText(/The last picture saved for this task/);
     expect(screen.getByTestId('browser-screen').dataset.enabled).toBe('false');

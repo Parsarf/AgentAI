@@ -2,19 +2,23 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useId, useR
 import { Dispatcher, type ActionEnv, type AuditEntry, type PhaseState, type Result } from '../actions';
 import type { Action, Block, Dataset } from '../schemas';
 import type { Ev } from '../../lib/useActivity';
-import type { ActivityItem } from '../../lib/activity';
+import type { Row, Tone } from '../../lib/work';
 import { ArtifactDraft, artifactDraft, downloadAnswers, previousDrafts, type LocalState, type RemoteState } from '../drafts';
 import { ApiError } from '../../lib/api';
 import { interactionError, failureCategory } from '../errors';
 
+/** One row of a task's record as a block shows it: the fields of the shared timeline row a block reads. */
+export type StepRow = Pick<Row, 'key' | 'category' | 'label' | 'detail' | 'output' | 'why' | 'steps'> & { status: string };
 export interface RequestInfo { id: string; state: string; result: string | null; message?: string; outcome?: string | null; outcome_note?: string | null; created_epoch: number }
 export interface PlanInfo { id: string; title: string; phases: Array<{ id: string; title: string; description?: string; dependsOn?: string[] }>; run: Record<string, { state: PhaseState; summary: string | null }>; run_status?: string }
 /** Where agent-native blocks get their facts: Lumina's own records. A block never carries these values itself. */
 export interface ExecutionProvider {
   request(id: string): RequestInfo | undefined;
   plan(id: string): PlanInfo | undefined;
-  /** A hook: follows the request's real events. */
-  useActivity(requestId: string, live: boolean): { rows: ActivityItem[]; err: string; events?: Ev[] };
+  /** A hook: the request's record, as the server's own timeline rows. */
+  useActivity(requestId: string, live: boolean): { rows: StepRow[]; err: string; events?: Ev[] };
+  /** How the task stands, in the server's one status line (the same words and tone every other screen shows). Absent where there is no live task state (fixtures). */
+  status?(requestId: string): { label: string; tone: Tone } | undefined;
   useSnapshot?(id: string, live: boolean): { usage?: { tokens: number | null; cost_microusd: number | null; estimated: boolean }; error?: string };
   /** Honest label for fixtures: shown on the block so nobody mistakes sample data for a real run. */
   label?: string;

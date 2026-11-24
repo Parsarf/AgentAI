@@ -477,6 +477,18 @@ class BrowseHttpChecks(ChatHTTPChecks):
         detail = a.get('/v1/browse/br1', secure=True).json()
         self.assertEqual((detail['status'], detail['takeover'], detail['events'][0]['n']), ('completed', False, 1))
 
+    def test_whether_the_browser_is_live_is_one_answer_given_here(self):
+        """The page is alive AND its task is still going. A record that still says running after its task ended is not live, and offers nothing to take over."""
+        self.seed('running')                                     # the browser record says running; its request (seeded as completed) is over
+        over = self.clients[0].get('/v1/browse/br1', secure=True).json()
+        self.assertEqual((over['status'], over['live'], over['takeover'], over['question']), ('running', False, False, None))
+        with connection.cursor() as c:
+            c.execute("UPDATE customer_requests SET state='running' WHERE id='br1'")
+        self.assertTrue(self.clients[0].get('/v1/browse/br1', secure=True).json()['live'])
+        with connection.cursor() as c:
+            c.execute("UPDATE browse_runs SET status='done' WHERE request_id='br1'")
+        self.assertFalse(self.clients[0].get('/v1/browse/br1', secure=True).json()['live'])
+
     def test_what_a_crash_was_and_where_is_kept_for_the_owner_and_not_sent_to_the_app(self):
         self.seed('error')
         with connection.cursor() as c:
