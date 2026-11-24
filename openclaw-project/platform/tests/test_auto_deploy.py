@@ -256,6 +256,39 @@ class LiveAcceptance(unittest.TestCase):
         self.assertEqual(deploy.LAST.read_text().strip(), 'b' * 40)
         self.assertIn('systemctl', [c[0] for c in calls])
 
+    def migrations(self, root, old, new, folder='migrations'):
+        for release, names in (('old', old), ('new', new)):
+            (root / 'app' / 'releases' / release / folder).mkdir(parents=True)
+            for name in names:
+                (root / 'app' / 'releases' / release / folder / name).write_text('-- ' + name)
+
+    def test_a_failed_release_that_migrated_the_database_is_not_rolled_back_onto_code_that_cannot_start(self):
+        """Production, 2026-11-24: the acceptance failed, the previous code was put back on a database that already had the new migration, and the app could not start."""
+        root, previous = self.tree(); self.patched(root, previous)
+        self.migrations(root, ['0054_phase6_mail.sql'], ['0054_phase6_mail.sql', '0055_faults.sql'])
+        run, calls = self.fake(root, passed=False)
+        self.assertEqual(deploy.accept(SHA, run=run), 43)
+        self.assertEqual(os.path.realpath(root / 'app' / 'current'), str(root / 'app' / 'releases' / 'new'))        # the failed release still serves
+        self.assertEqual(os.path.realpath(root / 'sup' / 'current'), str(root / 'sup' / 'releases' / 'new'))
+        self.assertEqual(deploy.LAST.read_text().strip(), SHA)
+        self.assertNotIn('systemctl', [c[0] for c in calls])                                                            # nothing was restarted
+        self.assertFalse(__import__('json').loads(deploy.TIERB.read_text())['passed'])                               # and the failure is on record
+
+    def test_a_failed_release_with_the_same_migrations_is_rolled_back_as_before(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        self.migrations(root, ['0054_phase6_mail.sql'], ['0054_phase6_mail.sql'])
+        run, calls = self.fake(root, passed=False)
+        self.assertEqual(deploy.accept(SHA, run=run), 40)
+        self.assertEqual(os.path.realpath(root / 'app' / 'current'), str(root / 'app' / 'releases' / 'old'))
+
+    def test_a_new_migration_of_the_web_framework_counts_too_and_a_removed_file_does_not(self):
+        root, previous = self.tree(); self.patched(root, previous)
+        self.migrations(root, ['0001_initial.py', '__init__.py'], ['0001_initial.py', '0002_more.py', '__init__.py'], folder='accounts/migrations')
+        self.assertIn('0002_more.py', deploy.cannot_go_back(previous))
+        root, previous = self.tree(); self.patched(root, previous)
+        self.migrations(root, ['0054_a.sql', '0055_b.sql'], ['0054_a.sql'])
+        self.assertEqual(deploy.cannot_go_back(previous), '')
+
     def test_a_crashed_acceptance_counts_as_a_failure(self):
         root, previous = self.tree(); self.patched(root, previous)
         run, _ = self.fake(root, passed=True, returncode=1)
