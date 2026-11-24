@@ -61,6 +61,23 @@ def unchecked(why):
     return 3
 
 
+def first_chat(projects, create):
+    """Make the test chat in the first of `projects` that takes one. `create(project)` is the HTTP call; a chat was made when the answer carries its id, whatever the status
+    (the endpoint answers 201: the first version of this looked for 200, refused every chat it had just made, and made one in each project). -> (chat id or None, the statuses
+    of the projects that refused). It stops at the first chat: never more than one is made."""
+    refused = []
+    for project in projects:
+        made = create(project)
+        try:
+            chat = (made.json().get('conversation') or {}).get('id')
+        except (ValueError, AttributeError):
+            chat = None
+        if chat:
+            return chat, refused
+        refused.append(made.status_code)
+    return None, refused
+
+
 def outside_cause(request, row):
     """Why the test request did not complete, when that is known to be outside the release; else None (a failure counts against the release)."""
     if not request or not row:
@@ -95,8 +112,11 @@ def main():
             return unchecked('the owner\'s test account is not on this server (or has more than one customer)')
         raise
     c = client(user)
-    project = c.get('/v1/projects', secure=True).json()['projects'][0]['id']
-    conversation = post(c, '/v1/conversations', {'project_id': project}).json().get('conversation', {}).get('id')
+    # The test chat goes into the first project that has room for one. A project holds a limited number of open chats, and the account is the owner's own: on 2026-11-24 its
+    # first project held exactly that many, the test chat could not be made, and a good release was rolled back for it. A full account is the surroundings, not the release.
+    conversation, refused = first_chat([p['id'] for p in c.get('/v1/projects', secure=True).json()['projects']], lambda project: post(c, '/v1/conversations', {'project_id': project}))
+    if not conversation and refused and all(code == 409 for code in refused) and RESULTS[0]['passed']:
+        return unchecked('every project of the test account is full (no room for the test chat): archive some of its chats')
     request = None
     if conversation:
         request = (post(c, f'/v1/conversations/{conversation}/send', {'message': 'Reply with exactly the word: ok', 'key': uuid.uuid4().hex, 'mode': 'text'}).json().get('request') or {}).get('id')
