@@ -156,6 +156,21 @@ def _text(value, limit) -> str:
     return value[:limit] if isinstance(value, str) else ''
 
 
+_SKILL = re.compile(r'(?:^|/)[A-Za-z-]*skills/([A-Za-z0-9_-]{1,60})/SKILL\.md$')       # .../skills/<name>/SKILL.md and .../workshop-skills/<name>/SKILL.md: the runtime's own layout
+
+
+def plain_file(label, detail) -> tuple:
+    """(label, detail) of a file step as a customer reads it. The assistant reads its own instruction files before it works, and the step showed where they live
+    ("Read a file ~/.openclaw/workspace/skills/lumina-browsing/SKILL.md": 84 of the 155 file steps in 30 days). That is said as what it is, with the subject of the
+    instructions and no path. Any other file outside the workspace is named by its name alone; a file in the workspace keeps its path, which is the customer's own."""
+    skill = _SKILL.search(detail)
+    if skill:
+        return 'Read its instructions', re.sub(r'[-_]+', ' ', re.sub(r'^lumina[-_]', '', skill.group(1)))
+    if detail.startswith(('~', '/')) or '.openclaw/' in detail:
+        return label, detail.rstrip('/').rsplit('/', 1)[-1]
+    return label, detail
+
+
 def read_timeline(events) -> tuple:
     """Public events (oldest first: {'sequence','kind','payload','created_at'}) -> (one row per thing that happened, the browser steps whose call has not appeared yet).
     The second is not part of the record: it is only for saying what is happening right now.
@@ -182,6 +197,9 @@ def read_timeline(events) -> tuple:
             category = _text(p.get('category'), 20) or 'other'
             at_index = by_ref.get(ref)
             reason = p.get('reason') if p.get('reason') in REASONS else ''
+            if category == 'file':
+                p = {**p}
+                p['label'], p['detail'] = plain_file(_text(p.get('label'), 80), _text(p.get('detail'), 400))
             if at_index is None:
                 row = {'key': ref, 'kind': 'tool', 'category': category, 'label': _text(p.get('label'), 80) or 'Used a tool', 'detail': _text(p.get('detail'), 400),
                        'output': _text(p.get('output'), 1500), 'status': status, 'at': at, 'ended_at': at if status != 'running' else None, 'first': seq, 'seq': seq, 'group': None,

@@ -115,6 +115,27 @@ class BrowserSteps(unittest.TestCase):
         self.assertEqual((len(row['steps']), row['steps'][-1]['label']), (work.MAX_STEPS, 'Clicked “Item 91”'))
 
 
+class FileSteps(unittest.TestCase):
+    @staticmethod
+    def file(seq, label, detail, status='done'):
+        return ev(seq, 'activity', ref=f'c{seq}', status=status, category='file', label=label, detail=detail)
+
+    def test_the_assistant_s_own_instruction_files_are_said_as_that_without_where_they_live(self):
+        rows = work.timeline([self.file(1, 'Read a file', '~/.openclaw/workspace/skills/lumina-browsing/SKILL.md'),
+                              self.file(2, 'Read a file', '~/.openclaw/agents/main/agent/workshop-skills/lumina-browser-driving/SKILL.md'),
+                              self.file(3, 'Read a file', '/home/node/.openclaw/agents/main/config.json', 'running'),
+                              self.file(4, 'Wrote a file', 'out/report.md'), self.file(5, 'Read a file', 'notes/SKILL.md')])
+        self.assertEqual([(r['label'], r['detail']) for r in rows],
+                         [('Read its instructions', 'browsing'), ('Read its instructions', 'browser driving'), ('Read a file', 'config.json'), ('Wrote a file', 'out/report.md'),
+                          ('Read a file', 'notes/SKILL.md')])                                 # a file of the customer's own that happens to have that name keeps its path
+        self.assertFalse(any('.openclaw' in r['detail'] or r['detail'].startswith(('~', '/')) for r in rows))
+
+    def test_a_file_the_task_wrote_is_still_counted_and_named_by_its_own_path(self):
+        row = {'state': 'completed', 'created_epoch': 1}
+        rows = work.timeline([self.file(1, 'Read a file', '~/.openclaw/workspace/skills/lumina-files/SKILL.md'), self.file(2, 'Wrote a file', 'out/report.md')])
+        self.assertEqual(work.evidence(rows, [], row, 0)['files'], ['out/report.md'])
+
+
 class ChecklistChecks(unittest.TestCase):
     STEPS = [{'id': 'read', 'title': 'Read', 'status': 'done'}, {'id': 'write', 'title': 'Write', 'status': 'running'}, {'id': 'check', 'title': 'Check', 'status': 'pending'}]
 
