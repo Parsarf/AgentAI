@@ -300,7 +300,7 @@ class BrowseService:
             waiting = job.observation is not None
         if waiting:
             job.trace.emit('agent', what='released: the request ended')
-            job.cancel_why = job.cancel_why or 'the assistant went on without this page'
+            job.cancel_why = job.cancel_why or job_states.RELEASED_REASON
             job.cancel.set()
         return {'ok': True, 'released': waiting}
 
