@@ -27,6 +27,7 @@ class FakeProbe:
         self.files = {'/opt/openclaw-production/docker-compose.yml': 'image: postgres@sha256:' + 'a' * 64 + '\nimage: openclaw-gateway:2026.9.6-sdk-peer\n', '/opt/agentai-platform/current/requirements.lock': 'Django==5.2.17 --hash=sha256:aa\n'}
         self.ufw_text, self.modes, self.ssh = 'Status: active', [], 'PasswordAuthentication no\nPermitRootLogin prohibit-password'
     def service_states(self, units): return dict(self.units)
+    def stale_services(self, units): self.asked_about = tuple(units); return dict(getattr(self, 'stale', {}))
     def container_health(self, names): return dict(self.containers)
     def disk_used_percent(self): return self.disk
     def mem_available_mb(self): return self.mem
@@ -74,6 +75,37 @@ class MonitorChecks(unittest.TestCase):
         self.probe.cells['running'] = 2; self.assertEqual(self.status('running_cells')['status'], CRIT)
         self.probe.cells['firewall_loaded'] = False; self.assertEqual(self.status('cell_engine')['status'], CRIT)
         self.probe.cells['quarantine_age_days'] = 9; self.assertEqual(self.status('quarantine')['status'], WARN)
+    def test_a_service_still_running_an_older_release_is_named(self):
+        """A deploy that does not restart a service leaves it running the code it was started on, with nothing to show for it (the push gateway, 2026-11-24)."""
+        self.assertEqual(self.status('releases')['status'], OK)
+        from agentai_platform.ops.monitor import RELEASE_UNITS
+        self.assertEqual(self.probe.asked_about, RELEASE_UNITS); self.assertIn('agentai-push', RELEASE_UNITS)
+        self.probe.stale = {'agentai-push': '20261123T015329Z-44aebf1'}
+        found = self.status('releases')
+        self.assertEqual((found['status'], found['counts']['stale']), (WARN, 1)); self.assertIn('agentai-push (20261123T015329Z-44aebf1)', found['summary'])
+
+    def test_the_probe_reads_which_release_a_running_service_works_from(self):
+        import os
+        from unittest.mock import patch
+        from agentai_platform.ops import hostprobe
+        app, sup = self.root / 'app', self.root / 'sup'
+        for tree in (app, sup):
+            for name in ('old', 'new'):
+                (tree / 'releases' / name / 'sub').mkdir(parents=True)
+            os.symlink(tree / 'releases' / 'new', tree / 'current')
+        pids = {'agentai-push': '11', 'agentai-platform-app': '12', 'agentai-browse': '13', 'agentai-render': '0', 'agentai-knowledge': '', 'outside': '14', 'gone': '15'}
+        folders = {'11': app / 'releases' / 'old', '12': app / 'releases' / 'new' / 'sub', '13': sup / 'releases' / 'old' / 'sub', '14': self.root}
+        real = os.readlink
+        def readlink(path, *args, **kwargs):
+            if not str(path).startswith('/proc/'): return real(path, *args, **kwargs)      # realpath reads links of its own
+            pid = str(path).split('/')[2]
+            if pid not in folders: raise OSError('no such process')
+            return str(folders[pid])
+        probe = hostprobe.HostProbe({}, None)
+        with patch.object(hostprobe, 'sh', lambda argv, **kw: (0, pids[argv[2]] + '\n')), patch.object(hostprobe.os, 'readlink', readlink):
+            stale = probe.stale_services(list(pids), trees=(str(app), str(sup)))
+        self.assertEqual(stale, {'agentai-push': 'old', 'agentai-browse': 'old'})      # not the one on the current release, the ones not running, or one that runs no release
+
     def test_a_task_failure_that_is_the_owner_s_to_look_at_warns_by_reason_and_a_stale_browser_job_is_seen(self):
         self.assertEqual((self.status('task_failures')['status'], self.status('stale_children')['status']), (OK, OK))
         self.probe.tasks.update(owner_faults={'model.lumina_key_refused': 2, 'run.unclassified': 1}, ended_badly=3)

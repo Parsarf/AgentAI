@@ -209,6 +209,17 @@ class LiveAcceptance(unittest.TestCase):
         self.assertEqual(ran, [['systemctl', 'restart', *deploy.UNITS, *deploy.APP_UNITS], ['systemctl', 'try-restart', *deploy.OPTIONAL_UNITS]])      # the render service and the knowledge worker run release code too
         self.assertTrue(any('web app bundle restored' in d for d in done))
 
+    def test_every_service_that_runs_release_code_is_restarted_by_a_deploy(self):
+        """The push gateway runs the app tree and was only in the rollback's list: an ordinary deploy left it on the release it was started on (2026-11-24: eleven
+        releases behind). Every unit the monitor expects on the current release is in a list the deploy restarts, or is restarted by its own step."""
+        from agentai_platform.ops.monitor import RELEASE_UNITS
+        own_step = {'agentai-platform-app', 'agentai-supervisor-native'}      # release.py restarts the app; the supervisor is restarted when no cell operation is in flight
+        self.assertEqual(sorted(set(RELEASE_UNITS) - set(deploy.UNITS) - set(deploy.OPTIONAL_UNITS) - own_step), [])
+        self.assertIn('agentai-push', deploy.OPTIONAL_UNITS)
+        source = Path(deploy.__file__).read_text() if hasattr(deploy, '__file__') and deploy.__file__ else ''
+        if source:
+            self.assertIn("sh(['systemctl', 'try-restart', *OPTIONAL_UNITS])", source)       # in the ordinary deploy, not only in a rollback
+
     def test_a_rollback_to_a_release_that_is_not_there_changes_nothing(self):
         root, previous = self.tree()
         previous['old_sup'] = str(root / 'sup' / 'releases' / 'gone')

@@ -33,6 +33,24 @@ class HostProbe:
     def service_states(self, units):
         return {u: sh(['systemctl', 'is-active', u])[1].strip() for u in units}
 
+    def stale_services(self, units, trees=('/opt/agentai-platform', '/opt/agentai-supervisor')):
+        """{unit: the release folder it runs from} for every running unit whose process works from a release that is not its tree's current one. A unit that is not
+        running, or whose folder cannot be read, is left out: this only ever reports what it saw."""
+        stale = {}
+        for unit in units:
+            pid = sh(['systemctl', 'show', unit, '-p', 'MainPID', '--value'])[1].strip()
+            if not pid.isdecimal() or pid == '0':
+                continue
+            try:
+                cwd = os.path.realpath(os.readlink(f'/proc/{pid}/cwd'))
+            except OSError:
+                continue
+            for tree in trees:
+                releases, current = os.path.realpath(os.path.join(tree, 'releases')) + os.sep, os.path.realpath(os.path.join(tree, 'current'))
+                if cwd.startswith(releases) and not (cwd + os.sep).startswith(current + os.sep):
+                    stale[unit] = cwd[len(releases):].split(os.sep)[0][:80]
+        return stale
+
     def container_health(self, names):
         out = {}
         for n in names:
