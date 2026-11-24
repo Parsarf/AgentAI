@@ -567,6 +567,24 @@ class NativeEndToEnd(unittest.TestCase):
         events = [e['payload'] for e in S.events.events(S.principals['a'], sent['id'])['events']]
         self.assertFalse([p for p in events if 'not found' in str(p.get('output', '')) or 'could not be read' in str(p.get('output', ''))])
 
+    def test_a_model_call_the_provider_refuses_gives_the_task_one_reason_and_the_runtimes_words_are_not_a_reply(self):
+        """Reliability plan, Part 2. The real runtime writes its own words for a failed model call as the run's last assistant message, marked as ended by an error
+        ("LLM request failed (..., HTTP 404)."). Lumina must not show that as the assistant's reply, and it takes the status number in it as the fact that decides the one
+        sentence the customer reads. (In production the relay's own record of the call comes first; this stack's model is called directly, so the runtime's number decides.)"""
+        from agentai_platform.faults_registry import REASONS
+        S = self.S
+        for status, reason in ((404, 'model.not_offered'), (500, 'model.provider_error')):
+            with self.subTest(status=status):
+                sent, row = self.run_to_end('a', f'please do it SCENARIO:refuse{status}', f'k-refuse-{status}')
+                self.assertEqual((row['state'], row['outcome']), ('failed', 'failed'))
+                self.assertEqual((row['outcome_note'], row['result']), (REASONS[reason].customer, REASONS[reason].customer))
+                replies = [r['content'] for r in S.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='agent'", (sent['id'],))]
+                self.assertEqual(replies, [])
+                fault, = S.rows('SELECT reason FROM faults WHERE request_id=?', (sent['id'],))
+                self.assertEqual(fault['reason'], reason)
+        _, after = self.run_to_end('a', 'an ordinary question', 'k-after-refusals')
+        self.assertEqual(after['state'], 'completed', after['result'])                              # neither status makes the runtime disable the key
+
     def test_a_refused_model_call_does_not_disable_the_key_for_the_next_message(self):
         """What the runtime does with a refusal from its model provider decides the status Lumina's gateway may use (model_keys.RELAY_REFUSAL). With 403 the runtime disables
         the key and the customer's next message fails at once; with 409 only the refused call fails."""

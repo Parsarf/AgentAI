@@ -232,6 +232,121 @@ class Recorded(Base):
         self.assertEqual(self.request(sent['id'])['state'], 'failed')
 
 
+class OneReason(Base):
+    """Part 2: a run the runtime ended in an error has ONE reason, taken from facts before words, and every place that says why says the same sentence."""
+    RUNTIME = '\u26a0\ufe0f Agent failed before reply: LLM request failed: provider rejected the request schema or tool payload.\nTo view logs, run `openclaw logs --follow` in a terminal.'
+
+    def setUp(self):
+        super().setUp()
+        from agentai_platform.events import EventService
+        self.make_worker(events=EventService(self.store))            # with the timeline, so the error row can be read too
+
+    def fail(self, error_reply=None, calls=(), error=None, key='k1'):
+        """Send a message whose run the runtime ends in an error, after these model calls were recorded for it."""
+        def script(text, run, gw):
+            for status, route in calls:
+                model_calls.note(self.store, 'a', {'route': route, 'status': status, 'total_ms': 100}, now=self.now)
+            return {'error': error or self.RUNTIME, **({'error_reply': error_reply} if error_reply else {})}
+        self.gateway.script = script
+        sent = self.say(key=key)
+        self.worker.tick()
+        return self.request(sent['id'])
+
+    def said(self, row):
+        """Everything that tells the customer why: the status line's note, the task's result, the timeline's error row, the notice in the chat."""
+        error, = [json.loads(r[0])['summary'] for r in self.rows("SELECT public_payload FROM events WHERE task_id=? AND kind='error'", (row['id'],))]
+        notice, = [r[0] for r in self.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='system'", (row['id'],))]
+        return row['outcome_note'], row['result'], error, notice
+
+    def reason(self, row):
+        return [r['reason'] for r in self.rows('SELECT reason FROM faults WHERE request_id=? ORDER BY created_epoch, rowid', (row['id'],))][-1]
+
+    def test_a_refused_key_of_lumina_s_is_ours_to_fix_and_every_place_says_so_in_the_same_words(self):
+        row = self.fail(calls=[(200, 'lumina'), (403, 'lumina')])
+        sentence = REASONS['model.lumina_key_refused'].customer
+        note, result, error, notice = self.said(row)
+        self.assertEqual((row['state'], row['outcome'], note, result, error), ('failed', 'failed', sentence, sentence, sentence))
+        self.assertIn(sentence, notice)
+        self.assertEqual(self.reason(row), 'model.lumina_key_refused')
+        self.assertNotIn('try again.', sentence.split('we have been told')[0])      # it does not send the customer to retry something only the owner can fix
+
+    def test_whose_key_it_was_decides_who_is_asked_to_act(self):
+        row = self.fail(calls=[(401, 'own')])
+        self.assertEqual((self.reason(row), row['outcome_note']), ('model.own_key_refused', REASONS['model.own_key_refused'].customer))
+
+    def test_a_model_that_is_no_longer_offered_is_the_customer_s_choice_to_change(self):
+        row = self.fail(calls=[(404, 'lumina')])
+        self.assertEqual(self.reason(row), 'model.not_offered')
+        self.assertIn('Settings > Assistant > Models', row['outcome_note'])
+
+    def test_a_last_call_that_worked_is_not_blamed_for_the_failure(self):
+        row = self.fail(calls=[(429, 'lumina'), (200, 'lumina')])
+        self.assertEqual((self.reason(row), row['outcome_note']), ('run.unclassified', REASONS['run.unclassified'].customer))
+
+    def test_the_runtime_s_own_words_for_a_failed_call_are_never_shown_as_a_reply_and_their_status_is_used(self):
+        row = self.fail(error_reply='\u26a0\ufe0f LLM request failed (model not found, HTTP 404).')
+        self.assertEqual(self.rows("SELECT count(*) FROM chat_messages WHERE request_id=? AND provenance='agent'", (row['id'],))[0][0], 0)
+        self.assertEqual((self.reason(row), row['outcome_note']), ('model.not_offered', REASONS['model.not_offered'].customer))
+        for text in self.said(row):
+            self.assertNotIn('HTTP', text); self.assertNotIn('LLM', text); self.assertNotIn('openclaw', text)
+
+    def test_with_only_the_runtime_s_status_the_key_is_the_customer_s_when_the_task_ran_on_their_own_model(self):
+        self.driver._reserved = lambda claim: 1                          # the own-key marker
+        row = self.fail(error_reply='\u26a0\ufe0f LLM request failed (authentication failed, HTTP 401). Re-authenticate the provider and try again.')
+        self.assertEqual(self.reason(row), 'model.own_key_refused')
+
+    def test_wording_the_driver_already_knew_keeps_its_reason_whatever_number_came_with_it(self):
+        row = self.fail(error='The model request was rate-limited. Please try again in a few minutes.', error_reply='\u26a0\ufe0f LLM request failed (rate limited, HTTP 500).')
+        self.assertEqual(self.reason(row), 'model.rate_limited')
+
+    def test_an_answer_that_ended_in_an_error_part_way_is_still_the_assistant_s_answer(self):
+        self.gateway.script = lambda text, run, gw: {'text': 'Here is the first half of the report', 'stop_reason': 'error'}
+        sent = self.say()
+        self.worker.tick()
+        self.assertEqual(self.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='agent'", (sent['id'],))[0][0], 'Here is the first half of the report')
+
+    def test_a_run_the_customer_stopped_is_not_given_a_failure_reason(self):
+        sent = self.say()
+        claim = self.queue.claim(owner='w', capacity=OK)
+        with self.store.connect() as con:
+            con.execute('UPDATE customer_requests SET cancel_requested=1 WHERE id=?', (sent['id'],))
+        self.driver._error_status[sent['id']] = 500
+        receipt = self.driver._failed(claim, self.gateway, 'session', {'status': 'error', 'aborted': True, 'error': 'aborted'})
+        self.assertEqual((receipt.state, receipt.outcome, self.driver._error_status), ('cancelled', 'cancelled', {}))
+        self.assertEqual(self.rows('SELECT count(*) FROM faults')[0][0], 0)
+
+
+class Released(Base):
+    """A browser job the assistant no longer needed (it answered, and no step was coming) is not the browser failing: production 2026-11-23, a task that gave its full
+    answer and was labelled "Partly done: the browser could not complete this"."""
+    def test_a_page_the_assistant_went_on_without_does_not_make_the_task_partly_done(self):
+        from agentai_platform import outcome
+        from agentai_platform.browse.job_states import RELEASED_REASON
+        ok = {'status': 'ok'}
+        for state in ('stopped', 'cancelled'):
+            verdict = outcome.judge(native=ok, jobs=[{'state': state, 'reason': RELEASED_REASON, 'url': 'https://shop.example/c/shorts'}])
+            self.assertEqual((verdict.outcome, verdict.verification, verdict.note, verdict.line), ('completed', 'not_applicable', 'Done.', ''))
+        cart = [{'state': 'stopped', 'reason': RELEASED_REASON, 'url': 'https://shop.example/cart'}]
+        added = [{'action': 'click', 'result': 'ok', 'changed': True, 'label': 'Add to cart'}]
+        self.assertEqual(outcome.judge(native=ok, jobs=cart, steps=added).verification, 'verified')                 # judged like a job that finished: a cart claim is still checked
+        self.assertEqual(outcome.judge(native=ok, jobs=cart).verification, 'unverified')
+        for reason in ('no answer to the question', 'stopped by you', ''):                                         # any other stop is still what it was
+            self.assertEqual(outcome.judge(native=ok, jobs=[{'state': 'stopped', 'reason': reason}]).outcome, 'partial')
+
+    def test_the_whole_way_through_the_driver(self):
+        from agentai_platform.browse.job_states import RELEASED_REASON
+        sent = self.say()
+        with self.store.connect() as con:
+            con.execute('INSERT INTO browse_runs(account_id,request_id,goal,status,reason,url,created_epoch,updated_epoch) VALUES (?,?,?,?,?,?,?,?)',
+                        ('a', sent['id'], 'goal', 'stopped', RELEASED_REASON, 'https://shop.example/c/shorts', self.now, self.now))
+        self.gateway.script = lambda text, run, gw: {'text': 'The most expensive shorts are four styles tied at one price.'}
+        self.worker.tick()
+        row = self.request(sent['id'])
+        self.assertEqual((row['state'], row['outcome'], row['outcome_note']), ('completed', 'completed', 'Done.'))
+        self.assertNotIn('Stopped:', row['result'])
+        self.assertEqual(self.rows('SELECT count(*) FROM faults')[0][0], 0)
+
+
 class Kept(Base):
     def test_both_tables_have_a_retention_rule_and_are_swept_after_thirty_days(self):
         with self.store.connect() as con:

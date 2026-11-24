@@ -122,6 +122,10 @@ BUSY_FAILURE = ('The model provider was too busy to finish this task, even after
 ALLOWANCE_FAILURE = 'Your Lumina model allowance is exhausted. Choose a saved personal model in Settings or contact the owner to review the allowance.'
 
 
+RUNTIME_ERROR_MARK = '⚠️'                                              # how the runtime begins its own words for a failed model call
+RUNTIME_ERROR_STATUS = re.compile(r'\bHTTP (\d{3})\b')                 # ...and the status number it puts in them
+
+
 def failure_message(error) -> str:
     """What the customer is told when a run ends in an error. The runtime's own wording is never shown (it can name providers or hosts); it only decides which fixed sentence applies."""
     text = str(error or '').lower()
@@ -155,6 +159,7 @@ class ChatDriver:
         self.sleep = sleep if sleep is not None else (lambda seconds: None)
         self.pause, self.wait_ms, self.run_timeout, self.usage_wait = pause, wait_ms, run_timeout, usage_wait
         self.spend_check_seconds, self.park_limit, self.goal_chain_limit, self.outage_limit = spend_check_seconds, park_limit, goal_chain_limit, outage_limit
+        self._error_status = {}          # request id -> the HTTP status the runtime put in its own error message for that request's run (a fact for _run_fault)
         self.store = store
         self.ledger = ledger
         self.gateway_factory = gateway_factory
@@ -657,8 +662,19 @@ class ChatDriver:
         for run_id, reason in last_stops.items():
             seen.difference_update({k for k in seen if k[0] == 'stop' and k[1] == run_id})
             seen.add(('stop', run_id, reason))
+        # When a model call fails, the runtime writes its own words for it as the run's last assistant message ("⚠️ LLM request failed (..., HTTP 404)."), marked as ended by an
+        # error. That is the runtime talking, not the assistant: it is never shown as a reply (it names what a customer cannot act on, and Lumina says why the task ended in one
+        # sentence of its own). The status number in it is kept as a fact for that sentence (proven on the real runtime, 2026-11-23: tests/e2e).
+        spoken = []
+        for row in rows:
+            if row.get('stop_reason') == 'error' and str(row.get('content') or '').lstrip().startswith(RUNTIME_ERROR_MARK):
+                found = RUNTIME_ERROR_STATUS.search(row['content'])
+                if found:
+                    self._error_status[claim.request_id] = int(found.group(1))
+            else:
+                spoken.append(row)
         with self.coordinator.transaction() as con:
-            added = self._absorb(con, claim, rows)
+            added = self._absorb(con, claim, spoken)
         if added:
             timing.mark(claim.request_id, 'mirror', new_rows=added, history_rows=len(rows))      # a completed assistant row reached the database (what the UI can show next poll)
         for item in page.get('activity') or []:
@@ -845,8 +861,7 @@ class ChatDriver:
         self._stop_browser_jobs(claim)
         self._pause_goal(claim, gateway, session, 'The run took too long and was stopped.')
         self._emit(claim, 'progress', {'summary': 'The run took too long and was stopped.'}, 'gateway')
-        return self._close(claim, 'failed', 'The assistant took too long and was stopped. Please try a smaller request.', gateway, self._before(claim),
-                           verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant took too long and was stopped.', ''), fault=faults.Fault('run.timeout'))
+        return self._close_failed(claim, faults.Fault('run.timeout'), gateway, self._before(claim))
 
     def _parked_too_long(self, claim):
         with self.store.connect() as con:
@@ -960,15 +975,45 @@ class ChatDriver:
             return []                                        # an older database without the table: nothing was checked with the knowledge tools
         return [{'kind': r['kind'], 'outcome': r['outcome'], 'detail': _json.loads(r['detail_json'] or '{}')} for r in rows]
 
+    def _run_fault(self, claim, native):
+        """Why the runtime ended this request's run in an error, from facts before words: the request's LAST model call as Lumina's own relay recorded it (when that call
+        failed, it is the cause, and the relay knows its status and whose key it was); then the status number the runtime put in its own error message; and only when neither
+        exists, which reason the runtime's wording matches. One fault, and every place that says why the task failed says its sentence."""
+        seen = self._error_status.pop(claim.request_id, None)
+        try:
+            with self.store.connect() as con:
+                call = con.execute('SELECT route,status,code FROM model_calls WHERE account_id=? AND request_id=? ORDER BY created_epoch DESC, rowid DESC LIMIT 1',
+                                   (claim.account_id, claim.request_id)).fetchone()
+        except Exception:
+            call = None                                    # a database from before the record existed: the words decide, as before
+        if call is not None and not 200 <= call['status'] < 300:
+            found = faults.of_model_status(call['status'], call['code'], own=call['route'] == 'own')
+            if found is not None:
+                return found
+        worded = faults.of_runtime_error(native['error'])
+        if seen is not None and worded.reason == 'run.unclassified':
+            found = faults.of_model_status(seen, own=self._reserved(claim) == 1)           # 1 is the own-key marker (budget.OWN_KEY_AMOUNT): their model, their key
+            if found is not None:
+                return found
+        return worded
+
     def _failed(self, claim, gateway, session, native):
         self._stop_browser_jobs(claim)
         self._pause_goal(claim, gateway, session, 'The run ended with an error.')
-        message = failure_message(native['error'])
-        self._emit(claim, 'error', {'summary': message, 'category': 'runtime'}, 'gateway')
         state = 'cancelled' if native['aborted'] and self._cancel_requested(claim) else 'failed'
-        return self._close(claim, state, message if state == 'failed' else 'Cancelled during execution', gateway, self._before(claim),
-                           verdict=outcome_mod.judge(native=native, cancelled=state == 'cancelled'),
-                           fault=faults.of_runtime_error(native['error']) if state == 'failed' else None)
+        if state == 'cancelled':
+            self._error_status.pop(claim.request_id, None)
+            return self._close(claim, state, 'Cancelled during execution', gateway, self._before(claim), verdict=outcome_mod.judge(native=native, cancelled=True))
+        fault = self._run_fault(claim, native)
+        message = fault.customer_words
+        self._emit(claim, 'error', {'summary': message, 'category': 'runtime'}, 'gateway')
+        return self._close_failed(claim, fault, gateway, self._before(claim))
+
+    def _close_failed(self, claim, fault, gateway=None, before=None):
+        """Close a request as failed for this reason. The reason's one sentence is the task's result AND the verdict's note, so the status line, the notice in the chat and the
+        timeline can no longer say different things about one failure (they used to: a specific sentence in the chat under a generic one in the status line)."""
+        words = fault.customer_words
+        return self._close(claim, 'failed', words, gateway, before, verdict=outcome_mod.Verdict('failed', 'unverified', words, ''), fault=fault)
 
     def _goal(self, gateway, session):
         try:
@@ -1232,8 +1277,7 @@ class ChatDriver:
 
         class _Blind:
             def usage_snapshot(self): raise RuntimeError('runtime unreachable')
-        return self._close(claim, 'failed', 'The assistant could not be reached for this request, so it was stopped. Please try again.', _Blind(), None,
-                           verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant could not be reached.', ''), fault=faults.Fault('cell.unreachable'))
+        return self._close_failed(claim, faults.Fault('cell.unreachable'), _Blind(), None)
 
     @staticmethod
     def _cell_gone(gateway):
@@ -1287,8 +1331,7 @@ class ChatDriver:
         if claim.conversation_id is None:
             raise ValueError('chat driver requires a conversation binding')
         if not self._deliveries(claim):
-            return self._close(claim, 'failed', 'Your request could not be started. Nothing was charged. Please send it again.',
-                               verdict=outcome_mod.Verdict('failed', 'unverified', 'It could not be started.', ''), fault=faults.Fault('cell.not_started'))
+            return self._close_failed(claim, faults.Fault('cell.not_started'))
         closed = self._already_closed(claim)
         if closed is not None:
             return closed

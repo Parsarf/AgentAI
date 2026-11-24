@@ -26,6 +26,9 @@ INTERRUPTED = 'interrupted'
 FINAL = ('done', 'handoff', 'stopped', 'blocked', 'budget', 'error', 'cancelled', 'stuck', 'max_steps', 'deadline', INTERRUPTED)
 OVER = tuple(s for s in FINAL if s != 'handoff')
 FAILED_ATTEMPT = ('error', 'failed', 'deadline')        # endings that count against retrying the same browser task (an interruption does not: it was not the task's fault)
+# The reason a job carries when the request that handed a page to its assistant ended with its answer and no step was coming (service.agent_release). The job was no
+# longer needed: that is not the browser failing, whatever state the loop ended in (`stopped` or `cancelled`).
+RELEASED_REASON = 'the assistant went on without this page'
 INTERRUPTED_REASON = ('The browser task was interrupted because the browser service restarted. What it had done up to then is kept, and it was not resumed. '
                       'Start it again if you still want it.')
 SETTLE_SECONDS = 30                                     # a row this young may belong to a job that is still being started: never called interrupted
