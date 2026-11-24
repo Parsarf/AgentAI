@@ -70,6 +70,20 @@ REASONS: dict[str, Reason] = {
     'browser.needs_customer': R('needs_customer', 'customer', 'The browser stopped where it needs you (a payment, a sign-in or a check only a person can do); nothing was purchased or submitted.',
                                 effect='partly_done', expected=True),
     'browser.stopped_with_task': R('refused', 'nobody', 'The browser was stopped.', effect='partly_done', expected=True),
+    # ...and by what ended it, said where the ending is decided (browse/loop.py, browse/service.py; Part 3). A named stop that is the site's or the customer's is expected.
+    'browser.page_timeout': R('retry_later', 'nobody', 'The page did not answer in time, so the browser stopped. What it had done up to then is kept.',
+                              'The page did not answer in time. Do not start the same browser task again unchanged; use web_search and web_fetch for what can be read, '
+                              'and say what could not be done.', effect='partly_done'),
+    'browser.page_would_not_open': R('retry_later', 'nobody', 'The browser could not open or read that page.',
+                                     'The page could not be opened. Check the address, or use web_search and web_fetch; say what could not be done.', effect='partly_done'),
+    'browser.runner_crashed': R('internal', 'owner', 'The browser stopped working during this task. This is on our side and we have been told. What it had done is kept.',
+                                'The browser failed on Lumina\'s side. Do not retry the same browser task; use web_search and web_fetch for what can be read, and say what '
+                                'could not be done.', effect='partly_done', alert=True),
+    'browser.site_refused': R('refused', 'nobody', 'The site refused to show its pages to Lumina\'s browser. You can open it yourself to finish.', effect='partly_done', expected=True),
+    'browser.question_unanswered': R('needs_customer', 'customer', 'The browser asked you a question and no answer came in time, so it stopped.', effect='partly_done', expected=True),
+    'browser.server_busy': R('retry_later', 'nobody', 'The browser could not start because the server was busy. Please try again in a minute.'),
+    'browser.no_start_page': R('invalid', 'assistant', 'The browser was not told which website to open.',
+                               'No website was given. Send the browser task again with the site or its address.'),
     # -- connected services: the six kinds of the connector contract (connector_kit.FAULT_WORDS says the same to the assistant) --------------------------------
     'connector.retry_later': R('retry_later', 'nobody', 'The connected service stayed busy. Nothing was changed. It can be tried again later.',
                                'The service is busy or limiting requests right now. Nothing was changed. It can be tried again later.'),

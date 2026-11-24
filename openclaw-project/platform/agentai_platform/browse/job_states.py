@@ -31,6 +31,12 @@ FAILED_ATTEMPT = ('error', 'failed', 'deadline')        # endings that count aga
 RELEASED_REASON = 'the assistant went on without this page'
 INTERRUPTED_REASON = ('The browser task was interrupted because the browser service restarted. What it had done up to then is kept, and it was not resumed. '
                       'Start it again if you still want it.')
+# Why a job ended, as a code registered in faults_registry.py (reliability plan, Part 3). The code is decided where the ending is decided (the loop, the service, the tool that
+# follows the job) and travels with the job's last status, so nothing has to read a reason back out of a sentence later. END_CODES is the code of an ending when
+# whoever ended it had nothing more exact to say; `done` has none.
+END_CODES = {'error': 'browser.failed', 'failed': 'browser.failed', 'stopped': 'browser.stopped', 'blocked': 'browser.site_not_allowed', 'stuck': 'browser.stuck',
+             'deadline': 'browser.deadline', 'max_steps': 'browser.max_steps', INTERRUPTED: 'browser.interrupted', 'budget': 'browser.spending_limit',
+             'handoff': 'browser.needs_customer', 'cancelled': 'browser.stopped_with_task'}
 SETTLE_SECONDS = 30                                     # a row this young may belong to a job that is still being started: never called interrupted
 
 
@@ -74,7 +80,7 @@ def close_orphans(con, *, now, settle=ORPHAN_SECONDS) -> int:
                     ('cancelled', ORPHAN_REASON, now, account_id, request_id))
         n = int(con.execute('SELECT COALESCE(MAX(n),0) FROM browse_steps WHERE account_id=? AND request_id=?', (account_id, request_id)).fetchone()[0]) + 1
         con.execute('INSERT OR IGNORE INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)',
-                    (account_id, request_id, n, 'status', json.dumps({'state': 'cancelled', 'reason': ORPHAN_REASON}), now))
+                    (account_id, request_id, n, 'status', json.dumps({'state': 'cancelled', 'reason': ORPHAN_REASON, 'code': END_CODES['cancelled']}), now))
     return len(rows)
 
 
@@ -87,5 +93,5 @@ def mark_interrupted(con, account_id, request_id, *, now) -> bool:
     if changed:
         n = int(con.execute('SELECT COALESCE(MAX(n),0) FROM browse_steps WHERE account_id=? AND request_id=?', (account_id, request_id)).fetchone()[0]) + 1
         con.execute('INSERT OR IGNORE INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (?,?,?,?,?,?)',
-                    (account_id, request_id, n, 'status', json.dumps({'state': INTERRUPTED, 'reason': INTERRUPTED_REASON}), now))
+                    (account_id, request_id, n, 'status', json.dumps({'state': INTERRUPTED, 'reason': INTERRUPTED_REASON, 'code': END_CODES[INTERRUPTED]}), now))
     return bool(changed)

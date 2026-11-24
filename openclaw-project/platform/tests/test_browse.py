@@ -490,13 +490,13 @@ class HandOffToTheAssistant(unittest.TestCase):
         r, llm, *_ = self.run_loop([self.click('c2')] * 3 + [self.click('c1')] * 2, ['{"action":"click","ref":3}', '{"action":"scroll"}', '{"action":"back"}'], max_steps=6, session=FpSession(FLAT, iter(range(99))))
         self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'agent', 'agent', 'agent']); self.assertEqual(llm.calls, ['agent'] * 3)
         r, llm, *_ = self.run_loop([self.click('c2')] * 6, ['{"action":"click","ref":2}'] * 4, max_steps=8, session=FpSession(FLAT, iter(range(99))))
-        self.assertEqual((r.status, r.reason), ('stuck', 'repeating the same step'))
+        self.assertEqual((r.status, r.reason, r.code), ('stuck', 'repeating the same step', 'browser.stuck'))
         self.assertEqual([h['by'] for h in r.steps], ['jev'] * 3 + ['agent'] * 3); self.assertEqual(len(llm.calls), 4)      # the assistant starts with a clean count: JEV's repeats are not held against it, its own are
 
     def test_three_acts_that_changed_nothing_send_the_next_step_to_the_assistant_and_the_run_ends_when_the_page_still_does_not_change(self):
         same = lambda: FpSession(FLAT, iter([7] * 99))
         r, llm, *_ = self.run_loop([self.click('c1'), self.click('c2'), self.click('c3'), self.click('c2')], ['{"action":"click","ref":1}', '{"action":"click","ref":1}'], session=same(), max_steps=8)
-        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'agent', 'agent']); self.assertEqual((r.status, r.reason), ('stuck', 'the page is not changing'))
+        self.assertEqual([h['by'] for h in r.steps], ['jev', 'jev', 'jev', 'agent', 'agent']); self.assertEqual((r.status, r.reason, r.code), ('stuck', 'the page is not changing', 'browser.stuck'))
         self.assertEqual([h['changed'] for h in r.steps], [False] * 5)
 
     def test_a_wait_neither_counts_nor_resets_and_a_changing_or_unknown_page_never_triggers(self):
@@ -510,7 +510,7 @@ class HandOffToTheAssistant(unittest.TestCase):
     def test_scrolling_a_long_page_is_not_a_repeat_until_it_stops_moving(self):
         down = {'operation': 'scroll_down'}
         r, *_ = self.run_loop([down] * 6, [], session=FpSession(FLAT, iter(range(99))), max_steps=6)            # the page moves every time
-        self.assertEqual((r.status, len(r.steps)), ('max_steps', 6))
+        self.assertEqual((r.status, len(r.steps), r.code), ('max_steps', 6, 'browser.max_steps'))
         r, llm, *_ = self.run_loop([down] * 6, ['{"action":"scroll"}', '{"action":"done","answer":"ok"}'], session=FpSession(FLAT, iter([1, 2, 3, 3, 3, 3, 3, 3])), max_steps=8)   # it hit the bottom
         self.assertEqual([h['by'] for h in r.steps], ['jev'] * 5 + ['agent'])         # JEV scrolled three times with nothing moving: the assistant takes the page
         self.assertEqual((r.status, llm.calls[0]), ('done', 'agent'))

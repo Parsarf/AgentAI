@@ -477,6 +477,14 @@ class BrowseHttpChecks(ChatHTTPChecks):
         detail = a.get('/v1/browse/br1', secure=True).json()
         self.assertEqual((detail['status'], detail['takeover'], detail['events'][0]['n']), ('completed', False, 1))
 
+    def test_what_a_crash_was_and_where_is_kept_for_the_owner_and_not_sent_to_the_app(self):
+        self.seed('error')
+        with connection.cursor() as c:
+            c.execute("INSERT INTO browse_steps(account_id,request_id,n,kind,data_json,created_epoch) VALUES (%s,'br1',2,'status',%s,1)", [self.account_ids[0], json.dumps(
+                {'state': 'error', 'reason': 'the browser run failed', 'code': 'browser.runner_crashed', 'exception': 'KeyError', 'where': 'session.py:96'})])
+        last = self.clients[0].get('/v1/browse/br1', secure=True).json()['events'][-1]
+        self.assertEqual(last, {'n': 2, 'kind': 'status', 'state': 'error', 'reason': 'the browser run failed', 'code': 'browser.runner_crashed'})
+
     def test_control_validates_input_and_needs_the_service(self):
         self.seed('handoff')
         a, b = self.clients

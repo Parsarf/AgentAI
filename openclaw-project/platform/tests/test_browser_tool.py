@@ -5,6 +5,7 @@ import unittest
 import urllib.error
 import urllib.request
 
+from agentai_platform import faults
 from agentai_platform.adapters import CapabilityUnavailable
 from agentai_platform.browse.adapter import BadTask, BrowserTool, build_goal, clean_step, clean_task, findings
 from agentai_platform.browse.client import BrowseJobUnknown
@@ -183,7 +184,7 @@ class ToolChecks(Base):
                            {'state': 'handoff', 'reason': 'reached a payment step', 'answer': None, 'url': 'https://x/checkout', 'takeover': True, 'cost_microusd': 6000,
                             'pending_action': {'label': 'Checkout'}, 'events': [{'n': 3, 'kind': 'screenshot', 'file': 'shot-001.jpg', 'by': 'lumina'}], 'jev': {'jev_asked': 2, 'jev_agree': 1}}]
         text, error = self.tool.call('a', self.ARGS)
-        self.assertFalse(error)
+        self.assertEqual((error.reason, faults.is_error(error)), ('browser.needs_customer', False))      # it stopped where the customer is needed: said with its reason, and not an error
         self.assertIn('nothing was purchased', text)
         start = self.rpc.calls[0]
         self.assertEqual((start[0], start[1]['request_id']), ('start', request_id))

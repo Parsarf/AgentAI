@@ -12,6 +12,7 @@ from agentai_platform import privacy
 from .untrusted import neutralize
 from .ladder import RUNNER_V2, RUNNER_V3, TEXT_OVERLAP, Decision, Ladder, Look, Refused, page_words
 from .trace import NULL
+from .job_states import END_CODES
 
 CLICKABLE_TAGS = frozenset({'a', 'button', 'input', 'select', 'textarea', 'summary', 'label'})      # what a probe names when the point is on a real control
 LOGIN_REASON = 'this page needs you to sign in; I never type passwords'
@@ -98,6 +99,7 @@ class Result:
     steps: list = field(default_factory=list)
     cost_microusd: int = 0
     pending_action: dict | None = None    # what the user would be approving, for a handoff on a sensitive control
+    code: str = ''                        # why it ended, as a registered reason code (job_states.END_CODES when nothing more exact is known); '' for done
 
 
 class BrowseRunner:
@@ -148,20 +150,20 @@ class BrowseRunner:
         if self.attached:
             opened = self.s.call('attach', tab=self.attached)
             if not opened.get('ok'):
-                return Result('error', f'could not use that tab ({opened.get("error")})')
+                return Result('error', f'could not use that tab ({opened.get("error")})', code='browser.page_would_not_open')
             start_url = opened.get('url') or ''
             if not self.policy.url_ok(start_url):
-                return Result('blocked', 'that site is not allowed')
+                return Result('blocked', 'that site is not allowed', code='browser.site_not_allowed')
         else:
             if not self.policy.url_ok(start_url):
-                return Result('blocked', 'that site is not allowed')
+                return Result('blocked', 'that site is not allowed', code='browser.site_not_allowed')
             opened = self.s.open(start_url)
             if not opened.get('ok') and opened.get('error') != 'url_blocked':      # a site that did not answer the first time often does the second (a dropped connection, a slow start)
                 self.trace.emit('open_retry', error=opened.get('error'))
                 self.wait(2)
                 opened = self.s.open(start_url)
             if not opened.get('ok'):
-                return Result('error', f'could not open the page ({opened.get("error")})')
+                return Result('error', f'could not open the page ({opened.get("error")})', code='browser.page_would_not_open')
         self.on_event('opened', {'url': opened.get('url'), 'title': opened.get('title')})
         started, history, seen, failures, forced = self.clock(), [], {}, 0, False
         reopens = 0          # times the browser fell off the site (a `back` from the first page lands on a blank page) and the start page was opened again
@@ -202,7 +204,7 @@ class BrowseRunner:
                 self.wait(2)
                 snap = self.s.snapshot()
             if not snap.get('ok'):
-                return self._end(res, 'error', 'could not read the page', history)
+                return self._end(res, 'error', 'could not read the page', history, code='browser.page_would_not_open')
             if snap.get('restarted'):               # the browser died and was started again on the same address: sign-ins, carts and anything typed are gone
                 self.on_stat('browser_restarts')
                 history.append({'step': step, 'by': 'rule', 'action': 'reopen', 'label': '', 'result': 'ok', 'changed': None,
@@ -224,7 +226,7 @@ class BrowseRunner:
                 load_fails += 1
                 self.trace.emit('load_failed', n=load_fails)
                 if load_fails > 2:
-                    return self._end(res, 'error', 'the site stopped answering, so the page could not be loaded', history, getattr(self.s, 'last_url', '') or start_url)
+                    return self._end(res, 'error', 'the site stopped answering, so the page could not be loaded', history, getattr(self.s, 'last_url', '') or start_url, code='browser.page_timeout')
                 self.wait(2)
                 again = self.s.open(next((h['url'] for h in reversed(history) if str(h.get('url') or '').startswith('http')), None) or start_url)
                 entry = {'step': step, 'by': 'rule', 'action': 'reload', 'label': '', 'result': 'ok' if again.get('ok') else 'failed', 'changed': None,
@@ -237,7 +239,7 @@ class BrowseRunner:
                 refusals += 1
                 self.trace.emit('site_refused', n=refusals, status=snap.get('http_status'))
                 if refusals > 1:
-                    return self._end(res, 'blocked', REFUSED_REASON, history, url)
+                    return self._end(res, 'blocked', REFUSED_REASON, history, url, code='browser.site_refused')
                 self.wait(3)                               # a site that is briefly over its limit answers the second time
                 self.s.open(url)
                 history.append({'step': step, 'by': 'rule', 'action': 'reload', 'label': '', 'result': 'ok', 'changed': None, 'note': 'the site refused the page and it was asked for again'})
@@ -257,7 +259,7 @@ class BrowseRunner:
                 started += waited
                 if outcome != 'timeout':          # they did it (or asked to stop): read the page again
                     continue
-                return self._end(res, 'handoff', WALL_REASON, history, snap.get('url', ''))
+                return self._end(res, 'handoff', WALL_REASON, history, snap.get('url', ''), code='browser.human_check')
             url = snap.get('url', '')
             if not self.policy.url_ok(url):
                 return self._end(res, 'blocked', 'the page moved to a site that is not allowed', history, url)
@@ -407,7 +409,7 @@ class BrowseRunner:
                 filled, waited = self._ask_fields(d.question, step, history)
                 started += waited
                 if filled == 'none':
-                    return self._end(res, 'cancelled' if self.cancelled() else 'stopped', 'stopped by you' if self.cancelled() else 'no answer to the question', history, url)
+                    return self._end(res, 'cancelled' if self.cancelled() else 'stopped', 'stopped by you' if self.cancelled() else 'no answer to the question', history, url, code='' if self.cancelled() else 'browser.question_unanswered')
                 self.trace.emit('ask', outcome=filled, fields=len(d.question['fields']))
                 self.on_stat('ask_fields_filled' if filled == 'filled' else 'ask_fields_page')
                 if filled == 'page':             # they filled the form on the page themselves and pressed Continue: read the page again
@@ -422,7 +424,7 @@ class BrowseRunner:
                     option, note, waited = self._ask_user(d.question, step)
                     started += waited
                     if note == 'none':
-                        return self._end(res, 'cancelled' if self.cancelled() else 'stopped', 'stopped by you' if self.cancelled() else 'no answer to the question', history, url)
+                        return self._end(res, 'cancelled' if self.cancelled() else 'stopped', 'stopped by you' if self.cancelled() else 'no answer to the question', history, url, code='' if self.cancelled() else 'browser.question_unanswered')
                 if option is None:               # the user picked on the page themselves (View full menu) and pressed Continue: read the page again
                     entry = {'step': step, 'by': d.by, 'action': 'ask', 'label': d.question.get('field', ''), 'result': 'ok', 'changed': None, 'note': 'the user chose on the page'}
                     history.append(entry)
@@ -572,7 +574,7 @@ class BrowseRunner:
             if a['action'] == 'wait':
                 wait_run = wait_run + 1 if changed is False else 0
                 if wait_run >= 10:
-                    return self._end(res, 'stuck', 'the page did not finish loading', history, url)
+                    return self._end(res, 'stuck', 'the page did not finish loading', history, url, code='browser.page_timeout')
                 if wait_run in (5, 8):                # a page that has not changed after five waits is probably not loading: the assistant looks
                     once = f'JEV has waited {wait_run} times and the page has not changed'
             else:
@@ -723,7 +725,9 @@ class BrowseRunner:
             self.on_event('step', {**entry, 'url': url})
         return outcome, waited
 
-    def _end(self, res, status, reason, history, url=''):
+    def _end(self, res, status, reason, history, url='', code=''):
+        """`code` says why, when the place that ends the run knows more than the state does (a page that timed out and a step repeated are both `stuck`)."""
         res.status, res.reason, res.steps, res.url = status, reason, history, url or res.url
-        self.trace.emit('end', status=status, reason=reason, steps=len(history), cost_microusd=res.cost_microusd, where=_where(res.url))
+        res.code = code or END_CODES.get(status, '')
+        self.trace.emit('end', status=status, reason=reason, code=res.code, steps=len(history), cost_microusd=res.cost_microusd, where=_where(res.url))
         return res
