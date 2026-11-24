@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). The tools half of Part 3 is LIVE (#98) and the browser half is built (branch `reliability-3-browser`). Parts 4 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Part 4 is built (branch `reliability-4-state`). Parts 5 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -236,7 +236,7 @@ Changed from the plan while building:
 
 Live since 2026-11-24 (PR #98, release `23a8220`). Read on the server after the deploy: no tool call had failed yet, so the steps section of the report was empty.
 
-**The browser's endings are built** (2026-11-24, branch `reliability-3-browser`):
+**The browser's endings are built and live** (2026-11-24, PR #99, release `d3443ba`):
 
 - **The reason is given where the ending is decided.** The loop's result, the service's job and the job's last status carry a `code` (`browse/loop.py`,
   `browse/service.py`; `job_states.END_CODES` is the code of a state when nothing more exact is known). Nothing reads a reason back out of a sentence any more,
@@ -274,6 +274,38 @@ Two pull requests: tools, then browser.
 - Proves: a forced-fault test per tool family and per browser ending; `stale_children` reads 0; run 395's shape ends "Done".
 
 ### Part 4 - The state picture, server (H, part of I)
+
+**Built 2026-11-24** (branch `reliability-4-state`), with the few lines the app needs to show it. Read first from a real browser task on the server: 114 s of
+"Getting your assistant ready" with no figure, 60 s of "Thinking" on the first model turn, and every step the assistant took in the browser shown twice ("Used the
+browser" beside "Clicked “Filters” · Assistant").
+
+- **The status line while the browser works is its newest step** ("Clicked “Price: High to Low”"), not only "Using the browser".
+- **A step is said the way a person would say it** (`browse/words.py`): what was done, or what could not be done and why ("Could not click “Expand Men”: something
+  on the page was covering it"). "· JEV", "· Assistant" and "(failed: covered)" are gone, also from older records, which are reworded when read.
+- **One row per browser call, its steps inside it** (`work.read_timeline`): the call's row carries `steps`; a call of exactly one step is that step. A step noted
+  before its call's row exists waits for that row and is never shown under an earlier call.
+- **Named waits** replace "Thinking" and the queue line, each from a fact Lumina holds, with `since_epoch` and, where there is one, `expect_seconds`:
+
+  | Shown | Source |
+  |---|---|
+  | "Waking your workspace", "usually about N" | The lifecycle worker's note on the task that it asked for the start; N is the median of the last cold starts (over a minute), none with fewer than three |
+  | "Waiting for the model", seconds so far | The run is live and no tool is running; the seconds count from the newest event |
+  | "Waiting for the model provider", the pause it asked for | The model relay's note, which now carries `step: provider_wait` and the seconds; it stops being said once the pause is over |
+  | "Writing the answer" | Said by the app, which is where the reply's text streams to |
+
+- **A failed step is listed with its reason** (`evidence.failed`, each with `recovered`), and the task is marked (`trouble`) only when it is over and nothing of the
+  same kind worked after the failure.
+- **A limit that was reached is in the record** (the `budget` event is now a timeline row). **A parked run says what it waits for** from an explicit list; a reason
+  that is not listed reads "Waiting for you", not "Waiting for you in the browser".
+
+Changed from the plan while building:
+
+- **"Waiting for the model" is not read from a model call in flight.** The relay records a call when it ends (Part 1); recording its start as well would add a
+  write to every model call. A live run with no tool running is waiting for the model, which Lumina already knows from the timeline.
+- **The browser's state already travels in the task picture** (`browser`, `needs`). The app's own poll of `/v1/browse/<id>` also carries the page's pictures, the
+  question and the control state, so taking it out is client work and moves to Part 5.
+
+The plan as written:
 
 - **Status line** (`work.py`): the newest step note while a tool runs ("Clicked Price: High to Low"), not only the category.
 - **Named waits** from facts Lumina holds, replacing "Thinking" and the queue line:

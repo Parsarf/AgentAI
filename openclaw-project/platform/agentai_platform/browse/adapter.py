@@ -20,6 +20,7 @@ from ..adapters import CapabilityUnavailable
 from ..lifecycle.coordinator import Coordinator
 from .client import BrowseJobUnknown
 from .loop import REFUSED_REASON, WALL_REASON
+from .words import step_words
 from .. import request_states, safety
 from ..budget import OWN_KEY_AMOUNT
 from .. import spend_limits
@@ -319,11 +320,7 @@ def summary_of(event) -> str | None:
     if event['kind'] == 'opened':
         return f'Opened {event.get("url", "")}'
     if event['kind'] == 'step':
-        who = {'jev': 'JEV', 'agent': 'Assistant'}.get(event.get('by'), event.get('by', ''))
-        verb = {'click': 'Clicked', 'type': 'Typed into', 'select': 'Chose in', 'press': 'Pressed', 'scroll': 'Scrolled', 'back': 'Went back', 'wait': 'Waited'}.get(event.get('action'), event.get('action', ''))
-        tail = '' if event.get('result') == 'ok' else f' (failed: {event.get("result")})'
-        label = f' “{event.get("label")}”' if event.get('label') else ''
-        return f'{verb}{label} · {who}{tail}'
+        return step_words(event.get('action'), event.get('label') or '', event.get('result'))      # what was done, or what could not be done and why: not who decided it (words.py)
     return None
 
 

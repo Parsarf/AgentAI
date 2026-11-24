@@ -61,7 +61,8 @@ def build(store):
                                 (int(seconds) + 1, account, row['id']))
             if first:
                 words = 'Your own model provider asked for a short wait (its limit, not Lumina\'s). Carrying on in a moment.' if own else 'Waiting a moment for the model provider, then carrying on.'
-                events.append(account, row['id'], 'progress', {'summary': words, 'step': 'working'}, 'gateway')
+                # `provider_wait` and the pause asked for let the task's status line say what it is waiting for, and for about how long (work.WorkReader._named_wait).
+                events.append(account, row['id'], 'progress', {'summary': words, 'step': 'provider_wait', **({'detail': str(int(seconds) + 1)} if seconds and seconds > 0 else {})}, 'gateway')
     from agentai_platform import model_calls
     own_models = model_keys.ModelRelay(wiring.model_key_store(), wiring.own_model_on, admission=selection_admitted, selection=selected_route, waiting=provider_wait,
                                        record=lambda account, call: model_calls.note(store, account, call))

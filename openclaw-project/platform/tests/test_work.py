@@ -56,6 +56,65 @@ class TimelineChecks(unittest.TestCase):
         self.assertEqual([r['key'] for r in rows if r['seq'] > 2], ['a'])           # a changed after 2; b did not
 
 
+class BrowserSteps(unittest.TestCase):
+    """The browser's own steps are part of the browser call they were taken in, in a customer's words (reliability plan, Part 4). The sequence is one read from
+    production (2026-11-24): each call was shown as "Used the browser" beside a second row "Clicked “Men” · JEV"."""
+    def step(self, seq, text, **more):
+        return {**ev(seq, 'progress', f'2026-11-13T10:00:{seq:02d}.000Z', summary=text, **more), 'source': 'browser'}
+
+    def call(self, seq, ref, status='running'):
+        return act(seq, ref, status, 'browse', f'2026-11-13T10:00:{seq:02d}.000Z', detail='shop.example')
+
+    def test_a_call_carries_its_steps_and_a_call_of_one_step_is_that_step(self):
+        rows = work.timeline([self.call(7, 'c1'), self.step(8, 'Opened https://shop.example/'), self.step(9, 'Clicked “Close” · JEV'), self.step(10, 'Scrolled · JEV'), self.call(12, 'c1', 'done'),
+                              self.call(13, 'c2'), self.step(14, 'Typed into “Search” · Assistant'), self.call(20, 'c2', 'done')])
+        self.assertEqual([(r['key'], r['label'], [s['label'] for s in r['steps']]) for r in rows],
+                         [('c1', 'Used a tool', ['Opened https://shop.example/', 'Clicked “Close”', 'Scrolled']), ('c2', 'Typed into “Search”', [])])
+        self.assertEqual(rows[0]['seq'], 12)
+
+    def test_a_step_noted_before_its_call_appears_waits_for_that_call_and_is_never_put_under_an_earlier_one(self):
+        events = [self.call(1, 'c1'), self.step(2, 'Clicked “Men” · JEV'), self.step(3, 'Scrolled · JEV'), self.call(4, 'c1', 'done'), self.step(5, 'Clicked “Filters” · Assistant')]
+        rows, upcoming = work.read_timeline(events)
+        self.assertEqual(([len(r['steps']) for r in rows], [s['label'] for s in upcoming]), ([2], ['Clicked “Filters”']))
+        rows, upcoming = work.read_timeline(events + [self.call(6, 'c2'), self.call(7, 'c2', 'done')])
+        self.assertEqual(([(r['key'], r['label']) for r in rows], upcoming), ([('c1', 'Used a tool'), ('c2', 'Clicked “Filters”')], []))
+
+    def test_when_the_task_is_over_a_step_no_call_followed_is_kept_with_the_last_call(self):
+        events = [self.call(1, 'c1'), self.step(2, 'Clicked “Men” · JEV'), self.step(3, 'Scrolled · JEV'), self.call(4, 'c1', 'done'), self.step(5, 'Clicked “Filters” · Assistant'), ev(6, 'result', summary='x')]
+        rows, upcoming = work.read_timeline(events)
+        self.assertEqual(([s['label'] for s in rows[0]['steps']], rows[0]['seq'], upcoming), (['Clicked “Men”', 'Scrolled', 'Clicked “Filters”'], 5, []))
+        alone, upcoming = work.read_timeline([self.step(1, 'Opened https://shop.example/'), ev(2, 'result', summary='x')])
+        self.assertEqual(([(r['kind'], r['label']) for r in alone], upcoming), ([('note', 'Opened https://shop.example/')], []))
+
+    def test_a_step_that_did_not_work_says_what_could_not_be_done_and_why_in_plain_words(self):
+        row, = work.timeline([self.call(1, 'c1'), self.step(2, 'Clicked “Expand Men” · Assistant (failed: covered)'), self.step(3, 'Clicked “Men” · JEV'), self.call(4, 'c1', 'done')])
+        self.assertEqual([(s['label'], s['status']) for s in row['steps']],
+                         [('Could not click “Expand Men”: something on the page was covering it', 'failed'), ('Clicked “Men”', 'done')])
+        from agentai_platform.browse.adapter import summary_of
+        from agentai_platform.browse.words import reworded
+        self.assertEqual(summary_of({'kind': 'step', 'by': 'jev', 'action': 'click', 'label': 'Price: High to Low', 'result': 'ok'}), 'Clicked “Price: High to Low”')
+        self.assertEqual(summary_of({'kind': 'step', 'by': 'agent', 'action': 'select', 'label': 'Size', 'result': 'no_option'}), 'Could not choose in “Size”: that choice is not on the page')
+        self.assertEqual(summary_of({'kind': 'step', 'by': 'agent', 'action': 'click', 'label': 'Buy', 'result': 'a_code_nobody_listed'}), 'Could not click “Buy”: it did not work')
+        for old, new in (('Pressed · Assistant', 'Pressed a key'), ('Went back · rule (failed: left_the_site)', 'Could not go back: it would have left the site'),
+                         ('Clicked “A · B” · haiku', 'Clicked “A · B”'), ('Clicked “Men”', 'Clicked “Men”'), ('Opened https://shop.example/', 'Opened https://shop.example/')):
+            self.assertEqual(reworded(old), new)
+        for text in ('Clicked “Men”', 'Could not click “Expand Men”: something on the page was covering it', 'Pressed a key'):
+            self.assertNotRegex(text, r'JEV|Assistant|covered\b|\(failed')
+
+    def test_the_browser_s_question_and_other_notes_stay_notes_and_a_limit_reached_is_in_the_record(self):
+        rows = work.timeline([self.call(1, 'c1'), self.step(2, 'The browser is waiting for your answer.', step='asking'), self.call(3, 'c1', 'done'),
+                              ev(4, 'progress', summary='The assistant has your message and is working on it.', step='working'),
+                              ev(5, 'budget', note='Your spending limit for this task was reached.')])
+        self.assertEqual([(r['kind'], r['category'], r['label']) for r in rows if r['kind'] != 'tool'],
+                         [('note', 'note', 'The browser is waiting for your answer.'), ('note', 'note', 'The assistant has your message and is working on it.'),
+                          ('note', 'limit', 'Your spending limit for this task was reached.')])
+        self.assertEqual(rows[0]['steps'], [])
+
+    def test_a_long_browser_call_keeps_its_newest_steps(self):
+        row, = work.timeline([self.call(1, 'c1')] + [self.step(n, f'Clicked “Item {n}” · JEV') for n in range(2, 92)])
+        self.assertEqual((len(row['steps']), row['steps'][-1]['label']), (work.MAX_STEPS, 'Clicked “Item 91”'))
+
+
 class ChecklistChecks(unittest.TestCase):
     STEPS = [{'id': 'read', 'title': 'Read', 'status': 'done'}, {'id': 'write', 'title': 'Write', 'status': 'running'}, {'id': 'check', 'title': 'Check', 'status': 'pending'}]
 
@@ -135,7 +194,8 @@ class ReaderChecks(Base):
 
     def test_a_running_task_says_what_it_is_doing_and_concurrent_calls_are_all_listed(self):
         self.claim()
-        self.assertEqual(self.reader.listing(self.a)['tasks'][0]['label'], 'Thinking')
+        waiting = self.reader.listing(self.a)['tasks'][0]
+        self.assertEqual((waiting['label'], waiting['waiting_for']), ('Waiting for the model', 'model'))       # no tool is running: the wait is named, not "Thinking"
         self.emit('activity', ref='c1', status='running', category='search', label='Searched the web', detail='flights lisbon', tool='web_search', output='')
         self.emit('activity', ref='c2', status='running', category='read', label='Opened a page', detail='example.com/flights', tool='web_fetch', output='')
         view = self.reader.listing(self.a)['tasks'][0]
@@ -143,6 +203,67 @@ class ReaderChecks(Base):
         self.assertEqual([n['label'] for n in view['now']], ['Searching the web', 'Reading a page'])
         self.emit('activity', ref='c2', status='done', category='read', label='Opened a page', detail='example.com/flights', tool='web_fetch', output='')
         self.assertEqual(self.reader.listing(self.a)['tasks'][0]['label'], 'Searching the web')
+
+    def test_while_the_browser_works_the_line_is_its_newest_step(self):
+        self.claim()
+        self.emit('activity', ref='c1', status='running', category='browse', label='Used the browser', detail='shop.example', tool='lumina_browser', output='')
+        self.assertEqual(self.reader.listing(self.a)['tasks'][0]['label'], 'Using the browser')
+        self.events.append('a', self.id, 'progress', {'summary': 'Clicked “Men” · JEV'}, 'browser')
+        self.events.append('a', self.id, 'progress', {'summary': 'Clicked “Price: High to Low” · JEV'}, 'browser')
+        view = self.reader.detail(self.a, self.id)
+        self.assertEqual((view['task']['label'], view['task']['activity']['detail'], view['task']['waiting_for']), ('Clicked “Price: High to Low”', 'shop.example', None))
+        self.assertEqual([(r['label'], len(r['steps'])) for r in view['rows']], [('Used the browser', 2)])
+        self.emit('activity', ref='c1', status='done', category='browse', label='Used the browser', detail='shop.example', tool='lumina_browser', output='')
+        self.events.append('a', self.id, 'progress', {'summary': 'Clicked “Filters” · Assistant'}, 'browser')       # the next call's step, noted before its row exists
+        view = self.reader.listing(self.a)['tasks'][0]
+        self.assertEqual((view['label'], view['activity']['key']), ('Clicked “Filters”', 'browser'))
+
+    def test_a_wait_is_named_from_what_lumina_knows_with_when_it_began_and_how_long_such_a_wait_takes(self):
+        view = self.reader.listing(self.a)['tasks'][0]
+        self.assertEqual((view['label'], view['waiting_for'], view['expect_seconds']), ('Next in line', None, None))
+        self.events.append('a', self.id, 'progress', {'summary': 'Waking your assistant. Its workspace is starting up.', 'step': 'waking'}, 'lifecycle')
+        view = self.reader.listing(self.a)['tasks'][0]
+        self.assertEqual((view['label'], view['waiting_for'], view['since_epoch'], view['expect_seconds']), ('Waking your workspace', 'workspace', self.sent['created_epoch'] if 'created_epoch' in self.sent else view['created_epoch'], None))
+        with self.store.connect() as con:                        # three recent requests met a sleeping workspace: 80, 95 and 120 seconds
+            for n, took in enumerate((80, 95, 120, 2)):
+                con.execute('''INSERT INTO customer_requests(account_id,id,actor_id,project_id,conversation_id,idempotency_key,payload_hash,message,state,created_epoch,claimed_epoch)
+                    VALUES ('b',?, 'actor-b','p-b','c-b',?,'h','x','completed',?,?)''', (f'old{n}', f'k{n}', self.now - 1000 + n, self.now - 1000 + n + took))
+        self.assertEqual(self.reader.listing(self.a)['tasks'][0]['expect_seconds'], 95)       # the median of the starts that were cold; the 2-second one was not
+        self.claim()
+        self.emit('activity', ref='c1', status='done', category='read', label='Opened a page', detail='example.com', tool='web_fetch', output='')
+        view = self.reader.detail(self.a, self.id)['task']
+        self.assertEqual((view['label'], view['waiting_for']), ('Waiting for the model', 'model'))
+        self.assertEqual(view['since_epoch'], round(work._ms(self.rows('SELECT created_at FROM events WHERE task_id=? ORDER BY sequence DESC LIMIT 1', (self.id,))[0][0]) / 1000))
+        self.events.append('a', self.id, 'progress', {'summary': 'Waiting a moment for the model provider, then carrying on.', 'step': 'provider_wait', 'detail': '21'}, 'gateway')
+        self.now = view['since_epoch'] + 3
+        view = self.reader.detail(self.a, self.id)['task']
+        self.assertEqual((view['label'], view['waiting_for'], view['expect_seconds']), ('Waiting for the model provider', 'provider', 21))
+        self.now = view['since_epoch'] + 60                      # the pause it asked for is long over: the call is going again
+        self.assertEqual(self.reader.detail(self.a, self.id)['task']['waiting_for'], 'model')
+
+    def test_a_failed_step_is_listed_with_its_reason_and_marks_the_task_only_when_nothing_made_up_for_it(self):
+        self.claim()
+        self.emit('activity', ref='c1', status='failed', category='read', label='Opened a page', detail='shop.example/a', tool='web_fetch', output='Web fetch failed (403)', reason='site.refused')
+        self.emit('activity', ref='c2', status='done', category='read', label='Opened a page', detail='other.example/a', tool='web_fetch', output='')
+        self.emit('activity', ref='c3', status='failed', category='other', label='Prepared a file for you', detail='', tool='lumina_file_deliver', output='x', reason='tool.not_found')
+        with self.store.connect() as con:
+            con.execute("UPDATE customer_requests SET state='completed',outcome='completed',verification='not_applicable' WHERE id=?", (self.id,))
+        view = self.reader.detail(self.a, self.id)['task']
+        from agentai_platform.faults_registry import REASONS
+        self.assertEqual([(f['label'], f['why'], f['recovered']) for f in view['evidence']['failed']],
+                         [('Opened a page', REASONS['site.refused'].customer, True), ('Prepared a file for you', REASONS['tool.not_found'].customer, False)])
+        self.assertEqual((view['evidence']['failed_steps'], view['evidence']['unrecovered']), (2, 1))
+        self.assertEqual(view['trouble'], {'steps': 1, 'why': REASONS['tool.not_found'].customer})
+        self.assertEqual(view['label'], 'Done')                  # how it ended is unchanged; the trouble is said beside it
+
+    def test_a_parked_run_says_what_it_waits_for_and_an_unknown_reason_is_not_called_the_browser(self):
+        self.claim()
+        for reason, label in (('browser_question', 'Waiting for your answer'), ('browser_takeover', 'You have the browser'), ('location_permission', 'Waiting for location permission'),
+                              ('something_new', 'Waiting for you')):
+            with self.store.connect() as con:
+                con.execute('UPDATE customer_requests SET parked_reason=? WHERE id=?', (reason, self.id))
+            view = self.reader.listing(self.a)['tasks'][0]
+            self.assertEqual((view['phase'], view['label']), ('needs_you', label), reason)
 
     def test_the_cursor_read_returns_what_was_missed_and_nothing_else(self):
         self.claim()

@@ -29,6 +29,8 @@ export interface Controls { stop: boolean; pause: boolean; resume: boolean; retr
 export interface TaskSummary {
   id: string; conversation_id: string | null; title: string; follows: string | null; created_epoch: number; state: string;
   phase: Phase; label: string; tone: Tone; activity: Doing | null; now: Doing[]; ahead: number | null; wait?: 'your_task' | 'assistant' | null;
+  /** What the run is waiting for while no tool runs, as the server names it; when that began; and about how long such a wait takes (measured by the server, or absent). */
+  waiting_for?: 'model' | 'provider' | 'workspace' | null; since_epoch?: number | null; expect_seconds?: number | null;
   attention: string | null; attention_label: string; outcome: Outcome | null; verification: Verification | null; note: string;
   goal: boolean; continuing: boolean; retry_of: string | null; controls: Controls; needs: Need[]; steps: number;
 }
@@ -36,11 +38,15 @@ export interface Step { id: string; title: string; status: 'pending' | 'running'
 export interface Evidence {
   steps: number; failed_steps: number; searches: number; commands: number; sites: string[]; files: string[];
   saved: { id: string; version: number; name: string; size: number }[]; approvals: { label: string; decision: string }[]; duration_s: number | null;
+  /** Steps that did not work, each with the server's sentence for why, and whether a later step of the same kind worked. */
+  failed?: { label: string; detail: string; why: string; recovered: boolean }[]; unrecovered?: number;
 }
 /** One task in full. */
 export interface TaskView extends TaskSummary {
   request: string; result: string | null; checklist: { mode: 'direct' | 'plan'; steps: Step[] } | null; evidence: Evidence; messages: number; cancel_requested: boolean;
   browser: { status: string; live: boolean; host: string } | null; ended_epoch: number | null; rev: string;
+  /** Set when the task is over and a step failed that nothing made up for. */
+  trouble?: { steps: number; why: string };
 }
 /** One thing that happened. A tool call is one row from start to finish; rows that ran at the same time share `group`. */
 export interface Row {
@@ -48,6 +54,8 @@ export interface Row {
   status: 'running' | 'done' | 'failed' | 'note' | 'waiting' | 'approved' | 'declined' | 'expired'; at: number; ended_at: number | null; first: number; seq: number; group: string | null;
   /** For a step that did not do what was asked: the server's registered reason code, and the one sentence it gives for it. Absent on rows that have none. */
   reason?: string; why?: string;
+  /** The browser's own steps inside one browser call, in order, in the server's words. A call of exactly one step has none: its label is the step. */
+  steps?: { label: string; status: 'done' | 'failed'; at: number }[];
 }
 /** Where a task's browser is shown: beside its conversation (the chat opens with the browser as a pane on the right), or on the task's own page when it has no chat. */
 export const browserPath = (task: { id: string; conversation_id: string | null }) => (task.conversation_id ? `/chat/${task.conversation_id}?browser=${task.id}` : `/live/${task.id}`);
@@ -73,6 +81,18 @@ export function applyDraft(held: Draft | undefined, frame: { item: string; at: n
 
 export const isOpen = (t: Pick<TaskSummary, 'phase'>) => t.phase !== 'ended';
 /** Is Lumina working on it or about to (so: an orb, a live badge, faster refresh)? A paused task and one waiting for the customer are open but nothing is moving. */
+/** What to say beside the status while the task waits for something the server named. A time shown is measured since the wait began, or is the server's own figure
+ *  for such a wait; nothing is estimated here. */
+export function waitLine(t: Pick<TaskSummary, 'waiting_for' | 'since_epoch' | 'expect_seconds'>, nowMs: number): string {
+  if (!t.waiting_for) return '';
+  if (t.waiting_for === 'workspace') return t.expect_seconds ? `Its workspace is starting up. This usually takes about ${duration(t.expect_seconds)}.` : 'Its workspace is starting up.';
+  if (t.waiting_for === 'provider') return t.expect_seconds ? `It asked for a pause of about ${duration(t.expect_seconds)}. The task carries on by itself.` : 'It asked for a short pause. The task carries on by itself.';
+  const waited = t.since_epoch ? Math.floor(nowMs / 1000) - t.since_epoch : 0;
+  return waited >= 10 ? `${duration(waited)} so far` : '';
+}
+/** One line for a finished task that had a step fail with nothing making up for it. */
+export const troubleLine = (t: { steps: number; why: string }) => `${t.steps} ${t.steps === 1 ? 'step' : 'steps'} did not work${t.why ? `: ${t.why}` : '.'}`;
+
 export const isMoving = (t: Pick<TaskSummary, 'phase'>) => ['queued', 'starting', 'working', 'stopping', 'reconnecting'].includes(t.phase);
 
 /** Which orb animation shows what the task is doing. Only a task that is really doing something gets a moving orb. */
