@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Part 4 is LIVE (#100). Part 5 is built (branch `reliability-5-clients`). Parts 6 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Parts 4 and 5 are LIVE (#100, #101; the push gateway had not been restarted by any deploy and is since #102). Parts 6 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -329,7 +329,14 @@ The plan as written:
 
 ### Part 5 - The state picture, clients (I)
 
-**Built 2026-11-24** (branch `reliability-5-clients`).
+**Built and live 2026-11-24** (PR #101, release `a995a95`).
+
+**Found by looking at the live app afterwards, and fixed (PR #102):** a task's record showed the browser's steps inside their call and, beside it, the old
+separate notes. The push gateway (the stream of the task picture) was only in the rollback's restart list, so no ordinary deploy had restarted it: it was still
+running the release of 23 November, eleven releases back, and the app merged its old picture with the current one from its own reads. So wherever the stream was
+on, the changes of Parts 2 to 5 to the status line and the timeline were partly overridden since they shipped. The deploy now restarts the gateway with every
+release, and the monitor's new `releases` check names any service that is not working from the current release. Unit tests could not have shown this: every
+test builds the picture from the code under test; only the running services disagreed.
 
 - **The blocks inside an answer read the shared picture.** Their status is the server's one status line and tone (they had five words of their own, so a task
   waiting for the customer read "Working" and an unconfirmed result read "Done"), and their steps are the server's timeline rows, with each failed step's reason
