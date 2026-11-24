@@ -69,22 +69,26 @@ def upload(request, project_id):
         return JsonResponse({'error': 'uploads_not_enabled'}, status=503)
     if not request.FILES:
         return JsonResponse({'error': 'invalid_request'}, status=400)
-    if len(request.FILES) > 10:
+    # Every file of the request, in the order it was sent. Several files arrive under ONE field name ("file"), so each name's whole list is read (`.values()` gives only the
+    # last file of a name). A file is read as one piece: it is never walked with `for`, which reads a file line by line and cut every file holding a line-break byte into
+    # pieces, the first kept under the file's name and the rest refused (found 2026-11-24; until then no upload of a real document could succeed).
+    sent = [item for name in request.FILES for item in request.FILES.getlist(name)]
+    if len(sent) > 10 and _limits_on(request):
         return JsonResponse({'error': 'rejected', 'reason': 'batch must contain 1 to 10 files'}, status=422)
     import json as _json
     try:
         hints = _json.loads(request.POST.get('filenames', '[]'))
     except ValueError:
         hints = []
+    if not isinstance(hints, list):
+        hints = []
     entries = []
-    for field in request.FILES.values():
-        for index, item in enumerate(field):
-            # Upload handlers may hand over an UploadedFile or raw bytes.
-            data = item.read() if hasattr(item, 'read') else item
-            if len(data) > MAX_UPLOAD_BYTES and _limits_on(request):
-                return JsonResponse({'error': 'rejected', 'reason': 'file exceeds 10MiB'}, status=422)
-            name = getattr(item, 'name', '') or (hints[index] if index < len(hints) else '')
-            entries.append((name or 'upload.bin', getattr(item, 'content_type', '') or '', data))
+    for index, item in enumerate(sent):
+        data = item.read()
+        if len(data) > MAX_UPLOAD_BYTES and _limits_on(request):
+            return JsonResponse({'error': 'rejected', 'reason': 'file exceeds 10MiB'}, status=422)
+        hint = hints[index] if index < len(hints) and isinstance(hints[index], str) else ''
+        entries.append((getattr(item, 'name', '') or hint or 'upload.bin', getattr(item, 'content_type', '') or '', data))
 
     def run():
         store, files, artifacts = _services()
