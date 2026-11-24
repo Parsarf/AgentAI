@@ -96,6 +96,22 @@ class FileHTTPChecks(TestCase):
         # The account fixture seeds one placeholder artifact; it lists like any other.
         self.assertEqual(len(listing['artifacts']), 1)
 
+    def test_a_file_is_stored_whole_whatever_bytes_it_holds_and_every_file_of_a_request_is_read(self):
+        """The upload view walked each uploaded file with a `for` loop, which reads a file LINE BY LINE: a file holding a line-break byte was cut into pieces, the first piece
+        kept under the file's name and the rest refused, and of several files sent under the one field name only the last was read. Found 2026-11-24 through a test whose
+        zip carried the time of day in its headers (at some minutes of some hours one of those bytes is a line break)."""
+        self.enable_storage(uploads=True)
+        a = self.signed('a')
+        text = b'first line\nsecond line\r\nthird line\rfourth line\n'
+        picture = b'\x89PNG\r\n\x1a\n' + bytes(range(256)) * 3 + b'\n\r\n tail'
+        sent = self.multipart(a, '/v1/projects/project-a/files', [('notes.txt', text), ('picture.png', picture)])
+        self.assertEqual(sent.status_code, 201, sent.content)
+        result = sent.json()['result']
+        self.assertEqual(result.get('rejected') or [], [])
+        self.assertEqual(sorted((f['name'], f['size_bytes']) for f in result['accepted']), [('notes.txt', len(text)), ('picture.png', len(picture))])
+        import hashlib
+        self.assertEqual(sorted(f['sha256'] for f in result['accepted']), sorted(hashlib.sha256(d).hexdigest() for d in (text, picture)))
+
     def test_uploads_need_the_owner_switch_as_well_as_the_host(self):
         self.enable_storage(uploads=False)
         on = override_settings(UPLOADS_ENABLED=True); on.enable(); self.addCleanup(on.disable)          # the host allows it, the owner has not switched it on
@@ -110,8 +126,9 @@ class FileHTTPChecks(TestCase):
         from agentai_platform.content_scan import OFFICE_MAIN
         package = io.BytesIO()
         with zipfile.ZipFile(package, 'w') as z:
-            z.writestr('[Content_Types].xml', f'<Types><Override PartName="/word/document.xml" ContentType="{OFFICE_MAIN["docx"]}"/></Types>')
-            z.writestr('word/document.xml', '<document/>'); z.writestr('word/vbaProject.bin', b'x')
+            when = (2026, 11, 24, 1, 17, 56)      # fixed, so the bytes are the same on every run; at this time of day a header byte is a line break (the run that failed)
+            z.writestr(zipfile.ZipInfo('[Content_Types].xml', date_time=when), f'<Types><Override PartName="/word/document.xml" ContentType="{OFFICE_MAIN["docx"]}"/></Types>')
+            z.writestr(zipfile.ZipInfo('word/document.xml', date_time=when), '<document/>'); z.writestr(zipfile.ZipInfo('word/vbaProject.bin', date_time=when), b'x')
         refused = self.multipart(a, '/v1/projects/project-a/files', [('macro.docx', package.getvalue())])
         self.assertEqual((refused.status_code, 'macros' in refused.json()['reason']), (422, True))
         made = self.multipart(a, '/v1/projects/project-a/files', [('notes.txt', b'hello world')]).json()['result']['accepted'][0]
