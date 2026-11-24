@@ -17,6 +17,7 @@ class FakeProbe:
         self.disk, self.mem, self.db_ok = 40.0, 5000.0, True
         self.queue = {'pending': 0, 'oldest_pending_age_s': 0, 'uncertain': 0, 'waiting_requests': 0, 'oldest_request_age_s': 0, 'billing_inbox_lag_s': 0, 'billing_dead': 0}
         self.status = {'last_success_epoch': NOW - 3600, 'last_complete': True, 'offsite_copy': True, 'failures': []}
+        self.tasks = {'owner_faults': {}, 'requests': 8, 'ended_badly': 0, 'stale_children': 0}
         self.manifest = {'artifacts': [{'asset': a} for a in BACKED_UP]}
         self.tenant_times = {'abc123': NOW - 7200}
         self.timers = {t: NOW - 100 for t in TIMERS}
@@ -31,6 +32,7 @@ class FakeProbe:
     def mem_available_mb(self): return self.mem
     def app_db_quick_check(self): return self.db_ok
     def queue_facts(self): return dict(self.queue)
+    def task_facts(self): return dict(self.tasks)
     def backup_status(self): return self.status
     def latest_manifest(self): return self.manifest
     def tenant_backup_times(self, m): return dict(self.tenant_times)
@@ -72,6 +74,20 @@ class MonitorChecks(unittest.TestCase):
         self.probe.cells['running'] = 2; self.assertEqual(self.status('running_cells')['status'], CRIT)
         self.probe.cells['firewall_loaded'] = False; self.assertEqual(self.status('cell_engine')['status'], CRIT)
         self.probe.cells['quarantine_age_days'] = 9; self.assertEqual(self.status('quarantine')['status'], WARN)
+    def test_a_task_failure_that_is_the_owner_s_to_look_at_warns_by_reason_and_a_stale_browser_job_is_seen(self):
+        self.assertEqual((self.status('task_failures')['status'], self.status('stale_children')['status']), (OK, OK))
+        self.probe.tasks.update(owner_faults={'model.lumina_key_refused': 2, 'run.unclassified': 1}, ended_badly=3)
+        found = self.status('task_failures')
+        self.assertEqual((found['status'], found['counts']['failures'], found['counts']['reasons']), (WARN, 3, 2))
+        self.assertIn('model.lumina_key_refused x2, run.unclassified x1', found['summary'])
+        self.probe.tasks['stale_children'] = 8
+        self.assertEqual((self.status('stale_children')['status'], self.status('stale_children')['counts']['stale']), (WARN, 8))
+    def test_the_loopback_services_added_since_are_expected(self):
+        for port in (5433, 8888, 8890, 18802, 18803):
+            self.probe.ports.add(('127.0.0.1', port))
+        self.assertEqual(self.status('host_exposure')['status'], OK)
+        self.probe.ports.add(('127.0.0.1', 6000))
+        self.assertEqual(self.status('host_exposure')['status'], WARN)
     def test_queue_and_billing_signals(self):
         self.probe.queue.update(pending=2, oldest_pending_age_s=2000); self.assertEqual(self.status('lifecycle_queue')['status'], WARN)
         self.probe.queue['uncertain'] = 1; self.assertEqual(self.status('unresolved_holds')['status'], CRIT)

@@ -23,7 +23,10 @@ REQUIRED_CONTAINERS = ('openclaw-production-openclaw-gateway-1', 'openclaw-produ
 TIMERS = {'agentai-billing-worker.timer': 300, 'agentai-platform-mail.timer': 600, 'openclaw-ops-backup.timer': 2 * 86400,
           'agentai-ops-backup.timer': 2 * 86400, 'agentai-ops-monitor.timer': 1800}
 PUBLIC_PORTS = {22, 80, 443}
-LOOPBACK_PORTS = {53, 2019, 3978, 4000, 18789, 18790, 18795, 18800, 18801} | set(range(19101, 19141))   # 19101-19140: customer cell Gateways (loopback only)
+# Loopback only. 19101-19140: customer cell Gateways. 5433: the knowledge index's own database. 8888: the long-term memory service. 8890: the embeddings service.
+# 18802: the browser's device gateway (the customer's own Chrome). 18803: the push gateway. (The last five were added after this list was written and showed as a
+# standing "unexpected local port" warning for a week: a warning that is always on is not read.)
+LOOPBACK_PORTS = {53, 2019, 3978, 4000, 5433, 8888, 8890, 18789, 18790, 18795, 18800, 18801, 18802, 18803} | set(range(19101, 19141))
 
 DEFAULTS = {'backup_max_age_h': 26, 'tenant_backup_max_age_h': 36, 'disk_warn_pct': 85, 'disk_crit_pct': 93, 'mem_warn_mb': 800, 'mem_crit_mb': 300,
             'queue_pending_warn_s': 900, 'inbox_lag_warn_s': 900, 'cert_warn_days': 14, 'cert_crit_days': 7, 'monitor_stale_s': 1800,
@@ -72,6 +75,20 @@ class Monitor:
         lag = q['billing_inbox_lag_s'] > self.t['inbox_lag_warn_s']
         out.append(result('billing_inbox', CRIT if q['billing_dead'] else WARN if lag else OK, 'billing events dead-lettered' if q['billing_dead'] else 'billing events are not being applied' if lag else 'billing inbox current',
                           dead=q['billing_dead'], lag_s=int(q['billing_inbox_lag_s'])))
+        return out
+
+    def tasks(self):
+        """What customers' tasks ran into (reliability plan, Part 1). At a few requests a day a percentage says nothing, so each failure that is the owner's to look at
+        counts by itself: anything on our side, anything only the owner can fix, anything nobody has classified. Reason codes and counts only. A browser job still alive
+        after its request ended is a record nobody is closing."""
+        t = self.probe.task_facts()
+        owed = t['owner_faults']
+        total = sum(owed.values())
+        worst = ', '.join(f'{reason} x{count}' for reason, count in sorted(owed.items(), key=lambda kv: (-kv[1], kv[0]))[:6])
+        out = [result('task_failures', WARN if total else OK, f'{total} task failure(s) in the last day need the owner: {worst}' if total else 'no task failure in the last day needs the owner',
+                      failures=total, reasons=len(owed), requests=t['requests'], ended_badly=t['ended_badly'])]
+        stale = t['stale_children']
+        out.append(result('stale_children', WARN if stale else OK, f'{stale} browser job(s) still marked running after their task ended' if stale else 'no browser job outlives its task', stale=stale))
         return out
 
     def backups(self):
@@ -133,7 +150,7 @@ class Monitor:
         worst = max((RANK[s] for s, _ in findings), default=0)
         return [result('pinning', [OK, UNKNOWN, WARN, CRIT][worst], '; '.join(m for _, m in findings)[:300] if findings else 'images and dependencies are pinned by digest/hash', findings=len(findings))]
 
-    CHECKS = ('services', 'containers', 'capacity', 'database', 'queues', 'backups', 'timers', 'certificate', 'cells', 'exposure', 'pinning')
+    CHECKS = ('services', 'containers', 'capacity', 'database', 'queues', 'tasks', 'backups', 'timers', 'certificate', 'cells', 'exposure', 'pinning')
 
     def run(self):
         correlation = uuid.uuid4().hex[:12]

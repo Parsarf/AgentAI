@@ -14,11 +14,12 @@ browser job's own state and parks the request (it gives up the running slot, not
 from __future__ import annotations
 import hashlib
 import json
+import logging
 import os
 import re
 import time
 import uuid
-from . import activity as activity_mod, outcome as outcome_mod, spend_limits, timing, versions
+from . import activity as activity_mod, faults, outcome as outcome_mod, spend_limits, timing, versions
 from .browse import job_states as browse_job_states
 from .adapters import CapabilityUnavailable
 from .browse.untrusted import neutralize
@@ -31,6 +32,8 @@ from .lifecycle.coordinator import Coordinator
 from .lifecycle.types import Conflict
 from .request_queue import Defer, Parked, Recover, RequestClaim, RequestQueue, RequestReceipt, MAX_MESSAGE_CHARS
 from .security import Principal
+
+log = logging.getLogger(__name__)
 
 MAX_TRANSCRIPT_CHARS = MAX_MESSAGE_CHARS
 WAIT_SLICE_MS = 3000          # one agent.wait; Stop, the lease and the limits are looked after between slices
@@ -843,7 +846,7 @@ class ChatDriver:
         self._pause_goal(claim, gateway, session, 'The run took too long and was stopped.')
         self._emit(claim, 'progress', {'summary': 'The run took too long and was stopped.'}, 'gateway')
         return self._close(claim, 'failed', 'The assistant took too long and was stopped. Please try a smaller request.', gateway, self._before(claim),
-                           verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant took too long and was stopped.', ''))
+                           verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant took too long and was stopped.', ''), fault=faults.Fault('run.timeout'))
 
     def _parked_too_long(self, claim):
         with self.store.connect() as con:
@@ -869,7 +872,8 @@ class ChatDriver:
         note = 'This scheduled run needed you (' + {'browser_question': 'a question about what to do', 'browser_takeover': 'you to take over the browser', 'location_permission': 'your location'}.get(reason, 'your input') + '), so it stopped. Open it to carry on.'
         self._emit(claim, 'progress', {'summary': note}, 'gateway')
         return self._close(claim, 'completed', self._last_reply(claim) or note, gateway, self._before(claim),
-                           verdict=outcome_mod.Verdict('blocked', 'unverified', note, 'Stopped: ' + note))
+                           verdict=outcome_mod.Verdict('blocked', 'unverified', note, 'Stopped: ' + note),
+                           fault=faults.Fault('task.needed_customer_unattended', {'kind': reason}))
 
     def _waited_too_long(self, claim, gateway, session):
         """PARK_LIMIT: the run waited that long for a person who did not come back. It is stopped (it used to be parked again, with a fresh clock, for ever)."""
@@ -880,7 +884,7 @@ class ChatDriver:
         note = 'The task waited too long for you, so it was stopped.'
         self._emit(claim, 'progress', {'summary': note}, 'gateway')
         return self._close(claim, 'completed', self._last_reply(claim) or note, gateway, self._before(claim),
-                           verdict=outcome_mod.Verdict('partial', 'unverified', note, 'Stopped: ' + note))
+                           verdict=outcome_mod.Verdict('partial', 'unverified', note, 'Stopped: ' + note), fault=faults.Fault('task.waited_too_long'))
 
     def _budget_stop(self, claim, gateway, session):
         self._abort_all(claim, gateway, session)
@@ -890,7 +894,7 @@ class ChatDriver:
         self._emit(claim, 'budget', {'note': 'Your spending limit for this task was reached.'}, 'gateway')
         note = 'Your spending limit for this task was reached, so the work was stopped. You can change or remove the limit in Settings > Usage.'
         return self._close(claim, 'completed', self._last_reply(claim) or note, gateway, self._before(claim),
-                           verdict=outcome_mod.Verdict('partial', 'unverified', note, 'Stopped: ' + note))
+                           verdict=outcome_mod.Verdict('partial', 'unverified', note, 'Stopped: ' + note), fault=faults.Fault('task.spending_limit'))
 
     def _before(self, claim):
         first = next(iter(self._deliveries(claim)), None)
@@ -943,7 +947,8 @@ class ChatDriver:
         self._emit(claim, 'result', {'summary': public[:500], 'outcome': verdict.outcome, 'verify_level': verdict.verification,
                                      **({'checked': list(verdict.checked), 'unchecked': list(verdict.unchecked), 'missing': list(verdict.missing)}
                                         if verdict.checked or verdict.unchecked or verdict.missing else {})})
-        return self._close(claim, 'completed', public, gateway, self._before(claim), verdict=verdict, continue_goal=continuing)
+        return self._close(claim, 'completed', public, gateway, self._before(claim), verdict=verdict, continue_goal=continuing,
+                           fault=faults.of_finished_run(verdict.outcome, jobs=jobs, goal=goal, reply=bool(reply or last['native_status'] == 'ok'), continuing=continuing))
 
     def _knowledge_checks(self, claim):
         """What the assistant checked during this request with the knowledge tools (#48). Ids and fixed words only."""
@@ -962,7 +967,8 @@ class ChatDriver:
         self._emit(claim, 'error', {'summary': message, 'category': 'runtime'}, 'gateway')
         state = 'cancelled' if native['aborted'] and self._cancel_requested(claim) else 'failed'
         return self._close(claim, state, message if state == 'failed' else 'Cancelled during execution', gateway, self._before(claim),
-                           verdict=outcome_mod.judge(native=native, cancelled=state == 'cancelled'))
+                           verdict=outcome_mod.judge(native=native, cancelled=state == 'cancelled'),
+                           fault=faults.of_runtime_error(native['error']) if state == 'failed' else None)
 
     def _goal(self, gateway, session):
         try:
@@ -1152,7 +1158,9 @@ class ChatDriver:
                             request='litellm-' + claim.request_id, amount_microusd=int(amount),
                             observed_epoch=int(self.clock()), price_version=version, payload_hash=digest)
 
-    def _close(self, claim, state, public_result, gateway=None, before=None, *, verdict=None, continue_goal=False):
+    def _close(self, claim, state, public_result, gateway=None, before=None, *, verdict=None, continue_goal=False, fault=None):
+        """`fault` is why the request did not simply complete (faults.Fault), when the caller knows: it is written with the task's final state, so every ending that is not
+        clean has its reason on record. It changes nothing the customer is shown."""
         # Usage must reconcile before the global slot hands over (queue.finish rechecks).
         with self.store.connect() as con:
             funded = con.execute('SELECT 1 FROM task_reservations WHERE account_id=? AND task_id=?', (claim.account_id, claim.request_id)).fetchone()
@@ -1167,6 +1175,11 @@ class ChatDriver:
         with self.coordinator.transaction() as con:
             con.execute('UPDATE tasks SET state=? WHERE account_id=? AND id=?', (task_state, claim.account_id, claim.request_id))
             self.coordinator._audit(con, claim.account_id, 'worker', claim.request_id, 'chat.' + state, 'completed')
+            if fault is not None:
+                try:
+                    faults.insert(con, claim.account_id, fault, request_id=claim.request_id, now=int(self.clock()))
+                except Exception:
+                    log.error('fault not recorded reason=%s request=%s', fault.reason, claim.request_id)       # noting why it ended never stops it from ending
         return RequestReceipt(claim.account_id, claim.request_id, claim.fence, state, public_result[:MAX_TRANSCRIPT_CHARS], True,
                               outcome=outcome, outcome_note=verdict.note if verdict else '', verification=verdict.verification if verdict else None, continue_goal=continue_goal)
 
@@ -1220,7 +1233,7 @@ class ChatDriver:
         class _Blind:
             def usage_snapshot(self): raise RuntimeError('runtime unreachable')
         return self._close(claim, 'failed', 'The assistant could not be reached for this request, so it was stopped. Please try again.', _Blind(), None,
-                           verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant could not be reached.', ''))
+                           verdict=outcome_mod.Verdict('failed', 'unverified', 'The assistant could not be reached.', ''), fault=faults.Fault('cell.unreachable'))
 
     @staticmethod
     def _cell_gone(gateway):
@@ -1266,7 +1279,7 @@ class ChatDriver:
         note = 'Stopped at your request.' if cancelled else 'The assistant stopped unexpectedly. Please try again.'
         self._emit(claim, 'progress' if cancelled else 'error', {'summary': note}, 'reconciler')
         verdict = outcome_mod.judge(native={}, cancelled=True) if cancelled else outcome_mod.Verdict('failed', 'unverified', note, '')
-        return self._close(claim, state, note, gateway, self._before(claim), verdict=verdict)
+        return self._close(claim, state, note, gateway, self._before(claim), verdict=verdict, fault=None if cancelled else faults.Fault('cell.stopped_under_task'))
 
     def reconcile(self, claim: RequestClaim):
         """A request left uncertain (crash, lease loss). The run is the runtime's, so there is nothing to guess: if the runtime can be reached, supervision simply carries on from
@@ -1275,7 +1288,7 @@ class ChatDriver:
             raise ValueError('chat driver requires a conversation binding')
         if not self._deliveries(claim):
             return self._close(claim, 'failed', 'Your request could not be started. Nothing was charged. Please send it again.',
-                               verdict=outcome_mod.Verdict('failed', 'unverified', 'It could not be started.', ''))
+                               verdict=outcome_mod.Verdict('failed', 'unverified', 'It could not be started.', ''), fault=faults.Fault('cell.not_started'))
         closed = self._already_closed(claim)
         if closed is not None:
             return closed

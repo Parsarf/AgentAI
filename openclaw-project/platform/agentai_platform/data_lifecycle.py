@@ -76,6 +76,8 @@ NEVER_EXPORTED = {
     'hub_threads': 'the list of threads (made from the messages in mail/messages.json)', 'hub_sync': 'sync bookkeeping',
     'tasks': 'bookkeeping (the tasks are in tasks/tasks.json)', 'task_reservations': 'budget bookkeeping', 'entitlements': 'plan bookkeeping',
     'knowledge_checks': 'what the assistant checked during tasks (ids and fixed words, kept 90 days)',
+    'faults': 'why a task or a step did not finish (reason codes and numbers, kept 30 days; what you were told is in the chats)',
+    'model_calls': 'how long each model call took and how it ended (status numbers and timings, kept 30 days)',
 }
 # Deletion: rows of these tables stay. Everything else that has an `account_id` column goes.
 KEPT_AT_DELETION = ('accounts', 'memberships', 'audit_events', 'account_jobs', 'financial_records', 'billing_customers', 'billing_checkout_sessions', 'billing_subscriptions',
@@ -302,7 +304,8 @@ class AccountJobs:
                     run('timeline', f'DELETE FROM events WHERE account_id=? AND task_id IN ({m})', (account, *chunk))
                     run('deliveries', f'DELETE FROM chat_deliveries WHERE account_id=? AND request_id IN ({m})', (account, *chunk))
                     for table, column in (('actions', 'request_id'), ('handoffs', 'request_id'), ('workflows', 'request_id'), ('mcp_calls', 'request_id'), ('browse_steps', 'request_id'),
-                                          ('browse_sessions', 'request_id'), ('browse_runs', 'request_id'), ('location_requests', 'request_id'), ('spend_marks', 'request_id'), ('request_slots', 'request_id')):
+                                          ('browse_sessions', 'request_id'), ('browse_runs', 'request_id'), ('location_requests', 'request_id'), ('spend_marks', 'request_id'), ('request_slots', 'request_id'),
+                                          ('faults', 'request_id'), ('model_calls', 'request_id')):
                         try:
                             run('task_records', f'DELETE FROM {table} WHERE account_id=? AND {column} IN ({m})', (account, *chunk))
                         except Exception as error:

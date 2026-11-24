@@ -67,6 +67,25 @@ class HostProbe:
                     'billing_dead': one("SELECT count(*) FROM billing_inbox WHERE status='dead'") if self._has(con, 'billing_inbox') else 0}
         finally: con.close()
 
+    def task_facts(self, window=86400, settle=900):
+        """The last day of customers' tasks (the deploy's own probes apart): how many there were and how many ended badly, the failures that are the owner's to look at by
+        reason code, and browser jobs still marked alive `settle` seconds after their request ended."""
+        now, con = int(self.clock()), self._db()
+        try:
+            one = lambda sql, *a: con.execute(sql, a).fetchone()[0]
+            probe = 'AND probe=0' if any(c[1] == 'probe' for c in con.execute('PRAGMA table_info(customer_requests)')) else ''
+            owed = {}
+            if self._has(con, 'faults'):
+                for reason, count in con.execute("""SELECT reason,count(*) FROM faults WHERE created_epoch>=? AND expected=0
+                        AND (kind IN ('internal','needs_owner') OR reason LIKE '%.unclassified') GROUP BY reason""", (now - window,)):
+                    owed[reason] = count
+            return {'owner_faults': owed,
+                    'requests': one(f'SELECT count(*) FROM customer_requests WHERE created_epoch>=? {probe}', now - window),
+                    'ended_badly': one(f"SELECT count(*) FROM customer_requests WHERE created_epoch>=? {probe} AND outcome IN ('failed','partial','blocked')", now - window),
+                    'stale_children': one("""SELECT count(*) FROM browse_runs b JOIN customer_requests r ON r.account_id=b.account_id AND r.id=b.request_id
+                        WHERE b.status IN ('queued','running','handoff','paused','asking') AND r.state IN ('completed','failed','cancelled') AND b.updated_epoch<?""", now - settle)}
+        finally: con.close()
+
     @staticmethod
     def _has(con, table): return con.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone() is not None
 
