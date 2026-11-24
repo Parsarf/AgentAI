@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 import re
 
 from .browse.job_states import RELEASED_REASON
+from .faults_registry import REASONS
 
 OUTCOMES = ('completed', 'partial', 'blocked', 'failed', 'cancelled')
 VERIFICATION = ('verified', 'unverified', 'not_applicable')
@@ -138,9 +139,12 @@ def judge(*, native, goal=None, jobs=(), steps=(), artifacts=0, cancelled=False,
         return Verdict('partial', 'unverified', note, '' if goal_continuing else 'Stopped: ' + note)
     if jobs and state not in ('done', 'released'):
         note = BROWSER_WORDS.get(state, 'the browser did not finish')
-        blocked = state == 'blocked' or 'verify you are human' in str(jobs[-1].get('reason') or '')
+        code = str(jobs[-1].get('code') or '')
+        blocked = state == 'blocked' or code == 'browser.human_check' or 'verify you are human' in str(jobs[-1].get('reason') or '')
         text = note[0].upper() + note[1:] + '.'
-        return Verdict('blocked' if blocked else 'partial', 'unverified', text, 'Stopped: ' + note + '.')
+        if code.startswith('browser.') and code in REASONS:        # the browser said why where it ended: its one sentence is the task's (the same one the step shows)
+            text = REASONS[code].customer
+        return Verdict('blocked' if blocked else 'partial', 'unverified', text, 'Stopped: ' + text[0].lower() + text[1:])
     if not reply:
         return Verdict('partial', 'unverified', 'The assistant finished without a reply.', '')
     if goal and goal.get('status') == 'complete' and verification == 'not_applicable':

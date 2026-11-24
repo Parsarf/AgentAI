@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). The tools half of Part 3 is built (branch `reliability-3-tools`). The browser half of Part 3 and Parts 4 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). The tools half of Part 3 is LIVE (#98) and the browser half is built (branch `reliability-3-browser`). Parts 4 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -198,7 +198,7 @@ first pass and is the safety net for any path that leaves one behind; no migrati
 Seen in the first live numbers (2026-11-24): no model call reports its token counts (0 of 4), so the provider's reply does not carry them at its end. Phase 14's
 baseline needs them; asking the provider for usage in a streamed reply changes what the runtime receives and must be tried on the harness first.
 
-**Tools are built** (2026-11-24, branch `reliability-3-tools`). What was found first, on the server (30 days, read only): 194 failed steps, and for 134 of them the
+**Tools are built and live** (2026-11-24, PR #98). What was found first, on the server (30 days, read only): 194 failed steps, and for 134 of them the
 timeline kept the runtime's notice to the model ("SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source...") as the step's output, because
 the runtime wraps every reply of a Lumina tool in it and the first 1,200 characters were stored. So a customer who opened a failed step read that notice and
 nothing of why it failed. The tool relay recorded nothing about a call. All 22 failed file deliveries were on one day (15 November).
@@ -234,10 +234,25 @@ Changed from the plan while building:
   relay's record is already complete; writing the row from it is then a small step.
 - **No migration.** The call's mark and the tool's name are facts in the existing `detail` column.
 
-Not done in this part, still open: the runtime's loop detection (needs the lab tasks on a real model to show no false stop), the browser's "question unanswered"
-ending (with the browser's reason codes, below), and `tool.bad_arguments` replies for memory, connected apps and the mail draft beyond what they already say.
+Live since 2026-11-24 (PR #98, release `23a8220`). Read on the server after the deploy: no tool call had failed yet, so the steps section of the report was empty.
 
-The browser's part is not started.
+**The browser's endings are built** (2026-11-24, branch `reliability-3-browser`):
+
+- **The reason is given where the ending is decided.** The loop's result, the service's job and the job's last status carry a `code` (`browse/loop.py`,
+  `browse/service.py`; `job_states.END_CODES` is the code of a state when nothing more exact is known). Nothing reads a reason back out of a sentence any more,
+  except for records made before this release.
+- **Seven new reasons**: `browser.page_timeout`, `browser.page_would_not_open`, `browser.runner_crashed`, `browser.site_refused`, `browser.question_unanswered`,
+  `browser.server_busy`, `browser.no_start_page`. The human check keeps its name (`browser.human_check`, the plan called it `bot_check`).
+- **An exception's name no longer reaches a sentence.** "the browser run failed (TimeoutError)" is now "the page did not answer in time, so the browser stopped"
+  (`browser.page_timeout`) or "the browser run failed" (`browser.runner_crashed`); the exception's type and the file and line it was raised at travel beside it
+  as facts for the owner and are kept in the fault's detail.
+- **The tool's reply follows the reason.** Every ending but `done` reaches the assistant with its reason. Stuck, out of time, the step limit and a failure are
+  now told as errors (they were normal replies, so the step showed as done); a stop that is the site's or the customer's is a normal reply.
+- **One sentence.** The task's note and the "Stopped:" line are the reason's sentence, the same one the step shows. For every state the old words and the
+  registry's are identical (a test holds that), so wording changes only where the browser now says something more exact.
+
+Not done in Part 3, still open: the runtime's loop detection (needs the lab tasks on a real model to show no false stop), and `tool.bad_arguments` replies for
+memory, connected apps and the mail draft beyond what they already say.
 
 The plan as written:
 

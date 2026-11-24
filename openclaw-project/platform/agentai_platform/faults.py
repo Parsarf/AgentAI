@@ -23,7 +23,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from .browse.job_states import RELEASED_REASON      # a job its request no longer needed: not a failure
+from .browse.job_states import END_CODES, RELEASED_REASON      # a job its request no longer needed is not a failure
 from .faults_registry import REASONS
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ EFFECTS = ('nothing_changed', 'partly_done', 'unknown')
 RETRY = {'retry_later': 'later', 'unknown_outcome': 'read_back'}
 
 # What `detail` may hold. A value is an int, a float, a bool, or ONE token (letters, digits, . _ : -): no spaces, so no sentence; no / @ ? or %, so no address.
-DETAIL_KEYS = ('status', 'code', 'route', 'exception', 'state', 'tool', 'call', 'attempt', 'seconds', 'waited_seconds', 'steps', 'kind', 'provider_error', 'runtime_reason', 'job')
+DETAIL_KEYS = ('status', 'code', 'route', 'exception', 'where', 'state', 'tool', 'call', 'attempt', 'seconds', 'waited_seconds', 'steps', 'kind', 'provider_error', 'runtime_reason', 'job')
 TOKEN = re.compile(r'[A-Za-z0-9_.:-]{1,60}')
 
 
@@ -187,27 +187,27 @@ def of_runtime_error(error) -> Fault:
 
 
 # How a browser job ended (browse/job_states.py) -> the reason. `done` and a job the assistant simply went on without are not faults.
-_BROWSER_STATES = {
-    'error': 'browser.failed', 'failed': 'browser.failed', 'stopped': 'browser.stopped', 'blocked': 'browser.site_not_allowed', 'stuck': 'browser.stuck', 'deadline': 'browser.deadline',
-    'max_steps': 'browser.max_steps', 'interrupted': 'browser.interrupted', 'budget': 'browser.spending_limit', 'handoff': 'browser.needs_customer',
-    'cancelled': 'browser.stopped_with_task',
-}
 _EXCEPTION = re.compile(r'\(([A-Za-z_][A-Za-z0-9_]{2,40})\)\s*$')
 
 
-def of_browser_job(state, reason='') -> Fault | None:
-    """The fault for a browser job that ended in `state`. From the job's own reason only the exception type in brackets is kept ("the browser run failed (TimeoutError)"),
-    never the reason itself: it can quote the page."""
-    state, reason = str(state or ''), str(reason or '')
+def of_browser_job(state, reason='', code='', *, exception=None, where=None) -> Fault | None:
+    """The fault for a browser job that ended in `state`. `code` is the reason the browser gave where the ending was decided (browse/loop.py, browse/service.py): a
+    registered code is used as it is, with the exception's type and place as facts when it was a crash. The job's own sentence is never kept: it can quote the page.
+
+    A job recorded before the browser gave codes has none. For those, and only those, the state decides, and two things are still read from the old sentence: the
+    exception type it carried in brackets and the human-check wording."""
+    state, reason, code = str(state or ''), str(reason or ''), str(code or '')
     if state in ('', 'done', 'released') or reason == RELEASED_REASON:
         return None
-    detail = {'state': state if TOKEN.fullmatch(state) else 'other'}
+    detail = {'state': state if TOKEN.fullmatch(state) else 'other', 'exception': exception, 'where': where}
+    if code in REASONS and code.startswith('browser.'):
+        return Fault(code, detail)
     found = _EXCEPTION.search(reason)
     if found:
         detail['exception'] = found.group(1)
     if 'verify you are human' in reason:
         return Fault('browser.human_check', detail)
-    return Fault(_BROWSER_STATES.get(state, 'browser.stopped'), detail)
+    return Fault(END_CODES.get(state, 'browser.stopped'), detail)
 
 
 GOAL_HELD = ('paused', 'budget_limited', 'usage_limited')
@@ -227,7 +227,7 @@ def of_finished_run(outcome, *, jobs=(), goal=None, reply=True, continuing=False
         return None
     if jobs:
         last = jobs[-1]
-        found = of_browser_job(last.get('state'), last.get('reason'))
+        found = of_browser_job(last.get('state'), last.get('reason'), last.get('code'), exception=last.get('exception'), where=last.get('where'))
         if found is not None:
             return found
     if not reply:

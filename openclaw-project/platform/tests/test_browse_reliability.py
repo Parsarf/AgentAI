@@ -106,7 +106,7 @@ class TheLoop(unittest.TestCase):
 
     def test_five_waits_with_nothing_changing_bring_the_assistant_and_ten_end_the_task(self):
         r, llm, jev = run(FpSession(FLAT, iter([1] * 99)), [{'operation': 'wait'}] * 12, ['{"action":"wait"}'] * 3, max_steps=14)
-        self.assertEqual((r.status, r.reason), ('stuck', 'the page did not finish loading')); self.assertIn('JEV has waited 5 times', llm.why[0])
+        self.assertEqual((r.status, r.reason, r.code), ('stuck', 'the page did not finish loading', 'browser.page_timeout')); self.assertIn('JEV has waited 5 times', llm.why[0])
 
     def test_a_change_that_arrives_after_the_step_was_judged_is_credited_to_it(self):
         class Late(FpSession):
@@ -198,7 +198,7 @@ class ASiteThatRefuses(unittest.TestCase):
                 snap = super().snapshot(); snap.update(title='Access Denied', text="You don't have permission to access this server.", http_status=403); return snap
         s = Denied(FLAT, iter(range(99)))
         r, llm, jev = run(s, [], [], max_steps=5)
-        self.assertEqual((r.status, r.reason), ('blocked', REFUSED_REASON)); self.assertEqual(len(jev.bodies), 0)       # no model was asked about a page that is not the site's
+        self.assertEqual((r.status, r.reason, r.code), ('blocked', REFUSED_REASON, 'browser.site_refused')); self.assertEqual(len(jev.bodies), 0)       # no model was asked about a page that is not the site's
         self.assertEqual(len([c for c in s.log if c[0] == 'open']), 2); self.assertEqual([c for c in s.log if c[0] == 'act'], [])
         final = {'state': r.status, 'reason': r.reason, 'url': 'https://www.shop.example/'}
         self.assertTrue(is_refused(final) and is_wall(final))

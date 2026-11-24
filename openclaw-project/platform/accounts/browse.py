@@ -38,6 +38,14 @@ def _public(row):
     return {'request_id': row['request_id'], 'goal': row['goal'][:300], 'status': row['status'], 'url': row['url'], 'created_epoch': row['created_epoch']}
 
 
+OWNER_ONLY = ('exception', 'where')       # what a crash was and where (browse/service.crash_facts): facts kept for the owner with the job's ending, never sent to the app
+
+
+def _shown(event):
+    """One browser event as the customer's app gets it."""
+    return {k: v for k, v in event.items() if k not in OWNER_ONLY} if isinstance(event, dict) else {}
+
+
 @endpoint(['GET'])
 def runs(request):
     denied = customer(request)
@@ -60,7 +68,7 @@ def run(request, request_id):
     if row['status'] in LIVE:
         try:
             live = _rpc(request)('poll', request_id=job, since=max(0, since - base))          # the service is authoritative while a job is alive
-            events, takeover, question = [{**e, 'n': e['n'] + base} for e in live['events']], bool(live.get('takeover')), live.get('question')
+            events, takeover, question = [{**_shown(e), 'n': e['n'] + base} for e in live['events']], bool(live.get('takeover')), live.get('question')
             needs_you = live.get('needs_you') or None      # the run is waiting for the customer to do something only they can (sign in, a password, a human check)
             row = {**row, 'status': live['state'], 'url': live.get('url') or row['url'], 'answer': live.get('answer') or row['answer'], 'reason': live.get('reason') or row['reason']}
             if live['state'] in job_states.OVER:           # the job ended and nothing was following it (the tool call had gone): keep its ending and all its steps in the record now
@@ -77,7 +85,7 @@ def run(request, request_id):
             live = None
     if events is None:
         with wiring.store().connect() as con:
-            events = [{'n': r['n'], 'kind': r['kind'], **json.loads(r['data_json'])} for r in con.execute(
+            events = [{'n': r['n'], 'kind': r['kind'], **_shown(json.loads(r['data_json']))} for r in con.execute(
                 'SELECT n,kind,data_json FROM browse_steps WHERE account_id=? AND request_id=? AND n>? ORDER BY n LIMIT 200', (request.account_id, request_id, since)).fetchall()]
     pending = json.loads(row['pending_json']) if row.get('pending_json') else None
     return JsonResponse({**_public(row), 'answer': row['answer'], 'reason': row['reason'], 'takeover': takeover, 'needs_you': needs_you, 'pending_action': pending, 'question': question, 'events': events})

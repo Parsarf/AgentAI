@@ -1067,6 +1067,15 @@ class ChatDriver:
                 run = con.execute('SELECT status,url,reason FROM browse_runs WHERE account_id=? AND request_id=?', (claim.account_id, claim.request_id)).fetchone()
                 if run:
                     jobs.append({'state': run['status'], 'url': run['url'], 'reason': run['reason']})
+                    # Why it ended, as the browser said it where the ending was decided: the reason code (and for a crash the exception's type and place) on the job's
+                    # last status, when that status is the state the record ended in.
+                    last = con.execute("SELECT data_json FROM browse_steps WHERE account_id=? AND request_id=? AND kind='status' ORDER BY n DESC LIMIT 1", (claim.account_id, claim.request_id)).fetchone()
+                    try:
+                        said = json.loads(last[0]) if last else {}
+                    except ValueError:
+                        said = {}
+                    if isinstance(said, dict) and said.get('state') == run['status']:
+                        jobs[-1].update({k: said[k] for k in ('code', 'exception', 'where') if isinstance(said.get(k), str) and said[k]})
                 for r in con.execute('SELECT data_json FROM browse_steps WHERE account_id=? AND request_id=? AND kind=? ORDER BY n', (claim.account_id, claim.request_id, 'step')).fetchall():
                     try:
                         steps.append(json.loads(r[0]))

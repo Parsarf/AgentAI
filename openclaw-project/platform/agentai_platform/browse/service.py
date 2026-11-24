@@ -91,7 +91,21 @@ STAT_KEYS = ('jev_calls', 'ask_answered', 'ask_remembered', 'jev_acted', 'jev_ty
 
 
 class BrowseError(Exception):
-    pass
+    """`code`: the registered reason for it, when the place that raises it knows one ('' = an unnamed failure of the browser)."""
+    def __init__(self, *args, code=''):
+        super().__init__(*args)
+        self.code = code
+
+
+def crash_facts(exc) -> dict:
+    """What may be kept about an unexpected failure: the exception's type and the file and line of the innermost frame in Lumina's own code. Names and numbers only; the
+    exception's message (which can quote a page or an address) is never part of it."""
+    frames = traceback.extract_tb(exc.__traceback__)
+    own = [f for f in frames if 'agentai_platform' in f.filename] or list(frames)
+    facts = {'exception': type(exc).__name__[:60]}
+    if own:
+        facts['where'] = f'{Path(own[-1].filename).name}:{own[-1].lineno}'[:60]
+    return facts
 
 
 HAND_POLL_SECONDS = 2                          # while the customer signs in or passes a check, the page is looked at this often to see whether they are done
@@ -129,6 +143,7 @@ class Job:
         self.tab = tab                                # a grant name: the job works in a tab the customer allowed in their own Chrome (engine 'local' only), where it already is
         self.max_cost, self.max_steps, self.max_seconds = max_cost, max_steps, max_seconds
         self.state, self.reason, self.answer, self.url, self.pending = 'queued', '', None, '', None
+        self.code, self.crash = '', {}              # why it ended, as a registered reason code (job_states.END_CODES), and for a crash the exception's type and where it was raised: facts for the owner, never shown
         self.events, self.cost, self.calls, self.cancel = [], 0, 0, threading.Event()
         self.session, self.takeover_until, self.lock = None, 0.0, threading.Lock()
         self.running_cost = lambda: 0               # what the run has spent so far, while it is going (its ladder's count); `cost` is only added up when the run ends
@@ -224,7 +239,7 @@ class BrowseService:
         job = self._job(account, request_id)
         with job.lock:
             events = [e for e in job.events if e['n'] > since]
-        return {'state': job.state, 'reason': job.reason, 'answer': job.answer, 'url': job.url, 'pending_action': job.pending,
+        return {'state': job.state, 'reason': job.reason, 'code': job.code or job_states.END_CODES.get(job.state, ''), **job.crash, 'answer': job.answer, 'url': job.url, 'pending_action': job.pending,
                 'cost_microusd': max(job.cost, self._running_cost(job)), 'events': events, 'takeover': job.state in ('handoff', 'paused', 'asking') and self.clock() < job.takeover_until,
                 'pausing': job.state == 'running' and job.pause_req.is_set(), 'needs_you': job.needs or None, 'jev': dict(job.stats), 'question': self._public_question(job),
                 'observation': job.observation if job.state == 'running' else None}
@@ -568,7 +583,7 @@ class BrowseService:
         candidate = job.start_url or (found.group(0).rstrip('.,;') if found else None)
         if candidate:
             return candidate
-        raise BrowseError('Could not choose a starting page. Please include the website URL in your request.')
+        raise BrowseError('Could not choose a starting page. Please include the website URL in your request.', code='browser.no_start_page')
 
     def _crash_trace(self, job, exc, what):
         """Where an unexpected failure happened: the error type, its short redacted text and the code lines it passed through (file and line, not values)."""
@@ -578,6 +593,11 @@ class BrowseService:
             log.warning('browse: %s failed (%s: %s); trace %s', job.id, type(exc).__name__, scrub(str(exc), 120, force=True), self.root / job.id / 'trace.jsonl')
         except Exception:
             pass
+
+    @staticmethod
+    def _ending(job):
+        """A job's ending as its last status event: the state, the sentence, the reason code and, for a crash, the facts about it."""
+        return {'state': job.state, 'reason': job.reason, 'code': job.code or job_states.END_CODES.get(job.state, ''), **job.crash}
 
     def _slot_for(self, job):
         """The host's one Docker stage for a runner job; for a native or local job the browser is the account's own (in its cell, or on its computer), so the only thing to wait for is that account's previous browser job."""
@@ -597,7 +617,8 @@ class BrowseService:
             if job.engine == 'runner' and not self._wait_for_memory(job):
                 job.state = 'cancelled' if job.cancel.is_set() else 'error'
                 job.reason = 'stopped by you' if job.cancel.is_set() else 'the server is busy right now; please try again in a minute'
-                job.add('status', {'state': job.state, 'reason': job.reason})
+                job.code = '' if job.cancel.is_set() else 'browser.server_busy'
+                job.add('status', self._ending(job))
                 return
             job.state = 'running'
             out_dir = self.root / job.id / 'out'
@@ -636,7 +657,7 @@ class BrowseService:
             result = BrowseRunner(session, ladder, policy=Policy(read_only=True, switch=self.switch_for(job.account), press_approval=self.press_approval), on_event=on_event, on_stat=on_stat, cancelled=job.cancel.is_set,
                                   max_steps=job.max_steps, max_seconds=job.max_seconds, pause_gate=self._pause_gate(job), hand_gate=self._hand_gate(job), trace=trace, on_now=on_now, ask_gate=self._ask_gate(job), prefs=job.prefs, vault=job.vault, attached=job.tab).run(job.goal, start)
             job.cost += result.cost_microusd
-            job.answer, job.reason, job.pending = result.answer, result.reason, result.pending_action
+            job.answer, job.reason, job.pending, job.code = result.answer, result.reason, result.pending_action, result.code
             if job.cancel_why and job.reason == 'stopped by you':
                 job.reason = job.cancel_why          # it was stopped, but not by the customer
             job.url = result.url or job.url
@@ -646,20 +667,25 @@ class BrowseService:
                 if shot.get('ok'):
                     job.add('screenshot', {'file': shot['file'], 'by': 'lumina'})
             job.state = result.status
-            job.trace.emit('final', state=job.state, reason=job.reason, stats=dict(job.stats), cost_microusd=job.cost)
+            job.trace.emit('final', state=job.state, reason=job.reason, code=job.code, stats=dict(job.stats), cost_microusd=job.cost)
             log.info('browse: %s ended %s (%s); trace %s', job.id, job.state, scrub(job.reason, 120, force=True), self.root / job.id / 'trace.jsonl')
-            job.add('status', {'state': job.state, 'reason': job.reason, 'stats': dict(job.stats)})       # kept with the run in browse_steps: no schema change needed
+            job.add('status', {**self._ending(job), 'stats': dict(job.stats)})       # kept with the run in browse_steps: no schema change needed
             while job.state == 'handoff' and self.clock() < job.takeover_until and not job.cancel.is_set():
                 time.sleep(0.2)                    # the user may take over; the stage stays up only for this window
         except (BrowseError, Refused) as exc:
             self._crash_trace(job, exc, 'stopped before the run')
             job.state = 'budget' if isinstance(exc, Refused) else 'error'
             job.reason = 'The browser spending limit was reached before startup.' if isinstance(exc, Refused) else str(exc)
-            job.add('status', {'state': job.state, 'reason': job.reason})
+            job.code = '' if isinstance(exc, Refused) else getattr(exc, 'code', '')
+            job.add('status', self._ending(job))
         except Exception as exc:                   # a crash must never leave the shared stage slot held
             self._crash_trace(job, exc, 'crash')
-            job.state, job.reason = 'error', f'the browser run failed ({type(exc).__name__})'
-            job.add('status', {'state': 'error', 'reason': job.reason})
+            # The customer reads what happened; what kind of error it was and where is the owner's, and travels beside the sentence as facts (it used to be in the
+            # sentence: "the browser run failed (TimeoutError)"). A browser that did not answer in time is the page's doing far more often than Lumina's, and is named so.
+            waited = isinstance(exc, TimeoutError)
+            job.state, job.reason = 'error', 'the page did not answer in time, so the browser stopped' if waited else 'the browser run failed'
+            job.code, job.crash = 'browser.page_timeout' if waited else 'browser.runner_crashed', crash_facts(exc)
+            job.add('status', self._ending(job))
         finally:
             if job.session is not None:
                 job.session.close()

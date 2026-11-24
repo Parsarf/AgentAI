@@ -203,12 +203,13 @@ def build_goal(task: dict) -> str:
 
 def is_wall(final) -> bool:
     """The browser stopped at a human-verification page (not at a payment step the customer must complete)."""
-    return (final.get('state') == 'handoff' and not final.get('pending_action') and str(final.get('reason') or '') == WALL_REASON) or is_refused(final)
+    return (final.get('state') == 'handoff' and not final.get('pending_action')
+            and (final.get('code') == 'browser.human_check' or str(final.get('reason') or '') == WALL_REASON)) or is_refused(final)
 
 
 def is_refused(final) -> bool:
     """The site would not serve Lumina's browser at all (an access-denied page): nothing for the customer to do in this browser either."""
-    return final.get('state') == 'blocked' and str(final.get('reason') or '') == REFUSED_REASON
+    return final.get('state') == 'blocked' and (final.get('code') == 'browser.site_refused' or str(final.get('reason') or '') == REFUSED_REASON)
 
 
 # What assistants send for a step when they have not read its schema, each meaning exactly one thing the step already allows.
@@ -496,9 +497,11 @@ class BrowserTool:
                 return self._give_up(account_id, request_id, base, spent_before, 'deadline', 'The browser task took too long and was stopped.')
             self.sleep(self.poll_interval)
         self._spent.pop(job, None)
-        # Which endings the assistant is told are an error stays as it was (a failed or stopped job); why is now a registered reason. A job stopped with its task is an expected
-        # stop, not an error. The other endings become reasons of their own with the browser's part of the plan.
-        return findings(final, self._neutral(account_id, 'untrusted_page_text')), (faults.of_browser_job(final['state'], final.get('reason')) if final['state'] in ('error', 'cancelled') else False)
+        # Every ending that is not `done` has its reason, the one the browser gave where it ended. Whether the assistant is told it failed follows the reason: an expected
+        # stop (the customer is needed, the site refuses Lumina's browser, a limit they set, stopped with the task) is a normal reply; a browser that got stuck, ran out
+        # of time or failed is an error. A job the assistant simply went on without is neither.
+        return (findings(final, self._neutral(account_id, 'untrusted_page_text')),
+                faults.of_browser_job(final['state'], final.get('reason'), final.get('code'), exception=final.get('exception'), where=final.get('where')) or False)
 
     # -- bookkeeping ---------------------------------------------------------------------------------------------------------------------------
     def _stop_job(self, rpc, job):
@@ -510,10 +513,11 @@ class BrowserTool:
     def _give_up(self, account_id, request_id, base, spent_before, state, message, say=True):
         with self.store.connect() as con:
             n = browse_sessions.offset(con, account_id, request_id) - base + 1
-        self._mirror(account_id, request_id, {'state': state, 'reason': message, 'events': [{'n': n, 'kind': 'status', 'state': state}]}, base, None)      # None: keep the cost the last poll recorded (this report carries none, and wrote the job's cost back to zero)
+        why = faults.of_browser_job(state, message)
+        self._mirror(account_id, request_id, {'state': state, 'reason': message, 'events': [{'n': n, 'kind': 'status', 'state': state, 'code': why.reason if why else ''}]}, base, None)      # None: keep the cost the last poll recorded (this report carries none, and wrote the job's cost back to zero)
         if say:
             self._say(account_id, request_id, 'error', {'summary': message, 'category': 'browser'}, 'browser')
-        return f'Status: did not finish ({state}): {message}', faults.of_browser_job(state, message)
+        return f'Status: did not finish ({state}): {message}', why
 
     def _say(self, account_id, request_id, kind, payload, source='router'):
         if self.events is None:
