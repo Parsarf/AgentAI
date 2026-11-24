@@ -293,6 +293,8 @@ browser" beside "Clicked “Filters” · Assistant").
   | "Waiting for the model provider", the pause it asked for | The model relay's note, which now carries `step: provider_wait` and the seconds; it stops being said once the pause is over |
   | "Writing the answer" | Said by the app, which is where the reply's text streams to |
 
+- **The assistant's own instruction files are said as that** ("Read its instructions · browsing"), without where they live (added after seeing the live app: 84 of
+  the 155 file steps in 30 days showed `~/.openclaw/workspace/skills/.../SKILL.md`). Any other file outside the workspace is named by its name alone.
 - **A failed step is listed with its reason** (`evidence.failed`, each with `recovered`), and the task is marked (`trouble`) only when it is over and nothing of the
   same kind worked after the failure.
 - **A limit that was reached is in the record** (the `budget` event is now a timeline row). **A parked run says what it waits for** from an explicit list; a reason
