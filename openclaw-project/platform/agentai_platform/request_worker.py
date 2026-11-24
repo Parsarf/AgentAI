@@ -26,6 +26,7 @@ def where(error) -> dict:
 
 
 SCHEDULE_EVERY = 20      # seconds between looks at the customers' schedules
+ORPHANS_EVERY = 300      # seconds between looks for browser records left alive by a request that ended (browse/job_states.close_orphans)
 
 
 class RequestWorker:
@@ -43,6 +44,7 @@ class RequestWorker:
         self.shadow = shadow   # optional observer; can never alter or block execution
         self.schedules = schedules   # callable -> schedule_engine.ScheduleEngine (or one): starts due schedules. It does nothing while the owner switch `customer_schedules` is off
         self._schedules_next = 0.0   # looked at every SCHEDULE_EVERY seconds, not every tick: a schedule's time is a minute, not a second
+        self._orphans_next = 0.0     # browser records left alive by a request that ended: looked for every ORPHANS_EVERY seconds
 
     def _uncertain_claims(self):
         """Every uncertain request that holds a slot and that no thread of this process is running."""
@@ -72,6 +74,16 @@ class RequestWorker:
             except Exception as error:
                 # Plan and goal progress is retried on the next tick; it must never break request handling. It is reported, though: a goal that silently never continued looked like a finished task.
                 report = {**report, 'follow_error': where(error)}
+        if time.monotonic() >= self._orphans_next:
+            self._orphans_next = time.monotonic() + ORPHANS_EVERY
+            try:
+                from .browse import job_states
+                with self.queue.coordinator.transaction() as con:
+                    closed = job_states.close_orphans(con, now=int(self.clock()))
+                if closed:
+                    report = {**report, 'browser_records_closed': closed}
+            except Exception as error:
+                report = {**report, 'follow_error': where(error)}      # tried again on the next pass; it never breaks request handling
         if self.schedules is not None and time.monotonic() >= self._schedules_next:
             self._schedules_next = time.monotonic() + SCHEDULE_EVERY
             try:
