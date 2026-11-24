@@ -95,7 +95,8 @@ def parse_command(text):
 
 def rollback(previous, *, link=None, run=None, base=None, app=None, sup=None, ui_parent=None):
     """Put the system back to what the last deploy replaced: the app tree and the supervisor tree (the symlinks), the web app bundle, then the services. -> a list of what was done.
-    Migrations stay (they only ever add, and the previous release was probed against the migrated database before the deploy switched). Everything is injectable for tests."""
+    The database is never put back (people may have written to it since), so the caller must first ask `cannot_go_back`: a previous release does not start on a database that
+    has a migration it does not know. Everything is injectable for tests."""
     link, run = link or switch, run or sh
     base, app, sup, ui_parent = Path(base or BASE), Path(app or APP), Path(sup or SUP), Path(ui_parent or UI_PARENT)
     done = []
@@ -121,8 +122,25 @@ def rollback(previous, *, link=None, run=None, base=None, app=None, sup=None, ui
     return done
 
 
+def cannot_go_back(previous, *, app=None) -> str:
+    """Why the previous release can NOT be put back, or ''. A release starts only on a database whose schema is exactly its own migrations (Store.ready and accounts/wsgi.py
+    refuse anything else). So once the release being accepted has applied a migration the previous one does not have, switching the code back leaves the app unable to
+    start. On 2026-11-24 that turned one failed acceptance (the test account had no room for the test chat) into an outage: the release was fine, the rollback was not.
+    Compared by the migration files each release carries: the SQL ones and the web framework's."""
+    old, new = Path(previous.get('old_app') or ''), Path(os.path.realpath(Path(app or APP) / 'current'))
+    added = []
+    for folder, pattern in (('migrations', '*.sql'), ('accounts/migrations', '0*.py')):
+        if (old / folder).is_dir() and (new / folder).is_dir():
+            added += sorted({f.name for f in (new / folder).glob(pattern)} - {f.name for f in (old / folder).glob(pattern)})
+    if not added:
+        return ''
+    return f'it applied {len(added)} database migration(s) the previous release does not have ({", ".join(added[:3])}), and the previous release cannot start on that database'
+
+
 def accept(sha, *, run=None):
-    """`accept <commit>`: the live acceptance (deploy/acceptance_live.py) against the system that was just deployed. A failure puts the previous release back (rollback) and exits 40.
+    """`accept <commit>`: the live acceptance (deploy/acceptance_live.py) against the system that was just deployed. A failure puts the previous release back (rollback) and exits 40, unless that release could not start on the
+    database as it now is (`cannot_go_back`): then the failed release stays live and this exits 43, because a release that failed its acceptance still serves and one that
+    cannot start does not.
     When the script says the answer could not be checked for a reason outside the release (its exit 3: no room on the host, the provider busy, the test account's allowance or the
     account itself missing) nothing is rolled back and this exits 42: the run still goes red, so somebody looks, but a good release (or an urgent fix) is not undone by the weather.
     Run by the workflow right after `deploy`, under the same lock; it uploads nothing."""
@@ -153,11 +171,15 @@ def accept(sha, *, run=None):
     if unchecked:
         say(f'live acceptance of {sha[:7]} could NOT BE CHECKED ({str(report.get("why", ""))[:200]}). The release stays. Run the acceptance again when that is cleared.')
         return 42
-    say(f'live acceptance FAILED for {sha[:7]}: putting the previous release back')
     try:
         previous = json.loads(PREVIOUS.read_text())
         if previous.get('sha') != sha:
             raise ValueError('the recorded previous release is for another commit')
+        stuck = cannot_go_back(previous)
+        if stuck:
+            say(f'live acceptance FAILED for {sha[:7]} and it was NOT rolled back: {stuck}. The failed release stays live. Fix forward: read the failed cases above and deploy the fix.')
+            return 43
+        say(f'live acceptance FAILED for {sha[:7]}: putting the previous release back')
         say('rolled back: ' + '; '.join(rollback(previous, run=run)))
     except (OSError, ValueError) as exc:
         say(f'COULD NOT ROLL BACK ({exc}); the failed release is still live: roll back by hand (OPERATIONS.md, release.py)')

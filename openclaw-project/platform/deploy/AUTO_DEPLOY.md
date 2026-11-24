@@ -31,7 +31,10 @@ Right after `deploy`, the workflow sends `accept <commit>` (the third command th
 was just deployed: the app is ready and every migration applied; the owner's test account gets one real answer, charged once and settled (a few cents of model time at most; its assistant is woken
 if it sleeps); the request carries the version stamp of that commit; a second account cannot read it. **If one check fails the deploy program puts the previous release back by itself**
 (both trees, the web bundle, the services, `last`) and exits 40, so the workflow run goes red. One exception: when the answer could not be checked for a reason that is not the release (the host had no room to wake the test account's assistant, the model provider was busy, the test account's allowance is used up, or the test account is missing) the release **stays** and the program exits 42. The run is still red, so somebody looks; run the workflow again when the cause is cleared. The result is kept in `/var/lib/agentai-deploy/tierb.json`; what the last deploy replaced is in
-`previous.json`. A failure to roll back is said loudly in the log and needs a person (OPERATIONS.md, `release.py`). The wider proof (two accounts at once, killing the worker or the cell, rate limits,
+`previous.json`. A failure to roll back is said loudly in the log and needs a person (OPERATIONS.md, `release.py`). A second exception, since 2026-11-24: when the release that
+failed has applied a database migration the previous release does not have, it is **not** rolled back and the program exits 43. A release starts only on a database whose schema is
+exactly its own migrations, so the previous code would not start at all: that day a failed acceptance (the test account's first project was full, so the test chat could not be
+made) was rolled back onto the migrated database and the site was down until a fix was deployed. A failed release that still serves is the better of the two; the fix goes forward. The wider proof (two accounts at once, killing the worker or the cell, rate limits,
 large tasks) is `deploy/phase1_live.py` with `deploy/phase1_root.sh`: run it by hand before a launch or after a big change.
 
 ## Hand-made releases are never silently undone
@@ -62,7 +65,7 @@ Update the program itself by installing it again; it is not replaced by its own 
 ## Undo
 
 - Supervisor tree: `ln -sfn <previous release> /opt/agentai-supervisor/current && systemctl restart agentai-cell-bridge agentai-browse agentai-tool-relay agentai-request-worker` (the log line of the deploy names it).
-- App tree: `release.py` already rolled back by itself when the live probes failed. Otherwise point `/opt/agentai-platform/current` at the previous folder in `releases/` and restart `agentai-platform-app`; if a migration ran and the old code cannot read it, restore the `backup-*-premigrate-*.sqlite3` it took.
+- App tree: `release.py` already rolled back by itself when the live probes failed. Otherwise point `/opt/agentai-platform/current` at the previous folder in `releases/` and restart `agentai-platform-app`; if a migration ran, the old code will NOT start on the migrated database (it requires exactly its own migrations): deploy a fix forward instead. Restoring the `backup-*-premigrate-*.sqlite3` loses everything written since it was taken and is the last resort.
 - Web app: `cd /var/lib/agentai-platform && mv ui ui.bad && mv ui.prev ui`.
 - Log of every deploy: `/var/lib/agentai-deploy/deploys.log`; last deployed commit: `/var/lib/agentai-deploy/last`; `release.py` also writes `/var/lib/agentai-ops/releases.log`.
 
