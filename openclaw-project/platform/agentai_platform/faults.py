@@ -15,6 +15,7 @@ decided by the code that shows it; this module is the one place those sentences 
 Stdlib only.
 """
 from __future__ import annotations
+import hashlib
 import json
 import logging
 import re
@@ -34,7 +35,7 @@ EFFECTS = ('nothing_changed', 'partly_done', 'unknown')
 RETRY = {'retry_later': 'later', 'unknown_outcome': 'read_back'}
 
 # What `detail` may hold. A value is an int, a float, a bool, or ONE token (letters, digits, . _ : -): no spaces, so no sentence; no / @ ? or %, so no address.
-DETAIL_KEYS = ('status', 'code', 'route', 'exception', 'state', 'tool', 'attempt', 'seconds', 'waited_seconds', 'steps', 'kind', 'provider_error', 'runtime_reason', 'job')
+DETAIL_KEYS = ('status', 'code', 'route', 'exception', 'state', 'tool', 'call', 'attempt', 'seconds', 'waited_seconds', 'steps', 'kind', 'provider_error', 'runtime_reason', 'job')
 TOKEN = re.compile(r'[A-Za-z0-9_.:-]{1,60}')
 
 
@@ -187,7 +188,7 @@ def of_runtime_error(error) -> Fault:
 
 # How a browser job ended (browse/job_states.py) -> the reason. `done` and a job the assistant simply went on without are not faults.
 _BROWSER_STATES = {
-    'error': 'browser.failed', 'stopped': 'browser.stopped', 'blocked': 'browser.site_not_allowed', 'stuck': 'browser.stuck', 'deadline': 'browser.deadline',
+    'error': 'browser.failed', 'failed': 'browser.failed', 'stopped': 'browser.stopped', 'blocked': 'browser.site_not_allowed', 'stuck': 'browser.stuck', 'deadline': 'browser.deadline',
     'max_steps': 'browser.max_steps', 'interrupted': 'browser.interrupted', 'budget': 'browser.spending_limit', 'handoff': 'browser.needs_customer',
     'cancelled': 'browser.stopped_with_task',
 }
@@ -232,3 +233,103 @@ def of_finished_run(outcome, *, jobs=(), goal=None, reply=True, continuing=False
     if not reply:
         return Fault('task.no_reply')
     return None
+
+
+# -- one tool call (Part 3) -------------------------------------------------------------------------------------------------------------------------------------
+# A tool answers `(text, problem[, picture])`. `problem` is False for a call that did what was asked, and a Fault for one that did not: the tool that refused or failed says
+# why, there, with a registered reason. The tool relay records it with the call. A bare True (a tool that has not said why) is kept working and counted as `tool.failed`,
+# which reaches the owner: the count of those is the list of tools still to be moved.
+#
+# The assistant is told `isError` only for a fault that is an error. An expected stop (approval needed, stopped with the task, a limit, a switch that is off) is a normal
+# reply that says what happens next: the runtime and the model treat an error as something to retry, and 26 approval requests were retried that way in 30 days.
+STEP = "json_extract(detail_json,'$.tool') IS NOT NULL"       # SQL: this fault row is about ONE tool call (a step), not about how a request ended
+
+
+def tool_name(name) -> str:
+    """The tool's name as a fact that may be kept. A connected service's own tool names are the customer's: every one of them is recorded as the same word."""
+    name = str(name or '').removeprefix('lumina__')
+    if re.match(r'lumina_mcp_[a-f0-9]{8}', name):                 # also when the name was cut short for display
+        return 'lumina_mcp_connected'
+    return name if TOKEN.fullmatch(name) else 'other'
+
+
+# A tool reached through the runtime's `tool_call` wrapper is given an id of its own by the runtime, built around the id of the wrapper call the model made:
+# "tool_search_code:<the model's call id>:<tool name>:<n>". The session history, and so the timeline, knows only the model's call id. Seen on the installed runtime
+# (2026.9.6) and held there by tests/e2e (test_a_tool_call_lumina_refuses_shows_its_reason_on_the_step_whichever_way_it_was_called).
+_WRAPPED_CALL = re.compile(r'tool_search_code:(.+):[A-Za-z0-9_.-]+:\d+')
+
+
+def call_mark(call_id) -> str:
+    """A short mark for one tool call, from the runtime's own id for it. The relay records it with the fault and the driver finds the fault by it when it shows the step;
+    the id itself is not kept (it is the model provider's). Both ways a tool is reached give the same mark: its plain name, and the runtime's wrapper."""
+    call_id = str(call_id or '')
+    wrapped = _WRAPPED_CALL.fullmatch(call_id)
+    if wrapped:
+        call_id = wrapped.group(1)
+    return hashlib.sha256(call_id.encode()).hexdigest()[:20] if call_id else ''
+
+
+def of_tool_reply(problem, tool, call_id=None) -> Fault | None:
+    """What a tool put in the second place of its answer -> the fault to record for the call (with the tool and the call's mark), or None for a call that worked."""
+    if not problem:
+        return None
+    fault = problem if isinstance(problem, Fault) else Fault('tool.failed')
+    return Fault(fault.reason, {**fault.detail, 'tool': tool_name(tool), 'call': call_mark(call_id) or None}, fault.effect, fault.retry_at)
+
+
+def is_error(problem) -> bool:
+    """Is the assistant told this call failed? Only for a fault that is an error; an expected stop is a normal reply."""
+    if isinstance(problem, Fault):
+        return not problem.expected
+    return bool(problem)
+
+
+def of_connector(error) -> Fault:
+    """A ConnectorFault (connector_kit) as a fault: its six kinds are registered one to one."""
+    return Fault('connector.' + str(getattr(error, 'kind', 'invalid')), retry_at=int(error.retry_at) if getattr(error, 'retry_at', None) else None)
+
+
+def for_call(con, account_id, request_id, call_id) -> str | None:
+    """The reason the relay recorded for this call of this request, or None. Read by the driver when it shows the step."""
+    mark = call_mark(call_id)
+    if not mark:
+        return None
+    row = con.execute(f"SELECT reason FROM faults WHERE account_id=? AND request_id=? AND {STEP} AND json_extract(detail_json,'$.call')=? ORDER BY created_epoch DESC LIMIT 1",
+                      (account_id, request_id, mark)).fetchone()
+    return row[0] if row else None
+
+
+# The runtime's own tools (web_fetch, web_search, exec and the rest) answer in the runtime's words, and those words are all Lumina gets: the call never passes the relay. This
+# is the second and last table that matches text (rule 1), pinned to the installed runtime by tests/test_tool_faults.py. A status number in the message is a fact and is read
+# first. Whatever matches nothing is `runtime.tool_failed`: a command that exited with an error is the assistant's ordinary work, not something to alert on.
+_FETCH_STATUS = re.compile(r'\b(?:web )?fetch failed \((\d{3})\)', re.I)
+RUNTIME_TOOL_WORDS = (
+    ('runtime.tool_not_offered', re.compile(r'^tool [\w.:-]+ not found\b|^unknown tool id\b', re.I)),
+    ('runtime.skipped_for_message', re.compile(r'^skipped to process an incoming message', re.I)),
+    ('site.unreadable', re.compile(r'^web fetch extraction failed', re.I)),
+    ('runtime.unreachable', re.compile(r'^fetch failed\b|\bUND_ERR_\w+|\bECONN\w+|\bETIMEDOUT\b|\bENOTFOUND\b')),
+)
+
+
+def of_site_status(status) -> str:
+    status = int(status or 0)
+    if status in (401, 402, 403, 407, 451):
+        return 'site.refused'
+    if status in (404, 410):
+        return 'site.not_found'
+    if status in (408, 425, 429):
+        return 'site.busy'
+    return 'site.error' if status >= 500 else 'site.refused'
+
+
+def of_runtime_tool(tool, text) -> Fault:
+    """The fault for a failed call of one of the runtime's own tools, from what the runtime said. Only the reason, the tool's name and a status number are kept."""
+    text = str(text or '').strip()[:600]
+    detail = {'tool': tool_name(tool), 'kind': 'runtime_text'}
+    found = _FETCH_STATUS.search(text)
+    if found:
+        return Fault(of_site_status(found.group(1)), {**detail, 'status': int(found.group(1))})
+    for reason, pattern in RUNTIME_TOOL_WORDS:
+        if pattern.search(text):
+            return Fault(reason, detail)
+    return Fault('runtime.tool_failed', detail)

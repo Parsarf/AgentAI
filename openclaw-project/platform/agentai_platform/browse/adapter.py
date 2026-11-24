@@ -15,6 +15,7 @@ import re
 import time
 from urllib.parse import urlsplit, urlunsplit
 
+from .. import faults
 from ..adapters import CapabilityUnavailable
 from ..lifecycle.coordinator import Coordinator
 from .client import BrowseJobUnknown
@@ -371,14 +372,14 @@ class BrowserTool:
         if name == STEP_NAME:
             return self.step(account_id, arguments, closed, request_id=request_id)
         if not self.enabled():
-            return 'Browsing is not available right now. Use web_search and web_fetch, or tell the customer plainly that the browser is unavailable.', True
+            return 'Browsing is not available right now. Use web_search and web_fetch, or tell the customer plainly that the browser is unavailable.', faults.Fault('tool.switched_off')
         try:
             task = clean_task(arguments, self._neutral(account_id, 'assistant_output_cleaning'))
         except BadTask as error:
-            return f'The browser task could not be read ({error}). Nothing was opened. {TASK_SHAPE}', True
+            return f'The browser task could not be read ({error}). Nothing was opened. {TASK_SHAPE}', faults.Fault('tool.bad_arguments')
         request = self.current_request(account_id, request_id)
         if request is None:
-            return 'There is no running task to browse for, so the browser was not started.', True
+            return 'There is no running task to browse for, so the browser was not started.', faults.Fault('tool.not_admitted')
         request_id, reserved = request['id'], int(request['amount_microusd'] or 0)
         if reserved <= OWN_KEY_AMOUNT:
             # The customer's own model key (a nominal reservation), or none recorded: the browser's budget is the task limit they chose in Settings, else none at all.
@@ -391,11 +392,11 @@ class BrowserTool:
             endings = con.execute("SELECT data_json FROM browse_steps WHERE account_id=? AND request_id=? AND kind='status' ORDER BY n DESC", (account_id, request_id)).fetchall()
         terminal = [json.loads(row[0]).get('state') for row in endings if json.loads(row[0]).get('state') in FINALS + ('failed',)][:2]
         if len(terminal) == 2 and all(state in job_states.FAILED_ATTEMPT for state in terminal):
-            return 'The last two browser attempts failed for this task. Do not retry the same browser task. Use web_search/web_fetch for available evidence and report what could not be done.', True
+            return 'The last two browser attempts failed for this task. Do not retry the same browser task. Use web_search/web_fetch for available evidence and report what could not be done.', faults.Fault('tool.limit')
         spent = int(spent[0]) if spent else 0
         share = min(SHARE, (SHARE * reserved - spent) / reserved) if reserved else 0.0
         if share < MIN_SHARE:
-            return 'The browsing budget for this task is used up. Answer the customer with what you have and say what is left to do; they can ask for the rest next.', True
+            return 'The browsing budget for this task is used up. Answer the customer with what you have and say what is left to do; they can ask for the rest next.', faults.Fault('browser.spending_limit')
         session = 1 + sessions + (1 if first else 0)               # session 1 is the request's own job; every later call is a job of its own
         if first:
             self._let_go(account_id, request_id)
@@ -434,10 +435,10 @@ class BrowserTool:
         try:
             step = clean_step(arguments)
         except BadTask as error:
-            return f'That step could not be read ({error}). Nothing was done on the page. {STEP_SHAPE}', True
+            return f'That step could not be read ({error}). Nothing was done on the page. {STEP_SHAPE}', faults.Fault('tool.bad_arguments')
         request = self.current_request(account_id, request_id)
         if request is None:
-            return 'There is no running task to browse for, so nothing was done.', True
+            return 'There is no running task to browse for, so nothing was done.', faults.Fault('tool.not_admitted')
         request_id = request['id']
         with self.store.connect() as con:
             job, base = browse_sessions.latest(con, account_id, request_id)
@@ -447,7 +448,7 @@ class BrowserTool:
         try:
             rpc('agent_step', request_id=job, step=step)
         except (BrowseJobUnknown, CapabilityUnavailable):
-            return 'The browser is not waiting for a step from you (it may have finished or been stopped). Start it again with lumina_browser if the task is not done.', True
+            return 'The browser is not waiting for a step from you (it may have finished or been stopped). Start it again with lumina_browser if the task is not done.', faults.Fault('tool.out_of_turn')
         # Not known after a restart of this process: then the recorded cost is left as it is (job_states.record). Reading it back from the record counted this job's cost
         # again on every step.
         spent_before = self._spent.get(job)
@@ -495,7 +496,9 @@ class BrowserTool:
                 return self._give_up(account_id, request_id, base, spent_before, 'deadline', 'The browser task took too long and was stopped.')
             self.sleep(self.poll_interval)
         self._spent.pop(job, None)
-        return findings(final, self._neutral(account_id, 'untrusted_page_text')), final['state'] in ('error', 'cancelled')
+        # Which endings the assistant is told are an error stays as it was (a failed or stopped job); why is now a registered reason. A job stopped with its task is an expected
+        # stop, not an error. The other endings become reasons of their own with the browser's part of the plan.
+        return findings(final, self._neutral(account_id, 'untrusted_page_text')), (faults.of_browser_job(final['state'], final.get('reason')) if final['state'] in ('error', 'cancelled') else False)
 
     # -- bookkeeping ---------------------------------------------------------------------------------------------------------------------------
     def _stop_job(self, rpc, job):
@@ -510,7 +513,7 @@ class BrowserTool:
         self._mirror(account_id, request_id, {'state': state, 'reason': message, 'events': [{'n': n, 'kind': 'status', 'state': state}]}, base, None)      # None: keep the cost the last poll recorded (this report carries none, and wrote the job's cost back to zero)
         if say:
             self._say(account_id, request_id, 'error', {'summary': message, 'category': 'browser'}, 'browser')
-        return f'Status: did not finish ({state}): {message}', True
+        return f'Status: did not finish ({state}): {message}', faults.of_browser_job(state, message)
 
     def _say(self, account_id, request_id, kind, payload, source='router'):
         if self.events is None:

@@ -48,6 +48,10 @@ def decide(messages, tools):
                           {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser', 'args': browser}}], 'fragment_delay': 0.1}
     if 'SCENARIO:plainname' in user:                           # a tool called by its own name, without tool_call: what assistants do when told "use web_fetch"
         return {'tool': 'lumina__lumina_browser', 'args': {'task': 'Add the spiciest chicken wings to the cart on Uber Eats', 'url': 'https://ubereats.com/', 'done_when': 'The wings are in the cart.'}}
+    if 'SCENARIO:badsite_plain' in user:                       # a browser task Lumina's tool refuses (the site is not a site), called by the tool's plain name...
+        return {'tool': 'lumina__lumina_browser', 'args': {'task': 'Find the opening hours', 'site': 'not a site'}}
+    if 'SCENARIO:badsite' in user:                             # ...and through the runtime's tool_call wrapper
+        return {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser', 'args': {'task': 'Find the opening hours', 'site': 'not a site'}}}
     if 'SCENARIO:browse' in user:
         return {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_browser', 'args': {
             'task': 'Add the spiciest chicken wings to the cart on Uber Eats', 'site': 'ubereats.com', 'steps': ['Open the site', 'Add the spiciest wings to the cart']}}}

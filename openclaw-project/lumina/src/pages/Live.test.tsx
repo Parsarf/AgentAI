@@ -45,6 +45,17 @@ describe('a task without a browser', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     await waitFor(() => expect(api).toHaveBeenCalledWith('POST', '/v1/requests/active/cancel', {}));
   });
+  it('says why a step did not work, in the one sentence the server gives for its reason, and shows it for an expected stop too', async () => {
+    hold(view({ id: 'active', conversation_id: 'chat-a', title: 'Current task', label: 'Working', controls: { stop: true } as any }),
+      [row({ key: 'f1', category: 'other', label: 'Prepared a file for you', detail: '', status: 'failed', reason: 'tool.not_found', why: 'The assistant asked for something that is not there (a file, a message or an item). Nothing was changed.' }),
+        row({ key: 'a1', category: 'other', label: 'Used a connected service', detail: '', status: 'done', reason: 'tool.approval_needed', why: 'This needs your approval before it runs. Nothing has run yet.' }),
+        row({ key: 'ok', category: 'search', label: 'Searched the web', detail: 'laptops', status: 'done' })]);
+    mount();
+    expect(await screen.findByText('The assistant asked for something that is not there (a file, a message or an item). Nothing was changed.')).toBeTruthy();
+    expect(screen.getByText('did not work')).toBeTruthy();                                    // the short mark stays; the sentence beside it is the reason
+    expect(screen.getByText('This needs your approval before it runs. Nothing has run yet.')).toBeTruthy();
+    expect(document.querySelectorAll('.wk-row-why').length).toBe(2);                           // a step that simply worked says nothing more
+  });
   it('does not show a call as in progress once the task is over', async () => {
     hold(view({ id: 'active', state: 'failed', phase: 'ended', label: 'Failed', tone: 'bad', outcome: 'failed', verification: 'unverified', note: 'The run ended with an error before it finished.', controls: { retry: true } as any }),
       [row({ key: 'c1', category: 'command', label: 'Ran a command', detail: 'sleep 99', status: 'running', ended_at: null })]);

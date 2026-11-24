@@ -16,6 +16,7 @@ from __future__ import annotations
 import copy
 import json
 import time
+from . import faults
 
 from .browse.untrusted import neutralize
 from .connector_kit import ConnectorFault
@@ -98,22 +99,22 @@ class ConnectorTools:
         """-> (text, is_error). Every refusal is a fixed sentence; nothing a provider said is passed on as an error."""
         try:
             if name not in self.names or not self.enabled(account):
-                return 'Connected services are not available.', True
+                return 'Connected services are not available.', faults.Fault('tool.switched_off')
             if not request_id:
-                return 'This call does not belong to a running task. Nothing was done.', True
+                return 'This call does not belong to a running task. Nothing was done.', faults.Fault('tool.not_admitted')
             principal, conversation = self._principal(account, request_id)
             if principal is None:
-                return 'This call does not belong to a running task. Nothing was done.', True
+                return 'This call does not belong to a running task. Nothing was done.', faults.Fault('tool.not_admitted')
             if not isinstance(arguments, dict):
-                return 'Invalid arguments. Nothing was done.', True
+                return 'Invalid arguments. Nothing was done.', faults.Fault('tool.bad_arguments')
             handler = {LIST: self._list, READ: self._read, SEARCH: self._search, PROPOSE: self._propose, WORKFLOW: self._workflow, ASK: self._ask}[name]
             return handler(principal, arguments, request_id, conversation)
         except ConnectorFault as fault:
-            return fault.words + (f' It can be tried again in about {max(1, int(fault.retry_at - self.clock()))} seconds.' if fault.retry_at else ''), True
+            return fault.words + (f' It can be tried again in about {max(1, int(fault.retry_at - self.clock()))} seconds.' if fault.retry_at else ''), faults.of_connector(fault)
         except WorkflowRefused as refused:
-            return str(refused) + ' Nothing was prepared.', True
+            return str(refused) + ' Nothing was prepared.', faults.Fault('tool.refused')
         except (NotFound, Conflict, ValueError, KeyError, TypeError):
-            return 'That could not be done with what was given. Nothing was changed. Check the connection, the kind and the ids with lumina_connector_list.', True
+            return 'That could not be done with what was given. Nothing was changed. Check the connection, the kind and the ids with lumina_connector_list.', faults.Fault('tool.bad_arguments')
 
     # -- reading -------------------------------------------------------------------------------------------------------------------------------
     def _list(self, principal, a, request_id, conversation):
@@ -148,7 +149,7 @@ class ConnectorTools:
     # -- proposing changes ---------------------------------------------------------------------------------------------------------------------
     def _propose(self, principal, a, request_id, conversation):
         if not self._writes_on(principal.account_id, self.connectors.service_of(principal.account_id, a.get('connection'))):
-            return 'Changes in connected services are not switched on. Nothing was prepared. Tell the customer what you would have changed.', True
+            return 'Changes in connected services are not switched on. Nothing was prepared. Tell the customer what you would have changed.', faults.Fault('tool.switched_off')
         action = self.actions.propose(principal, a['connection'], a['kind'], a['payload'], request_id=request_id)
         preview = action['preview']
         if action['state'] == 'approved':
@@ -161,7 +162,7 @@ class ConnectorTools:
 
     def _workflow(self, principal, a, request_id, conversation):
         if not all(self._writes_on(principal.account_id, self.connectors.service_of(principal.account_id, s.get('connection'))) for s in a.get('steps') or [{}] if isinstance(s, dict)):
-            return 'Changes in connected services are not switched on. Nothing was prepared. Tell the customer what you would have changed.', True
+            return 'Changes in connected services are not switched on. Nothing was prepared. Tell the customer what you would have changed.', faults.Fault('tool.switched_off')
         steps = [{'connection_id': s.get('connection'), 'kind': s.get('kind'), 'payload': s.get('payload')} for s in a.get('steps') or [] if isinstance(s, dict)]
         workflow = self.workflows.propose(principal, a.get('title', ''), steps, request_id=request_id)
         return self._out({'prepared': workflow['title'], 'steps': [s['preview']['summary'] for s in workflow['steps']],
@@ -171,10 +172,10 @@ class ConnectorTools:
     def _ask(self, principal, a, request_id, conversation):
         question, options = a.get('question'), a.get('options') or []
         if not isinstance(question, str) or not question.strip() or len(question) > 1000 or not isinstance(options, list) or len(options) > 8 or any(not isinstance(o, str) or len(o) > 120 for o in options):
-            return 'Give "question" (text) and optionally up to 8 short "options". Nothing was asked.', True
+            return 'Give "question" (text) and optionally up to 8 short "options". Nothing was asked.', faults.Fault('tool.bad_arguments')
         with self.coordinator.transaction() as con:
             if con.execute("SELECT count(*) FROM handoffs WHERE account_id=? AND request_id=? AND kind='question'", (principal.account_id, request_id)).fetchone()[0] >= 3:
-                return 'This task has already asked the customer three questions. Carry on with what you know, or say what you still need in your reply.', True
+                return 'This task has already asked the customer three questions. Carry on with what you know, or say what you still need in your reply.', faults.Fault('tool.limit')
             self.handoffs.create(con, account_id=principal.account_id, actor_id=principal.actor_id, kind='question', request_id=request_id, conversation_id=conversation,
                                  question=question.strip(), options=options, resume={'question': True})
         return self._out({'asked': question.strip(), 'waits_up_to_seconds': wait_seconds('question'),

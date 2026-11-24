@@ -24,6 +24,7 @@ import copy
 import hashlib
 import hmac
 import http.client
+from . import faults
 import ipaddress
 import json
 import re
@@ -436,11 +437,11 @@ class MemoryTools:
     def call(self, account, arguments, closed=lambda: False, *, name, request_id=None):
         try:
             if not self.enabled(account):
-                return 'Memory is not available.', True
+                return 'Memory is not available.', faults.Fault('tool.switched_off')
             if not isinstance(arguments, dict):
                 raise ValueError('Invalid arguments.')
             if closed():
-                return 'The connection closed; nothing was changed.', True
+                return 'The connection closed; nothing was changed.', faults.Fault('tool.stopped_with_task', effect='nothing_changed')
             if name == RECALL_NAME:
                 if set(arguments) != {'query'} or not isinstance(arguments['query'], str):
                     raise ValueError('Give only a "query".')
@@ -459,13 +460,13 @@ class MemoryTools:
                     raise ValueError('Give "old" and "new".')
                 entry = self.memory.find(account, arguments['old'])
                 if entry is None:
-                    return ('No single remembered note matches that. Nothing was changed. Tell the customer they can correct it themselves in Settings, Memory.'), True
+                    return ('No single remembered note matches that. Nothing was changed. Tell the customer they can correct it themselves in Settings, Memory.'), faults.Fault('tool.not_found')
                 self.memory.correct(account, entry, arguments['new'], by='agent')
                 return 'Corrected. The new text is used from the next message; the old one is kept in the note\'s history in Settings, Memory.', False
             raise ValueError('Unknown memory tool.')
         except ValueError as error:
-            return str(error) or 'Invalid request.', True                   # validation text is written above and never echoes customer content
+            return str(error) or 'Invalid request.', faults.Fault('tool.bad_arguments')                   # validation text is written above and never echoes customer content
         except NotFound:
-            return 'Memory is not available.', True
+            return 'Memory is not available.', faults.Fault('tool.unavailable')
         except MemoryError_ as error:
-            return str(error), True
+            return str(error), faults.Fault('tool.not_answering')

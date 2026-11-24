@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C). The rest of Part 3 and Parts 4 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). The tools half of Part 3 is built (branch `reliability-3-tools`). The browser half of Part 3 and Parts 4 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -198,7 +198,46 @@ first pass and is the safety net for any path that leaves one behind; no migrati
 Seen in the first live numbers (2026-11-24): no model call reports its token counts (0 of 4), so the provider's reply does not carry them at its end. Phase 14's
 baseline needs them; asking the provider for usage in a streamed reply changes what the runtime receives and must be tried on the harness first.
 
-The rest of this part is not started.
+**Tools are built** (2026-11-24, branch `reliability-3-tools`). What was found first, on the server (30 days, read only): 194 failed steps, and for 134 of them the
+timeline kept the runtime's notice to the model ("SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source...") as the step's output, because
+the runtime wraps every reply of a Lumina tool in it and the first 1,200 characters were stored. So a customer who opened a failed step read that notice and
+nothing of why it failed. The tool relay recorded nothing about a call. All 22 failed file deliveries were on one day (15 November).
+
+What is in it:
+
+- **Every tool says why, where it refuses or fails.** A tool's answer is `(text, problem)`; `problem` is now a registered fault instead of `True`
+  (`faults_registry.py`, 30 new reasons: `tool.*`, `file.not_converted`, `site.*`, `runtime.*`). Moved: file delivery, show, memory, connected services, mail and
+  calendar, documents, task progress, location, the browser tool's own refusals, and connected apps (their 27 error codes map to reasons). A blocking test
+  refuses a bare `True` in any of them.
+- **The relay records it** (`tool_relay.Relay._noted`): one `faults` row with the request, the tool's name and a mark of the call. A connected service's own tool
+  names are recorded as one word. The same facts travel to the caller in the result's `_meta` (`lumina/fault`: reason, kind, retry, effect), for Phase 14.
+- **An expected stop is not an error** (E). Approval needed, stopped with the task, a limit, a switch that is off, a role that does not allow the tool, and "another
+  call is still running" are recorded and are a normal reply (`isError` false) that says what happens next. Approval needed (26) and stopped with the task (12) were 38 of the 194.
+- **The step says why.** The driver puts the recorded reason on the step it shows (`chat_driver._step`), found by the call's id; the timeline row carries the
+  registry's one sentence (`why`), and the app shows it under the step. The stored output is the tool's own words, with the runtime's notice taken off.
+- **The runtime's own tools** (`web_fetch`, `web_search`, `exec`): the reason is read from what the runtime said, the status number first ("Web fetch failed
+  (403)" is `site.refused`), by one table pinned to the installed runtime by a test that holds every message seen in production.
+- **F, file delivery.** A file that is not there is answered with the files the workspace does hold. A path given under the folder the assistant sees its
+  workspace in (`/home/node/.openclaw/workspace/...`) is the same file and is taken.
+- **The report** (`ops.cli reliability`) counts steps apart from tasks: by tool and reason, wrong arguments per tool, and steps with no reason of their own. A
+  failed step no longer stands in for a task's missing reason. A call whose row was written twice is one call.
+- **`tools.codeMode` is pinned off** in `cell_config.py` (a cell takes it at its next start).
+
+Found on the real runtime while building (`tests/e2e`): a tool reached through the runtime's `tool_call` wrapper is given an id of its own
+(`tool_search_code:<the model's call id>:<tool>:<n>`), not the id the session history has, so the step and the relay's record did not meet until the mark was
+taken from the model's call id for both. Proven for both ways a tool is called.
+
+Changed from the plan while building:
+
+- **The relay writes the fault, not the step row.** The step row stays the driver's (read from the runtime's history) and carries the relay's reason. Two writers
+  for one row would show a call twice whenever their ids differ, which the wrapper finding above shows they can. When Phase 14 puts calls inside a program, the
+  relay's record is already complete; writing the row from it is then a small step.
+- **No migration.** The call's mark and the tool's name are facts in the existing `detail` column.
+
+Not done in this part, still open: the runtime's loop detection (needs the lab tasks on a real model to show no false stop), the browser's "question unanswered"
+ending (with the browser's reason codes, below), and `tool.bad_arguments` replies for memory, connected apps and the mail draft beyond what they already say.
+
+The browser's part is not started.
 
 The plan as written:
 

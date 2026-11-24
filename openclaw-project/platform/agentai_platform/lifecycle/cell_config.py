@@ -68,7 +68,10 @@ def patch(config, *, relay='http://10.77.0.1:4000', default_model=DEFAULT_MODEL,
     # How tools reach the model. Left unset, the runtime hides every tool's schema behind tool_search / tool_describe / tool_call, and a tool called by its plain name is
     # refused ("Tool web_fetch not found", production 2026-11-22, in every browser task: Lumina's own messages tell the assistant to use web_fetch and web_search). In
     # `directory` mode the runtime still keeps the schemas out of the prompt, and a call to a tool's exact name is run as that tool.
-    config['tools'] = {**(config.get('tools') or {}), 'deny': sorted(deny), 'toolSearch': {'mode': 'directory'}}
+    # The runtime's Code Mode (the assistant writes a program that calls tools, instead of one call per turn) is pinned OFF. Left unset it is "auto": the runtime switches it on
+    # by itself for any model its catalog marks as preferred, which would change the whole tool surface, and what Lumina can show and record of a task, without anyone
+    # deciding it. Two other runtime defaults (tool search, self-learning) reached production that way and each caused failures. Phase 14 decides this, on purpose.
+    config['tools'] = {**(config.get('tools') or {}), 'deny': sorted(deny), 'toolSearch': {'mode': 'directory'}, 'codeMode': {'enabled': False}}
     # No model call without a task that pays for it. Left on (`auto`, the runtime's default), a background "experience review" runs a model turn some seconds after a long
     # task ended. With no task running, Lumina's gateway refuses that call (403: no admitted task owns it), the runtime takes the refusal for a bad key and disables the key
     # for about a minute, and the customer's next message fails at once (production 2026-11-22). With a task running, the review would be charged to that task, unseen.

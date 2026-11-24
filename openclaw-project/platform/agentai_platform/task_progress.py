@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from . import request_states
+from . import faults
 from .activity import clean
 from .events import EventService
 from .lifecycle.coordinator import Coordinator
@@ -86,7 +87,7 @@ class TaskProgressTool:
                 return self.current(account, request_id)
             steps = validate(arguments)
             if closed():
-                return 'The connection closed; progress was not changed.', True
+                return 'The connection closed; progress was not changed.', faults.Fault('tool.stopped_with_task', effect='nothing_changed')
             task = arguments['task_id']
             if request_id is not None and task != request_id:
                 raise ValueError('This update belongs to a different task.')
@@ -103,7 +104,7 @@ class TaskProgressTool:
                         return self.reply(saved), False
                 revision = previous['revision'] if previous else 0
                 if arguments['revision'] != revision:
-                    return 'Stale progress revision. Current snapshot: ' + json.dumps(previous or {'revision': 0}), True
+                    return 'Stale progress revision. Current snapshot: ' + json.dumps(previous or {'revision': 0}), faults.Fault('tool.out_of_turn')
                 if previous:
                     old = previous['steps']
                     if arguments['mode'] != previous['mode']:
@@ -126,14 +127,14 @@ class TaskProgressTool:
                 self.events.append_in(con, account, task, 'task_steps', payload, 'agent')
             return self.reply(payload), False
         except (ValueError, Conflict) as error:
-            return str(error), True
+            return str(error), faults.Fault('tool.bad_arguments')
 
     def current(self, account, request_id=None):
         """Read-only recovery for native goals/restarts, which retain the customer's raw objective."""
         with self.store.connect() as con:
             running = request_states.live_runs(con, account, request_id, active_account=True)
             if len(running) != 1:
-                return 'No single active request is available for this cell.', True
+                return 'No single active request is available for this cell.', faults.Fault('tool.not_admitted')
             task = running[0]
             saved = con.execute("SELECT public_payload FROM events WHERE account_id=? AND task_id=? AND kind='task_steps' ORDER BY sequence DESC LIMIT 1", (account, task)).fetchone()
             snapshot = json.loads(saved[0]) if saved else {'revision': 0, 'steps': []}

@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from jsonschema import Draft202012Validator, validators
 from jsonschema.exceptions import best_match
 from referencing import Registry
+from .. import faults
 from ..lifecycle.coordinator import Coordinator, identifier
 from ..security import NotFound
 from ..store import Store
@@ -698,7 +699,7 @@ class ConnectionService:
                                 (account, call_id, row['id'], tool['name'], target_hash, schema_digest(tool), request_id, packed(arguments), int(self.clock()) + 600, int(self.clock())))
                     self._timeline(con, account, request_id, 'approval_request', {'request_id': call_id, 'expires_epoch': int(self.clock()) + 600,
                                                                                  'summary': 'Asked for your permission to use ' + re.sub(r'[_-]+', ' ', tool['name'])[:80] + ' on ' + str(row['name'])[:60]})
-                return {'content': [{'type': 'text', 'text': 'Customer approval required. Lumina is showing the customer this exact call in the chat now, and will tell you their decision. Tell the customer briefly what you asked permission for and stop; do not retry until you are told it was allowed. No remote action has run.'}], 'isError': True}
+                return {'content': [{'type': 'text', 'text': 'Customer approval required. Lumina is showing the customer this exact call in the chat now, and will tell you their decision. Tell the customer briefly what you asked permission for and stop; do not retry until you are told it was allowed. No remote action has run.'}], 'isError': False, '_fault': faults.Fault('tool.approval_needed')}
             if con.execute("SELECT count(*) FROM mcp_calls WHERE account_id=? AND state='dispatching'", (account,)).fetchone()[0] >= 2:
                 raise ConnectionError('busy', 'Two MCP calls are already running for this account.')
             self._lease(con, row)
