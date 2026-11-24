@@ -22,6 +22,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from .browse.job_states import RELEASED_REASON      # a job its request no longer needed: not a failure
 from .faults_registry import REASONS
 
 log = logging.getLogger(__name__)
@@ -190,7 +191,6 @@ _BROWSER_STATES = {
     'max_steps': 'browser.max_steps', 'interrupted': 'browser.interrupted', 'budget': 'browser.spending_limit', 'handoff': 'browser.needs_customer',
     'cancelled': 'browser.stopped_with_task',
 }
-RELEASED_REASON = 'the assistant went on without this page'      # browse/service.py agent_release: the request ended with its answer and no step was coming
 _EXCEPTION = re.compile(r'\(([A-Za-z_][A-Za-z0-9_]{2,40})\)\s*$')
 
 

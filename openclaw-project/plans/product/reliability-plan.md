@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-23): Part 1 BUILT (PR #90, waiting for the owner's merge and approval of two policy lines); Part 2's server side BUILT on top of it (branch `reliability-2-reason`); Parts 3 to 9 not started.** Written from the production records, the code at `44aebf1` (deployed), the architecture notes in
+**Status (2026-11-23): Part 1 BUILT (PR #90, waiting for the owner's merge and approval of two policy lines); Part 2's server side BUILT on top of it (PR #91); the false "partly done" label of Part 3 fixed on top of that (branch `reliability-3a-released`); the rest not started.** Written from the production records, the code at `44aebf1` (deployed), the architecture notes in
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -186,6 +186,13 @@ The plan as written:
 - Proves: each provider status forced through the harness gives one sentence in every outlet, and the right actor.
 
 ### Part 3 - Tools and the browser follow the contract (B, C, E, F, G)
+
+**B is built 2026-11-23** (branch `reliability-3a-released`, on top of Part 2; not merged): a browser job that ended because the assistant answered and no step
+was coming is judged like a job that finished, whatever state the loop ended in. Run 395's shape now ends "Done". The rest of this part is not started; it is
+the first part that should wait for Part 1's numbers from the live stack. Found while building: a released job IS recorded when its request ends
+(`_release_waiting_browser_jobs`), so the 8 records left at "running" (C) come from another path, still to be found.
+
+The plan as written:
 
 Two pull requests: tools, then browser.
 

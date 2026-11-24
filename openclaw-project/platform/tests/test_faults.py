@@ -316,6 +316,37 @@ class OneReason(Base):
         self.assertEqual(self.rows('SELECT count(*) FROM faults')[0][0], 0)
 
 
+class Released(Base):
+    """A browser job the assistant no longer needed (it answered, and no step was coming) is not the browser failing: production 2026-11-23, a task that gave its full
+    answer and was labelled "Partly done: the browser could not complete this"."""
+    def test_a_page_the_assistant_went_on_without_does_not_make_the_task_partly_done(self):
+        from agentai_platform import outcome
+        from agentai_platform.browse.job_states import RELEASED_REASON
+        ok = {'status': 'ok'}
+        for state in ('stopped', 'cancelled'):
+            verdict = outcome.judge(native=ok, jobs=[{'state': state, 'reason': RELEASED_REASON, 'url': 'https://shop.example/c/shorts'}])
+            self.assertEqual((verdict.outcome, verdict.verification, verdict.note, verdict.line), ('completed', 'not_applicable', 'Done.', ''))
+        cart = [{'state': 'stopped', 'reason': RELEASED_REASON, 'url': 'https://shop.example/cart'}]
+        added = [{'action': 'click', 'result': 'ok', 'changed': True, 'label': 'Add to cart'}]
+        self.assertEqual(outcome.judge(native=ok, jobs=cart, steps=added).verification, 'verified')                 # judged like a job that finished: a cart claim is still checked
+        self.assertEqual(outcome.judge(native=ok, jobs=cart).verification, 'unverified')
+        for reason in ('no answer to the question', 'stopped by you', ''):                                         # any other stop is still what it was
+            self.assertEqual(outcome.judge(native=ok, jobs=[{'state': 'stopped', 'reason': reason}]).outcome, 'partial')
+
+    def test_the_whole_way_through_the_driver(self):
+        from agentai_platform.browse.job_states import RELEASED_REASON
+        sent = self.say()
+        with self.store.connect() as con:
+            con.execute('INSERT INTO browse_runs(account_id,request_id,goal,status,reason,url,created_epoch,updated_epoch) VALUES (?,?,?,?,?,?,?,?)',
+                        ('a', sent['id'], 'goal', 'stopped', RELEASED_REASON, 'https://shop.example/c/shorts', self.now, self.now))
+        self.gateway.script = lambda text, run, gw: {'text': 'The most expensive shorts are four styles tied at one price.'}
+        self.worker.tick()
+        row = self.request(sent['id'])
+        self.assertEqual((row['state'], row['outcome'], row['outcome_note']), ('completed', 'completed', 'Done.'))
+        self.assertNotIn('Stopped:', row['result'])
+        self.assertEqual(self.rows('SELECT count(*) FROM faults')[0][0], 0)
+
+
 class Kept(Base):
     def test_both_tables_have_a_retention_rule_and_are_swept_after_thirty_days(self):
         with self.store.connect() as con:

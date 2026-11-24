@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 
+from .browse.job_states import RELEASED_REASON
+
 OUTCOMES = ('completed', 'partial', 'blocked', 'failed', 'cancelled')
 VERIFICATION = ('verified', 'unverified', 'not_applicable')
 CART_ADD = re.compile(r'\b(add|cart|basket|bag|buy)\b', re.I)
@@ -105,7 +107,9 @@ def browser_evidence(jobs, steps) -> tuple:
         return '', 'not_applicable'
     last = jobs[-1]
     state = str(last.get('state') or '')
-    if state != 'done':
+    if state != 'done' and str(last.get('reason') or '') == RELEASED_REASON:
+        state = 'released'                    # the assistant answered and no step was coming: the page was no longer needed. Judged like a job that finished, never as a failure
+    if state not in ('done', 'released'):
         return state, 'unverified'
     if CART_URL.search(str(last.get('url') or '')):
         return state, 'verified' if cart_facts(steps) else 'unverified'
@@ -132,7 +136,7 @@ def judge(*, native, goal=None, jobs=(), steps=(), artifacts=0, cancelled=False,
     if goal and goal.get('status') == 'active':
         note = 'Still working towards the goal.' if goal_continuing else 'The goal is not reached yet.'
         return Verdict('partial', 'unverified', note, '' if goal_continuing else 'Stopped: ' + note)
-    if jobs and state != 'done':
+    if jobs and state not in ('done', 'released'):
         note = BROWSER_WORDS.get(state, 'the browser did not finish')
         blocked = state == 'blocked' or 'verify you are human' in str(jobs[-1].get('reason') or '')
         text = note[0].upper() + note[1:] + '.'
