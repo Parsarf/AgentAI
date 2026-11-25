@@ -117,4 +117,5 @@ platform because fonts rasterize differently; the CI baselines are `linux`.
 | Sheets and menus on phones kept 30 px targets | phone rules hung off `.frame.w-compact`; portals render outside `.frame` | the width class is also on `<html>` |
 | "Jump to latest" placed at `bottom: 180px` | a guess of the composer's height | anchored to the dock (`bottom: 100%`) |
 | File names squeezed to "summ…" in the side panel | buttons kept their row; breakpoint at window 640 px | intrinsic wrapping by the card's own width |
+| Files toolbar title squeezed to nothing and List/Grid pushed out of the bar at 768 px (found by CI on Linux, where the bundled Inter is wider than SF) | above phone width the toolbar never wrapped and the title could shrink to 0 | the toolbar wraps at every width; the title claims 8rem first |
 | Answer tables split numbers and words ("1,204,331,/902") | the prose rule `overflow-wrap: anywhere`, inherited into cells, shrank every word's min-content, so the table never overflowed into its scroll box | cells use `break-word`; validator `broken-word` |

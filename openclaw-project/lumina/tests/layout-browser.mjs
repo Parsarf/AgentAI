@@ -191,7 +191,7 @@ const list = scenarios().filter(sc => !ONLY || ONLY.test(sc.name));
 let mock = null;
 if (list.some(sc => sc.fx === 'mock')) {
   const { spawn } = await import('node:child_process');
-  mock = spawn(process.execPath, [new URL('../dev-mock.mjs', import.meta.url).pathname], { env: { ...process.env, MOCK_NOW: String(Date.UTC(2026, 10, 25, 22, 30) / 1000), MOCK_PORT: FIXTURES.mock.split(':').pop(), MOCK_THREADS: '400' }, stdio: ['ignore', 'pipe', 'inherit'] });
+  mock = spawn(process.execPath, [new URL('../dev-mock.mjs', import.meta.url).pathname], { env: { ...process.env, TZ: 'America/Los_Angeles', MOCK_NOW: String(Date.UTC(2026, 10, 25, 22, 30) / 1000), MOCK_PORT: FIXTURES.mock.split(':').pop(), MOCK_THREADS: '400' }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(ok => { mock.stdout.on('data', d => { if (String(d).includes('mock on')) ok(); }); setTimeout(ok, 8000); });
   process.on('exit', () => mock.kill());
 }

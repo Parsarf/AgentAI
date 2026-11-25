@@ -6,7 +6,8 @@
 //   node tests/visual-browser.mjs --only chat           a subset (regular expression on the state name)
 //   node tests/visual-browser.mjs --approve chat-stress-390   after LOOKING at the new screenshots: make them the baselines (names, or --approve-all)
 //
-// Determinism: the mock API (dev-mock.mjs) runs with a frozen clock (MOCK_NOW) and the browser's clock is frozen to the same moment; timezone, locale, reduced
+// Determinism: the mock API (dev-mock.mjs) runs with a frozen clock (MOCK_NOW) in the same timezone as the browser (its days are its local days: on a UTC CI
+// runner the calendar was empty), and the browser's clock is frozen to the same moment; timezone, locale, reduced
 // motion and the font (the bundled Inter, so macOS and Linux lay text out alike) are fixed; animations and the caret are off. Baselines are kept per platform
 // (tests/visual/baseline/<platform>/), because font rasterization differs between systems.
 //
@@ -48,7 +49,7 @@ const STATES = [
 // The mock API with a frozen clock (and a second one that is signed out, for the sign-in page).
 const servers = [];
 async function serve(port, extra = {}) {
-  const child = spawn(process.execPath, [new URL('../dev-mock.mjs', import.meta.url).pathname], { env: { ...process.env, MOCK_NOW: String(NOW), MOCK_PORT: String(port), MOCK_THREADS: '400', ...extra }, stdio: ['ignore', 'pipe', 'inherit'] });
+  const child = spawn(process.execPath, [new URL('../dev-mock.mjs', import.meta.url).pathname], { env: { ...process.env, TZ: 'America/Los_Angeles', MOCK_NOW: String(NOW), MOCK_PORT: String(port), MOCK_THREADS: '400', ...extra }, stdio: ['ignore', 'pipe', 'inherit'] });
   servers.push(child);
   await new Promise((ok, fail) => { child.stdout.on('data', d => { if (String(d).includes('mock on')) ok(); }); child.on('exit', code => fail(new Error('the mock API stopped: ' + code))); setTimeout(() => fail(new Error('the mock API did not start')), 10000); });
 }
