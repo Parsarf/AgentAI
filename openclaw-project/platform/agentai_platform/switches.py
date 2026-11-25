@@ -112,7 +112,8 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
            'When the assistant asks the customer a question, the task waits where it is (for up to 10 minutes) instead of ending its turn, and carries on with the answer.',
            'The question is shown on the task with its options, a box for another answer and a skip. Answered in time, the same run carries on with the answer; not answered, '
            'the question stays open and the task carries on when it is answered, as before. Scheduled runs never wait. With this off, every question ends the turn, as before.',
-           'No direct cost. A waiting task keeps its workspace awake, but gives up its running slot.', 'low'),
+           'No direct cost. A waiting task keeps its workspace awake, but gives up its running slot.', 'low',
+           confirmations=(('waits_in_place', 'I understand that a task waiting for the customer\'s answer keeps their workspace awake for up to 10 minutes.'),)),
     Switch('credentialed_browsing', 'Let the browser worker use saved logins',
            'Lets a customer give the browser worker a website login it can reuse.',
            'Logins are kept in protected storage and used only on the sites the customer allows.',
