@@ -33,6 +33,14 @@ describe('the frame around every page', () => {
     expect(within(rail).getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
   });
 
+  it('puts the width class on the document root too, so phone rules reach sheets and menus portalled outside the frame', () => {
+    at(390); const { unmount } = app('/home');
+    expect(document.documentElement.classList.contains('w-compact')).toBe(true);
+    expect(document.querySelector('.frame')!.classList.contains('w-compact')).toBe(true);
+    unmount();
+    expect(document.documentElement.classList.contains('w-compact')).toBe(false);          // removed with the frame
+  });
+
   it('leaves out a place whose feature is off', () => {
     features = { billing_mode: 'open' }; app('/home');
     expect(within(screen.getByRole('navigation', { name: 'Primary' })).getAllByRole('link').map(a => a.getAttribute('aria-label'))).toEqual(['Home', 'Chat', 'Activity', 'Settings']);

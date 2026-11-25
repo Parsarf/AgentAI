@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: ['accounts 1 3', 'accounts 2 3', 'accounts 3 3', 'platform 1 2', 'platform 2 2', 'acceptance', 'extras']
+        part: ['accounts 1 3', 'accounts 2 3', 'accounts 3 3', 'platform 1 2', 'platform 2 2', 'acceptance', 'extras', 'layout']
     name: ${{ matrix.part }}
     defaults:
       run:
@@ -71,6 +71,13 @@ jobs:
           test -x "$BROWSE_CHROME"
           npm ci --prefix ../browse
       - run: bash ../ci/run.sh ${{ matrix.part }}
+      # The layout gate's evidence: every screenshot with the offending boxes outlined, the diffs against the baselines, and both reports.
+      - if: failure() && matrix.part == 'layout'
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-report
+          path: ${{ runner.temp }}/layout-report
+          retention-days: 14
 
   lumina:
     needs: gate

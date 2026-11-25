@@ -75,6 +75,14 @@ with connection.cursor() as c:
     c.execute("INSERT INTO deployments(account_id,id,generation,state) VALUES (%s,'preview-deployment',1,'stopped')", [ACCOUNT])
 connections.close_all()
 
+# PREVIEW_RATE_LIMITS=0, for the layout sweep only (tests/layout-browser.mjs measures a thousand page loads from one address): every request limit off, in THIS
+# process. They are all decided by accounts.services._rate_limits_off, which `rate()` looks up at each call. Default: on, as in production, which
+# tests/mail-browser.mjs depends on (it paces itself to them).
+if os.environ.get('PREVIEW_RATE_LIMITS') == '0':
+    import accounts.services as _services                                          # noqa: E402
+    _services._rate_limits_off = lambda key, everyone=False: True
+    print('preview fixture: request limits are OFF (PREVIEW_RATE_LIMITS=0)', flush=True)
+
 NOW = int(time.time())
 MIN, HOUR, DAY = 60, 3600, 86400
 ME_G, ME_M = 'dana.reyes@gmail.test', 'dana@outlook.test'

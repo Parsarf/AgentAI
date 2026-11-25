@@ -81,7 +81,7 @@
 .mail-row.picked { background: var(--fill-pressed); }
 .mail-row.current { background: var(--accent-soft); }
 .mail-row-lead { position: relative; flex: none; display: grid; place-items: center; width: 56px; cursor: pointer; }
-.mail-pick { position: absolute; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); opacity: 0; cursor: pointer; }
+.mail-pick { /* layout: the selection checkbox lies over the sender's mark, which it replaces on hover and while selecting */ position: absolute; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); opacity: 0; cursor: pointer; }
 .mail-row:hover .mail-pick, .mail-pick:focus-visible, .mail-pick:checked, .mail-row.picking .mail-pick { opacity: 1; }
 .mail-row:hover .mail-row-lead .mail-mark, .mail-row.picked .mail-row-lead .mail-mark, .mail-row.picking .mail-row-lead .mail-mark, .mail-pick:focus-visible + .mail-mark { visibility: hidden; }
 .mail-row-open { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 var(--space-4) 0 0; border: 0; background: none; color: var(--text-secondary);
@@ -102,12 +102,15 @@
 .mail-row.unread .mail-row-who, .mail-row.unread .mail-row-subject { color: var(--text-primary); font-weight: var(--weight-semibold); }
 .mail-row:not(.unread) .mail-row-who { color: var(--text-secondary); }
 .mail-dot { flex: none; align-self: center; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-.mail-row-quick { position: absolute; top: 50%; right: var(--space-3); transform: translateY(-50%); display: none; gap: 2px; padding: 3px; border-radius: var(--radius-pill); background: var(--surface-overlay);
+.mail-row-quick { /* layer: quick actions over the end of a row on hover and focus; the row's own text ellipsizes under them, and every action also has a key and a control in the open conversation */ position: absolute; top: 50%; right: var(--space-3); transform: translateY(-50%); display: none; gap: 2px; padding: 3px; border-radius: var(--radius-pill); background: var(--surface-overlay);
   box-shadow: 0 6px 18px rgb(0 0 0 / .4), 0 0 0 1px var(--border-default); }
 .mail-row:hover .mail-row-quick, .mail-row-quick:focus-within { display: inline-flex; }
+/* On a phone-width list the four 44px actions would cover the middle of the row, so a click meant to open it archived it (layout sweep, 375 px). There they
+   are not offered on hover; the open conversation and the keys have every one of them. */
+.w-compact .mail-row:hover .mail-row-quick:not(:focus-within) { display: none; }
 .mail-row-quick .iconbtn { border-color: transparent; background: none; }
 .mail-row-quick .iconbtn:hover { background: var(--fill-pressed); }
-@media (hover: none) { .mail-row:hover .mail-row-quick { display: none; } .mail-pick { opacity: 0; } .mail-row.picking .mail-pick, .mail-pick:checked { opacity: 1; } .mail-row:hover .mail-row-lead .mail-mark { visibility: visible; } .mail-row.picking:hover .mail-row-lead .mail-mark, .mail-row.picked:hover .mail-row-lead .mail-mark { visibility: hidden; } }
+@media (hover: none) { .mail-row:hover .mail-row-quick { display: none; } .mail-pick { /* layout: the selection checkbox lies over the sender's mark, which it replaces on hover and while selecting */ opacity: 0; } .mail-row.picking .mail-pick, .mail-pick:checked { opacity: 1; } .mail-row:hover .mail-row-lead .mail-mark { visibility: visible; } .mail-row.picking:hover .mail-row-lead .mail-mark, .mail-row.picked:hover .mail-row-lead .mail-mark { visibility: hidden; } }
 
 .mail-drafts { display: flex; flex-direction: column; }
 .mail-group { padding: 10px var(--space-4) 6px; color: var(--text-secondary); font-weight: var(--weight-medium); border-bottom: 1px solid var(--border-subtle); }
@@ -129,7 +132,7 @@
 .mail-nothing-open svg { color: var(--text-disabled); margin-bottom: var(--space-1); }
 .mail-reader { flex: 1; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; container-name: reader; }
 .mail-reader-head { flex: none; padding: var(--space-2) var(--space-5) var(--space-3); border-bottom: 1px solid var(--border-subtle); }
-.mail-reader-bar { display: flex; align-items: center; gap: 2px; min-height: var(--control-md); margin: 0 -6px; }
+.mail-reader-bar { /* layout: optical alignment of the icon buttons with the text edge */ display: flex; align-items: center; gap: 2px; min-height: var(--control-md); margin: 0 -6px; }
 .mail-tools { display: flex; align-items: center; gap: 2px; }
 .mail-reader-nav { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .mail-reader-nav .up { transform: rotate(-90deg); } .mail-reader-nav .down { transform: rotate(90deg); }
@@ -150,11 +153,11 @@
 .mail-message-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mail-message-line { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .mail-message-line time { flex: none; font-variant-numeric: tabular-nums; }
-.mail-message-toggle { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; padding: 0; border: 0; background: none; color: var(--text-primary); font-size: var(--text-base); text-align: left; cursor: pointer; }
+.mail-message-toggle { min-width: 0; min-height: 24px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; padding: 0; border: 0; background: none; color: var(--text-primary); font-size: var(--text-base); text-align: left; cursor: pointer; }
 .mail-message-toggle:disabled { cursor: default; }
 .mail-message-toggle b { font-weight: var(--weight-semibold); }
 .mail-message-address { font-size: var(--text-sm); overflow-wrap: anywhere; }
-.mail-message-to, .mail-message-snippet { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
+.mail-message-to, .mail-message-snippet { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 24px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }   /* 24px targets: they sit right under the sender's line */
 .mail-message-to:disabled { cursor: default; }
 .mail-message-to:hover:not(:disabled) { color: var(--text-secondary); }
 .mail-message-to svg { flex: none; transition: transform var(--dur-fast) var(--ease); } .mail-message-to .flip { transform: rotate(180deg); }
@@ -210,7 +213,7 @@ select.mail-field-input { cursor: pointer; appearance: none; }
 .mail-field-fixed { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--text-base); }
 .mail-field:focus-within .mail-field-label { color: var(--accent-text); }
 .mail-people { position: relative; flex: 1; min-width: 0; }
-.mail-suggest { position: absolute; z-index: var(--z-menu); top: calc(100% + 4px); left: 0; width: min(100%, 420px); max-height: 260px; margin: 0; padding: 4px; overflow: auto; list-style: none;
+.mail-suggest { /* layer: menu (--z-menu) of suggestions under the field */ position: absolute; z-index: var(--z-menu); top: calc(100% + 4px); left: 0; width: min(100%, 420px); max-height: 260px; margin: 0; padding: 4px; overflow: auto; list-style: none;
   border-radius: var(--radius-sm); background: var(--surface-overlay); box-shadow: var(--shadow-overlay); }
 .mail-suggest li { display: flex; flex-direction: column; padding: 6px 10px; border-radius: var(--radius-xs); cursor: pointer; }
 .mail-suggest li.on { background: var(--fill-pressed); }

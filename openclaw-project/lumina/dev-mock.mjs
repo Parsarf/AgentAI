@@ -1,4 +1,5 @@
 // Local-only mock of the account API for visual checks and UI tests. Never deployed.  node dev-mock.mjs  -> http://127.0.0.1:5199/app/
+import './dev-mock-clock.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -39,6 +40,13 @@ const CARDS = [
   card('c2', 'chart', { chart: 'donut', title: 'Where the budget goes', labels: ['Haiku', 'Sonnet', 'Search', 'Browser'], series: [{ name: 'Share', values: [52, 28, 12, 8] }], unit: '$' }),
   card('p1', 'comparison', { title: 'Which paddle fits you?', bestIndex: 0, items: [{ name: 'Selkirk Vanguard', price: '$89.99', badge: 'Best value', facts: [{ label: 'Weight', value: '7.9 oz' }, { label: 'Core', value: 'Polypropylene' }], pros: ['Great control', 'Cheap'], cons: ['Less power'], link: 'https://example.com/a' }, { name: 'JOOLA Ben Johns', price: '$129', facts: [{ label: 'Weight', value: '8.2 oz' }, { label: 'Core', value: 'Carbon' }], pros: ['Power'], cons: ['Pricey'], link: 'https://example.com/b' }, { name: 'CRBN 1', price: '$199.95', facts: [{ label: 'Weight', value: '8.0 oz' }], pros: ['Spin'], cons: ['Expensive', 'Stiff'] }] }),
 ];
+// c4: content made to break layouts (tests/visual-browser.mjs and tests/layout-browser.mjs use it): a title, a word and a URL longer than any column, code wider
+// than the thread, a wide table, many numbers, and a failed task with a long error.
+const LONG_TITLE = 'Compare the quarterly revenue of every subsidiary across all regions and explain each variance larger than two percent in plain words';
+const STRESS = [
+  { id: 41, request_id: 'r1', provenance: 'customer', content: LONG_TITLE + ' ' + 'Supercalifragilisticexpialidocious'.repeat(6), created_at: 'x' },
+  { id: 42, request_id: 'r1', provenance: 'agent', content: 'Here is what I found.\n\n' + 'Revenue grew in most regions while costs stayed flat, so margins widened. '.repeat(8) + '\n\nSource: https://reports.example.com/' + 'quarterly-revenue-by-subsidiary-and-region-'.repeat(6) + '\n\n```python\nrows = [(region, subsidiary, revenue, previous, round((revenue - previous) / previous * 100, 2)) for region, subsidiary, revenue, previous in load_all_quarterly_figures(year=2026, quarter=3)]\n```\n\n| Region | Subsidiary | Q2 revenue | Q3 revenue | Change | Owner | Notes |\n|---|---|---|---|---|---|---|\n| North America | Northwind Holdings International | 1,204,331,902 | 1,289,004,117 | +7.03% | Finance team | Driven by the autumn launch |\n| Europe, Middle East and Africa | Fennel Market Group | 884,120,005 | 860,441,233 | −2.68% | Regional office | Currency effect |', created_at: 'x' },
+];
 const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
 const body = req => new Promise(r => { let d = ''; req.on('data', c => d += c); req.on('end', () => { try { r(JSON.parse(d || '{}')); } catch { r({}); } }); });
 
@@ -73,11 +81,13 @@ http.createServer(async (req, res) => {
         evidence: { steps: 0, failed_steps: 0, searches: 0, commands: 0, sites: [], files: [], saved: [], approvals: [], duration_s: null } }, rows: [], cursor: 0 });
     }
     if (p === '/v1/conversations' && req.method === 'POST') return json(res, 201, { conversation: { id: 'cnew', project_id: 'p1' } });
-    { const m = p.match(/^\/v1\/conversations\/(c\d)$/); if (m && req.method === 'GET') return json(res, 200, { conversation: { id: m[1], project_id: 'p1', created_at: new Date().toISOString(), title: m[1] === 'c1' ? 'Search for the best cheap carbon pickleball rackets' : 'What is 17 times 3?', last_activity: new Date().toISOString(), active: 1 } }); }
+    { const m = p.match(/^\/v1\/conversations\/(c\d)$/); if (m && req.method === 'GET') return json(res, 200, { conversation: { id: m[1], project_id: 'p1', created_at: new Date().toISOString(), title: m[1] === 'c1' ? 'Search for the best cheap carbon pickleball rackets' : m[1] === 'c4' ? LONG_TITLE : 'What is 17 times 3?', last_activity: new Date().toISOString(), active: 1 } }); }
     if (p === '/v1/conversations') return json(res, 200, { conversations: [
       { id: 'c1', project_id: 'p1', created_at: new Date().toISOString(), title: 'Search for the best cheap carbon pickleball rackets', last_activity: new Date().toISOString(), active: 1 },
       { id: 'c2', project_id: 'p1', created_at: new Date(Date.now() - 86400000).toISOString(), title: 'What is 17 times 3?', last_activity: new Date(Date.now() - 86400000).toISOString(), active: 0 },
-      { id: 'c3', project_id: 'p1', created_at: '2026-09-20T10:00:00Z', title: 'Build me an e-commerce website', last_activity: '2026-09-20T10:05:00Z', active: 0 }] });
+      { id: 'c3', project_id: 'p1', created_at: '2026-09-20T10:00:00Z', title: 'Build me an e-commerce website', last_activity: '2026-09-20T10:05:00Z', active: 0 },
+      { id: 'c4', project_id: 'p1', created_at: '2026-09-19T10:00:00Z', title: LONG_TITLE, last_activity: '2026-09-19T10:05:00Z', active: 0 }] });
+    if (p.startsWith('/v1/conversations/c4/')) { if (p.endsWith('/messages')) return json(res, 200, { messages: STRESS, tasks: [{ id: 'r1', state: 'failed', created_epoch: now() - 200000 }], has_more: false }); if (p.endsWith('/blocks')) return json(res, 200, { blocks: [] }); }
     if (p.endsWith('/blocks')) return json(res, 200, { blocks: [
       { id: 'b1', conversation_id: 'c1', anchor_message_id: 1, kind: 'form', schema_version: '1.0', version: 3, status: 'draft', launched_request_id: null,
         spec: { schemaVersion: '1.0', type: 'form', title: 'Shape your website', description: 'A few choices that change the plan.', submit: { label: 'Create the plan', action: 'submit_requirements' }, fields: [

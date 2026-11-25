@@ -8,7 +8,9 @@ const ICONS: Record<string, ReactNode> = { inbox: <I.Inbox width={17} height={17
   archive: <I.Archive width={17} height={17} />, all: <I.Mail width={17} height={17} />, spam: <I.Alert width={17} height={17} />, trash: <I.Trash width={17} height={17} /> };
 
 /** An address that, where it must wrap, wraps before its "@" (never in the middle of a word, never cut short). */
-const address = (text: string) => { const at = text.lastIndexOf('@'); return at > 0 ? <>{text.slice(0, at)}<wbr />{text.slice(at)}</> : text; };
+/** An address breaks only where a reader expects it to: before the "@" and before each dot of the domain (at 150% text "example.com" was split as "co|m"). */
+const address = (text: string) => { const at = text.lastIndexOf('@'); if (at <= 0) return text;
+  const domain = text.slice(at).split(/(?=\.)/); return <>{text.slice(0, at)}{domain.map((part, i) => <span key={i}><wbr />{part}</span>)}</>; };
 
 /** What one account is doing, when that is worth a line: nothing is said about an account that simply works. */
 export function accountNote(a: HubAccount, now: number): string {

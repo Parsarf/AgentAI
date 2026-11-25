@@ -435,7 +435,7 @@ export default function Inbox() {
         <label className="mail-row-lead"><input type="checkbox" className="mail-pick" checked={picked.has(k)} aria-label={`Select the conversation with ${who}`} onChange={() => undefined}
           onClick={e => pick(index, (e as React.MouseEvent).shiftKey)} />{first && <Mark person={first} />}</label>
         <button type="button" className="mail-row-open" aria-current={selected === k ? 'true' : undefined} onClick={e => { if (e.shiftKey) { pick(index, true); return; } void open(t); }}>
-          <span className="mail-row-top"><span className="mail-row-who">{t.unread && <i className="mail-dot" role="img" aria-label="Unread" />}<span dir="auto">{who}</span>{t.message_count > 1 && <span className="mail-row-count faint">{t.message_count}</span>}</span>
+          <span className="mail-row-top"><span className="mail-row-who">{t.unread && <i className="mail-dot" role="img" aria-label="Unread" />}<span dir="auto" title={who}>{who}</span>{t.message_count > 1 && <span className="mail-row-count faint">{t.message_count}</span>}</span>
             <span className="mail-row-marks">{t.has_attachments && <I.Clip width={13} height={13} role="img" aria-label="Has an attachment" aria-hidden={undefined} />}{t.starred && <I.StarFilled width={13} height={13} className="mail-starred" role="img" aria-label="Starred" aria-hidden={undefined} />}
               <time className="faint small">{listTime(t.last_epoch, zone, now)}</time></span></span>
           <span className="mail-row-subject" dir="auto">{t.subject || '(no subject)'}</span>

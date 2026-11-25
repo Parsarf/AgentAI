@@ -12,7 +12,7 @@ export default function Split({ zone, edge }: { zone: SideZone; edge: 'start' | 
   const now = frame.widths[zone]; const most = roomFor(zone, frame.width, frame.placement, frame.widths);
   const set = (px: number) => frame.setWidth(zone, Math.min(px, most));
   const grow = edge === 'end' ? 1 : -1;               // dragging right widens a zone on the left and narrows one on the right
-  return <div role="separator" aria-orientation="vertical" tabIndex={0} className={`split split-${edge}`} aria-label={`Resize ${NAMES[zone]}`}
+  return <div role="separator" aria-orientation="vertical" tabIndex={0} data-layout-allow="resize-edge" className={`split split-${edge}`} aria-label={`Resize ${NAMES[zone]}`}
     aria-valuemin={LIMITS[zone].min} aria-valuemax={most} aria-valuenow={now} title="Drag, or use the arrow keys, to resize"
     onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId); drag.current = { x: e.clientX, w: now }; document.documentElement.dataset.resizing = 'true'; }}
     onPointerMove={e => { if (drag.current) set(drag.current.w + (e.clientX - drag.current.x) * grow); }}

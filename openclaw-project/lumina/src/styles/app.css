@@ -8,12 +8,14 @@ html { font-size: 100%; }
 body { margin: 0; background: var(--surface-base); color: var(--text-primary); font: var(--text-base)/var(--leading-normal) var(--font); -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
+/* Every disclosure line ("Details", "Changes it can prepare") is a target: at least 24px tall (WCAG 2.2 2.5.8) whatever its font size. Components may add more. */
+summary { cursor: pointer; padding-block: 3px; min-height: 24px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 h1, h2, h3, p { margin: 0; }
 .muted { color: var(--ink-2); } .faint { color: var(--ink-3); }
-.globe { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
-.globe-frame { position: absolute; top: -26vh; right: 8vw; width: min(78vw, 1100px); aspect-ratio: 1; }
-.globe-fallback { position: absolute; top: -34vh; right: 8vw; width: min(66vw, 880px); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 30% 40%, var(--surface-raised), var(--surface-base) 70%);
+.globe { /* layer: decorative backdrop behind the whole page (z -1), no pointer events */ position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.globe-frame { /* layout: decorative globe, placed off the corner on purpose */ position: absolute; top: -26vh; right: 8vw; width: min(78vw, 1100px); aspect-ratio: 1; }
+.globe-fallback { /* layout: decorative globe still frame, placed off the corner on purpose */ position: absolute; top: -34vh; right: 8vw; width: min(66vw, 880px); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 30% 40%, var(--surface-raised), var(--surface-base) 70%);
   box-shadow: inset -2px 0 14px var(--fill-pressed), inset -26px 6px 60px var(--fill-pressed); }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px; font-weight: var(--weight-semibold); letter-spacing: .28em; font-size: var(--text-md); }
 .brand svg { color: var(--accent); filter: drop-shadow(0 0 8px rgb(var(--accent-rgb) / .6)); }
@@ -25,7 +27,7 @@ h1, h2, h3, p { margin: 0; }
 .center { max-width: 1040px; }
 
 /* composer */
-.composer { padding: 18px 18px 14px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border-default); box-shadow: var(--shadow-card); transition: border-color var(--dur) var(--ease); }
+.composer { container: composer / inline-size; padding: 18px 18px 14px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border-default); box-shadow: var(--shadow-card); transition: border-color var(--dur) var(--ease); }
 .composer:focus-within { border-color: var(--accent-line); }
 .composer textarea { width: 100%; min-height: 56px; max-height: 260px; resize: none; background: none; border: 0; outline: 0; font-size: var(--text-md); line-height: var(--leading-normal); padding: 6px 4px; }
 .composer textarea::placeholder { color: var(--ink-3); }
@@ -58,7 +60,7 @@ h1, h2, h3, p { margin: 0; }
 .login form { width: min(400px, 100%); padding: 30px; display: grid; gap: 14px; }
 .login input { padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--fill-subtle); outline: 0; }
 .login input:focus { border-color: var(--neon); }
-@media (max-width: 960px) {  .brand { display: none; } .hero { padding: 24px 6px 18px; } .caps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 960px) { .hero { padding: 24px 6px 18px; } .caps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .globe-frame { right: -30vw; top: -14vh; width: 120vw; opacity: .7; } .bubble.you { margin-left: 6%; }
 }
 
@@ -92,8 +94,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 @media (max-width: 960px) { .gblock { margin-left: 0; } .layer { grid-auto-flow: row; } .grip { display: none; } }
 
 /* chat-style layout */
-.chatpage { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; padding-top: 10px; min-height: calc(100vh - 100px); }
-.chatlist { padding: 12px; align-self: start; position: sticky; top: 10px; max-height: calc(100vh - 40px); overflow-y: auto; overflow-x: hidden; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+.chatlist { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }   /* in the chats column (frame.css), which scrolls it */
 .chatlist h4 { margin: 14px 6px 4px; font-size: 11.5px; font-weight: 500; color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; }
 .newchat { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
 .chatitem { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 11px; color: var(--ink-2); border: 1px solid transparent; }
@@ -101,7 +102,6 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .chatitem .ct { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread-col { min-width: 0; display: flex; flex-direction: column; max-width: 860px; }
 .thread-col .thread { flex: 1; } .turn { display: grid; gap: 8px; }
-@media (max-width: 960px) { .chatpage { grid-template-columns: minmax(0, 1fr); } .chatlist { position: static; max-height: 180px; } }
 .badge.run-running { border-color: rgb(var(--accent-rgb) / .6); color: var(--accent-text); background: rgb(var(--accent-rgb) / .18); }
 .badge.run-completed { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--ok); background: color-mix(in srgb, var(--success) 8%, transparent); }
 .badge.run-awaiting_approval { border-color: color-mix(in srgb, var(--warning) 50%, transparent); color: var(--warn); background: color-mix(in srgb, var(--warning) 8%, transparent); }
@@ -113,7 +113,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .chatpage { display: block; padding-top: 6px; } .thread-col { margin: 0 auto; }
 
 /* chat layout: the composer floats mid-page on a new chat, then settles at the bottom once a message is sent */
-.chatpage { min-height: calc(100vh - 56px); } .chatpage .thread-col { margin: 0 auto; max-width: 860px; min-height: calc(100vh - 56px); position: relative; }
+.chatpage .thread-col { margin: 0 auto; max-width: 860px; position: relative; }   /* its height: below, from the frame's --chrome */
 /* Fill the pane without distributing spare height into message rows. */
 .chatpage .thread { padding: 8px 0 24px; gap: 22px; align-content: start; } .chatpage .thread-col .thread { flex: 1; }
 .chatpage .bubble { border: 0; background: none; padding: 0; border-radius: 0; line-height: 1.65; font-size: 15.5px; }
@@ -122,15 +122,13 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .chatpage .turn { display: grid; gap: 14px; align-content: start; align-items: start; }
 .chatpage
 .dock { position: sticky; bottom: 0; z-index: 2; padding: 10px 0 8px; background: linear-gradient(180deg, transparent, var(--bg) 30%); transition: transform .6s var(--ease), background .3s; will-change: transform; }
-.greeting { position: absolute; left: 0; right: 0; bottom: 100%; padding-bottom: 14px; text-align: center; font-size: 30px; font-weight: 600; letter-spacing: -.01em; margin: 0; opacity: 0; pointer-events: none; transition: opacity .35s var(--ease); }
+.greeting { /* layout: the new-chat greeting hangs above the composer (bottom: 100%) and is gone once the chat starts */ position: absolute; left: 0; right: 0; bottom: 100%; padding-bottom: 14px; text-align: center; font-size: 30px; font-weight: 600; letter-spacing: -.01em; margin: 0; opacity: 0; pointer-events: none; transition: opacity .35s var(--ease); }
 .thread-col.fresh .greeting { opacity: 1; }
-.thread-col.fresh .dock { transform: translateY(calc(-50vh + 110px)); background: none; }
+.thread-col.fresh .dock { background: none; }   /* where it sits: the spacer below (.thread-col.fresh::after) */
 @media (prefers-reduced-motion: reduce) { .dock, .greeting { transition: none; } }
 
 .quick { display: flex; gap: 8px; flex-wrap: wrap; } .quick .chip { opacity: .75; } .quick .chip:hover { opacity: 1; }
 
-/* Activity window */
-.activity { position: fixed; z-index: 30; top: 0; right: 0; bottom: 0; width: min(400px, 100vw); display: flex; flex-direction: column; background: var(--surface-sidebar); border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgb(0 0 0 / .25); }
 
 /* Conversation history and persistent chat controls. */
 .history-page { max-width: 860px; margin: 32px auto; }
@@ -150,17 +148,21 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .chat-rename h2 { font-size: 20px; margin-bottom: 12px; }
 .chat-rename > div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .archived-chat { display: flex; gap: 20px; align-items: center; justify-content: space-between; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg-2); }
-.jump-latest { position: sticky; bottom: 180px; align-self: center; z-index: 3; background: var(--bg-2); box-shadow: var(--shadow); }
+/* layout: hangs just above the composer, whatever its height: the dock (sticky) is its containing block. Centred by auto margins, not a transform. */
+.jump-latest { position: absolute; bottom: calc(100% + var(--space-2)); left: 0; right: 0; width: fit-content; margin-inline: auto; background: var(--surface-raised); box-shadow: var(--shadow-overlay); }
 
 /* Sign-up */
-.login .trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.login .trap { /* layout: a field for bots only, kept off screen for people */ position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 .linkish { background: none; border: 0; padding: 0; color: var(--neon); cursor: pointer; font: inherit; text-align: left; } .linkish:hover { text-decoration: underline; }
 .chatpage { --chrome: calc(var(--gap) + 76px); min-height: 0; }
 .chatpage .thread-col { min-height: calc(100dvh - var(--chrome)); }
 .dock { transition: background .3s; will-change: auto; padding-bottom: 12px; }
-.thread-col.fresh .dock { transform: translateY(calc((100dvh - var(--chrome)) / -2 + 100px)); }   /* centred on the pane, not the viewport */
+/* A new chat: the composer stands in the middle of the pane, by flow, not by a transform: the empty thread above and this spacer below share the free height
+   (the thread's extra basis is the room the greeting takes above the composer, so the two are centred together). A long draft grows the column; it never
+   goes off the top. */
+.thread-col.fresh::after { content: ''; flex: 1 1 0; }
+.chatpage .thread-col.fresh .thread { flex: 1 1 110px; }
 .composer textarea { max-height: min(260px, 40dvh); overflow-y: auto; }
-@media (min-width: 1280px) { .chatpage:has(> .activity) { padding-right: calc(400px - 8px); } }   /* panel is fixed, 400px wide: leave a gap so it never covers the column */
 
 /* Composer controls: one row while it fits; below 640px the mode chips wrap together and the response toggle + send share the next row. */
 .composer .respond { flex: none; }
@@ -171,16 +173,30 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 /* Home: greeting, composer, cards and Recent Tasks share one left/right edge; the column sits centred between sidebar and activity panel. */
 .center { margin-inline: auto; } .task { min-width: 0; }   /* a long task title ellipsizes instead of widening the page */
 
-@media (max-width: 960px) {
-  .chatpage { --chrome: calc(10px + 76px + 96px); }
-  .chatpage .dock { bottom: 96px; }   /* clears the fixed bottom nav; equals the shell padding, so the composer stays put at the end of the thread */
+/* The composer decides by its own width, not the window's: docked zones and the browser pane narrow it at any window size. Narrow: the attach and Tools pair keeps the
+   first row, the answer mode, "Keep working" (its short form) and Send share the second. Where the bottom bar sits is the frame's business (frame.css, "Phone"). */
+@container composer (max-width: 560px) {
+  .composer .row .spacer { /* layout: a zero-height line break in a wrapping row; its margins cancel the row gap it would add */ flex: 1 0 100%; height: 0; margin: -4px 0; }
+  .composer .respond { margin-right: auto; }
+  .composer-long { display: none; }
 }
 @media (max-width: 640px) {
   .composer { padding: 14px 14px 12px; }
-  .composer .row .spacer { flex: 1 0 100%; height: 0; margin: -4px 0; }
-  .composer .respond { margin-right: auto; }
   .hero h1 { font-size: clamp(30px, 8vw, 40px); }
   .greeting { font-size: 24px; }
+}
+
+/* Room for the conversation on small screens (layout sweep, 2026-11-25: at 200% zoom and on short phones the sticky toolbar and composer left no room, and
+   Allow/Decline could not be scrolled clear of them).
+   - Focus and scrolling keep a control clear of the sticky toolbar and composer: their heights are measured by pages/Chat.tsx (--chat-head-h, --chat-dock-h).
+   - The keyboard hint is not shown on a phone.
+   - In a short window the composer stays at the end of the conversation, in the flow, instead of covering it (relative: still the box "Jump to latest" hangs from). */
+html:has(.chatpage) { scroll-padding-top: calc(var(--chat-head-h, var(--toolbar-h)) + var(--space-2)); scroll-padding-bottom: calc(var(--chat-dock-h, 0px) + var(--space-2)); }
+html.w-compact:has(.chatpage) { scroll-padding-bottom: calc(var(--chat-dock-h, 0px) + var(--bottom-bar-h) + var(--space-2)); }
+.w-compact .hint-keys { display: none; }
+@media (max-height: 560px) {
+  .chatpage .dock, .w-compact .wsp .chatpage .dock { position: relative; bottom: auto; }
+  html:has(.chatpage), html.w-compact:has(.chatpage) { scroll-padding-bottom: var(--space-2); }
 }
 
 /* Scroll performance: messages far from the viewport skip layout and paint until they get near it (sizes are remembered once seen). */
@@ -204,9 +220,9 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 .live-screen [hidden] { display: none; }
 .live-screen.driving { cursor: crosshair; box-shadow: inset 0 0 0 2px var(--neon); }
 .live-wait { padding: 20px; text-align: center; }
-.live-badge { position: absolute; top: 10px; left: 10px; font-size: 12px; padding: 3px 10px; border-radius: 999px; background: rgb(0 0 0 / .6); border: 1px solid var(--line-2); color: var(--ink-2); pointer-events: none; }
+.live-badge { /* layout: a label in the corner of the live picture, over its edge; the picture is decorative there */ position: absolute; top: 10px; left: 10px; font-size: 12px; padding: 3px 10px; border-radius: 999px; background: rgb(0 0 0 / .6); border: 1px solid var(--line-2); color: var(--ink-2); pointer-events: none; }
 .live-badge.live { color: var(--ok); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
-/* Who is deciding: one small pill in the corner of the screen. It never moves the page (absolute) and only fades its colour when a notice appears. */
+/* layout: who is deciding, one small pill in the corner of the screen. It never moves the page (absolute) and only fades its colour when a notice appears. */
 .live-now { position: absolute; top: 10px; right: 10px; max-width: 70%; font-size: 12px; padding: 3px 10px; border-radius: 999px; background: rgb(0 0 0 / .6); border: 1px solid var(--line-2); color: var(--ink-2); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s, border-color .2s; }
 .live-now.claude { color: var(--neon); border-color: rgb(var(--accent-rgb) / .5); }
 .live-now.notice { color: var(--ink); border-color: var(--neon); }
@@ -229,7 +245,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 /* Emoji shown as OpenMoji pictures (src/lib/emojify.ts). The alt text is the emoji, so copying and screen readers still get the character. */
 .emoji { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -.26em; margin: 0 .03em; user-select: all; }
 
-/* Click feedback in Live view: a ring that fades where you clicked, so a click is acknowledged before the page reacts. */
+/* layout: click feedback in Live view, a ring that fades where you clicked, so a click is acknowledged before the page reacts. */
 .live-tap { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid var(--neon); pointer-events: none; animation: live-tap .6s ease-out forwards; }
 @keyframes live-tap { from { opacity: .95; transform: scale(.4); } to { opacity: 0; transform: scale(1.5); } }
 @media (prefers-reduced-motion: reduce) { .live-tap { animation: none; opacity: .8; transform: none; } }
@@ -252,7 +268,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--ink); f
 /* A turn skips paint outside its box (content-visibility above), which cropped glows and markers that reach past its left edge. Give it room at the sides and take the room back
    with a negative margin, so the text stays exactly where it was. */
 .chatpage { --turn-bleed: 20px; }
-.chatpage .turn { padding-inline: var(--turn-bleed); margin-inline: calc(var(--turn-bleed) * -1); max-width: calc(100% + var(--turn-bleed) * 2); }
+.chatpage .turn { /* layout: a turn bleeds into the gutter so wide content can use it; padding gives the space back to the text */ padding-inline: var(--turn-bleed); margin-inline: calc(var(--turn-bleed) * -1); max-width: calc(100% + var(--turn-bleed) * 2); }
 @media (max-width: 640px) { .chatpage { --turn-bleed: 12px; } }   /* the page margin is about 18px here: the bleed must stay inside it or the page scrolls sideways */
 
 /* The assistant's earlier messages for a finished answer, folded under a button */

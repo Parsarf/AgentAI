@@ -21,7 +21,7 @@
 .tile.static:hover .tile-art { transform: none; }
 .tile.muted .svc { opacity: .5; }
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-disabled); }
-.tile-art .status-dot { position: absolute; top: -3px; right: -3px; width: 11px; height: 11px; border: 2px solid var(--surface-base); }
+.tile-art .status-dot { /* layout: a status dot on the corner of a service tile, like a badge; the status is also in words */ position: absolute; top: -3px; right: -3px; width: 11px; height: 11px; border: 2px solid var(--surface-base); }
 .status-dot.success { background: var(--success); } .status-dot.warning { background: var(--warning); } .status-dot.danger { background: var(--danger); } .status-dot.idle { background: var(--text-disabled); }
 .badge .status-dot { width: 6px; height: 6px; background: currentColor; }
 
@@ -58,7 +58,7 @@
 .tools-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .tools-head h3 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .legend { margin: var(--space-1) 0 var(--space-3); color: var(--text-muted); font-size: var(--text-xs); } .legend b { color: var(--text-secondary); font-weight: var(--weight-medium); }
-.search { position: relative; display: block; margin-bottom: var(--space-2); } .search svg { position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; } .search .input { padding-left: 36px; }
+.search { position: relative; display: block; margin-bottom: var(--space-2); } .search svg { /* layout: the search icon sits inside the field's left padding, which is wide enough for it */ position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; } .search .input { padding-left: 36px; }
 .tools { list-style: none; margin: 0; padding: 0; display: grid; }
 .tool { padding-block: var(--space-2); border-top: 1px solid var(--border-subtle); min-width: 0; }
 .tool-main { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }

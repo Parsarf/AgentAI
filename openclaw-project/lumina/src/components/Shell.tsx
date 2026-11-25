@@ -16,9 +16,12 @@ function Body() {
   useTabSignal(tasks);
   const c = useCommandBar()!; useFrameKeys();
   const compact = frame.placement.widthClass === 'compact';
+  // The width class is on the document root too: sheets, dialogs and menus are portalled outside .frame, and the phone rules (44px targets) must reach them.
+  const width = frame.placement.widthClass;
+  useEffect(() => { const root = document.documentElement; root.classList.add(`w-${width}`); return () => root.classList.remove(`w-${width}`); }, [width]);
   return (
     <div className={`frame w-${frame.placement.widthClass}`}>
-      <a className="skip" href="#canvas">Skip to content</a>
+      <a className="skip" href="#canvas" data-layout-allow="skip-link">Skip to content</a>
       {compact ? <BottomBar onSearch={() => c.setOpen(true)} /> : <NavRail onSearch={() => c.setOpen(true)} />}
       <div className="frame-work">
         {tasks.some(t => t.phase === 'working' || t.phase === 'needs_you' || t.phase === 'starting') && <LocationRequest key={app?.user.email} />}

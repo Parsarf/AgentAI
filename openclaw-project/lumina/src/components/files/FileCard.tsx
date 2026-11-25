@@ -43,8 +43,10 @@ export default function FileCard({ file, onError }: { file: ArtifactRow; onError
       <div className="file-card-row">
         <FileBadge name={file.display_name} />
         <div className="file-card-text"><b title={file.display_name}>{name}</b><span className="faint small">{KIND_LABEL[fileKind(file.display_name)]} · {humanSize(file.size_bytes)}{file.version > 1 ? ` · version ${file.version}` : ''}</span></div>
-        {can && <button type="button" className="btn small tertiary" aria-expanded={open} onClick={() => setOpen(o => !o)}>{open ? 'Hide' : 'Preview'}</button>}
-        <button type="button" className="btn small" disabled={busy} onClick={get}><I.Download width={16} height={16} /> Download</button>
+        <span className="file-card-actions">
+          {can && <button type="button" className="btn small tertiary" aria-expanded={open} onClick={() => setOpen(o => !o)}>{open ? 'Hide' : 'Preview'}</button>}
+          <button type="button" className="btn small" disabled={busy} onClick={get}><I.Download width={16} height={16} /> Download</button>
+        </span>
       </div>
       {open && <FilePreview file={file} />}
     </div>);

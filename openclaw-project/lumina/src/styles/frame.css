@@ -5,7 +5,7 @@
 
 .frame { position: relative; display: flex; align-items: flex-start; min-height: 100dvh; isolation: isolate; }
 .frame-work { flex: 1 1 auto; min-width: 0; padding: var(--frame-gap) var(--frame-gap) var(--frame-gap) 0; }
-.skip { position: absolute; left: var(--space-2); top: -100px; z-index: var(--z-menu); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-overlay); color: var(--text-primary); }
+.skip { /* layout: off screen until focused (.skip:focus) */ position: absolute; left: var(--space-2); top: -100px; z-index: var(--z-menu); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-overlay); color: var(--text-primary); }
 .skip:focus { top: var(--space-2); }
 
 /* Rail: chrome, so it sits on the darkest surface and its icons have no coloured backgrounds. */
@@ -18,20 +18,21 @@
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
 .rail-item:hover, .rail-nav [data-safety='button']:hover { color: var(--text-primary); background: var(--fill-hover); }
 .rail-item[aria-current='page'], .rail-item[aria-pressed='true'] { color: var(--text-primary); background: var(--fill-pressed); }
-.rail-item[aria-current='page']::before { content: ''; position: absolute; left: -8px; top: 50%; width: 3px; height: 18px; margin-top: -9px; border-radius: var(--radius-pill); background: var(--accent); box-shadow: 0 0 8px rgb(var(--accent-rgb) / .8); }
-.rail-nav [data-safety='button'] .lbl, .rail-tip { position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-overlay); box-shadow: var(--shadow-overlay);
+.rail-item[aria-current='page']::before { /* layout: the current-page bar sits in the rail's gutter, centred on its item */ content: ''; position: absolute; left: -8px; top: 50%; width: 3px; height: 18px; margin-top: -9px; border-radius: var(--radius-pill); background: var(--accent); box-shadow: 0 0 8px rgb(var(--accent-rgb) / .8); }
+.rail-nav [data-safety='button'] .lbl, .rail-tip { /* layer: a hover label beside the rail, outside the page */ position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-overlay); box-shadow: var(--shadow-overlay);
   color: var(--text-primary); font-size: var(--text-sm); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity var(--dur-fast) var(--ease); z-index: var(--z-menu); }
 .rail-item:hover .rail-tip, .rail-item:focus-visible .rail-tip, .rail-nav [data-safety='button']:hover .lbl, .rail-nav [data-safety='button']:focus-visible .lbl { opacity: 1; }
 .rail-tip .kbd { margin-left: 6px; }
-.rail-count { position: absolute; top: 4px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-pill); background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: var(--weight-semibold); line-height: 16px; text-align: center; }
+.rail-count { /* layout: a count badge on the corner of its rail icon (registered exception count-badge for the runtime check) */ position: absolute; top: 4px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--radius-pill); background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: var(--weight-semibold); line-height: 16px; text-align: center; }
 .rail-avatar .avatar { width: 30px; height: 30px; font-size: var(--text-sm); }
 
 /* Phone: the bottom bar, and the More sheet. */
+/* layer: nav (--z-nav), the phone's bottom bar; the frame pads the page by its height so nothing ends under it */
 .bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-nav); display: flex; justify-content: space-around; align-items: center; height: calc(var(--bottom-bar-h) + env(safe-area-inset-bottom));
   padding: 0 var(--space-2) env(safe-area-inset-bottom); background: var(--surface-base); border-top: 1px solid var(--border-subtle); }
 .bottom-bar .rail-item { width: auto; min-width: 56px; height: 52px; display: flex; flex-direction: column; gap: 2px; align-items: center; justify-content: center; padding: 0 var(--space-2); }
 .bottom-bar .rail-tip { position: static; transform: none; opacity: 1; padding: 0; background: none; box-shadow: none; color: inherit; font-size: 11px; }
-.bottom-bar .rail-item[aria-current='page']::before { left: 50%; top: 0; width: 18px; height: 3px; margin: 0 0 0 -9px; }
+.bottom-bar .rail-item[aria-current='page']::before { /* layout: the current-page bar centred over its item */ left: 50%; top: 0; width: 18px; height: 3px; margin: 0 0 0 -9px; }
 .bottom-bar .rail-count { right: 8px; }
 .more-list { display: grid; gap: var(--space-1); }
 .more-list .rail-item, .more-list [data-safety='button'] { display: flex; justify-content: flex-start; gap: var(--space-3); width: 100%; height: 48px; padding: 0 var(--space-3); color: var(--text-secondary); }
@@ -57,7 +58,7 @@
 .wsp-fill .zone-canvas > .wsp-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .w-compact .wsp-fill .zone-canvas { height: calc(100dvh - var(--bottom-bar-h) - env(safe-area-inset-bottom) - 2 * var(--frame-gap)); min-height: 0; }
 .w-compact .zone-canvas { min-height: calc(100dvh - var(--bottom-bar-h) - 2 * var(--frame-gap)); padding: 0 var(--space-3) var(--space-4); border-radius: var(--radius-md); }
-.zone-canvas > .globe { position: absolute; inset: 0; z-index: -1; border-radius: inherit; }
+.zone-canvas > .globe { /* layer: decorative backdrop behind the canvas (z -1) */ position: absolute; inset: 0; z-index: -1; border-radius: inherit; }
 .wsp-plain { display: block; }
 
 /* Resize handles between zones. A hairline appears on hover and focus; the whole 10px strip is the target. */
@@ -67,7 +68,7 @@
 .split:focus-visible::after { background: var(--accent); }
 :root[data-resizing='true'] { cursor: col-resize; user-select: none; }
 
-/* The canvas toolbar: the page title and its controls, staying at the top while the page scrolls. */
+/* layout: bleeds into the canvas padding so its band covers the scrolled rows. The canvas toolbar: the page title and its controls, staying at the top while the page scrolls. */
 .wsp-toolbar { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--space-2); flex-wrap: nowrap; min-height: var(--toolbar-h); margin: 0 calc(-1 * var(--space-2)) var(--space-2); padding: var(--space-2);
   background: var(--surface-canvas); }
 .wsp-title { flex: 1; min-width: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -75,7 +76,7 @@
 .wsp-zone-toggle { flex: none; }
 .w-compact .wsp-tools { gap: var(--space-1); }
 
-/* Sheets: zones without room to dock, and dialogs of their own. They lie over the page in the top layer, so they never hide the focused element behind them. */
+/* layer: modal (--z-modal). Sheets: zones without room to dock, and dialogs of their own. They lie over the page in the top layer, so they never hide the focused element behind them. */
 .sheet-scrim { position: fixed; inset: 0; z-index: var(--z-modal); display: flex; justify-content: flex-end; background: rgb(0 0 0 / .55); animation: scrim-in var(--dur) var(--ease); }
 .sheet-scrim.side-left { justify-content: flex-start; }
 .sheet-scrim.side-bottom { align-items: flex-end; justify-content: stretch; }
@@ -155,11 +156,11 @@ th[aria-sort='ascending'] .table-sort::after { content: ' ↑'; } th[aria-sort='
 .chat-pane { flex: 0 0 var(--pane-w, 560px); min-width: 0; position: sticky; top: calc(var(--toolbar-h) + var(--space-3)); height: calc(100dvh - var(--chrome) - var(--space-3)); display: flex; flex-direction: column;
   border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); overflow: hidden; }
 .chatpage.pane-full .chat-pane { flex: 1 1 auto; }
-.chat-pane-head { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3); border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.chat-pane-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-height: 44px; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3); border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
 .chat-pane-head h2 { flex: none; color: var(--text-primary); font-size: var(--text-base); font-weight: var(--weight-semibold); white-space: nowrap; }
 .chat-pane-host { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
 .chat-pane-live { flex: none; }
-.chat-pane-acts { margin-left: auto; flex: none; display: flex; align-items: center; gap: var(--space-1); }
+.chat-pane-acts { margin-left: auto; flex: none; display: flex; align-items: center; gap: var(--space-1); }   /* with no room beside the title they wrap below it, at the right */
 .chat-pane-acts .btn { gap: 6px; }
 .chat-pane-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--space-3); }
 .chat-pane-body .ws-stage { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
@@ -174,7 +175,7 @@ th[aria-sort='ascending'] .table-sort::after { content: ' ↑'; } th[aria-sort='
 .chats-column { display: flex; flex-direction: column; gap: var(--space-2); min-height: 100%; }
 .chats-column .newchat { width: 100%; }
 .chats-search { position: relative; }
-.chats-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.chats-search svg { /* layout: the search icon sits inside the field's left padding, which is wide enough for it */ position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
 .chats-search .input { padding-left: 32px; min-height: var(--control-sm); background: var(--fill-subtle); border-color: var(--border-subtle); }
 .chats-column .chatlist { position: static; max-height: none; overflow: visible; padding: 0; background: none; border: 0; }
 .chats-all { align-self: flex-start; margin-top: auto; }
@@ -223,18 +224,22 @@ a.ci-row:hover { background: var(--fill-hover); }
 .assistant-looking { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-form { display: flex; align-items: flex-end; gap: var(--space-2); }
 .assistant-form textarea { resize: none; min-height: 44px; max-height: 30dvh; }
-.float-notice { position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: var(--z-drawer); display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+.float-notice { /* layer: drawer (--z-drawer), the one notice of a background task; on a phone it sits above the bottom bar */ position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: var(--z-drawer); display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-radius: var(--radius-md); background: var(--surface-overlay); box-shadow: var(--shadow-overlay); }
 .w-compact .float-notice { left: var(--space-3); right: var(--space-3); bottom: calc(var(--bottom-bar-h) + var(--space-3)); }
-/* Narrow canvases: the title keeps its own line and the controls wrap beneath it. */
+/* Narrow canvases: the title stays on the first row beside the side-column toggle, and the controls join it when they fit or wrap beneath it as one group. The title
+   asks for 8rem before it shares the row (so it never shrinks to nothing), then takes whatever is left and ellipsizes. No arithmetic on the size of the toggle. */
 .w-compact .wsp-toolbar, .w-medium .wsp-fill .wsp-toolbar { flex-wrap: wrap; row-gap: var(--space-1); }
-.w-compact .wsp-title { flex: 1 1 calc(100% - 48px); }
+.w-compact .wsp-title { flex: 1 1 8rem; }
 .w-compact .wsp-tools { flex-wrap: wrap; }
-.seg { flex-wrap: nowrap; white-space: nowrap; }
+/* A segmented control never grows past its container: with no room, a label of several words wraps inside its own segment ("Like this / device"); a word is
+   never broken. One-word labels that still do not fit are the page's to arrange (the calendar lets its views scroll). Settings at 320 px overflowed the card. */
+.seg { flex-wrap: nowrap; max-width: 100%; }
+.seg-item { white-space: normal; text-align: center; line-height: 1.15; overflow-wrap: normal; }
 .wsp-toolbar { flex-shrink: 0; }   /* in a window-high canvas the toolbar keeps its height when its controls wrap */
 
 /* The command bar and the shortcut help (decisions 7, 8). Things to open and things to do are marked apart; shortcuts are shown beside their command. */
-.cmd-back { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; justify-items: center; align-content: start; padding: 12vh var(--space-3) 0; background: rgb(0 0 0 / .6); animation: scrim-in var(--dur) var(--ease); }
+.cmd-back { /* layer: modal (--z-modal), the command bar */ position: fixed; inset: 0; z-index: var(--z-modal); display: grid; justify-items: center; align-content: start; padding: 12vh var(--space-3) 0; background: rgb(0 0 0 / .6); animation: scrim-in var(--dur) var(--ease); }
 .cmd { width: min(620px, 100%); display: flex; flex-direction: column; max-height: 72dvh; border-radius: var(--radius-lg); background: var(--surface-overlay); box-shadow: var(--shadow-overlay); overflow: hidden; }
 .cmd-input { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); }
 .cmd-input input { flex: 1; min-width: 0; height: 52px; padding: 0; border: 0; outline: 0; background: none; color: var(--text-primary); font-size: var(--text-md); }
@@ -262,7 +267,7 @@ a.ci-row:hover { background: var(--fill-hover); }
 .today-hero h1 { font-size: var(--text-2xl); line-height: var(--leading-tight); font-weight: var(--weight-semibold); letter-spacing: -.03em; }
 .today-hero p { color: var(--text-secondary); margin-top: 2px; }
 .today-hero > div { flex: 1; min-width: 220px; }
-.today-starters { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: calc(-1 * var(--space-2)); }
+.today-starters { /* layout: pulls the starters up under the greeting, cancelling the greeting's margin */ display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: calc(-1 * var(--space-2)); }
 .today-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: var(--space-3); }
 .tile-today { display: grid; gap: var(--space-2); align-content: start; min-height: 150px; padding: var(--space-4); }
 .tile-head { display: flex; align-items: center; gap: var(--space-2); }
@@ -270,12 +275,12 @@ a.ci-row:hover { background: var(--fill-hover); }
 .tile-head h2 a:hover { text-decoration: underline; }
 .tile-body { display: grid; gap: var(--space-2); }
 .tile-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.tile-list a { display: grid; gap: 1px; padding: 6px var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: var(--radius-sm); }
+.tile-list a { /* layout: a row's hover background bleeds into the tile padding; its own padding gives the space back */ display: grid; gap: 1px; padding: 6px var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: var(--radius-sm); }
 .tile-list a:hover { background: var(--fill-hover); }
 .tile-list b { font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-meta { display: flex; align-items: center; gap: var(--space-2); }
 .tile-figure { font-size: var(--text-xl); font-weight: var(--weight-semibold); }
-.tile-today .files-meter-bar { height: 6px; border-radius: var(--radius-pill); background: var(--fill-pressed); overflow: hidden; }
+.tile-today .files-meter-bar { /* layout: a 6px meter; the clip rounds its fill, there is no text in it */ height: 6px; border-radius: var(--radius-pill); background: var(--fill-pressed); overflow: hidden; }
 .tile-today .files-meter-bar span { display: block; height: 100%; background: var(--accent); }
 :root[data-compact='true'] .tile-today { min-height: 0; padding: var(--space-3); }
 
@@ -296,6 +301,10 @@ a.ci-row:hover { background: var(--fill-hover); }
 .w-compact .btn.small, .w-compact .chip.small, .w-compact .btn, .w-compact .chip { min-height: var(--touch-min); }
 .w-compact .iconbtn.small { width: var(--touch-min); height: var(--touch-min); }
 .w-compact .seg-item { min-height: 38px; }
+/* Fields and disclosure lines are touch targets too (they were 36-41px and 24px on phones). Icon buttons no longer shrink below their size (ui.css flex: none). */
+.w-compact .input, .w-compact .mail-field-input, .w-compact .gen-input { min-height: var(--touch-min); }
+.w-compact summary { min-height: var(--touch-min); align-content: center; }
+.w-compact .seg.wide .seg-item { min-height: var(--touch-min); }
 .w-compact .hub-label, .w-compact .files-folder, .w-compact .chatitem, .w-compact .mini-day, .w-compact .cmd-row, .w-compact .help-row { min-height: var(--touch-min); }
 .w-compact .mail-pick, .w-compact .hub-calendar-row input { width: 22px; height: 22px; }
 .w-compact .hub-calendar-row { min-height: var(--touch-min); display: flex; align-items: center; }
@@ -303,16 +312,20 @@ a.ci-row:hover { background: var(--fill-hover); }
 .wk-record-head .wk-record-title { font-size: var(--text-xl); font-weight: var(--weight-semibold); letter-spacing: -.02em; line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .hub-pick-area { flex: none; display: grid; place-items: center; width: 44px; cursor: pointer; }
 .hub-pick-area .hub-pick { margin: 0; }
-.w-compact .tile-head h2 a, .w-compact .file-open, .w-compact .act-title a, .w-compact .table-sort, .w-compact .wk-back { display: inline-flex; align-items: center; min-height: var(--touch-min); }
+.w-compact .tile-head h2 a, .w-compact .table-sort, .w-compact .wk-back { display: inline-flex; align-items: center; min-height: var(--touch-min); }
+/* Text that ellipsizes keeps a block box: text-overflow does nothing on a flex container, so a flex link is cut mid-letter (Activity, 2026-11-25). Its 44px
+   comes from the line height (one line) or a column that stretches the ellipsizing child. */
+.w-compact .act-title a { min-height: var(--touch-min); line-height: var(--touch-min); }
+.w-compact .file-open { display: flex; flex-direction: column; justify-content: center; min-height: var(--touch-min); }
 .w-compact .seg-item, .w-compact .hub-week-day button, .w-compact .hub-month-cell > button:first-child { min-height: var(--touch-min); min-width: var(--touch-min); }
 .w-compact .hub-event.block { height: 28px; padding-top: 6px; }
 .w-compact .phase-title { min-height: var(--touch-min); }
 .w-compact .switch.sm { width: 42px; height: 24px; } .w-compact .switch.sm i { width: 18px; height: 18px; } .w-compact .switch.sm.on i { transform: translateX(18px); }
 .w-compact input[type='range'] { min-height: var(--touch-min); }
 
-/* A list and what is opened from it, inside a `fill` canvas (components/frame/MasterDetail.tsx). Side by side from 820px of canvas; one at a time below. */
-.md { container-type: inline-size; container-name: md; flex: 1 1 auto; min-height: 0; display: flex; margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-3)); border-top: 1px solid var(--border-subtle); }
-.w-compact .md { margin: 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-4)); }
+/* layout: edge to edge in the canvas. A list and what is opened from it, inside a `fill` canvas (components/frame/MasterDetail.tsx). Side by side from 820px of canvas; one at a time below. */
+.master-detail { container-type: inline-size; container-name: md; flex: 1 1 auto; min-height: 0; display: flex; margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-3)); border-top: 1px solid var(--border-subtle); }
+.w-compact .master-detail { /* layout: the list and the open item go edge to edge in the canvas (same as above, phone padding) */ margin: 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-4)); }
 .md-list, .md-detail { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .md-list { flex: 1 1 auto; }
 .md-detail { flex: 1 1 auto; display: none; }
@@ -321,7 +334,7 @@ a.ci-row:hover { background: var(--fill-hover); }
 .md-empty { flex: 1; display: grid; place-items: center; padding: var(--space-6); color: var(--text-muted); text-align: center; }
 .md-back { flex: none; }
 @container md (min-width: 820px) {
-  .md > .md-list, .md-open > .md-list { display: flex; flex: 0 0 clamp(320px, 36cqi, 420px); border-right: 1px solid var(--border-subtle); }
-  .md > .md-detail { display: flex; }
-  .md .md-back.md-back { display: none; }
+  .master-detail > .md-list, .md-open > .md-list { display: flex; flex: 0 0 clamp(320px, 36cqi, 420px); border-right: 1px solid var(--border-subtle); }
+  .master-detail > .md-detail { display: flex; }
+  .master-detail .md-back.md-back { display: none; }
 }
