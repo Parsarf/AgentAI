@@ -216,7 +216,8 @@ def hub_tools(db=None):
     from agentai_platform.hub_tools import HubTools
     db = db or store()
     _c, _cl, actions, _w = action_services(db)
-    return HubTools(db, hub_service(db), enabled=hub_on, actions=actions, writes_on=lambda account: switch_on('mail_calendar_writes') and hub_on(account))
+    return HubTools(db, hub_service(db), enabled=hub_on, actions=actions, writes_on=lambda account: switch_on('mail_calendar_writes') and hub_on(account),
+                    approve_in_place=lambda account: switch_on('approve_in_place'))
 
 
 def action_services(db=None):
@@ -244,7 +245,8 @@ def connector_tools(db=None):
     from agentai_platform.connector_tools import ConnectorTools
     db = db or store()
     connectors, client, actions, workflows = action_services(db)
-    return ConnectorTools(db, connectors, client, actions, workflows, enabled=connectors_on, writes_on=writes_on, ask_in_place=lambda account: switch_on('ask_in_place'))
+    return ConnectorTools(db, connectors, client, actions, workflows, enabled=connectors_on, writes_on=writes_on, ask_in_place=lambda account: switch_on('ask_in_place'),
+                          approve_in_place=lambda account: switch_on('approve_in_place'))
 
 
 def connector_refresher(db=None):
@@ -659,7 +661,7 @@ def mcp_service(db=None):
     db = db or store()
     return ConnectionService(db, ModelKeyring.derived(settings.SECRET_KEY, settings.MCP_KEY_FILE or settings.MODEL_KEY_FILE or None),
                              callback_url=settings.PUBLIC_ORIGIN + '/v1/account/mcp/callback', registrations=registrations, metadata_url=settings.MCP_CLIENT_METADATA_URL,
-                             events=event_service(db))
+                             events=event_service(db), approve_in_place=lambda account: switch_on('approve_in_place'))
 
 
 def telegram_service(db=None):

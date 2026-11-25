@@ -18,6 +18,7 @@ from jsonschema import Draft202012Validator, validators
 from jsonschema.exceptions import best_match
 from referencing import Registry
 from .. import faults
+from ..handoff import SEEN_SECONDS
 from ..lifecycle.coordinator import Coordinator, identifier
 from ..security import NotFound
 from ..store import Store
@@ -203,12 +204,14 @@ def namespaced(connection, tool):
 
 
 class ConnectionService:
-    def __init__(self, store, keyring, *, callback_url, registrations=None, remote=None, clock=time.time, metadata_url=None, events=None):
+    def __init__(self, store, keyring, *, callback_url, registrations=None, remote=None, clock=time.time, metadata_url=None, events=None, approve_in_place=None,
+                 sleep=time.sleep, poll_seconds=1.0):
         self.events = events                     # EventService: permission prompts and their answers go on the task's timeline (None = not recorded there)
         self.store, self.ring, self.callback_url = store, keyring, callback_url
         self.registrations, self.remote, self.clock = registrations or {}, remote or RemoteClient(), clock
         self.coordinator = Coordinator(store, clock=clock)
         self.metadata_url = endpoint_url(metadata_url) if metadata_url else None
+        self.approve_in_place, self.sleep, self.poll_seconds = approve_in_place, sleep, poll_seconds      # approve_in_place(account) -> bool: the owner's switch (None: never waits)
 
     def seal(self, account, connection, data):
         kid, nonce, blob = self.ring.seal(account + '|mcp|' + connection, data)
@@ -634,16 +637,52 @@ class ConnectionService:
         return self.enabled_tools(account)
 
     def approve(self, principal, call, approved):
+        """The customer's decision on one exact call. `in_place` in the answer: the call is still waiting for it in the run that asked, which then carries on by itself (the
+        decision must not also be steered into that run)."""
         with self.coordinator.transaction() as con:
             self.store._authorize(con, principal)
             row = con.execute('SELECT * FROM mcp_calls WHERE account_id=? AND id=?', (principal.account_id, identifier(call))).fetchone()
             if row is None: raise NotFound('unavailable')
             if row['state'] != 'pending' or row['expires_epoch'] < self.clock():
                 raise ConnectionError('approval_expired', 'This exact-call approval is no longer available.')
+            now = int(self.clock())
+            waiting = bool(row['wait_until']) and row['wait_until'] > now and (row['wait_seen'] or 0) >= now - SEEN_SECONDS
             con.execute('UPDATE mcp_calls SET state=?,expires_epoch=? WHERE account_id=? AND id=?', ('approved' if approved else 'rejected', int(self.clock()) + 600, principal.account_id, call))
             service = con.execute('SELECT name FROM mcp_connections WHERE account_id=? AND id=?', (principal.account_id, row['connection_id'])).fetchone()
             self._timeline(con, principal.account_id, row['request_id'], 'approval_decision', {'request_id': call, 'decision': 'approved' if approved else 'declined'})
-            return {'request_id': row['request_id'], 'tool': row['tool_name'], 'service': service['name'] if service else '', 'approved': bool(approved)}
+            return {'request_id': row['request_id'], 'tool': row['tool_name'], 'service': service['name'] if service else '', 'approved': bool(approved), 'in_place': waiting}
+
+    def _await_permission(self, account, request_id, call_id, closed):
+        """With the owner's `approve_in_place` switch on, hold the call until the customer decides on it (-> 'approved' | 'rejected'), or the window ends, the call is
+        dropped or the task is over (-> None: the decision then reaches the assistant as before). The call marks its row every few seconds; the driver parks the run
+        while it does (in_place.waiting). The decision and the end of the wait are each settled in one transaction, so a decision is never lost between them."""
+        if self.approve_in_place is None or not request_id:
+            return None
+        from .. import in_place
+        now = int(self.clock())
+        seconds = in_place.window(self.store, account, request_id, self.approve_in_place, now)
+        if not seconds:
+            return None
+        with self.coordinator.transaction() as con:
+            row = con.execute('SELECT state,expires_epoch FROM mcp_calls WHERE account_id=? AND id=?', (account, call_id)).fetchone()
+            if row is None or row['state'] != 'pending':
+                return None
+            con.execute('UPDATE mcp_calls SET wait_until=?,wait_seen=? WHERE account_id=? AND id=?', (min(now + seconds, row['expires_epoch']), now, account, call_id))
+        marked = now
+        while True:
+            now = int(self.clock())
+            with self.store.connect() as con:
+                row = con.execute('SELECT state,wait_until FROM mcp_calls WHERE account_id=? AND id=?', (account, call_id)).fetchone()
+            over = row['state'] != 'pending' or closed() or in_place.request_over(self.store, account, request_id) or now >= (row['wait_until'] or 0)
+            if over or now - marked >= SEEN_SECONDS // 4:
+                with self.coordinator.transaction() as con:
+                    state = con.execute('SELECT state FROM mcp_calls WHERE account_id=? AND id=?', (account, call_id)).fetchone()['state']
+                    if over or state != 'pending':
+                        con.execute('UPDATE mcp_calls SET wait_until=NULL,wait_seen=NULL WHERE account_id=? AND id=?', (account, call_id))
+                        return state if state in ('approved', 'rejected') else None
+                    con.execute('UPDATE mcp_calls SET wait_seen=? WHERE account_id=? AND id=?', (now, account, call_id))         # still here
+                marked = now
+            self.sleep(self.poll_seconds)
 
     def _timeline(self, con, account, request_id, kind, payload):
         """Put a permission prompt or its answer on the task's own timeline. Best effort: a call made outside a task (or a full timeline) is still decided."""
@@ -699,12 +738,22 @@ class ConnectionService:
                                 (account, call_id, row['id'], tool['name'], target_hash, schema_digest(tool), request_id, packed(arguments), int(self.clock()) + 600, int(self.clock())))
                     self._timeline(con, account, request_id, 'approval_request', {'request_id': call_id, 'expires_epoch': int(self.clock()) + 600,
                                                                                  'summary': 'Asked for your permission to use ' + re.sub(r'[_-]+', ' ', tool['name'])[:80] + ' on ' + str(row['name'])[:60]})
-                return {'content': [{'type': 'text', 'text': 'Customer approval required. Lumina is showing the customer this exact call in the chat now, and will tell you their decision. Tell the customer briefly what you asked permission for and stop; do not retry until you are told it was allowed. No remote action has run.'}], 'isError': False, '_fault': faults.Fault('tool.approval_needed')}
-            if con.execute("SELECT count(*) FROM mcp_calls WHERE account_id=? AND state='dispatching'", (account,)).fetchone()[0] >= 2:
-                raise ConnectionError('busy', 'Two MCP calls are already running for this account.')
-            self._lease(con, row)
-            call_id = approved['id']
-            con.execute("UPDATE mcp_calls SET state='dispatching',request_id=?,expires_epoch=? WHERE account_id=? AND id=? AND state='approved'", (request_id, int(self.clock()) + 45, account, call_id))
+                else:
+                    call_id = pending['id']
+            else:
+                if con.execute("SELECT count(*) FROM mcp_calls WHERE account_id=? AND state='dispatching'", (account,)).fetchone()[0] >= 2:
+                    raise ConnectionError('busy', 'Two MCP calls are already running for this account.')
+                self._lease(con, row)
+                call_id = approved['id']
+                con.execute("UPDATE mcp_calls SET state='dispatching',request_id=?,expires_epoch=? WHERE account_id=? AND id=? AND state='approved'", (request_id, int(self.clock()) + 45, account, call_id))
+        if approved is None:
+            decided = self._await_permission(account, request_id, call_id, closed)
+            if decided == 'approved':
+                return self.call(account, name, arguments, request_id, closed=closed)          # allowed while the call waited: made now, in the same run
+            if decided == 'rejected':
+                return {'content': [{'type': 'text', 'text': 'The customer declined this exact call. Nothing was run. Do not retry it; carry on without it, or say plainly what cannot be done.'}],
+                        'isError': False, '_fault': faults.Fault('tool.approval_declined')}
+            return {'content': [{'type': 'text', 'text': 'Customer approval required. Lumina is showing the customer this exact call in the chat now, and will tell you their decision. Tell the customer briefly what you asked permission for and stop; do not retry until you are told it was allowed. No remote action has run.'}], 'isError': False, '_fault': faults.Fault('tool.approval_needed')}
         credentials = None
         try:
             credentials = self.open(row)

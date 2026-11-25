@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Parts 4 and 5 are LIVE (#100, #101; the push gateway had not been restarted by any deploy and is since #102). Part 6 is being built: asking in place is done on a branch (PR to follow), approvals and the spending-limit pause are next. Parts 7 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Parts 4 and 5 are LIVE (#100, #101; the push gateway had not been restarted by any deploy and is since #102). Part 6 is being built: asking in place is LIVE (#105, switch `ask_in_place` off until the owner turns it on); approvals in place are built (switch `approve_in_place`); the spending-limit pause is next. Parts 7 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -398,8 +398,23 @@ production, 30 days of tool records hold no call of either, and no question hand
 - Proof: `tests/test_ask_in_place.py` (blocking), a parked-run check in `test_native_run.py`, and an end-to-end test on the real runtime
   (`test_a_question_asked_in_place_parks_the_run_and_the_answer_reaches_the_same_run`).
 
-Left for this part: approvals in place (E), the spending-limit pause and the 80% line (D, owner question 2), and pictures on options (they need the browser to
-keep a product's picture and serve it from Lumina's address; visual answers accept only the customer's own files today).
+**Built (approvals in place; owner switch `approve_in_place`, off until the owner turns it on):** every change that waits for the customer's approval holds its call
+the same way (`in_place.py`, one wait for all of them):
+
+- A change the assistant prepares (`lumina_connector_propose`, several at once with `lumina_connector_workflow`, and the mail and calendar changes of `hub_tools`):
+  the call waits for the customer's decision and then for Lumina to carry the change out, and returns what happened (the same words a new turn gets:
+  `in_place.outcome_of`, which the action runner now uses too). The run is parked as `customer_approval`; the action runner leaves a hand-off alone while a call
+  waits on it, and the call marks the hand-off resumed by its own request when it takes the outcome, so no second turn is started. Decided but not carried out
+  when the window ends: the runner resumes it once, as before. A stopped task leaves the approval waiting and sends nothing.
+- A connected app's call that needs permission (`lumina_mcp_call` and the connected tools): the call waits for "Allow" and then makes the call itself, in the same
+  run (migration `0056`: `mcp_calls.wait_until`, `wait_seen`). The approval route then steers nothing into the run (`approve` answers `in_place`), which would make
+  the assistant call twice. Its approval lasts 10 minutes, the same as the window; a call the runtime drops leaves the decision to reach the assistant as before.
+- The descriptions of the change tools say that the result gives the outcome, or says to end the turn.
+- Proof: `tests/test_approve_in_place.py` (blocking: changes, several changes, mail and calendar, connected-app calls), a parked-run check in `test_native_run.py`,
+  and a route check in `accounts/test_mcp_connections.py`. The parking itself is proven on the real runtime by the question's end-to-end test (same driver path).
+
+Left for this part: the spending-limit pause and the 80% line (D, owner question 2), and pictures on options (they need the browser to keep a product's picture and
+serve it from Lumina's address; visual answers accept only the customer's own files today).
 
 The plan as written:
 

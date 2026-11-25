@@ -121,8 +121,8 @@
    "www.googleapis.com"
   ],
   "owner_only_ultrafast": true,
-  "schema_sha256": "a8619e9338f633613faefbde8e5ea30505110fb9d4c40cf1ec64b680161d6dc9",
-  "schema_columns": 1167,
+  "schema_sha256": "7e744b1f7fb7df941f3601088284d155d527dd61e22ec58e0c490fa2d88e2a91",
+  "schema_columns": 1169,
   "assistant": {
    "search_provider": "brave",
    "plugins": [
@@ -514,6 +514,11 @@
    "date": "2026-11-23",
    "by": "Claude Code, reliability plan Part 1 (plans/product/reliability-plan.md), approved by the owner on 2026-11-23 (\"approve and continue\")",
    "note": "Two new tables, kept 30 days (retention rule diagnostics): faults (why a task or a step did not finish: a reason code from a fixed list, who must act, a status number, an exception type, a state name) and model_calls (per request to the model: route lumina or own, HTTP status, times in milliseconds, the token counts the provider reported). Neither holds the text of a message, a page, a reply, an address or a name: faults.facts() keeps only numbers and single tokens, and a test feeds it page text. A new kind of data about a customer's tasks, so the policy gained one line under \"What we collect\" and one row under \"How long we keep it\". No new recipient: both stay in our own database. New column customer_requests.probe marks the deploy's own acceptance request (no customer data). Deleting a chat removes the rows of its tasks."
+  },
+  {
+   "date": "2026-11-25",
+   "by": "Claude Code, reliability plan Part 6 (plans/product/reliability-plan.md), building on the plan the owner approved on 2026-11-23",
+   "note": "Two new columns in mcp_calls (migration 0056): wait_until and wait_seen, epoch seconds marking that a connected app's call is waiting in place for the customer's permission (switch approve_in_place). They hold times only, no personal data, and live and go with the row they belong to (its retention, export and deletion are unchanged). No wording change to the policy. The in-place question and approval waits (switches ask_in_place, approve_in_place) keep their marks in the existing handoffs.resume_json and the customer's structured answers in the existing handoffs.answer_json, the same kind of data a question already held."
   }
  ],
  "assistant_recipients": {

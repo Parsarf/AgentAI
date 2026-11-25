@@ -199,6 +199,23 @@ class ParkingChecks(Base):
         self.assertTrue(handoffs.answer(self.a, asked, 'L')['in_place'])
         self.assertEqual(self.driver.check_parked(self.queue.parked()[0]), 'ready')
 
+    def test_a_change_waiting_in_place_for_approval_parks_the_run_until_its_outcome_is_known(self):
+        from agentai_platform.handoff import Handoffs
+        sent = self.say(key='k1')
+        self.gateway.polls = 10                                                            # the run goes on while it is looked at four times
+        handoffs = Handoffs(self.store, clock=lambda: self.now)
+        with handoffs.coordinator.transaction() as con:
+            waiting = handoffs.create(con, account_id='a', actor_id='actor-a', kind='action_approval', request_id=sent['id'], question='Send the reply',
+                                      resume={'action': 'x', 'in_place': True, 'until': self.now + 600, 'seen': self.now})
+        self.assertEqual(self.worker.tick(), {'ran': 1, 'parked': 'customer_approval'})
+        self.assertEqual(self.driver.check_parked(self.queue.parked()[0]), 'waiting')
+        with self.store.connect() as con:                                                  # approved: the run still waits for what happened, then the call takes it
+            con.execute("UPDATE handoffs SET state='answered' WHERE id=?", (waiting,))
+        self.assertEqual(self.driver.check_parked(self.queue.parked()[0]), 'waiting')
+        with self.store.connect() as con:
+            con.execute("UPDATE handoffs SET state='resumed',resumed_request_id=? WHERE id=?", (sent['id'], waiting))
+        self.assertEqual(self.driver.check_parked(self.queue.parked()[0]), 'ready')
+
     def test_the_time_a_person_took_does_not_count_against_the_run(self):
         sent = self.start_and_park()
         before = self.rows('SELECT deadline_epoch FROM chat_deliveries')[0][0]

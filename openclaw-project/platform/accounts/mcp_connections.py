@@ -141,6 +141,8 @@ def approve(request, call_id):
         audit(request.user.pk, request.account_id, call_id, 'mcp.approval', 'completed', request.request_id)
         # The decision stands whatever happens next. Telling the assistant is a second step: when it cannot be done (no chat behind the call, the plan cannot fund a turn,
         # the cell is away) the answer says so, and the customer can simply send a message.
+        if decided.get('in_place'):
+            return JsonResponse({'decided': True, 'continued': True})       # the call that asked is still waiting for this in its run, and carries on by itself
         continued = False
         try:
             continued = wiring.chat_service().continue_after_decision(principal(request), decided['request_id'], approved=decided['approved'], tool=decided['tool'],
