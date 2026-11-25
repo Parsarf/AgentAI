@@ -162,6 +162,8 @@ def hold_approval(store, *, clock=time.time, sleep=time.sleep, poll=1.0, allowed
         return 'The task was stopped. The change you prepared is still waiting for the customer\'s decision; nothing was sent by this call.', 'stopped'
     if how == 'open' and value['state'] == 'answered':
         return 'The customer has decided and Lumina is carrying it out now. Tell them in one sentence, then END YOUR TURN: you will be given the outcome.', None
+    if how == 'gone':
+        return 'This approval is no longer waiting in this call. END YOUR TURN: you will be given what happened. Do not prepare it again.', None
     return ('NOT DONE YET. The customer has not decided. It stays waiting for their approval of exactly this. Tell them in one sentence what you prepared, then END YOUR TURN. '
             'You will be given the outcome when they have decided. Do not prepare it again.'), None
 
