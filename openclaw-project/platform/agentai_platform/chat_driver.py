@@ -721,13 +721,18 @@ class ChatDriver:
         return added
 
     def _human_wait(self, claim):
-        """Is the run waiting for a person? The browser tool runs inside the runtime's tool call; its job says when it needs the customer (a question, or the customer driving)."""
+        """Is the run waiting for a person? The browser tool runs inside the runtime's tool call; its job says when it needs the customer (a question, or the customer driving).
+        So does the ask tool while it waits in place for the customer's answer (handoff.waiting_in_place)."""
+        from .handoff import waiting_in_place
         with self.store.connect() as con:
             row = con.execute('SELECT status FROM browse_runs WHERE account_id=? AND request_id=?', (claim.account_id, claim.request_id)).fetchone()
+            asking = waiting_in_place(con, claim.account_id, claim.request_id, int(self.clock()))
         from .location import Locations
         if Locations(self.store, self.clock).waiting(claim.account_id, claim.request_id):
             return 'location_permission'
-        return HUMAN_WAIT.get(row['status']) if row else None
+        if row and HUMAN_WAIT.get(row['status']):
+            return HUMAN_WAIT[row['status']]
+        return 'customer_question' if asking else None
 
     # -- limits --------------------------------------------------------------------------------------------------------------------------------
     def _usage_before(self, gateway):
@@ -907,7 +912,7 @@ class ChatDriver:
         self._abort_all(claim, gateway, session)
         self._stop_browser_jobs(claim)
         self._mirror(claim, gateway, session, set())
-        note = 'This scheduled run needed you (' + {'browser_question': 'a question about what to do', 'browser_takeover': 'you to take over the browser', 'location_permission': 'your location'}.get(reason, 'your input') + '), so it stopped. Open it to carry on.'
+        note = 'This scheduled run needed you (' + {'browser_question': 'a question about what to do', 'browser_takeover': 'you to take over the browser', 'location_permission': 'your location', 'customer_question': 'an answer to a question'}.get(reason, 'your input') + '), so it stopped. Open it to carry on.'
         self._emit(claim, 'progress', {'summary': note}, 'gateway')
         return self._close(claim, 'completed', self._last_reply(claim) or note, gateway, self._before(claim),
                            verdict=outcome_mod.Verdict('blocked', 'unverified', note, 'Stopped: ' + note),

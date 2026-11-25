@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, ApiError } from '../../lib/api';
-import type { ActionNeed, ChangePreview, Need, QuestionNeed, WorkflowNeed } from '../../lib/work';
+import type { ActionNeed, AskOption, ChangePreview, Need, QuestionNeed, WorkflowNeed } from '../../lib/work';
 import { useWorkClientOptional } from '../../state/work';
 
 const shown = (value: unknown): string => (value === null || value === undefined || value === '' ? 'nothing' : typeof value === 'string' ? value : JSON.stringify(value));
@@ -89,29 +89,64 @@ export function WorkflowApproval({ need }: { need: WorkflowNeed }) {
     </section>);
 }
 
-/** A question the assistant asked that can wait. The answer is the customer's own; Lumina hands it to the assistant and the task carries on from where it stopped. */
+type Given = { choice: string } | { text: string } | { skip: true };
+const said = (g: Given | undefined) => !!g && ('skip' in g || ('choice' in g && !!g.choice) || ('text' in g && !!g.text.trim()));
+
+/** One option as a button: its label, and its price and a few words when the assistant gave them. */
+function OptionButton({ option, chosen, disabled, onPick }: { option: AskOption; chosen: boolean; disabled: boolean; onPick: () => void }) {
+  const rich = !!(option.price || option.details);
+  return (
+    <button type="button" className={rich ? 'wk-question-option' : 'chip'} aria-pressed={chosen} disabled={disabled} onClick={onPick}>
+      {rich ? <><span className="wk-question-option-head"><strong>{option.label}</strong>{option.price && <span className="wk-question-price">{option.price}</span>}</span>
+        {option.details && <span className="wk-question-details">{option.details}</span>}</> : option.label}
+    </button>);
+}
+
+/** A question the assistant asked: one to three, each answered by an option, in the customer's own words, or skipped. One question with options is answered in one tap.
+ *  While the task waits in place the answer goes straight back to the run that asked; otherwise Lumina hands it on and the task carries on from where it stopped. */
 export function Question({ need }: { need: QuestionNeed }) {
   const work = useWorkClientOptional();
-  const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [note, setNote] = useState('');
-  const send = async (answer: string) => {
-    if (!answer.trim() || busy) return;
+  const questions = need.questions ?? [{ question: need.question, options: need.options.map(label => ({ label })) }];
+  const single = questions.length === 1;
+  const [given, setGiven] = useState<(Given | undefined)[]>(() => questions.map(() => undefined));
+  const [text, setText] = useState<string[]>(() => questions.map(() => ''));
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [note, setNote] = useState('');
+  const post = async (body: { answer: string } | { answers: Given[] }) => {
+    if (busy) return;
     setBusy(true); setErr('');
-    try { await api('POST', `/v1/handoffs/${need.id}/answer`, { answer: answer.trim() }); setNote('Answered. Lumina is carrying on.'); }
+    try { await api('POST', `/v1/handoffs/${need.id}/answer`, body); setNote('Answered. Lumina is carrying on.'); }
     catch (e) { setErr(problem(e)); }
     finally { setBusy(false); void work?.refresh(); }
   };
+  // An older row (no `questions`) is answered the way it always was: its words, as one answer.
+  const sendOne = (g: Given) => void post(need.questions ? { answers: [g] } : 'choice' in g ? { answer: g.choice } : 'text' in g ? { answer: g.text.trim() } : { answers: [g] });
+  const pick = (n: number, g: Given) => { if (single && !('text' in g)) { sendOne(g); return; } setGiven(all => all.map((x, i) => (i === n ? g : x))); };
+  const typed = (n: number, value: string) => { setText(all => all.map((x, i) => (i === n ? value : x))); setGiven(all => all.map((x, i) => (i === n ? (value.trim() ? { text: value } : undefined) : x))); };
+  const ready = given.every(said);
   if (note) return <p className="wk-permission-done" role="status">{note}</p>;
   return (
     <section className="wk-permission wk-change-card" role="group" aria-label="A question from Lumina">
       <div className="wk-permission-body">
-        <p className="wk-change-kicker">Lumina has a question for you</p>
-        <p className="wk-permission-title"><strong>{need.question}</strong></p>
-        {need.options.length > 0 && <div className="wk-question-options">{need.options.map(o => <button key={o} className="chip" disabled={busy} onClick={() => void send(o)}>{o}</button>)}</div>}
-        <form className="inline" onSubmit={e => { e.preventDefault(); void send(text); }}>
-          <input className="input" aria-label="Your answer" placeholder={need.options.length ? 'Or type your answer…' : 'Type your answer…'} value={text} maxLength={2000} disabled={busy} onChange={e => setText(e.target.value)} />
-          <button type="submit" className="btn primary small" disabled={busy || !text.trim()}>{busy ? 'Sending…' : 'Answer'}</button>
+        <p className="wk-change-kicker">{need.in_place ? 'Lumina is waiting for your answer to carry on' : 'Lumina has a question for you'}</p>
+        <form className="wk-question-form" onSubmit={e => { e.preventDefault(); if (single) { if (text[0].trim()) sendOne({ text: text[0] }); } else if (ready) void post({ answers: given as Given[] }); }}>
+          {questions.map((q, n) => (
+            <div key={n} className="wk-question" {...(single ? {} : { role: 'group', 'aria-labelledby': `${need.id}-q${n}` })}>
+              <p id={`${need.id}-q${n}`} className="wk-permission-title"><strong>{q.question}</strong></p>
+              {q.options.length > 0 && <div className="wk-question-options">{q.options.map(o => {
+                const g = given[n];
+                return <OptionButton key={o.label} option={o} disabled={busy} chosen={!!g && 'choice' in g && g.choice === o.label} onPick={() => pick(n, { choice: o.label })} />;
+              })}</div>}
+              <div className="inline">
+                <input className="input" aria-label={single ? 'Your answer' : `Your answer to: ${q.question}`} placeholder={q.options.length ? 'Or type your answer…' : 'Type your answer…'}
+                  value={text[n]} maxLength={2000} disabled={busy} onChange={e => typed(n, e.target.value)} />
+                {single && <button type="submit" className="btn primary small" disabled={busy || !text[0].trim()}>{busy ? 'Sending…' : 'Answer'}</button>}
+                <button type="button" className="btn tertiary small" aria-pressed={!single && given[n] !== undefined && 'skip' in (given[n] as Given)} disabled={busy}
+                  onClick={() => pick(n, { skip: true })}>{single ? 'Skip, let Lumina choose' : 'Skip'}</button>
+              </div>
+            </div>))}
+          {!single && <div className="wk-permission-actions"><button type="submit" className="btn primary small" disabled={busy || !ready}>{busy ? 'Sending…' : 'Send answers'}</button></div>}
         </form>
-        <p className="wk-change-note">{waitWords(need.expires_epoch)}.</p>
+        <p className="wk-change-note">{need.in_place ? 'If you answer later, Lumina carries on then.' : `${waitWords(need.expires_epoch)}.`}</p>
         {err && <p className="err" role="alert">{err}</p>}
       </div>
     </section>);

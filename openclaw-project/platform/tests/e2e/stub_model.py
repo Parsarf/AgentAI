@@ -77,6 +77,9 @@ def decide(messages, tools):
         return {'text': 'Phase result: done.'}
     if 'SCENARIO:nativebrowser' in user:
         return {'tool': 'tool_call', 'args': {'id': 'openclaw:browser:browser', 'args': {'action': 'status'}}}
+    if 'SCENARIO:askinplace' in user:                         # Lumina's own question tool, with options (reliability plan, Part 6)
+        return {'tool': 'tool_call', 'args': {'id': 'mcp:lumina:lumina__lumina_ask_customer', 'args': {'questions': [{'question': 'Which size?', 'options': [
+            {'label': 'M', 'price': '$20'}, {'label': 'L', 'price': '$22', 'details': 'Runs large'}]}]}}}
     if 'SCENARIO:ask' in user:
         return {'tool': 'tool_call', 'args': {'id': 'openclaw:core:ask_user', 'args': {'questions': [{'id': 'q', 'question': 'Which size?', 'header': 'Size', 'options': [{'label': 'S'}, {'label': 'L'}]}]}}}
     if 'LIST_TOOLS' in user:

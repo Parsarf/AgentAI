@@ -239,11 +239,12 @@ def action_runner(db=None):
 
 
 def connector_tools(db=None):
-    """The assistant's connector tools: read through a connected service, prepare a change for approval, ask the customer a question that can wait."""
+    """The assistant's connector tools: read through a connected service, prepare a change for approval, ask the customer a question (in place while the owner's
+    `ask_in_place` switch is on, otherwise one that ends the turn and can wait)."""
     from agentai_platform.connector_tools import ConnectorTools
     db = db or store()
     connectors, client, actions, workflows = action_services(db)
-    return ConnectorTools(db, connectors, client, actions, workflows, enabled=connectors_on, writes_on=writes_on)
+    return ConnectorTools(db, connectors, client, actions, workflows, enabled=connectors_on, writes_on=writes_on, ask_in_place=lambda account: switch_on('ask_in_place'))
 
 
 def connector_refresher(db=None):

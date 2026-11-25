@@ -1,6 +1,6 @@
 # Reliability plan - one failure contract, one state picture, and the browsing fixes
 
-**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Parts 4 and 5 are LIVE (#100, #101; the push gateway had not been restarted by any deploy and is since #102). Parts 6 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
+**Status (2026-11-24): Parts 1 and 2 (server side) are LIVE (PRs #90, #91), with the false "partly done" label of Part 3 fixed (#92) and the browser records left at "running" ended by the worker (Part 3, C, #97). Part 3 is LIVE (#98 tools, #99 browser) except the runtime's loop detection. Parts 4 and 5 are LIVE (#100, #101; the push gateway had not been restarted by any deploy and is since #102). Part 6 is being built: asking in place is done on a branch (PR to follow), approvals and the spending-limit pause are next. Parts 7 to 9 are not started. Deploying Part 1 exposed three defects that were fixed on the way: the live acceptance could not make its test chat in a full project (#93, #94), a failed release that migrated the database was rolled back onto code that cannot start (#95), and file uploads cut every file at its line breaks (#96).**
 `docs/architecture/`, and the documentation and code of the installed runtime (OpenClaw 2026.9.6). Every number was read from the server, read only. Nothing on
 the server or in the code was changed.
 
@@ -372,6 +372,36 @@ The plan as written:
 - The tab title and favicon show "needs you" and "done".
 
 ### Part 6 - Ask in place (D, E, J)
+
+**Why the ask and show tools were never used, settled on the harness (2026-11-25, the real runtime with a scripted model):** the runtime keeps every tool of Lumina's
+out of the prompt. The model sees twelve tools of its own and one line, "Policy-approved MCP and client tools may also be discoverable through search"; none of
+`lumina_browser`, `lumina_show`, `lumina_ask_customer` is named. A `tool_search` for "ask the customer a question" does find `lumina_ask_customer`, and "show a
+table or chart" finds `lumina_show` first. So they are reachable, but nothing sent the assistant looking: the core instructions said "Ask in your reply and stop
+there", the browsing skill said "Do not ask the customer", and neither tool was named anywhere (the browser is used because its skill names `lumina_browser`). On
+production, 30 days of tool records hold no call of either, and no question hand-off was ever made (135 approval hand-offs, all of one day).
+
+**Built (asking in place; owner switch `ask_in_place`, off until the owner turns it on):**
+
+- `lumina_ask_customer` takes one to three questions, each with up to eight options (a label, and a price and a few words when the assistant has them); the
+  customer can always answer in their own words or skip. The older single `question` with plain `options` still works. A wrong call names the field and gives an
+  example (rule 3).
+- With the switch on, in an attended run, the call stays open for up to 10 minutes (`handoff.IN_PLACE_SECONDS`, less when the runtime's own 20-minute limit on the
+  run is near) and the driver parks the run as `customer_question` (no running slot, the workspace kept). An answer given in that window goes straight back to the
+  call (`Handoffs.answer` marks the row resumed by the same request, so no second turn is started). When the window ends, the row stays an ordinary question and a
+  later answer resumes as a new turn, as before. A stopped task withdraws its question. A scheduled run never waits. The waiting call marks the row every few
+  seconds, so a call lost with a relay restart never takes an answer with it.
+- The card (`ChangeApproval.tsx` `Question`) shows each question with its options, prices and details, a box for other words and a skip; one question with options
+  is answered in one tap. The task's status line says "Waiting for your answer".
+- The instructions name Lumina's tools and say to call them by name or find them with `tool_search`; the core rule says to ask with `lumina_ask_customer`, giving
+  the options; the browsing skill says to ask a choice the request leaves open before starting (and, for choices only the page shows, to have the browser list
+  them first); details a form asks for stay with the browser, so the customer's address never passes through the assistant. The show skill names `lumina_show`.
+- Proof: `tests/test_ask_in_place.py` (blocking), a parked-run check in `test_native_run.py`, and an end-to-end test on the real runtime
+  (`test_a_question_asked_in_place_parks_the_run_and_the_answer_reaches_the_same_run`).
+
+Left for this part: approvals in place (E), the spending-limit pause and the 80% line (D, owner question 2), and pictures on options (they need the browser to
+keep a product's picture and serve it from Lumina's address; visual answers accept only the customer's own files today).
+
+The plan as written:
 
 - One wait kind `question` added to `_human_wait`: the tool call stays open (up to the 30 minutes a parked run may wait), the request is parked, the customer
   answers on a card, the call returns the answer and the run carries on. No chat message is sent. If nobody answers in time, the existing hand-off row takes

@@ -72,3 +72,4 @@ test_faults
 test_acceptance_live
 test_tool_faults
 test_browser_endings
+test_ask_in_place

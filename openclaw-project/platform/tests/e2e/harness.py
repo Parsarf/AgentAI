@@ -203,7 +203,11 @@ class Stack:
             arguments = dict(arguments)
             nonce = arguments.pop('_lumina_origin', None)
             return BridgeRpc(account, self.socket)('tools.origin', {'name': name, 'arguments': arguments, 'nonce': nonce})
-        self.tool_relay = Relay(tool, progress=TaskProgressTool(self.store), origin=origin)
+        # The ask tool is the connector family's last member; only it is used here (the other connector tools need a connected service, which has tests of its own).
+        from agentai_platform.connector_tools import ConnectorTools
+        self.ask_in_place = True
+        asking = ConnectorTools(self.store, None, None, None, None, enabled=lambda account: True, ask_in_place=lambda account: self.ask_in_place, poll_seconds=0.3)
+        self.tool_relay = Relay(tool, progress=TaskProgressTool(self.store), origin=origin, connectors=asking)
         self.tool_server = serve_relay(self.tool_relay, Identity(identify), '127.0.0.1', self.relay_port)
         threading.Thread(target=self.tool_server.serve_forever, daemon=True).start()
         for cell in self.cells.values():

@@ -18,8 +18,11 @@ export interface ChangePreview {
 export interface ActionNeed { kind: 'action'; id: string; payload_hash: string; preview: ChangePreview; needs_admin: boolean; approved_by_you: boolean; expires_epoch: number }
 /** Several changes approved together: one approval covers every step shown. */
 export interface WorkflowNeed { kind: 'workflow'; id: string; title: string; steps_hash: string; steps: ChangePreview[]; expires_epoch: number }
-/** A question the assistant asked that can wait. */
-export interface QuestionNeed { kind: 'question'; id: string; question: string; options: string[]; expires_epoch: number }
+/** One option of a question: what to pick, and what the assistant knows of it (as the page or the seller shows it). */
+export interface AskOption { label: string; price?: string; details?: string }
+/** A question the assistant asked. `questions` (one to three) is what the server sends today; `question` and `options` are the same first question, for older rows.
+ *  `in_place`: the task is waiting for this answer right now, and carries on with it in the same run. */
+export interface QuestionNeed { kind: 'question'; id: string; question: string; options: string[]; questions?: { question: string; options: AskOption[] }[]; in_place?: boolean; expires_epoch: number }
 export type Need = Approval | ActionNeed | WorkflowNeed | QuestionNeed | { kind: 'browser_question' | 'browser_control' | 'browser_handoff'; before?: string } | { kind: 'location_permission' };
 /** The needs that are answered right where the task is shown (a prompt with its own buttons), as opposed to the ones answered in the browser view. */
 export const isPrompt = (n: Need): n is Approval | ActionNeed | WorkflowNeed | QuestionNeed => n.kind === 'approval' || n.kind === 'action' || n.kind === 'workflow' || n.kind === 'question';

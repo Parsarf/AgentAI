@@ -108,6 +108,11 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
            'With this off, every such button ends the task and hands the page to the customer, as before.',
            'No direct cost.', 'high',
            confirmations=(('customer_presses', 'I understand that, with a customer\'s yes, the browser presses a button that can change something for them on a website (remove, send, submit, confirm).'),)),
+    Switch('ask_in_place', 'The assistant waits for the customer\'s answer inside the task',
+           'When the assistant asks the customer a question, the task waits where it is (for up to 10 minutes) instead of ending its turn, and carries on with the answer.',
+           'The question is shown on the task with its options, a box for another answer and a skip. Answered in time, the same run carries on with the answer; not answered, '
+           'the question stays open and the task carries on when it is answered, as before. Scheduled runs never wait. With this off, every question ends the turn, as before.',
+           'No direct cost. A waiting task keeps its workspace awake, but gives up its running slot.', 'low'),
     Switch('credentialed_browsing', 'Let the browser worker use saved logins',
            'Lets a customer give the browser worker a website login it can reuse.',
            'Logins are kept in protected storage and used only on the sites the customer allows.',

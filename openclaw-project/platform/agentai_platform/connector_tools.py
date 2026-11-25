@@ -5,7 +5,7 @@
     lumina_connector_search    search across what the connection may reach
     lumina_connector_propose   prepare ONE change for the customer's approval (nothing is sent)
     lumina_connector_workflow  prepare several changes, in one or more services, for one approval
-    lumina_ask_customer        ask the customer a question that can wait, and stop until they answer
+    lumina_ask_customer        ask the customer one to three questions with options; waits for the answer in place (owner switch) or ends the turn
 
 Reading goes through connector_kit.ConnectorClient, so the customer's choices decide what comes back. Whatever a connected service returns is DATA: it is neutralised and
 labelled as untrusted before the assistant sees it, a partial result always says so in words, and every result says how fresh it is. A change is never made by these
@@ -20,7 +20,7 @@ from . import faults
 
 from .browse.untrusted import neutralize
 from .connector_kit import ConnectorFault
-from .handoff import Handoffs, wait_seconds
+from .handoff import IN_PLACE_SECONDS, SEEN_SECONDS, Handoffs, wait_seconds
 from .lifecycle.coordinator import Coordinator
 from .lifecycle.types import Conflict
 from .security import NotFound, Principal
@@ -29,8 +29,11 @@ from .workflows import WorkflowRefused
 LIST, READ, SEARCH, PROPOSE, WORKFLOW, ASK = ('lumina_connector_list', 'lumina_connector_read', 'lumina_connector_search', 'lumina_connector_propose',
                                               'lumina_connector_workflow', 'lumina_ask_customer')
 MAX_TEXT = 12000
+MAX_QUESTIONS, MAX_OPTIONS = 3, 8
 _S = lambda **props: {'type': 'object', 'properties': props, 'additionalProperties': False}
 _STR = lambda n, d='': {'type': 'string', 'maxLength': n, **({'description': d} if d else {})}
+OPTION = {'anyOf': [_STR(120), _S(label=_STR(120), price=_STR(40, 'As the page or the seller shows it, e.g. "$24.99".'), details=_STR(300))]}
+ASK_EXAMPLE = '{"questions": [{"question": "Which size?", "options": [{"label": "M", "price": "$20"}, {"label": "L", "price": "$22", "details": "Runs large"}]}]}'
 TOOLS = [
     {'name': LIST, 'description': 'With no arguments: the customer\'s connected services, what each may reach (only what the customer chose) and the kinds of change each allows. With '
      '"connection", "resource_kind" and "resource_id": the items in that one resource. Results can be partial: the result says so, and gives "continuation" to carry on.',
@@ -46,8 +49,12 @@ TOOLS = [
      'before any that cannot. If a step fails when it runs, the finished steps are reversed. Nothing is sent by this call; end your turn after it.',
      'inputSchema': {**_S(title=_STR(200), steps={'type': 'array', 'minItems': 2, 'maxItems': 12, 'items': {**_S(connection=_STR(64), kind=_STR(40), payload={'type': 'object'}),
                                                                                                          'required': ['connection', 'kind', 'payload']}}), 'required': ['title', 'steps']}},
-    {'name': ASK, 'description': 'Ask the customer a question that they may take a while to answer (a decision only they can make). After calling it, END YOUR TURN: you will be given their answer.',
-     'inputSchema': {**_S(question=_STR(1000), options={'type': 'array', 'maxItems': 8, 'items': _STR(120)}), 'required': ['question']}},
+    {'name': ASK, 'description': 'Ask the customer one to three questions that only they can answer: a choice the request leaves open, or one where a wrong guess would cost '
+     'money or could not be undone. Give each question the options you know of (a short label, and a price and a few words of detail when you have them); the customer '
+     'can also answer in their own words or skip. Do not ask what you can sensibly decide yourself. The result either gives their answers (carry on with them) or says they '
+     'have not answered yet (then say in one sentence what you are waiting for and END YOUR TURN: you will be given the answers).',
+     'inputSchema': _S(questions={'type': 'array', 'minItems': 1, 'maxItems': MAX_QUESTIONS, 'items': _S(question=_STR(500), options={'type': 'array', 'maxItems': MAX_OPTIONS, 'items': OPTION})},
+                       question=_STR(1000, 'Older form of one question; prefer "questions".'), options={'type': 'array', 'maxItems': MAX_OPTIONS, 'items': OPTION})},
 ]
 
 
@@ -71,9 +78,11 @@ def as_data(items) -> list:
 class ConnectorTools:
     names = frozenset({LIST, READ, SEARCH, PROPOSE, WORKFLOW, ASK})
 
-    def __init__(self, store, connectors, client, actions, workflows, *, clock=time.time, enabled=lambda account: False, writes_on=lambda account, service=None: False):
+    def __init__(self, store, connectors, client, actions, workflows, *, clock=time.time, enabled=lambda account: False, writes_on=lambda account, service=None: False,
+                 ask_in_place=lambda account: False, sleep=time.sleep, poll_seconds=1.0):
         self.store, self.connectors, self.client, self.actions, self.workflows, self.clock = store, connectors, client, actions, workflows, clock
-        self._enabled, self._writes_on = enabled, writes_on
+        self._enabled, self._writes_on, self._ask_in_place = enabled, writes_on, ask_in_place
+        self.sleep, self.poll_seconds = sleep, poll_seconds
         self.coordinator = Coordinator(store, clock=clock)
         self.handoffs = Handoffs(store, clock=clock)
 
@@ -107,7 +116,9 @@ class ConnectorTools:
                 return 'This call does not belong to a running task. Nothing was done.', faults.Fault('tool.not_admitted')
             if not isinstance(arguments, dict):
                 return 'Invalid arguments. Nothing was done.', faults.Fault('tool.bad_arguments')
-            handler = {LIST: self._list, READ: self._read, SEARCH: self._search, PROPOSE: self._propose, WORKFLOW: self._workflow, ASK: self._ask}[name]
+            if name == ASK:
+                return self._ask(principal, arguments, request_id, conversation, closed)
+            handler = {LIST: self._list, READ: self._read, SEARCH: self._search, PROPOSE: self._propose, WORKFLOW: self._workflow}[name]
             return handler(principal, arguments, request_id, conversation)
         except ConnectorFault as fault:
             return fault.words + (f' It can be tried again in about {max(1, int(fault.retry_at - self.clock()))} seconds.' if fault.retry_at else ''), faults.of_connector(fault)
@@ -169,14 +180,120 @@ class ConnectorTools:
                           'state': 'NOT SENT. Waiting for the customer\'s ONE approval of all the steps. Tell them in one sentence what you prepared, then END YOUR TURN.'}), False
 
     # -- asking --------------------------------------------------------------------------------------------------------------------------------
-    def _ask(self, principal, a, request_id, conversation):
-        question, options = a.get('question'), a.get('options') or []
-        if not isinstance(question, str) or not question.strip() or len(question) > 1000 or not isinstance(options, list) or len(options) > 8 or any(not isinstance(o, str) or len(o) > 120 for o in options):
-            return 'Give "question" (text) and optionally up to 8 short "options". Nothing was asked.', faults.Fault('tool.bad_arguments')
+    def _ask(self, principal, a, request_id, conversation, closed=lambda: False):
+        try:
+            questions = ask_questions(a)
+        except ValueError as bad:
+            return f'{bad} Nothing was asked. Example: {ASK_EXAMPLE}', faults.Fault('tool.bad_arguments')
+        window, now = self._window(principal.account_id, request_id), int(self.clock())
+        shown = questions[0]['question'] if len(questions) == 1 else ' '.join(f'{n}. {q["question"]}' for n, q in enumerate(questions, 1))
         with self.coordinator.transaction() as con:
             if con.execute("SELECT count(*) FROM handoffs WHERE account_id=? AND request_id=? AND kind='question'", (principal.account_id, request_id)).fetchone()[0] >= 3:
-                return 'This task has already asked the customer three questions. Carry on with what you know, or say what you still need in your reply.', faults.Fault('tool.limit')
-            self.handoffs.create(con, account_id=principal.account_id, actor_id=principal.actor_id, kind='question', request_id=request_id, conversation_id=conversation,
-                                 question=question.strip(), options=options, resume={'question': True})
-        return self._out({'asked': question.strip(), 'waits_up_to_seconds': wait_seconds('question'),
+                return 'This task has already asked the customer three times. Carry on with what you know, or say what you still need in your reply.', faults.Fault('tool.limit')
+            resume = {'question': True, **({'in_place': True, 'until': now + window, 'seen': now} if window else {})}
+            handoff = self.handoffs.create(con, account_id=principal.account_id, actor_id=principal.actor_id, kind='question', request_id=request_id, conversation_id=conversation,
+                                           question=shown[:1000], options=[o['label'] for o in questions[0]['options']] if len(questions) == 1 else [],
+                                           evidence={'questions': questions}, resume=resume)
+        if window:
+            return self._wait(principal.account_id, request_id, handoff, closed)
+        return self._out({'asked': [q['question'] for q in questions], 'waits_up_to_seconds': wait_seconds('question'),
                           'state': 'The customer has been asked. Say in one sentence that you are waiting for their answer, then END YOUR TURN. You will be given the answer.'}), False
+
+    def _window(self, account, request_id) -> int:
+        """How long the call may wait in place for the answer: 0 when the owner's switch is off, for a scheduled run (nobody is there to answer), or when the runtime's own
+        limit on this run is too close. A run that waits gives up its running slot (the driver parks it) and keeps its workspace."""
+        try:
+            if not self._ask_in_place(account):
+                return 0
+        except Exception:
+            return 0
+        from .lifecycle.cell_config import RUN_BACKSTOP_SECONDS
+        with self.store.connect() as con:
+            row = con.execute('SELECT context_json FROM customer_requests WHERE account_id=? AND id=?', (account, request_id)).fetchone()
+            started = con.execute("SELECT max(created_epoch) FROM chat_deliveries WHERE account_id=? AND request_id=? AND kind!='steer'", (account, request_id)).fetchone()[0]
+        try:
+            context = json.loads(row['context_json'] or '{}') if row else {}
+        except (ValueError, TypeError):
+            context = {}
+        if not isinstance(context, dict) or context.get('unattended'):
+            return 0
+        now = int(self.clock())
+        window = min(IN_PLACE_SECONDS, RUN_BACKSTOP_SECONDS - (now - int(started or now)) - 90)
+        return window if window >= 60 else 0
+
+    def _wait(self, account, request_id, handoff, closed):
+        """Hold the call until the customer answers, the window ends, or the task is stopped. Reads are plain reads; only a mark that the call is still here (every few
+        seconds) and the ending are written."""
+        marked = int(self.clock())
+        while True:
+            stopped = self._stopped(account, request_id)                  # the task is over: its question goes with it
+            now = int(self.clock())
+            with self.store.connect() as con:
+                row = con.execute('SELECT * FROM handoffs WHERE account_id=? AND id=?', (account, handoff)).fetchone()
+            resume = json.loads(row['resume_json'] or '{}')
+            ending = stopped or closed() or now >= int(resume.get('until') or 0)       # the window ended, or the runtime gave up on the call: the question stays open
+            if row['state'] != 'waiting' or ending or now - marked >= SEEN_SECONDS // 4:
+                with self.coordinator.transaction() as con:
+                    row = con.execute('SELECT * FROM handoffs WHERE account_id=? AND id=?', (account, handoff)).fetchone()
+                    if row['state'] == 'resumed' and row['resumed_request_id'] == request_id:
+                        return self._answered(row), False
+                    if row['state'] != 'waiting':
+                        return self._out({'state': 'The question is no longer open. Carry on with what you know and say what you assumed.'}), False
+                    current = json.loads(row['resume_json'] or '{}')
+                    resume = {k: v for k, v in current.items() if k not in ('in_place', 'until', 'seen')}     # what the row keeps once nobody waits in place
+                    if stopped:
+                        con.execute("UPDATE handoffs SET state='cancelled',resume_json=? WHERE account_id=? AND id=? AND state='waiting'", (json.dumps(resume), account, handoff))
+                        return 'The task was stopped, so the question was withdrawn. Nothing more was done.', faults.Fault('tool.stopped_with_task')
+                    if ending:
+                        con.execute('UPDATE handoffs SET resume_json=? WHERE account_id=? AND id=?', (json.dumps(resume), account, handoff))
+                        return self._out({'asked': row['question'], 'waits_up_to_seconds': wait_seconds('question'),
+                                          'state': 'The customer has not answered yet. The question stays open for them. Say in one sentence what you are waiting for, then END YOUR TURN. '
+                                                   'You will be given their answer.'}), False
+                    con.execute('UPDATE handoffs SET resume_json=? WHERE account_id=? AND id=?', (json.dumps({**current, 'seen': now}), account, handoff))     # still here
+                    marked = now
+            self.sleep(self.poll_seconds)
+
+    def _stopped(self, account, request_id) -> bool:
+        from . import request_states
+        with self.store.connect() as con:
+            row = con.execute('SELECT state,cancel_requested FROM customer_requests WHERE account_id=? AND id=?', (account, request_id)).fetchone()
+        return row is None or bool(row['cancel_requested']) or row['state'] in request_states.FINAL
+
+    def _answered(self, row) -> str:
+        given = json.loads(row['answer_json'] or '{}').get('answers') or []
+        return self._out({'answers': [{'question': a['question'], **({'skipped': True} if a.get('skipped') else {'answer': a['answer']})} for a in given],
+                          'state': 'The customer answered. Carry on with the task using these answers; do not ask the same again. For a skipped question choose the obvious '
+                                   'option yourself and say what you assumed.'})
+
+
+def ask_questions(a) -> list[dict]:
+    """The questions as the customer is shown them: one to three, each with up to eight options (a label, and a price and details when the assistant has them).
+    Accepts the older single `question` with plain `options`. Raises ValueError naming the field that is wrong."""
+    asked = a.get('questions')
+    if asked is None:
+        if not isinstance(a.get('question'), str) or not a['question'].strip():
+            raise ValueError('Give "questions": a list of one to three, each with "question" (text) and "options".')
+        asked = [{'question': a['question'], 'options': a.get('options') or []}]
+    if not isinstance(asked, list) or not 1 <= len(asked) <= MAX_QUESTIONS:
+        raise ValueError(f'"questions" must be a list of one to {MAX_QUESTIONS}.')
+    out = []
+    for n, q in enumerate(asked):
+        where = f'questions[{n}]'
+        if not isinstance(q, dict) or not isinstance(q.get('question'), str) or not q['question'].strip() or len(q['question']) > 1000:
+            raise ValueError(f'{where}.question must be text (up to 1000 characters).')
+        options = q.get('options') or []
+        if not isinstance(options, list) or len(options) > MAX_OPTIONS:
+            raise ValueError(f'{where}.options must be a list of up to {MAX_OPTIONS}.')
+        shaped = []
+        for m, o in enumerate(options):
+            o = {'label': o} if isinstance(o, str) else o
+            if not isinstance(o, dict) or not isinstance(o.get('label'), str) or not o['label'].strip() or len(o['label']) > 120:
+                raise ValueError(f'{where}.options[{m}].label must be short text (up to 120 characters).')
+            for key, limit in (('price', 40), ('details', 300)):
+                if o.get(key) is not None and (not isinstance(o[key], str) or len(o[key]) > limit):
+                    raise ValueError(f'{where}.options[{m}].{key} must be text (up to {limit} characters).')
+            shaped.append({'label': o['label'].strip(), **{k: o[k].strip() for k in ('price', 'details') if isinstance(o.get(k), str) and o[k].strip()}})
+        if len({o['label'] for o in shaped}) != len(shaped):
+            raise ValueError(f'{where}.options must have different labels.')
+        out.append({'question': q['question'].strip(), 'options': shaped})
+    return out

@@ -55,7 +55,7 @@ NEEDS = {
 BROWSER_NEEDS = {'asking': 'browser_question', 'paused': 'browser_control', 'handoff': 'browser_handoff'}
 # What a parked run is waiting for, by the reason the driver parked it with (chat_driver.HUMAN_WAIT and the location wait). It used to be "Waiting for you in the browser"
 # for any reason at all; a reason that is not listed is now said as what is known: it is waiting for the customer.
-PARKED = {'browser_question': 'browser_question', 'browser_takeover': 'browser_control', 'location_permission': 'location_permission'}
+PARKED = {'browser_question': 'browser_question', 'browser_takeover': 'browser_control', 'location_permission': 'location_permission', 'customer_question': 'question'}
 # What a run is waiting for when no tool is running (Part 4). A wait a person can see no reason for loses them within seconds; each of these is a fact Lumina holds.
 WAITS = {'model': 'Waiting for the model', 'provider': 'Waiting for the model provider', 'workspace': 'Waking your workspace'}
 STEP_STATUSES = ('pending', 'running', 'done', 'blocked', 'failed', 'skipped')
@@ -392,7 +392,9 @@ class WorkReader:
         if self._has(con, 'handoffs'):
             for h in con.execute("SELECT * FROM handoffs WHERE account_id=? AND state='waiting' AND expires_epoch>? AND request_id IS NOT NULL ORDER BY created_epoch", (account, int(now))).fetchall():
                 if h['kind'] == 'question':
-                    need = {'kind': 'question', 'id': h['id'], 'question': h['question'], 'options': json.loads(h['options_json']), 'expires_epoch': h['expires_epoch']}
+                    from .handoff import in_place, questions_of
+                    need = {'kind': 'question', 'id': h['id'], 'question': h['question'], 'options': json.loads(h['options_json']), 'questions': questions_of(h),
+                            'in_place': in_place(h, int(now)), 'expires_epoch': h['expires_epoch']}
                 elif h['kind'] == 'action_approval':
                     a = con.execute("SELECT id,payload_hash,preview_json,needs_admin,approved_by FROM actions WHERE account_id=? AND id=? AND state='proposed'", (account, h['action_id'])).fetchone()
                     if not a:
