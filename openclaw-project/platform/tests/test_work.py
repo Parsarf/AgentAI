@@ -280,7 +280,7 @@ class ReaderChecks(Base):
     def test_a_parked_run_says_what_it_waits_for_and_an_unknown_reason_is_not_called_the_browser(self):
         self.claim()
         for reason, label in (('browser_question', 'Waiting for your answer'), ('browser_takeover', 'You have the browser'), ('location_permission', 'Waiting for location permission'),
-                              ('something_new', 'Waiting for you')):
+                              ('customer_question', 'Waiting for your answer'), ('something_new', 'Waiting for you')):
             with self.store.connect() as con:
                 con.execute('UPDATE customer_requests SET parked_reason=? WHERE id=?', (reason, self.id))
             view = self.reader.listing(self.a)['tasks'][0]

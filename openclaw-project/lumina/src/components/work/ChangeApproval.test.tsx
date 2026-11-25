@@ -98,6 +98,33 @@ describe('Question', () => {
     fireEvent.click(send);
     await waitFor(() => expect(calls[1]).toEqual({ url: '/v1/handoffs/q1/answer', body: { answer: 'the archive' } }));
   });
+  it('shows an option with its price and details, answers it in one tap, and can be skipped', async () => {
+    server(() => reply({ handoff: { state: 'resumed', in_place: true } }));
+    const sized: QuestionNeed = { ...need, question: 'Which size?', options: ['M', 'L'], in_place: true,
+      questions: [{ question: 'Which size?', options: [{ label: 'M', price: '$20' }, { label: 'L', price: '$22', details: 'Runs large' }] }] };
+    render(<Question need={sized} />);
+    expect(screen.getByText('Lumina is waiting for your answer to carry on')).toBeTruthy();
+    expect(screen.getByText('$22')).toBeTruthy(); expect(screen.getByText('Runs large')).toBeTruthy();
+    fireEvent.click(screen.getByText('L'));
+    await waitFor(() => expect(calls[0]).toEqual({ url: '/v1/handoffs/q1/answer', body: { answers: [{ choice: 'L' }] } }));
+    cleanup();
+    render(<Question need={sized} />);
+    fireEvent.click(screen.getByText('Skip, let Lumina choose'));
+    await waitFor(() => expect(calls[1]).toEqual({ url: '/v1/handoffs/q1/answer', body: { answers: [{ skip: true }] } }));
+  });
+  it('sends several answers together once each question has one', async () => {
+    server(() => reply({ handoff: { state: 'answered' } }));
+    render(<Question need={{ ...need, question: '1. Size? 2. Colour?', options: [],
+      questions: [{ question: 'Size?', options: [{ label: 'M' }, { label: 'L' }] }, { question: 'Colour?', options: [{ label: 'Red' }] }] }} />);
+    const send = screen.getByText('Send answers') as HTMLButtonElement;
+    fireEvent.click(screen.getByText('M'));
+    expect(screen.getByText('M').getAttribute('aria-pressed')).toBe('true');
+    expect(send.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Your answer to: Colour?'), { target: { value: 'navy' } });
+    expect(send.disabled).toBe(false);
+    fireEvent.click(send);
+    await waitFor(() => expect(calls[0]).toEqual({ url: '/v1/handoffs/q1/answer', body: { answers: [{ choice: 'M' }, { text: 'navy' }] } }));
+  });
 });
 
 describe('Prompts', () => {

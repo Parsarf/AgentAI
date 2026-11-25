@@ -212,6 +212,19 @@ class WriteCycle(Base):
         self.assertEqual(self.post(self.a, f'/v1/handoffs/{handoff}/answer', {'answer': 'B'}).status_code, 200)
         self.assertEqual(self.post(self.a, f'/v1/handoffs/{handoff}/answer', {'answer': 'A'}).status_code, 409)
 
+    def test_several_questions_are_answered_together_and_each_answer_must_fit_its_question(self):
+        from agentai_platform.handoff import Handoffs
+        request, conversation = self.request_id()
+        asked = [{'question': 'Which size?', 'options': [{'label': 'M', 'price': '$20'}, {'label': 'L'}]}, {'question': 'Which colour?', 'options': []}]
+        with wiring.store().connect() as con:
+            handoff = Handoffs(wiring.store()).create(con, account_id=self.account_ids[0], actor_id='x', kind='question', request_id=request, question='1. Which size? 2. Which colour?',
+                                                      evidence={'questions': asked})
+        self.assertEqual(self.a.get('/v1/handoffs', secure=True).json()['waiting'][0]['questions'], asked)
+        for wrong in ({'answers': [{'choice': 'XL'}, {'skip': True}]}, {'answers': [{'choice': 'M'}]}, {'answers': 'M'}, {'answer': 7}):
+            self.assertEqual(self.post(self.a, f'/v1/handoffs/{handoff}/answer', wrong).status_code, 400, wrong)
+        done = self.post(self.a, f'/v1/handoffs/{handoff}/answer', {'answers': [{'choice': 'M'}, {'text': 'navy'}]})
+        self.assertEqual((done.status_code, done.json()['handoff']['state'], done.json()['handoff']['in_place']), (200, 'answered', False))
+
     def test_changes_are_off_until_the_owner_switch_is_on(self):
         connection_id = self.connect()
         with patch.object(wiring, 'switch_on', lambda name: name == 'synthetic_connector'):

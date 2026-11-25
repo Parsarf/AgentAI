@@ -46,6 +46,10 @@ class ActionRunner:
         """-> (text for the assistant, line shown in the chat), or None while the thing it waited for is still being carried out."""
         answer = json.loads(handoff['answer_json'] or '{}')
         if handoff['kind'] == 'question':
+            given = answer.get('answers') if isinstance(answer.get('answers'), list) else None
+            if given and (len(given) > 1 or given[0].get('skipped')):
+                lines = '\n'.join(f'- "{a["question"]}": ' + ('skipped (choose the obvious option yourself and say what you assumed)' if a.get('skipped') else str(a.get('answer', ''))[:2000]) for a in given)
+                return ('The customer answered your questions:\n' + lines + '\nCarry on with the task from where you stopped.', 'Answered: ' + str(answer.get('answer', ''))[:200])
             return ('The customer answered your question "' + handoff['question'] + '": ' + str(answer.get('answer', ''))[:2000] + '\nCarry on with the task from where you stopped.',
                     'Answered: ' + str(answer.get('answer', ''))[:200])
         if handoff['kind'] == 'action_approval':

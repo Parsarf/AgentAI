@@ -183,6 +183,22 @@ class ParkingChecks(Base):
         self.assertFalse(self.rows('SELECT 1 FROM request_slots'))
         self.assertEqual(self.rows("SELECT state FROM tasks")[0][0], 'completed')
 
+    def test_a_question_asked_in_place_parks_the_run_until_it_is_answered(self):
+        """The ask tool holds its call while it waits for the customer (handoff.waiting_in_place): the run gives up its slot like the browser's question, and takes it back
+        once the answer has gone to the call."""
+        from agentai_platform.handoff import Handoffs
+        sent = self.say(key='k1')
+        self.gateway.polls = 3
+        handoffs = Handoffs(self.store, clock=lambda: self.now)
+        with handoffs.coordinator.transaction() as con:
+            asked = handoffs.create(con, account_id='a', actor_id='actor-a', kind='question', request_id=sent['id'], question='Which size?', options=['M', 'L'],
+                                    resume={'question': True, 'in_place': True, 'until': self.now + 600, 'seen': self.now})
+        self.assertEqual(self.worker.tick(), {'ran': 1, 'parked': 'customer_question'})
+        self.assertFalse(self.rows('SELECT 1 FROM request_slots'))
+        self.assertEqual(self.driver.check_parked(self.queue.parked()[0]), 'waiting')
+        self.assertTrue(handoffs.answer(self.a, asked, 'L')['in_place'])
+        self.assertEqual(self.driver.check_parked(self.queue.parked()[0]), 'ready')
+
     def test_the_time_a_person_took_does_not_count_against_the_run(self):
         sent = self.start_and_park()
         before = self.rows('SELECT deadline_epoch FROM chat_deliveries')[0][0]

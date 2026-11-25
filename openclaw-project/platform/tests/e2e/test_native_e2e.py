@@ -446,6 +446,28 @@ class NativeEndToEnd(unittest.TestCase):
         self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
         self.assertEqual(len(S.rows('SELECT 1 FROM chat_deliveries WHERE request_id=?', (sent['id'],))), 1)         # the same single run all along
 
+    def test_a_question_asked_in_place_parks_the_run_and_the_answer_reaches_the_same_run(self):
+        """Reliability plan, Part 6: the assistant asks with Lumina's ask tool; its call stays open, the request is parked without the slot, the customer answers on the
+        card, and the call returns the answer to the run that asked. No second turn, no chat message in between."""
+        from agentai_platform.handoff import Handoffs
+        S = self.S
+        S.hold_cell('a')
+        sent = S.say('a', 'Get me the hoodie. SCENARIO:askinplace', 'k-ask-in-place')
+        S.work(until=lambda: S.request(sent['id'])['parked_reason'])
+        row = S.request(sent['id'])
+        self.assertEqual((row['state'], row['parked_reason']), ('running', 'customer_question'))
+        self.assertEqual(S.rows('SELECT count(*) AS n FROM request_slots')[0]['n'], 0)
+        asked = Handoffs(S.store).pending(S.principals['a'])
+        self.assertEqual([q['options'][1] for q in asked[0]['questions']], [{'label': 'L', 'price': '$22', 'details': 'Runs large'}])
+        self.assertTrue(Handoffs(S.store).answer(S.principals['a'], asked[0]['id'], answers=[{'choice': 'L'}])['in_place'])
+        S.work(until=self.finished(sent['id']))
+        done = S.request(sent['id'])
+        self.assertEqual((done['state'], done['outcome'], done['parked_reason']), ('completed', 'completed', None))
+        reply = S.rows("SELECT content FROM chat_messages WHERE request_id=? AND provenance='agent' ORDER BY id DESC", (sent['id'],))[0]['content']
+        self.assertIn('TOOL-RESULT', reply); self.assertIn('Carry on with the task using these answers', reply)
+        self.assertEqual(len(S.rows('SELECT 1 FROM chat_deliveries WHERE request_id=?', (sent['id'],))), 1)                  # the same single run all along
+        self.assertEqual(S.rows("SELECT state,resumed_request_id FROM handoffs WHERE id=?", (asked[0]['id'],))[0]['resumed_request_id'], sent['id'])
+
     # -- goals ----------------------------------------------------------------------------------------------------------------------------------
     def test_keep_working_until_complete_is_a_chain_of_admitted_turns_on_the_runtimes_own_goal(self):
         S = self.S

@@ -10,7 +10,7 @@
     POST /v1/workflows/<id>/approve        {"steps_hash": "..."}  one approval for all the steps
     POST /v1/workflows/<id>/decline
     GET  /v1/handoffs                      what is waiting for the customer (approvals and questions), and how long each kind of wait lasts
-    POST /v1/handoffs/<id>/answer          {"answer": "..."}  answers a question
+    POST /v1/handoffs/<id>/answer          {"answer": "..."} or {"answers": [{"choice"} | {"text"} | {"skip": true}, ...]}  answers a question (one entry per question)
 
 Approving only records the decision. The change itself is sent by the request worker's action pass, once (agentai_platform/actions.py).
 """
@@ -121,10 +121,10 @@ def handoffs(request):
     return JsonResponse({'waiting': handoff.Handoffs(wiring.store()).pending(wiring.principal(request)), 'waits': handoff.waits_public()})
 
 
-@endpoint(['POST'], ['answer'], field_limits={'answer': 2000})
+@endpoint(['POST'], ['answer', 'answers'], structured=True)      # the service checks each answer (handoff.read_answers)
 def handoff_answer(request, handoff_id):
     denied = customer(request)
     if denied:
         return denied
     rate('action.decide', request.account_id, 60, 600)
-    return guarded(lambda: JsonResponse({'handoff': handoff.Handoffs(wiring.store()).answer(wiring.principal(request), handoff_id, request.input.get('answer', ''))}))
+    return guarded(lambda: JsonResponse({'handoff': handoff.Handoffs(wiring.store()).answer(wiring.principal(request), handoff_id, request.input.get('answer', ''), answers=request.input.get('answers'))}))
