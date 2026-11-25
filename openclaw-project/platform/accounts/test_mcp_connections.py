@@ -40,6 +40,16 @@ class McpHTTPChecks(TestCase):
         self.switch=tempfile.NamedTemporaryFile('w',suffix='.json',delete=False);self.addCleanup(os.unlink,self.switch.name)
         self.switch.write('{"mcp_connections": true}');self.switch.close()
         s=override_settings(MCP_SWITCH_FILE=self.switch.name);s.enable();self.addCleanup(s.disable)       # the feature is off unless the owner turns it on
+    def test_a_decision_for_a_call_still_waiting_in_place_is_not_steered_into_the_run(self):
+        """Approvals in place (reliability plan, Part 6): the call that asked takes the decision itself, so telling the assistant again would make it call twice."""
+        class Waiting:
+            def approve(self, principal, call, approved):
+                return {'request_id': 'r', 'tool': 'echo', 'service': 'F', 'approved': approved, 'in_place': True}
+        told = []
+        with patch('accounts.mcp_connections.service', lambda store=None: Waiting()), patch('accounts.wiring.chat_service', lambda *a: told.append(a)):
+            answer = self.post(self.clients[0], '/v1/account/mcp-approvals/' + 'a' * 32, {'approved': True})
+        self.assertEqual((answer.status_code, answer.json(), told), (200, {'decided': True, 'continued': True}, []))
+
     def test_the_feature_is_off_until_the_owner_turns_it_on_and_off_again_at_once(self):
         for content in ('{}','{"mcp_connections": false}','{"mcp_connections": []}','not json'):
             with self.subTest(content=content):

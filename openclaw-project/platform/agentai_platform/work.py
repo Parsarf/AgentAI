@@ -55,7 +55,7 @@ NEEDS = {
 BROWSER_NEEDS = {'asking': 'browser_question', 'paused': 'browser_control', 'handoff': 'browser_handoff'}
 # What a parked run is waiting for, by the reason the driver parked it with (chat_driver.HUMAN_WAIT and the location wait). It used to be "Waiting for you in the browser"
 # for any reason at all; a reason that is not listed is now said as what is known: it is waiting for the customer.
-PARKED = {'browser_question': 'browser_question', 'browser_takeover': 'browser_control', 'location_permission': 'location_permission', 'customer_question': 'question'}
+PARKED = {'browser_question': 'browser_question', 'browser_takeover': 'browser_control', 'location_permission': 'location_permission', 'customer_question': 'question', 'customer_approval': 'approval'}
 # What a run is waiting for when no tool is running (Part 4). A wait a person can see no reason for loses them within seconds; each of these is a fact Lumina holds.
 WAITS = {'model': 'Waiting for the model', 'provider': 'Waiting for the model provider', 'workspace': 'Waking your workspace'}
 STEP_STATUSES = ('pending', 'running', 'done', 'blocked', 'failed', 'skipped')
@@ -457,6 +457,7 @@ class WorkReader:
         if row['state'] == 'running' and row['parked_reason'] == 'location_permission':
             needs.append({'kind': 'location_permission'})
         waiting_on = needs[0]['kind'] if needs else (PARKED.get(row['parked_reason'], 'waiting') if row['state'] == 'running' and row['parked_reason'] else None)
+        waiting_on = {'action': 'approval', 'workflow': 'approval'}.get(waiting_on, waiting_on)          # a change to approve reads as what it is: their permission
         phase = phase_of(row, waiting_on=waiting_on)
         running = [r for r in rows or [] if r['kind'] == 'tool' and r['status'] == 'running'] if phase == 'working' else []
         now = [{'key': r['key'], 'category': r['category'], 'label': DOING.get(r['category'], DOING['other']), 'detail': r['detail']} for r in running]

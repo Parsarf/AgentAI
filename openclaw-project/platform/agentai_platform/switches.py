@@ -114,6 +114,14 @@ CATALOG: dict[str, Switch] = {s.key: s for s in (
            'the question stays open and the task carries on when it is answered, as before. Scheduled runs never wait. With this off, every question ends the turn, as before.',
            'No direct cost. A waiting task keeps its workspace awake, but gives up its running slot.', 'low',
            confirmations=(('waits_in_place', 'I understand that a task waiting for the customer\'s answer keeps their workspace awake for up to 10 minutes.'),)),
+    Switch('approve_in_place', 'The assistant waits for the customer\'s permission inside the task',
+           'When the assistant prepares a change (an email to send, a calendar change, a change in a connected service) or a connected app\'s call needs the customer\'s '
+           'permission, the task waits where it is (for up to 10 minutes) instead of ending its turn, and carries on once they decide.',
+           'The approval card is shown on the task as today. Decided in time, Lumina makes the change and the same run carries on with what happened; not decided, the '
+           'approval stays open and the task carries on when it is decided, as before. Nothing is ever sent without the customer\'s approval. Scheduled runs never wait. '
+           'With this off, every approval ends the turn, as before.',
+           'No direct cost. A waiting task keeps its workspace awake, but gives up its running slot.', 'low',
+           confirmations=(('waits_in_place', 'I understand that a task waiting for the customer\'s permission keeps their workspace awake for up to 10 minutes.'),)),
     Switch('credentialed_browsing', 'Let the browser worker use saved logins',
            'Lets a customer give the browser worker a website login it can reuse.',
            'Logins are kept in protected storage and used only on the sites the customer allows.',

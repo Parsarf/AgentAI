@@ -30,11 +30,12 @@ SEEN_SECONDS = 20                  # the waiting call marks the row at least thi
 # in-place window on purpose: the tool call gives up first and the run carries on, so the driver never has to stop a run for it.
 WAITS = {
     'browser_question': 1800, 'browser_takeover': 1800, 'location_permission': 1800, 'customer_question': IN_PLACE_SECONDS + 300,
+    'customer_approval': IN_PLACE_SECONDS + 300,
     'action_approval': 3 * 86400, 'workflow_approval': 3 * 86400, 'question': 86400,
 }
 WAIT_WORDS = {
     'browser_question': 'A question from the browser', 'browser_takeover': 'You driving the browser', 'location_permission': 'Sharing your location',
-    'customer_question': 'A question from your assistant, while the task waits',
+    'customer_question': 'A question from your assistant, while the task waits', 'customer_approval': 'Your permission, while the task waits',
     'action_approval': 'Approving a change in a connected service', 'workflow_approval': 'Approving several changes together', 'question': 'A question from your assistant',
 }
 KINDS = ('action_approval', 'workflow_approval', 'question')
@@ -56,9 +57,9 @@ def in_place(row, now) -> bool:
 
 
 def waiting_in_place(con, account_id, request_id, now) -> bool:
-    """Is this request's run waiting, inside a tool call, for the customer's answer to a question? (The driver parks the run while it is.)"""
+    """Is a call of this request's run waiting, in place, on one of its hand-offs (a question, or an approval and then its outcome)? See in_place.waiting."""
     return any(in_place(r, now) for r in con.execute(
-        "SELECT resume_json FROM handoffs WHERE account_id=? AND request_id=? AND kind='question' AND state='waiting'", (account_id, request_id)))
+        "SELECT resume_json FROM handoffs WHERE account_id=? AND request_id=? AND state IN ('waiting','answered')", (account_id, request_id)))
 
 
 def questions_of(row) -> list[dict]:
