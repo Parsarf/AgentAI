@@ -113,7 +113,7 @@ export default function Activity() {
         : <Table label="Activity" rows={shown} rowKey={t => t.id} selected={id} onOpen={open}
           empty={<EmptyState>{!tasks.length ? <>Nothing yet. Work you start in a chat is listed here, with how each task ended and what Lumina did for it. <Link to="/chat">Start something in a chat.</Link></> : 'Nothing here ended that way.'}</EmptyState>}
           columns={[
-            { key: 'title', label: 'What', className: 'act-what', render: t => <span className="act-title"><Link to={`/activity/${t.id}`} onClick={e => e.stopPropagation()}>{t.title}</Link>{t.activity?.detail && <span className="faint small">{t.activity.detail}</span>}</span>, sort: t => t.title.toLowerCase() },
+            { key: 'title', label: 'What', className: 'act-what', render: t => <span className="act-title"><Link to={`/activity/${t.id}`} title={t.title} onClick={e => e.stopPropagation()}>{t.title}</Link>{t.activity?.detail && <span className="faint small">{t.activity.detail}</span>}</span>, sort: t => t.title.toLowerCase() },
             { key: 'kind', label: 'Kind', className: 'act-kind', render: t => KIND_WORDS[kindOf(t)], sort: t => kindOf(t) },
             { key: 'state', label: 'State', render: t => <Status task={t} size="sm" />, sort: t => rank(t) },
             { key: 'steps', label: 'Steps', className: 'act-steps', render: t => (t.phase === 'ended' && t.steps > 0 ? steps(t.steps) : ''), sort: t => t.steps },

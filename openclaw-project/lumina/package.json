@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/tokens/generate.mjs --check && node scripts/check-design.mjs && tsc --noEmit && vite build",
+    "build": "node scripts/tokens/generate.mjs --check && node scripts/check-design.mjs && node scripts/check-layout.mjs && tsc --noEmit && vite build",
     "check:design": "node scripts/check-design.mjs",
+    "check:layout": "node scripts/check-layout.mjs",
     "test": "vitest run",
+    "test:layout": "node tests/layout-browser.mjs",
+    "test:layout:full": "node tests/layout-browser.mjs --full",
+    "test:visual": "node tests/visual-browser.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

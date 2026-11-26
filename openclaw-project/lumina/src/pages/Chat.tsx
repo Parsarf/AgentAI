@@ -45,6 +45,16 @@ export default function Chat() {
   const stick = useRef(true); const [newBelow, setNewBelow] = useState(false);
   useEffect(() => { const onScroll = () => { stick.current = document.documentElement.scrollHeight - window.innerHeight - window.scrollY < 260; if (stick.current) setNewBelow(false); }; window.addEventListener('scroll', onScroll, { passive: true }); return () => window.removeEventListener('scroll', onScroll); }, []);
   const bottom = useRef<HTMLDivElement>(null); const lastCount = useRef(0);
+  // The page's scroll padding follows the real heights of the sticky toolbar and composer (styles/app.css), so a control reached by Tab or scrolled to is never
+  // left underneath either of them, whatever the window, the text size or the composer's rows.
+  const dock = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = document.documentElement, el = dock.current, head = document.querySelector<HTMLElement>('.wsp-toolbar');
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => { root.style.setProperty('--chat-dock-h', `${Math.ceil(el.offsetHeight)}px`); if (head) root.style.setProperty('--chat-head-h', `${Math.ceil(head.offsetHeight)}px`); };
+    const watch = new ResizeObserver(measure); watch.observe(el); if (head) watch.observe(head); measure();
+    return () => { watch.disconnect(); root.style.removeProperty('--chat-dock-h'); root.style.removeProperty('--chat-head-h'); };
+  }, []);
   // "The latest" is the true end of the page. Aligning a marker with the bottom edge of the window is not enough: the composer is pinned there and, on a small screen, is tall
   // enough to cover the newest lines (and the page then never counts as being at the bottom).
   const toEnd = useCallback((smooth: boolean) => { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); }, []);
@@ -189,8 +199,7 @@ export default function Chat() {
           {live.draft && live.draft.text && latestId && <div className="turn"><div className="bubble agent chat-draft" aria-live="off" aria-label="Lumina is writing"><AgentResponse content={live.draft.text} /></div></div>}
           <div ref={bottom} />
         </div>
-        {newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); toEnd(true); }}>Jump to latest ↓</button>}
-        <div className="dock"><div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<p className="greeting-title">What should we work on?</p></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} seed={id ? null : seed} autoFocus onSent={sent} onStop={stopTarget ? () => { void cancel(stopTarget.id); } : open.some(t => t.phase === 'stopping') ? () => {} : undefined} stopping={!!stopping || (!stopTarget && open.some(t => t.phase === 'stopping'))} />}</div>
+        <div className="dock" ref={dock}>{newBelow && <button className="jump-latest btn" onClick={() => { stick.current = true; setNewBelow(false); toEnd(true); }}>Jump to latest ↓</button>}<div className="greeting" aria-hidden={!fresh}>{fresh && <Orb state="breathing" size={64} />}<p className="greeting-title">What should we work on?</p></div>{current?.archived_epoch ? <div className="archived-chat"><p>This chat is archived. Restore it to continue.</p><button className="btn primary" onClick={async () => { try { await api('POST', `/v1/conversations/${id}/restore`, {}); reload(); } catch { setErr('Could not restore this chat.'); } }}>Restore chat</button></div> : !err && <Composer key={id || 'new'} conversationId={id} seed={id ? null : seed} autoFocus onSent={sent} onStop={stopTarget ? () => { void cancel(stopTarget.id); } : open.some(t => t.phase === 'stopping') ? () => {} : undefined} stopping={!!stopping || (!stopTarget && open.some(t => t.phase === 'stopping'))} />}</div>
       </section>
       {paneOpen && paneTask && <>
         {!full && <PaneSplit width={paneWidth} room={canvas.width} onWidth={setPaneWidth} />}

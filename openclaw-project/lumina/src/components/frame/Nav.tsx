@@ -34,7 +34,7 @@ function Entry({ place, count, onPick }: { place: Place; count?: number; onPick?
   const words = count ? `${place.label}, ${count} waiting for you` : place.label;
   return <Link to={place.to} className="rail-item" aria-current={here ? 'page' : undefined} aria-label={words} onClick={onPick}>
     <place.icon width={20} height={20} aria-hidden="true" /><span className="rail-tip" aria-hidden="true">{place.label}{count ? ` · ${count} waiting` : ''}{shortcut(`go-${place.to.slice(1)}`) && <kbd className="kbd">{keyWords(shortcut(`go-${place.to.slice(1)}`)!.keys)}</kbd>}</span>
-    {count ? <span className="rail-count" aria-hidden="true">{count > 99 ? '99+' : count}</span> : null}
+    {count ? <span className="rail-count" aria-hidden="true" data-layout-allow="count-badge">{count > 99 ? '99+' : count}</span> : null}
   </Link>;
 }
 

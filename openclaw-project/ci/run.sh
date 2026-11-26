@@ -6,7 +6,7 @@
 #   ci/run.sh accounts 2 3          one part: the account API tests, share 2 of 3
 #   ci/run.sh all                   every blocking part at once; a summary, and the end of the log of any part that failed
 #
-# Parts: accounts i n | platform i n | acceptance | extras | lumina | browse (report-only) | report (report-only platform modules)
+# Parts: accounts i n | platform i n | acceptance | extras | lumina | layout | browse (report-only) | report (report-only platform modules)
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACCOUNT_SHARES=3
@@ -16,7 +16,7 @@ PY="${PYTHON:-}"; [ -z "$PY" ] && { [ -x "$ROOT/platform/.venv/bin/python" ] && 
 parts() {
   for i in $(seq 1 $ACCOUNT_SHARES); do echo "accounts $i $ACCOUNT_SHARES"; done
   for i in $(seq 1 $PLATFORM_SHARES); do echo "platform $i $PLATFORM_SHARES"; done
-  echo acceptance; echo extras; echo lumina
+  echo acceptance; echo extras; echo lumina; echo layout
 }
 
 # Modules of one share. Every module is in exactly one share (they are dealt out by size, largest first, to the share that has least so far), so nothing can be left out.
@@ -65,6 +65,28 @@ run_part() {
       cd "$ROOT/lumina" || return 1
       [ -n "${CI:-}" ] && { npm ci || return 1; }
       npx tsc --noEmit && npx vitest run && npm run build ;;
+    layout)
+      # The layout gate (lumina/LAYOUT.md): the build (with the static layout check), then the calibrated layout sweep on the real server code and the visual
+      # regression against approved baselines, both in a real Chrome. Screenshots and reports land in $RUNNER_TEMP/layout-report (uploaded when this fails).
+      cd "$ROOT/lumina" || return 1
+      [ -n "${CI:-}" ] && { npm ci || return 1; }
+      npm run build || return 1
+      out="${RUNNER_TEMP:-$(mktemp -d)}/layout-report"; mkdir -p "$out/fixtures"
+      PREVIEW_RATE_LIMITS=0 "$PY" tests/preview_mail.py >"$out/fixtures/mail.log" 2>&1 & local mail=$!
+      "$PY" tests/preview_work.py >"$out/fixtures/work.log" 2>&1 & local work=$!
+      "$PY" tests/preview_chat.py >"$out/fixtures/chat.log" 2>&1 & local chat=$!
+      # shellcheck disable=SC2064
+      trap "kill $mail $work $chat 2>/dev/null" RETURN
+      for url in https://127.0.0.1:5183/app/ http://127.0.0.1:5181/app/ http://127.0.0.1:5178/app/; do
+        for _ in $(seq 1 90); do curl -ks -o /dev/null --max-time 2 "$url" && break; sleep 1; done
+      done
+      local a=0 b=0
+      LAYOUT_QA_OUTPUT="$out/layout" LAYOUT_CHROME="${BROWSE_CHROME:-}" node tests/layout-browser.mjs --require-all || a=1
+      VISUAL_QA_OUTPUT="$out/visual" LAYOUT_CHROME="${BROWSE_CHROME:-}" node tests/visual-browser.mjs || b=1
+      [ -f "$out/layout/report.md" ] && { echo '----- layout report -----'; head -n 80 "$out/layout/report.md"; }
+      [ -f "$out/visual/report.md" ] && { echo '----- visual report -----'; cat "$out/visual/report.md"; }
+      [ -n "${GITHUB_STEP_SUMMARY:-}" ] && { cat "$out/layout/report.md" "$out/visual/report.md" 2>/dev/null | head -n 200 >> "$GITHUB_STEP_SUMMARY"; }
+      return $(( a || b )) ;;
     browse)
       cd "$ROOT/browse" || return 1
       [ -n "${CI:-}" ] && { npm ci || return 1; }

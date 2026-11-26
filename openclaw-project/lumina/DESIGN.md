@@ -54,7 +54,7 @@ Components use semantic roles, never raw values.
 | Shape/size | `--radius-xs…lg/pill`, `--control-sm/md/lg` (30/38/44), `--icon-sm/md/lg`, `--space-1…6` |
 | Depth | `--shadow-card`, `--shadow-overlay` |
 | Motion | `--ease`, `--dur-fast/dur/dur-slow` |
-| Stacking | `--z-sticky/nav/drawer/modal/menu` |
+| Stacking | `--z-sticky/nav/drawer/modal/menu`: the only global layers; members and the local -1..9 rule in `LAYOUT.md` |
 
 Legacy short names (`--bg`, `--ink`, `--neon`, `--line`…) are aliases; do not use them in new code. Dark is the only theme, in normal and high contrast (`data-contrast='more'`, or the system preference). `data-compact` (two densities: comfortable and compact, Shift+D) and `data-motion` adjust density and animation.
 
@@ -150,6 +150,7 @@ picture, Take control, and any question the browser has for the customer (the sa
 - Checked in a real browser by `tests/calendar-browser.mjs` (desktop, laptop, a narrow window, a phone, 200% zoom, the side column dragged and hidden), against the dense week in `tests/preview_mail.py`.
 
 ## Layout, type and icons
+- How screens hold together when content is long, late or large (flow, wrapping, scrolling, overlap, stacking) is the layout contract in `LAYOUT.md`, enforced by `npm run build` and `tests/layout-browser.mjs`.
 - Page pattern: the canvas toolbar names the page; content uses `.panel`/`.card` surfaces on a 16px gap, `EmptyState` when there is nothing, skeletons (not spinners) while loading.
 - Speed targets (decision 9 of the remodel): a local action shows its result in under 100 ms; the next likely item is fetched before it is opened (the next mail thread); long lists are virtualized.
 - Type: the platform UI font; body 14px, Today's greeting 30px, titles 16-22px. Sizes are rem so browser text settings and zoom work. Weights 400/500/600 only.

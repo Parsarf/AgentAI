@@ -24,7 +24,7 @@
 .wk-head { gap: var(--space-3); }
 .wk-head-text { display: grid; gap: 2px; min-width: 0; }
 .wk-head .agent-state { color: var(--text-primary); }
-.wk-doing { color: var(--text-muted); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(56ch, 60vw); }
+.wk-doing { color: var(--text-muted); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 56ch; }   /* the column bounds it (min-width: 0 above), never the window */
 .wk-still { width: 48px; height: 48px; display: grid; place-items: center; flex: none; }
 .wk-still .wk-mark { width: 28px; height: 28px; }
 .wk-now { list-style: none; margin: 0 0 0 60px; padding: 0; display: grid; gap: 6px; color: var(--text-secondary); font-size: var(--text-sm); }
@@ -140,7 +140,6 @@
   .wk-permission-actions { margin-left: 0; width: 100%; } .wk-permission-actions .btn { flex: 1; }
   .wk-outcome { grid-template-columns: minmax(0, 1fr); }
   .wk-item-link { grid-template-columns: minmax(0, 1fr); } .wk-item-when { grid-row: auto; grid-column: 1; }
-  .wk-doing { max-width: 70vw; }
 }
 
 /* ---- in the chat thread ---- */
@@ -162,22 +161,10 @@
 .ws-bar.col { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-raised); }
 .ws-bar h3 { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); } .ws-bar p { margin: 0; }
 .ws-note { margin: 0; }
-.ws.with-browser .ws-side { position: sticky; top: 72px; max-height: calc(100vh - 96px); overflow-y: auto; padding-right: var(--space-2); }
+.ws.with-browser .ws-side { position: sticky; top: 72px; max-height: calc(100dvh - 96px); overflow-y: auto; padding-right: var(--space-2); }
 @media (max-width: 1100px) { .ws.with-browser .ws-grid { grid-template-columns: minmax(0, 1fr); } .ws.with-browser .ws-side { position: static; max-height: none; overflow: visible; } }
 
-/* ---- sidebar: how many things are waiting for the customer ---- */
-.nav-count { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-pill); display: inline-grid; place-items: center; font-size: var(--text-xs); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; background: var(--warning-soft); color: var(--warning); }
-.nav a[aria-current='page'] .nav-count + *, .nav a[aria-current='page']:has(.nav-count)::after { display: none; }
-.side.collapsed .nav-count { position: absolute; margin: -18px 0 0 16px; min-width: 16px; height: 16px; padding: 0 4px; }
-.side.collapsed .nav a { position: relative; }
-.rail-now { margin: 0; }
-.active-task .wk-checklist { margin-top: var(--space-3); } .active-task .wk-checklist h4 { margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-muted); font-weight: var(--weight-regular); display: flex; gap: 6px; }
-.active-task .btn { margin-top: var(--space-2); }
 a.task { text-decoration: none; color: inherit; }
-@media (max-width: 960px) {
-  .side .nav a { position: relative; }
-  .side .nav .nav-count, .side.collapsed .nav-count { position: absolute; top: 4px; left: 50%; margin: 0 0 0 8px; min-width: 16px; height: 16px; padding: 0 4px; }
-}
 
 /* Long jobs (a job that keeps working until it is complete) and estimates */
 .lj-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }

@@ -34,7 +34,7 @@ function Card(props: {
          onDrop={e => { e.preventDefault(); props.onDrop(); }} onDragEnd={props.onDragEnd}>
       <div className="phase-head">
         <span className="grip" aria-hidden title="Drag to reorder">⠿</span>
-        <button className="phase-title" aria-expanded={open} onClick={props.onToggleOpen}><span className="num">{n}</span><span><Emojified text={p.title} /></span></button>
+        <button className="phase-title" aria-expanded={open} onClick={props.onToggleOpen}><span className="num">{n}</span><span title={p.title}><Emojified text={p.title} /></span></button>
         <span className={`badge ${props.run ? 'run-' + props.run.state : state === 'On' ? '' : 'alt'}`}>{state}{props.run?.state === 'running' && props.run.started_epoch ? ` · ${elapsed(props.run.started_epoch, props.now)}` : ''}</span>
         {!locked && <button type="button" role="switch" aria-checked={p.enabled} aria-label={`${p.title} enabled`} className={`switch sm${p.enabled ? ' on' : ''}`} onClick={() => props.onChange(P.setEnabled(plan, p.id, !p.enabled))}><i /></button>}
       </div>

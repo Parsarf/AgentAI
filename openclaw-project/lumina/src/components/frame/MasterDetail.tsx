@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 export default function MasterDetail({ list, detail, open, empty, listLabel, detailLabel, className = '' }: {
   list: ReactNode; detail: ReactNode; open: boolean; empty?: ReactNode; listLabel: string; detailLabel: string; className?: string;
 }) {
-  return <div className={`md${open ? ' md-open' : ''} ${className}`}>
+  return <div className={`master-detail${open ? ' md-open' : ''} ${className}`}>
     <section className="md-list" aria-label={listLabel}>{list}</section>
     <section className="md-detail" aria-label={detailLabel}>{open ? detail : <div className="md-empty">{empty}</div>}</section>
   </div>;

@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- Calibration page for tests/layout/validator.mjs: every section is a known defect (data-expect names the category the validator must report inside it) or a
+     known-good intentional layout (data-expect="none": the validator must say nothing there). tests/layout-browser.mjs runs it before any sweep, so a validator
+     that has gone blind, or started crying wolf, fails before it is trusted. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>layout validator calibration</title>
+<style>
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #111; color: #eee; }
+  section { position: relative; margin: 16px; padding: 12px; border: 1px solid #444; }
+  .abs { position: absolute; top: 12px; left: 12px; }
+  .fixedh { height: 20px; overflow: hidden; width: 160px; }
+  .box { width: 120px; border: 1px solid #888; }
+  .nowrap { white-space: nowrap; }
+  .cover { position: absolute; inset: 0; background: #222; }
+  .ell { display: block; width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tiny { width: 16px; height: 16px; padding: 0; margin: 0; }
+  .menu { position: fixed; top: 0; right: 0; width: 200px; background: #333; padding: 8px; z-index: 60; }
+  .sticky { position: sticky; top: 0; background: #111; }
+  .scroller { overflow: auto; width: 200px; }
+  .icon { position: relative; display: inline-block; width: 24px; height: 24px; }
+  .badge { position: absolute; top: -6px; right: -6px; background: #a00; font-size: 10px; line-height: 14px; min-width: 14px; text-align: center; border-radius: 7px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style></head>
+<body>
+  <section data-expect="text-collision" style="height: 60px"><span class="abs">First label here</span><span class="abs" style="left: 40px">Second label</span></section>
+  <section data-expect="clipped-text"><div class="fixedh">This sentence is much longer than the twenty pixels of height its box allows, so most of it is cut away.</div></section>
+  <section data-expect="escapes-container"><div class="box"><span class="nowrap">A long label that does not wrap and leaves its bordered box</span></div></section>
+  <section data-expect="obstructed-control" style="height: 60px"><button>Save the changes</button><div class="cover"></div></section>
+  <section data-expect="occluded" style="height: 60px"><p style="margin: 0">Words hidden under a plain absolute box.</p><div class="cover" style="width: 120px; inset: 12px auto auto 12px; height: 30px; opacity: 1"></div></section>
+  <section data-expect="clipped-text"><a href="#" class="ell" title="A long link title in a flex box" style="display: inline-flex; align-items: center; min-height: 44px">A long link title in a flex box, where an ellipsis cannot work</a></section>
+  <section data-expect="broken-word"><table style="width: 60px; overflow-wrap: anywhere"><tr><td>1,204,331,902</td></tr></table></section>
+  <section data-expect="none"><table style="width: 90px"><tr><td>long-hyphenated-label-that-wraps</td></tr></table></section>
+  <section data-expect="truncated-no-full"><span class="ell">An address that is cut short with no way to read it all</span></section>
+  <section data-expect="target-size"><button class="tiny" aria-label="a"></button><button class="tiny" aria-label="b"></button></section>
+  <section data-expect="bad-exception"><span data-layout-allow="not-a-registered-key">An exception nobody documented</span></section>
+
+  <section data-expect="none"><div class="menu" role="menu"><button role="menuitem">A menu over the page</button></div><p>Text a menu may cover: the menu is a layer.</p></section>
+  <section data-expect="none"><span class="ell" title="An address that is cut short but has its whole text in the title">An address that is cut short but has its whole text in the title</span></section>
+  <section data-expect="none"><div class="scroller"><pre style="margin: 0">const line = "a code line that is far wider than its box, which scrolls sideways instead";</pre></div></section>
+  <section data-expect="none"><span class="icon"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#666" /></svg><span class="badge" data-layout-allow="count-badge">3</span></span> Activity</section>
+  <section data-expect="none"><span class="sr">Only for screen readers</span><p>Visible text beside visually hidden text.</p></section>
+  <section data-expect="none"><details><summary>Details</summary><div class="abs">Closed content is not drawn</div><div class="abs">so it cannot collide</div></details></section>
+  <section data-expect="none" style="max-height: 120px; overflow: auto"><div class="sticky">A sticky heading</div><p>Rows scroll under the sticky heading, which is a layer.</p><p>More rows.</p><p>More rows.</p><p>More rows.</p><p>More rows.</p></section>
+</body></html>

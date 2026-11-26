@@ -1,8 +1,10 @@
 /* Files Lumina made: the card under an answer and the rows of the Files page. */
 .file-cards { display: grid; gap: 8px; margin-top: 8px; max-width: 640px; }
 .file-card { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); padding: 10px 12px; }
-.file-card-row { display: flex; align-items: center; gap: 12px; }
-.file-card-text { display: grid; min-width: 0; flex: 1; }
+/* The name claims 10rem before the buttons may share its row; in a narrow panel they wrap beneath it together, at the right. No breakpoint: it follows its own width. */
+.file-card-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.file-card-actions { display: flex; gap: 8px; margin-left: auto; flex: none; }   /* the buttons wrap together, kept at the right */
+.file-card-text { display: grid; min-width: 0; flex: 1 1 10rem; }
 .file-card-text b { font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--surface-raised); border: 1px solid var(--border-subtle);
   color: var(--text-secondary); font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: .02em; }
@@ -10,15 +12,15 @@
 .file-preview { display: block; margin-top: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); background: var(--surface-inset); }
 .file-preview.picture { max-width: 100%; max-height: 420px; object-fit: contain; }
 .file-preview.picture.loading { min-height: 120px; min-width: 160px; }
-.file-preview.picture.large { max-height: 70vh; }
+.file-preview.picture.large { max-height: 70dvh; }
 .file-preview.text { padding: 10px 12px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: var(--text-sm)/var(--leading-normal) var(--font-mono); color: var(--text-secondary); }
-.file-preview.text.large { max-height: 60vh; }
+.file-preview.text.large { max-height: 60dvh; }
 
 /* The Files page */
 .files-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 .files-tools .input { flex: 1; min-width: 180px; }
 .files-meter { display: grid; gap: 6px; margin-top: 14px; }
-.files-meter-bar { height: 6px; border-radius: var(--radius-pill); background: var(--surface-raised); overflow: hidden; }
+.files-meter-bar { /* layout: a 6px meter; the clip rounds its fill, there is no text in it */ height: 6px; border-radius: var(--radius-pill); background: var(--surface-raised); overflow: hidden; }
 .files-meter-bar span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
 .files-meter-bar span.full { background: var(--danger); }
 .file-item { border-top: 1px solid var(--border-subtle); padding: 12px 0; }
@@ -31,7 +33,7 @@
 .file-confirm { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--danger-soft); }
 .answer-save { display: flex; gap: 6px; margin-top: 6px; }
 .answer-table-tools { display: flex; gap: 6px; justify-content: flex-end; margin: 4px 0 10px; }
-@media (max-width: 640px) { .file-card-row, .file-item-row { flex-wrap: wrap; } .file-item-more { margin-left: 0; } }
+@media (max-width: 640px) { .file-item-row { flex-wrap: wrap; } .file-item-more { margin-left: 0; } }
 /* Organizing: filters, folders, moving and renaming (roadmap #30) */
 .files-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .files-filter { flex: 0 1 190px; min-width: 150px; }
@@ -50,7 +52,7 @@
 .files-tree, .files-tree ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .files-project { margin: var(--space-3) 0 var(--space-1) 10px; }
 .files-page .files-folders .chip { justify-self: start; margin-top: var(--space-2); }
-.file-open { display: block; max-width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.file-open { display: block; max-width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .file-open b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-open:hover b { text-decoration: underline; }
 .file-item.selected { background: var(--accent-soft); border-radius: var(--radius-sm); }

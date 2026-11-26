@@ -19,6 +19,9 @@ import { Elapsed, Status, useNow } from './parts';
  *
  *  `eager` strips keep their full record current (the newest few); older ones read the list's line and load the record when opened. `notes` are the assistant's earlier
  *  messages for a finished request, folded into the same disclosure. */
+/** One line of what the task is doing: ellipsized when the column is narrow, the whole of it in the tooltip and the accessible description. */
+const Doing = ({ text }: { text: string }) => <span className="wk-doing" title={text}>{text}</span>;
+
 export default function TaskStrip({ id, eager = true, notes = [], stopping = false }: { id: string; eager?: boolean; notes?: Message[]; stopping?: boolean }) {
   const [open, setOpen] = useState(false); const panel = useId();
   const { task, full, rows, draft } = useTask(id, eager || open);
@@ -45,13 +48,13 @@ export default function TaskStrip({ id, eager = true, notes = [], stopping = fal
           {orb ? <Orb state={orb} size={48} /> : <span className="wk-still" aria-hidden="true"><Status task={{ label: '', tone: view.tone }} /></span>}
           <span className="wk-head-text">
             <span className="agent-state" key={label}>{label}{isMoving(view) ? '…' : ''}</span>
-            {waiting && <span className="wk-doing">{waiting}</span>}
-            {view.phase === 'working' && view.now.length === 1 && view.now[0].detail && <span className="wk-doing">{view.now[0].detail}</span>}
-            {view.phase === 'queued' && view.wait === 'assistant' && !waiting && <span className="wk-doing">{typeof view.ahead === 'number' && view.ahead > 0 ? 'Every assistant is busy. Yours starts as soon as one is free.' : 'Getting your assistant ready.'}</span>}
-            {view.phase === 'queued' && view.wait === 'your_task' && <span className="wk-doing">Waiting for your earlier task to finish.</span>}
-            {view.phase === 'queued' && !view.wait && typeof view.ahead === 'number' && view.ahead > 0 && <span className="wk-doing">{view.ahead} {view.ahead === 1 ? 'task is' : 'tasks are'} ahead of this one</span>}
-            {view.phase === 'paused' && <span className="wk-doing">It keeps its place and will not start until you resume it.</span>}
-            {view.phase === 'stopping' && <span className="wk-doing">Waiting for the assistant to confirm it has stopped.</span>}
+            {waiting && <Doing text={waiting} />}
+            {view.phase === 'working' && view.now.length === 1 && view.now[0].detail && <Doing text={view.now[0].detail} />}
+            {view.phase === 'queued' && view.wait === 'assistant' && !waiting && <Doing text={typeof view.ahead === 'number' && view.ahead > 0 ? 'Every assistant is busy. Yours starts as soon as one is free.' : 'Getting your assistant ready.'} />}
+            {view.phase === 'queued' && view.wait === 'your_task' && <Doing text="Waiting for your earlier task to finish." />}
+            {view.phase === 'queued' && !view.wait && typeof view.ahead === 'number' && view.ahead > 0 && <Doing text={`${view.ahead} ${view.ahead === 1 ? 'task is' : 'tasks are'} ahead of this one`} />}
+            {view.phase === 'paused' && <Doing text="It keeps its place and will not start until you resume it." />}
+            {view.phase === 'stopping' && <Doing text="Waiting for the assistant to confirm it has stopped." />}
           </span>
           <Elapsed task={view} />
         </div>)}

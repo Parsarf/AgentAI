@@ -14,8 +14,8 @@ function check() {
   if (document.documentElement.scrollWidth > innerWidth)
     failures.push('The conversation overflows the viewport horizontally.');
   const composer = document.querySelector('.chatpage .composer');
-  const nav = document.querySelector('.side');
-  if (composer && nav && innerWidth <= 960 && getComputedStyle(nav).position === 'fixed' && composer.getBoundingClientRect().bottom > nav.getBoundingClientRect().top - 1)
+  const nav = document.querySelector('.bottom-bar');                 // the phone's fixed bottom bar (the old .side nav is gone)
+  if (composer && nav && getComputedStyle(nav).position === 'fixed' && composer.getBoundingClientRect().bottom > nav.getBoundingClientRect().top - 1)
     failures.push('The composer overlaps the fixed mobile navigation.');
   const turns = [...document.querySelectorAll('.turn')];
   for (let i = 1; i < turns.length; i++) {

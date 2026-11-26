@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 export function Toolbar({ title, tools, leading }: { title: ReactNode; tools?: ReactNode; leading?: ReactNode }) {
   return <header className="wsp-toolbar">
     {leading}
-    {typeof title === 'string' ? <h1 className="wsp-title">{title}</h1> : title}
+    {typeof title === 'string' ? <h1 className="wsp-title" title={title}>{title}</h1> : title}
     {tools && <div className="wsp-tools">{tools}</div>}
   </header>;
 }

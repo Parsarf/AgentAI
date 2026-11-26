@@ -1,5 +1,14 @@
 # Lumina UI requirements
 
+**Layout is part of correctness (mandatory).** Read `LAYOUT.md` before any UI change. These rules are blocking, like a failing test:
+- Every new or changed component follows the layout contract in `LAYOUT.md`: normal flow, `gap` with `--space-*`, `min-width: 0` / `minmax(0, 1fr)` on anything holding text, text that wraps or ellipsizes on a block box with its whole text reachable, sizes from content (`min-height`, `dvh`, never `vh` or `vw` for components), and arrangement chosen by the component's own width (container query or intrinsic wrapping), not the window's.
+- Dynamic content (names, titles, errors, counts, streaming text, statuses) never depends on fixed heights, positional offsets or arithmetic on another element's size.
+- Unintended overlap, clipped text, sideways scrolling and covered or unreachable controls are blocking defects. Intentional overlap needs a written reason: a `layout:`/`layer:` comment for out-of-flow CSS, a layer token for z-index, or a key registered in `tests/layout/exceptions.mjs`. Never raise a z-index to make an overlap go away.
+- Fix a shared cause at its source (the shared component, the frame, the token), not in each page.
+- Verify in the rendered app, not from the source: `npm run build` (runs `scripts/check-layout.mjs`), then `node tests/layout-browser.mjs` against the fixtures (`--full` for every width, 200% zoom and 150% text) and `node tests/visual-browser.mjs`. Look at the screenshots at the widths your change touches. jsdom has no layout.
+- A new route or UI state goes into `tests/layout/scenarios.mjs`; a critical one also into `tests/visual-browser.mjs`. A new shared component gets its row in `LAYOUT.md`.
+- Never bypass, loosen or skip a check to finish a task: no new exception without its reason, no threshold change, no baseline approved without looking at it (`--approve` is for a change you meant).
+
 **Visual design:** read `DESIGN.md` before any UI change. Colours, radii, type and spacing come from the tokens in `src/styles/tokens.css`; use the shared components in `src/styles/ui.css` and `src/components/ui/` (Menu, Toggle) instead of writing new buttons, menus or switches. `npm run check:design` (part of `npm run build`) rejects hardcoded colours. Do not build features the product does not have just because a mock shows them.
 
 Messages and assistant thinking indicators must size to their content. Spare pane height belongs

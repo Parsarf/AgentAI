@@ -229,7 +229,9 @@ describe('Calendar', () => {
     const thursday = screen.getByLabelText('Thursday, May 21, 2026', { selector: '.hub-day-col' });
     const short = within(thursday).getByRole('button', { name: 'Classwork 21: Fluids [PHYS 101-003 Fall 2026], 12:30 PM' }), due = within(thursday).getByRole('button', { name: 'Submit Buoyancy Lab [PHYS 101-003 Fall 2026], 2:00 PM' });
     expect([short.className.includes('brief'), short.className.includes('point'), due.className.includes('point')]).toEqual([true, false, true]);
-    expect([short.style.top, due.style.top]).toEqual(['calc(var(--hour) * 12.5)', 'calc(var(--hour) * 14)']);               // where they really are
+    // where they really are (clamped only so that one line of text never runs past the end of the day: min(true start, 100% - one line))
+    expect([short.style.top, due.style.top].map(t => t.match(/calc\(var\(--hour\) \* [\d.]+\)/)?.[0])).toEqual(['calc(var(--hour) * 12.5)', 'calc(var(--hour) * 14)']);
+    expect(short.style.top).toMatch(/^min\(.*100% - max\(1lh \+ 4px, 22px\)/);
     expect(short.querySelector('b')!.textContent).toBe('Classwork 21: Fluids');                                              // what it is comes first
     expect(due.getAttribute('title')).toBe('Submit Buoyancy Lab [PHYS 101-003 Fall 2026] · 2:00 PM');
   });

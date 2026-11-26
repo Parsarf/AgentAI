@@ -103,7 +103,7 @@ export default function Composer({ conversationId, seed, onSent, autoFocus, onSt
           <span className="spacer" />
           <Menu label="How should Lumina respond" heading="Respond with" checkable side="top" align="end" items={RESPONSES.filter(r => r.id !== 'browse' || app?.features.browse).map(r => ({ id: r.id, label: r.label, hint: r.hint, checked: respond === r.id, onSelect: () => setRespond(r.id) }))}
             trigger={({ open, props }) => <button type="button" className="chip" aria-expanded={open} {...props}>{RESPONSES.find(r => r.id === respond)?.label}<I.ChevronDown width={14} height={14} /></button>} />
-          {respond !== 'plan' && live && <button type="button" className="chip" aria-pressed={goal} onClick={() => setGoal(g => !g)} title="Lumina keeps working, turn after turn, until the goal is met, you stop it, or your plan limit is reached">Keep working until complete</button>}
+          {respond !== 'plan' && live && <button type="button" className="chip" aria-pressed={goal} onClick={() => setGoal(g => !g)} aria-label="Keep working until complete" title="Lumina keeps working, turn after turn, until the goal is met, you stop it, or your plan limit is reached"><span>Keep working<span className="composer-long" aria-hidden="true"> until complete</span></span></button>}
           <span className="actions">
           {speech && <button type="button" className="iconbtn" aria-label={listening ? 'Stop dictation' : 'Dictate'} aria-pressed={listening} onClick={toggleVoice}><I.Mic width={18} height={18} /></button>}
           {onStop ? <button type="button" className="iconbtn send" disabled={stopping} aria-label={stopping ? 'Stopping task' : 'Stop task'} aria-busy={stopping} onClick={onStop}><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="4" y="4" width="10" height="10" rx="2" fill="currentColor" /></svg></button>
@@ -111,6 +111,6 @@ export default function Composer({ conversationId, seed, onSent, autoFocus, onSt
           </span>
         </div>
       </form>
-      <p className={`hint${err ? ' err' : ''}`} role={err ? 'alert' : undefined}>{err || (live ? 'Enter to send · Shift+Enter for a new line · you can keep chatting while a task runs.' : 'Execution is off right now: your message is saved and waits.')}</p>
+      <p className={`hint${err ? ' err' : ''}${live && !err ? ' hint-keys' : ''}`} role={err ? 'alert' : undefined}>{err || (live ? 'Enter to send · Shift+Enter for a new line · you can keep chatting while a task runs.' : 'Execution is off right now: your message is saved and waits.')}</p>
     </div>);
 }

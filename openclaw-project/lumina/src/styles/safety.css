@@ -6,7 +6,7 @@
 
 .con-window {
   --con-bg: #000000; --con-fg: #e5e5e5; --con-dim: #888888; --con-line: #333333; --con-hi: #ffffff;
-  width: min(900px, 100%); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; outline: none;
+  width: min(900px, 100%); max-height: 92dvh; display: flex; flex-direction: column; overflow: hidden; outline: none;
   background: var(--con-bg); color: var(--con-fg); border: 1px solid var(--con-line); border-radius: 6px;
   font: 13px/1.4 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; letter-spacing: 0;
 }

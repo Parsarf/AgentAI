@@ -92,17 +92,17 @@ export default function Home() {
             count={d => d.events.filter(e => dayOf(e) === today).length}>
             {d => !d.connected ? <p className="muted small">No calendar is connected. <Link to="/calendar">Connect one</Link></p>
               : <ul className="tile-list">{d.events.map(e => <li key={e.connection_id + e.calendar_id + e.id}><Link to={`/calendar?connection=${encodeURIComponent(e.connection_id)}&calendar=${encodeURIComponent(e.calendar_id)}&event=${encodeURIComponent(e.id)}`}>
-                <b>{e.busy_only ? 'Busy' : e.title || '(no title)'}</b><span className="faint small">{when(e)}{e.place ? ` · ${e.place}` : ''}</span></Link></li>)}</ul>}
+                <b title={e.busy_only ? 'Busy' : e.title || '(no title)'}>{e.busy_only ? 'Busy' : e.title || '(no title)'}</b><span className="faint small">{when(e)}{e.place ? ` · ${e.place}` : ''}</span></Link></li>)}</ul>}
           </Tile>
           <Tile id="mail" title="Mail that needs you" to="/inbox" load={mail} retry={retryMail} empty={d => d.connected && !d.threads.length} count={d => d.unread}>
             {d => !d.connected ? <p className="muted small">No mail account is connected. <Link to="/inbox">Connect one</Link></p>
               : <><p className="faint small">{d.unread === 1 ? '1 unread in your inbox, newest first.' : `${d.unread} unread in your inbox, newest first.`}</p>
                 <ul className="tile-list">{d.threads.map(t => <li key={t.connection_id + t.id}><Link to={`/inbox?connection=${encodeURIComponent(t.connection_id)}&thread=${encodeURIComponent(t.id)}`}>
-                  <b>{t.subject || '(no subject)'}</b><span className="faint small">{people(t.people)} · {ago(t.last_epoch)}</span></Link></li>)}</ul></>}
+                  <b title={t.subject || '(no subject)'}>{t.subject || '(no subject)'}</b><span className="faint small">{people(t.people)} · {ago(t.last_epoch)}</span></Link></li>)}</ul></>}
           </Tile>
           <Tile id="work" title="Work running and waiting on you" to="/activity" load={work} retry={() => undefined} empty={d => !d.length} count={() => waiting.length || null}>
             {d => <ul className="tile-list">{d.map(t => <li key={t.id}><Link to={t.attention ? `/activity/${t.id}` : t.conversation_id ? `/chat/${t.conversation_id}` : `/activity/${t.id}`}>
-              <b>{t.title}</b><span className="tile-meta"><Status task={t} size="sm" /><span className="faint small">{ago(t.created_epoch)}</span></span></Link></li>)}</ul>}
+              <b title={t.title}>{t.title}</b><span className="tile-meta"><Status task={t} size="sm" /><span className="faint small">{ago(t.created_epoch)}</span></span></Link></li>)}</ul>}
           </Tile>
           <Tile id="files" title="Recent files" to="/files" load={recent} retry={retryFiles} empty={d => !d.files.length}>
             {d => <ul className="tile-list">{[...d.files].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4).map(f => <li key={f.kind + f.id}><Link to={`/files?open=${encodeURIComponent(`${f.kind}:${f.id}`)}`}>

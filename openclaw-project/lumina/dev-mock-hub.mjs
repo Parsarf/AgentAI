@@ -44,6 +44,11 @@ export async function hubMock(p, url, req, res, json, body) {
     for (let i = from; i < Math.min(TOTAL, from + limit); i++) out.push(thread(i));
     return json(res, 200, { threads: out, next: from + limit < TOTAL ? String(from + limit) : null, complete: from + limit >= TOTAL }), true;
   }
+  if (p === '/v1/hub/mail/frame') {                      // the message's own page, as the server frames it (plain: the theme's text on no surface; flow-root body as in hub_html.py, so the app measures it whole)
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end('<!doctype html><meta charset="utf-8"><body style="margin:0;display:flow-root;font:15px/1.6 system-ui,sans-serif;color:#e8e8ec;background:transparent"><p>Hello,</p><p>The numbers for the quarter are attached. Revenue is up and costs are flat; the details are in the sheet.</p><p>Best,<br>Ada</p></body>');
+    return true;
+  }
   if (p === '/v1/hub/mail/thread') {
     const i = Number((q('id') || 't0').slice(1)); const t = thread(i);
     const messages = Array.from({ length: t.message_count }, (_, n) => ({ id: `m${i}_${n}`, thread_id: t.id, subject: t.subject, snippet: t.snippet, sender: person(i + n), to: [{ name: 'You', address: 'you@example.com' }], cc: [],

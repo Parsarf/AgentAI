@@ -65,7 +65,7 @@ function EventChip({ event, zone, current, onOpen, block, style, onPress, shift,
   // How much of a short event's box is the event itself: its edge is drawn solid for that long, so ten minutes still read as ten minutes.
   const real = brief && !point && length !== undefined ? { ['--real' as string]: `calc(var(--hour) * ${Math.max(length, 3) / 60})` } : {};
   return (
-    <button type="button" className={`hub-event cal-${event.colour}${kind}`}
+    <button type="button" className={`hub-event cal-${event.colour}${kind}`} data-layout-allow="calendar-event"
       style={{ ...style, ...real, ...moved }} aria-current={current ? 'true' : undefined} aria-label={`${titleOf(event)}, ${when}`} title={`${titleOf(event)} · ${timeOf(event, zone)}`} onClick={() => onOpen(event)}
       onPointerDown={onPress ? e => onPress(e, event, false) : undefined}>
       <b>{main}</b>
@@ -565,7 +565,7 @@ export default function CalendarPage() {
                 {shown.map(p => <EventChip key={eventKey(p.event)} event={p.event} zone={zone} current={selected === eventKey(p.event)} onOpen={openUnlessDragged}
                   onPress={movable(p.event) ? onPress : undefined} shift={moving?.key === eventKey(p.event) ? moving : undefined}
                   brief={(p.height * HOUR) / 60 < 2 * LINE - 4} point={p.point} length={p.length}
-                  style={{ top: `calc(var(--hour) * ${p.top / 60})`, height: `calc(var(--hour) * ${p.height / 60} - 2px)`,
+                  style={{ top: `min(calc(var(--hour) * ${p.top / 60}), calc(100% - max(1lh + 4px, ${LINE}px)))`, height: `calc(var(--hour) * ${p.height / 60} - 2px)`,
                     ...(p.folded ? { left: `calc((100% - ${FOLD}px) * ${p.column / p.columns} + 2px)`, width: `calc((100% - ${FOLD}px) * ${p.span / p.columns} - 4px)` }
                       : { left: `calc(${(p.column / p.columns) * 100}% + 2px)`, width: `calc(${(p.span / p.columns) * 100}% - 4px)` }) }} />)}
                 {folded.map(f => <MoreEvents key={f.key} events={f.events} count={f.events.length} zone={zone} onOpen={open} className="timed"

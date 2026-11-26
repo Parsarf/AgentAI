@@ -19,6 +19,9 @@
 .answer-table { overflow-x: auto; margin: 1.2em 0; border: 1px solid var(--line); border-radius: 12px; }
 .answer-table table { width: 100%; border-collapse: collapse; font-size: .92em; }
 .answer-table th, .answer-table td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; min-width: 100px; }
+/* A cell keeps its words whole (the answer's prose may break anywhere; a table must not: "1,204,331,902" was split mid-number). `break-word` does not shrink a
+   word's min-content width, so a wide table grows and scrolls inside .answer-table instead of squeezing its columns. */
+.answer-table th, .answer-table td { overflow-wrap: break-word; word-break: normal; font-variant-numeric: tabular-nums; }
 .answer-table th { color: var(--ink); background: var(--fill-subtle); font-weight: 600; }
 .answer-table tbody tr:last-child td { border-bottom: 0; }
 .agent-response .answer-sources { margin-top: 1.5em; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-secondary); }
